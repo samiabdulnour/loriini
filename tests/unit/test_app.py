@@ -361,22 +361,103 @@ def test_every_control_explains_itself(hidden_window: Any) -> None:
     assert not bare, f"controls with no explanation: {bare}"
 
 
-def test_the_hover_text_appears_and_goes_away(hidden_window: Any) -> None:
-    """Without the delay, dragging across the form flashes six of these and
-    reads as a fault rather than as help."""
+def test_the_explanation_lands_in_the_band_and_not_in_a_window(hidden_window: Any) -> None:
+    """There are no popups any more.
+
+    A Toplevel tooltip covered the thing you were pointing at, went away while
+    you were still reading it, and could not be reached from the keyboard at
+    all -- which for a window whose settings fail quietly is not a polish
+    complaint. The sentence goes to one band at the foot instead, and the band
+    is never empty.
+    """
     from sun_study.app.window import Tooltip
 
-    tip = Tooltip(hidden_window.apartments, "which layer the apartments are on")
-    # Captured rather than asserted in sequence: three asserts on one attribute
-    # read to mypy as a contradiction, since it cannot see that _show and _hide
-    # change it.
-    before = tip.visible
-    tip._show()
-    shown = tip.visible
-    tip._hide()
-    after = tip.visible
+    hidden_window.info.resting("general", "Solar analysis", "Hours of direct sun.")
+    tip = Tooltip(
+        hidden_window.apartments,
+        "which layer the apartments are on",
+        title="Apartment zones",
+        short="The zone layer the flats are drawn on.",
+    )
 
-    assert (before, shown, after) == (False, True, False)
+    tip._show()
+    said = (
+        hidden_window.info.title.cget("text"),
+        hidden_window.info.detail.cget("text"),
+    )
+    tip._hide()
+    after = hidden_window.info.title.cget("text")
+
+    assert said == ("Apartment zones", "which layer the apartments are on")
+    assert after == "Solar analysis", "and it goes back to saying what the tab is for"
+    assert not [
+        child for child in hidden_window.root.winfo_children() if isinstance(child, tk.Toplevel)
+    ], "no window was opened to say it"
+
+
+def test_a_chip_row_is_still_the_entry_the_settings_file_expects(hidden_window: Any) -> None:
+    """The layer pickers are chips now. The settings file round-trips through
+    ``get``, ``delete`` and ``insert``, so a file written by the window that
+    had text boxes still has to restore into this one."""
+    box = hidden_window.subject
+
+    box.delete(0, "end")
+    box.insert(0, "01 | Wall.External, 03 | Floor.Slab")
+    assert box.get() == "01 | Wall.External, 03 | Floor.Slab"
+
+    box.drop("03 | Floor.Slab")
+    assert box.get() == "01 | Wall.External", "and a chip can be dropped on its own"
+
+    box.delete(0, "end")
+    assert box.get() == ""
+
+
+def test_the_panel_holds_one_sheet_per_hour_per_day(hidden_window: Any) -> None:
+    """What the panel draws is what Run will make, worked out from the ticks
+    and the fields rather than from anything Archicad is asked."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+    for name, ticked in hidden_window.days.items():
+        ticked.set(name in {"winter", "summer"})
+    hidden_window.custom_day.delete(0, "end")
+    hidden_window.shadow_hours.delete(0, "end")
+    hidden_window.shadow_hours.insert(0, "09:00, 12:00, 15:00")
+
+    sheets = hidden_window.planned()
+
+    assert len(sheets) == 6, "two days at three hours"
+    assert [sheet.number for sheet in sheets[:3]] == ["SD.01", "SD.02", "SD.03"]
+    assert {sheet.study for sheet in sheets} == {"Shadow diagram"}
+
+
+def test_a_project_with_no_location_draws_the_sheet_and_says_it_has_no_sun(
+    hidden_window: Any,
+) -> None:
+    """A shadow at a guessed latitude is a drawing that looks right and is
+    not, which is the one thing this window exists to prevent."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+
+    without = hidden_window.planned()
+    assert without, "the sheets are still listed"
+    assert all(sheet.elevation is None for sheet in without)
+    assert all(sheet.reach is None for sheet in without), "and nothing to draw with"
+
+    hidden_window.options = replace(hidden_window.options, latitude=-33.9663, longitude=151.1340)
+    hidden_window.days["winter"].set(True)
+    hidden_window.custom_day.delete(0, "end")
+    hidden_window.shadow_hours.delete(0, "end")
+    hidden_window.shadow_hours.insert(0, "12:00")
+
+    noon = hidden_window.planned()[0]
+
+    # Winter noon at latitude -34: the sun is due north, 90 - 34 - 23.44 up.
+    assert noon.elevation is not None
+    assert abs(noon.elevation - 32.6) < 0.5, f"sun at {noon.elevation}"
+    assert abs(noon.azimuth - 0.0) % 360 < 2 or abs(noon.azimuth - 360.0) < 2
+    assert noon.reach is not None and abs(noon.reach - 1.56) < 0.05
 
 
 # -- the add-on everything depends on -------------------------------------
@@ -1848,15 +1929,17 @@ def test_open_and_queued_are_two_marks_and_never_the_same_one(hidden_window: Any
     is the page you are on" and "this will run", and so meant neither.
 
     Four styles, two axes. A tab can be open, queued, both or neither, and all
-    four are told apart -- and the rule over the open tab is blue only there.
+    four are told apart -- and only the open ones wear the face with the blue
+    cap, which is a shape and so cannot be mistaken for the queued tint.
     """
+    capped = {name for name, worn in theme.WEARS.items() if worn == "tabopen"}
     hidden_window._show_section(window.Window.GENERAL)
     tab = hidden_window.tabs[window.Window.SHADOWS]
 
     hidden_window.do_shadows.set(False)
     hidden_window._sync()
     assert tab.cget("style") == "Tab.TButton", "neither"
-    assert hidden_window.rules[window.Window.SHADOWS].cget("background") == theme.CHROME
+    assert tab.cget("style") not in capped
 
     hidden_window.do_shadows.set(True)
     hidden_window._sync()
@@ -1865,12 +1948,12 @@ def test_open_and_queued_are_two_marks_and_never_the_same_one(hidden_window: Any
 
     hidden_window._show_section(window.Window.SHADOWS)
     assert tab.cget("style") == "TabOpenQueued.TButton", "open and queued"
-    assert hidden_window.rules[window.Window.SHADOWS].cget("background") == theme.BLUE
+    assert tab.cget("style") in capped, "and it is the capped face that says open"
 
     hidden_window.do_shadows.set(False)
     hidden_window._sync()
     assert tab.cget("style") == "TabOpen.TButton", "open but not queued"
-    assert hidden_window.rules[window.Window.GENERAL].cget("background") == theme.CHROME
+    assert hidden_window.tabs[window.Window.GENERAL].cget("style") not in capped
 
 
 def test_only_the_tabs_that_draw_something_can_be_queued(hidden_window: Any) -> None:
@@ -1962,3 +2045,167 @@ def test_the_palette_argument_is_read_off_the_command_line(argv: list[str], expe
     started afterwards would inherit it.
     """
     assert window.wanted_study(argv) == expected
+
+
+# -- the boxes, the band at rest, and the panel that folds ------------------
+
+
+def test_every_study_heads_a_box_that_says_what_its_tick_is_worth(hidden_window: Any) -> None:
+    """A page was a flat run of rows with a rule between the groups, which is
+    what made it read as a form. Each study is a box now, headed by its own
+    tick, and the header says what that tick costs in sheets -- the same
+    figure the panel down the side draws, said where the decision is made."""
+    assert set(hidden_window.study_boxes) == {name for name, _t, _w in hidden_window._studies()}
+
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+    hidden_window._sync()
+
+    box, says = hidden_window.study_boxes[window.SHADOW_JOB]
+    made = sum(1 for sheet in hidden_window.planned() if sheet.job == window.SHADOW_JOB)
+    assert made > 0
+    assert says.cget("text") == f"{made} sheets"
+    assert str(box.cget("style")) == "Box.TFrame"
+
+    off_box, off_says = hidden_window.study_boxes[window.SUN_EYE_JOB]
+    assert off_says.cget("text") == "off"
+    assert str(off_box.cget("style")) == "BoxOff.TFrame", "a study nobody switched on goes grey"
+
+
+def test_a_study_s_rows_are_inside_its_own_box(hidden_window: Any) -> None:
+    """The rows are built by the code that always built them, pointed at the
+    box instead of at the page. Worth pinning because nothing else would
+    notice a row that ended up outside: it would simply sit on the page."""
+
+    def inside(widget: Any, box: Any) -> bool:
+        above = widget
+        while above is not None:
+            if above is box:
+                return True
+            above = getattr(above, "master", None)
+        return False
+
+    shadow_box, _ = hidden_window.study_boxes[window.SHADOW_JOB]
+    plans_box, _ = hidden_window.study_boxes[window.PLANS_JOB]
+    assert inside(hidden_window.shadow_hours, shadow_box)
+    assert inside(hidden_window.instants, plans_box)
+    assert not inside(hidden_window.instants, shadow_box)
+    assert not inside(hidden_window.adg_subset, plans_box), "and the page's own rows stay out"
+
+
+def test_the_band_is_never_empty(hidden_window: Any) -> None:
+    """With nothing under the pointer the band says what the open tab is for.
+    A strip that blanks itself is dead space at the foot of the window, which
+    is exactly what the log was."""
+    for title in hidden_window.titles:
+        hidden_window._show_section(title)
+        assert hidden_window.info.title.cget("text") == title
+        assert hidden_window.info.short.cget("text") == window.Window.SECTION_BLURB[title]
+
+
+def test_a_site_sheet_is_not_at_an_hour_of_the_day(hidden_window: Any) -> None:
+    """The site sheets are drawn from an address, not from the sun, so they
+    carry no day and no hour -- and a sheet titled "21 JUN 12:00" that is
+    really a Summary of Controls is a miniature of something the run will
+    not make."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_site.set(True)
+
+    sheets = hidden_window.planned()
+
+    assert [sheet.kind for sheet in sheets] == [
+        "Context Analysis",
+        "Site Analysis",
+        "Summary of Controls",
+    ]
+    assert all(sheet.time == "" and sheet.day == "" for sheet in sheets)
+    assert all(sheet.elevation is None for sheet in sheets)
+
+
+def test_the_sheets_panel_folds_when_the_window_cannot_hold_both(hidden_window: Any) -> None:
+    """Only on *crossing* the line. In between, the chevron is the user's:
+    somebody who opened the panel in a narrow window meant to, and having it
+    snap shut on the next pixel of a resize would be the window arguing."""
+
+    class Resized:
+        def __init__(self, widget: Any, width: int) -> None:
+            self.widget, self.width = widget, width
+
+    root, dock = hidden_window.root, hidden_window.dock
+    assert not dock.folded
+
+    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW - 1))
+    assert dock.folded, "too narrow for both, so the panel goes to its edge"
+
+    dock.fold(False)  # the chevron, pressed by hand
+    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW - 40))
+    assert not dock.folded, "still narrow, and still open: it was opened on purpose"
+
+    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW + 1))
+    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW - 1))
+    assert dock.folded, "crossing the line again folds it again"
+
+    hidden_window._fit(Resized(hidden_window.dock, 10))
+    assert dock.folded, "and a child being resized is not the window being resized"
+
+
+def test_a_faced_control_stands_on_its_own_colour(hidden_window: Any) -> None:
+    """The third trap of the rounded theme, checked on the real window.
+
+    A face is a rounded shape in a square widget, and what shows through its
+    four corners is the *style's* background -- not whatever the widget has
+    been put on. A button styled for the white page and placed on the grey
+    run bar has four white nicks in its corners, which at 4 px is a fault
+    nobody can name and everybody can see. So every control that wears a face
+    is compared with what it actually stands on.
+    """
+    from tkinter import ttk as widgets
+
+    style = widgets.Style(hidden_window.root)
+
+    def style_of(widget: Any) -> str:
+        """The style a widget is actually drawn with. One it was not given is
+        its class name -- except for the two that lie along an axis, whose
+        style is the class with the axis in front of it."""
+        given = str(widget.cget("style"))
+        if given:
+            return given
+        name = str(widget.winfo_class())
+        if name in {"TProgressbar", "TScrollbar", "TScale", "TSeparator"}:
+            return f"{str(widget.cget('orient')).title()}.{name}"
+        return name
+
+    def ground_of(widget: Any) -> str:
+        try:
+            return str(style.lookup(style_of(widget), "background")).upper()
+        except tk.TclError:
+            return str(widget.cget("background")).upper()
+
+    def walk(widget: Any) -> list[Any]:
+        found = [widget]
+        for child in widget.winfo_children():
+            found.extend(walk(child))
+        return found
+
+    wrong = []
+    for widget in walk(hidden_window.root):
+        if not isinstance(widget, widgets.Widget):
+            continue
+        layout = style.layout(style_of(widget))
+        if not layout or not str(layout[0][0]).startswith("Loriini."):
+            continue
+        parent = widget.master
+        stands_on = (
+            ground_of(parent)
+            if isinstance(parent, widgets.Widget)
+            else str(parent.cget("background")).upper()
+        )
+        # A box's header is tinted by the box's own face, and what sits on it
+        # is never faced; chips sit on the page. So the parent's style colour
+        # is the ground for everything that wears a face.
+        if ground_of(widget) != stands_on:
+            wrong.append(f"{style_of(widget)} is styled for {ground_of(widget)} on {stands_on}")
+
+    assert not wrong, sorted(set(wrong))

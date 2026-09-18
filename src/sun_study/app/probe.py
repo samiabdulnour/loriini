@@ -19,6 +19,7 @@ from sun_study.archicad.connection import (
 )
 from sun_study.archicad.layers import read_layers
 from sun_study.archicad.layout import _walk, master_layouts
+from sun_study.archicad.read import read_geo_location
 from sun_study.archicad.series import ensure_model_database
 
 #: Floor area, in square metres, at or above which a zone is a dwelling
@@ -107,6 +108,21 @@ class ProjectOptions:
     the window takes as "leave the default alone" rather than as zero -- a cut
     at zero would drop the entire project.
     """
+
+    latitude: float | None = None
+    longitude: float | None = None
+    """Where the project sits, so the window can work out the sun for itself.
+
+    Read for the sheets panel, which draws each shadow at the bearing and
+    length the study will actually use. ``core.solar`` works that out from a
+    latitude and an instant, takes milliseconds over it and never touches
+    Archicad, so the panel can redraw on every keystroke -- but only once
+    somebody has set the project location. ``None`` means nobody has, and the
+    panel says so on the sheet rather than drawing a shadow it has guessed.
+    """
+
+    north_radians: float = 0.0
+    """Which way the project's north points, off the same read."""
 
     tapir: str = ""
     """The add-on's version, when it answered."""
@@ -246,10 +262,18 @@ def options(port: int) -> ProjectOptions:
     zoned = attempt("zones", lambda: _zones_by_layer(connection)) or ((), ())
     zones, kinds = zoned
     storeys = attempt("storeys", lambda: connection.run_tapir("GetStories", {}))
+    # One more small read, for the sheets panel. A project whose location has
+    # never been set answers with an error rather than a guess, and `attempt`
+    # turns that into a line in `problems` -- which is right: the panel can
+    # still draw every sheet, it simply cannot put a shadow on one.
+    where = attempt("project location", lambda: read_geo_location(connection))
 
     return ProjectOptions(
         project=project,
         tapir=version,
+        latitude=None if where is None else where.latitude_deg,
+        longitude=None if where is None else where.longitude_deg,
+        north_radians=0.0 if where is None else where.north_radians,
         layers=tuple(sorted(state.name for state in layers if state.name.strip())),
         zone_layers=tuple(zones),
         zone_kinds=tuple(kinds),

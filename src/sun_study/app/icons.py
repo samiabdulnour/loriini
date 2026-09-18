@@ -85,6 +85,54 @@ def folder() -> Path:
     return Path(__file__).resolve().parents[3] / "assets" / "icons"
 
 
+#: How many times a picture is asked for when Tk refuses it without a reason.
+#: Twice has always been enough -- see ``_read`` -- and the third is there
+#: because being wrong about that is a test that fails one run in a thousand,
+#: which is the most expensive kind there is.
+ASKS = 3
+
+
+def _read(path: Path) -> tk.PhotoImage | None:
+    """One PNG off disk, or ``None`` if it cannot be had.
+
+    Asked again when Tk refuses *without saying why*. A file that is missing
+    or will not parse fails with a sentence, and asking again would change
+    nothing. But ``image create photo -file`` can also fail with an empty
+    message and an ``errorCode`` of ``NONE`` on a file there is nothing wrong
+    with, and the same call a moment later works.
+
+    What was measured, on Tk 9.0.4 and Windows, 18 September 2026. Under
+    pytest with the standard file descriptors redirected -- ``--capture=fd``,
+    which is its default and what CI runs -- about one run of
+    ``test_theme.py`` in two loses an image this way: usually the first one
+    made after a ``Tk()``, sometimes the third, now and then the twentieth.
+    With ``--capture=sys`` or ``-s``, none in forty runs. In a plain script,
+    none in twelve thousand loads over a thousand interpreters, so the window
+    itself has never been seen to do it. The collector and the fault handler
+    make no difference. Asked again it loaded 223 times out of 223. *Why* is
+    not established: it has the look of Tcl's file channels meeting standard
+    handles that were re-pointed behind its back, and that is a guess.
+
+    It is caught here because this is where it turns silent. Every caller
+    takes ``None`` to mean "no icon" and carries on: a lost ``tick_off`` is a
+    window whose ticks are crosses, a lost ``face_up`` is a window with square
+    corners, and what it cost was a theme test failing one run in twenty-five
+    with nothing anywhere to say why.
+    """
+    for _ in range(ASKS):
+        try:
+            return tk.PhotoImage(file=str(path))
+        except tk.TclError as error:
+            if str(error):
+                return None
+        except (RuntimeError, OSError):
+            # RuntimeError is a PhotoImage built before there is a Tk root to
+            # own it, which is a programming error here but not one worth a
+            # blank window.
+            return None
+    return None
+
+
 def named(name: str, size: int = DEFAULT_SIZE) -> tk.PhotoImage | None:
     """One icon by its own name, or ``None`` if it cannot be had.
 
@@ -106,16 +154,36 @@ def named(name: str, size: int = DEFAULT_SIZE) -> tk.PhotoImage | None:
         else:
             return cached
 
-    path = folder() / f"{name}-{size}.png"
-    try:
-        image = tk.PhotoImage(file=str(path))
-    except (tk.TclError, RuntimeError, OSError):
-        # TclError is the file that is not there or will not parse; RuntimeError
-        # is a PhotoImage built before there is a Tk root to own it, which is a
-        # programming error here but not one worth a blank window.
-        return None
+    image = _read(folder() / f"{name}-{size}.png")
+    if image is not None:
+        _loaded[key] = image
+    return image
 
-    _loaded[key] = image
+
+def face(name: str) -> tk.PhotoImage | None:
+    """One of the faces ttk wears, or ``None`` if it cannot be had.
+
+    Not an icon: a nine-slice picture of a button, a field, a tab or a panel,
+    which ``theme`` hands to ``style.element_create`` so that Tk stretches the
+    middle and leaves the rounded corners alone. A face has one size -- the
+    stretching is the point -- so there is none in its file name, which is
+    also how the two kinds are told apart in the folder.
+
+    Cached and checked exactly as ``named`` does it, for exactly the same
+    reason: an image belongs to the interpreter that made it.
+    """
+    key = (name, 0)
+    cached = _loaded.get(key)
+    if cached is not None:
+        try:
+            cached.width()
+        except tk.TclError:
+            del _loaded[key]
+        else:
+            return cached
+    image = _read(folder() / f"{name}.png")
+    if image is not None:
+        _loaded[key] = image
     return image
 
 
