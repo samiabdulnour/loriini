@@ -922,11 +922,24 @@ def test_a_write_failure_does_not_cancel_the_drawing() -> None:
     the picture was the part that needed nothing. The exit code still reports
     the failure.
     """
-    import inspect
+    import ast
 
-    from sun_study.cli import archicad_run
+    from sun_study import cli
 
-    source = inspect.getsource(archicad_run)
+    # Found by name in the file as it is on disk, and not with
+    # ``inspect.getsource``. That pairs the line number the function had when
+    # it was imported with whatever the file holds *now*, so somebody saving
+    # cli.py while the suite runs -- forty lines added above this command --
+    # hands back the middle of a different function, and the ``index`` below
+    # fails with "substring not found" on a test that is about something else.
+    # It did exactly that on 18 September 2026, twice, and passed on rerun.
+    text = Path(cli.__file__).read_text(encoding="utf-8")
+    command = next(
+        node
+        for node in ast.walk(ast.parse(text))
+        if isinstance(node, ast.FunctionDef) and node.name == "archicad_run"
+    )
+    source = ast.get_source_segment(text, command) or ""
     write_at = source.index("write_assessment(connection")
     draw_at = source.index("draw_assessment(")
     between = source[write_at:draw_at]
