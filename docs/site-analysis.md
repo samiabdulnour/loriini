@@ -52,7 +52,7 @@ Options worth knowing:
 | `--scale 2000` | the context sheet's scale; sets how much neighbourhood is fetched |
 | `--site-scale 300` | pin the site sheet's scale instead of fitting |
 | `--anchor site` | put the site's centre at the project origin (see below) |
-| `--aerial` | also save the SIX orthophoto as JPEG tiles with world files |
+| `--no-aerial` | leave the SIX orthophoto out; by default it is fetched, placed under both sheets and saved as JPEG tiles with world files |
 | `--fetch-only` | fetch and save; touch nothing in Archicad |
 | `--from <folder>` | draw the bundles saved in that folder's `data/`; no fetch |
 | `--out <folder>` | where to save; `Documents\Loriini\site-analysis\<address>` by default |
@@ -175,7 +175,7 @@ command writes UTF-8 now.
 
 **The orthophoto.** No command in Archicad's API or Tapir places a picture,
 so the add-on grew `PlaceFigures`: the tile as base64 inside the request,
-its box in metres and its turn from the frame. With `--aerial` the tiles
+its box in metres and its turn from the frame. The tiles
 are fetched into `data/aerial-context/` and `data/aerial-site/`, and each
 sheet draws them under everything else; the zoning and institution washes
 then use the project's `50%` fill with a clear background so the photo

@@ -595,6 +595,13 @@ class Tiles(ttk.Frame):
     settings file back through -- so a file saved by the old window still
     restores into this one, which is the whole reason the interface is copied
     rather than improved.
+
+    ``multi`` makes each tile a switch of its own instead of one of a set:
+    any of them can be on, and the value is the lit ones joined by commas in
+    the row's order. The last one lit will not switch off, because a row
+    that asks for none of its things asks for nothing to be drawn.
+    ``aliases`` reads an older spelling as the tiles it now means -- a file
+    saved when "both" was a tile of its own.
     """
 
     def __init__(
@@ -602,9 +609,18 @@ class Tiles(ttk.Frame):
         parent: tk.Misc,
         choices: Sequence[tuple[str, str, str]],
         on_change: Callable[[], None] | None = None,
+        *,
+        multi: bool = False,
+        aliases: Mapping[str, Sequence[str]] | None = None,
     ) -> None:
         super().__init__(parent)
         self._chosen = choices[0][0]
+        self._multi = multi
+        self._aliases = dict(aliases or {})
+        self._order = [value for value, _icon, _detail in choices]
+        self._on: set[str] = set(self._order) if multi else {self._chosen}
+        if multi:
+            self._chosen = self._spell()
         self._on_change = on_change
         self._buttons: dict[str, ttk.Button] = {}
         for column, (value, icon, detail) in enumerate(choices):
@@ -623,13 +639,24 @@ class Tiles(ttk.Frame):
         self._paint()
 
     def _pick(self, value: str) -> None:
-        self.set(value)
+        if self._multi:
+            if value in self._on and len(self._on) == 1:
+                return
+            self._on ^= {value}
+            self._chosen = self._spell()
+            self._paint()
+        else:
+            self.set(value)
         if self._on_change is not None:
             self._on_change()
 
+    def _spell(self) -> str:
+        """The lit tiles, in the row's order, as the one text ``get`` returns."""
+        return ", ".join(value for value in self._order if value in self._on)
+
     def _paint(self) -> None:
         for value, button in self._buttons.items():
-            button.configure(style="TileOn.TButton" if value == self._chosen else "Tile.TButton")
+            button.configure(style="TileOn.TButton" if value in self._on else "Tile.TButton")
 
     def get(self) -> str:
         """The chosen value, spelled exactly as the caller listed it."""
@@ -644,8 +671,20 @@ class Tiles(ttk.Frame):
         rounding somebody to the nearest tile would change a study's answer
         without saying so. Held, it goes to the command line as it always did
         and the untinted row says it is not one of the three.
+
+        In a ``multi`` row the value is a comma list, each part a tile or an
+        alias for some; a value that names none of them is held the same way.
         """
         self._chosen = value
+        if not self._multi:
+            self._on = {value}
+        else:
+            wanted: set[str] = set()
+            for part in (piece.strip() for piece in value.split(",")):
+                wanted.update(self._aliases.get(part, (part,)))
+            self._on = wanted & set(self._order)
+            if self._on:
+                self._chosen = self._spell()
         self._paint()
 
     # -- what makes it a drop-in for the Combobox it replaced --------------
@@ -3062,13 +3101,14 @@ class Window:
             frame,
             row,
             "Plans",
-            "What the solar plans show: the day in bands, the sun at each time, or both.",
+            "What the solar plans show: the day in bands, the sun at each time -- either or both.",
             "For the apartments and the communal space alike. Bands are the "
             "whole day on one plan, striped by hours of sun, which is what the "
             "ADG and a DCP ask about. Times are a plan per instant showing "
             "where the sun actually falls, which is what somebody standing "
-            "there at nine in the morning asks about. Both is both, and a "
-            "longer run.",
+            "there at nine in the morning asks about. Each tile switches on "
+            "and off by itself; both lit is both, and a longer run. The last "
+            "one lit stays lit, because no plans at all is not a plan study.",
         )
 
         self.do_plans = tk.BooleanVar(value=False)
@@ -3596,7 +3636,6 @@ class Window:
         self.do_site_context = tk.BooleanVar(value=True)
         self.do_site_site = tk.BooleanVar(value=True)
         self.do_site_summary = tk.BooleanVar(value=True)
-        self.do_site_aerial = tk.BooleanVar(value=False)
         for variable, label, detail in (
             (
                 self.do_site_context,
@@ -3623,14 +3662,6 @@ class Window:
                 "it allows, minimum lot size, heritage, and the ADG figures "
                 "worked out for this site area. Council DCP rows are ruled up "
                 "empty; they are not open data.",
-            ),
-            (
-                self.do_site_aerial,
-                "Save the aerial photo",
-                "Also writes the NSW SIX orthophoto of each sheet's extent to the "
-                "run folder as JPEG tiles with world files on the MGA grid. Not "
-                "drawn: Archicad's API cannot place a picture, so it is there to "
-                "place by hand with File > External Content.",
             ),
         ):
             tick = ttk.Checkbutton(
@@ -3694,7 +3725,6 @@ class Window:
             self.do_site_context,
             self.do_site_site,
             self.do_site_summary,
-            self.do_site_aerial,
             self.do_site_future,
             self.do_site_model,
             self.do_site_location,
@@ -3763,7 +3793,8 @@ class Window:
             "Run folder",
             "Where what was fetched is saved. Blank is Documents\\Loriini\\site-analysis.",
             "Every run writes the data it fetched as JSON here, and the aerial "
-            "if asked for. A saved run can be redrawn without the internet: "
+            "photo under the sheets as JPEG tiles with world files. A saved "
+            "run can be redrawn without the internet: "
             "sun-study site --from <this folder>.",
         )
 
@@ -4205,7 +4236,13 @@ class Window:
         """
         name = ttk.Label(parent, text=label, **icons.options(label))
         name.grid(row=row, column=0, sticky="w", pady=(6, 0))
-        made = Tiles(parent, self.TILE_CHOICES[label], on_change=self._sync)
+        made = Tiles(
+            parent,
+            self.TILE_CHOICES[label],
+            on_change=self._sync,
+            multi=label in self.TILE_MULTI,
+            aliases=self.TILE_ALIASES.get(label),
+        )
         made.grid(row=row, column=1, sticky="w", pady=(6, 0))
         line = self._hint(parent, row + 1, hint)
         Tooltip(name, detail, title=label, short=self._saying(line))
@@ -4527,6 +4564,7 @@ class Window:
             "hide_layers": self.hide,
             "livable_suffix": self.livable,
             "plan_instants": self.instants,
+            "plan_kinds": self.plan_kinds,
             "shadow_subset": self.shadow_subset,
             "shadow_view_folder": self.view_folder,
             "shadow_baseline_views": self.baseline_views,
@@ -4575,7 +4613,6 @@ class Window:
             "site_context": self.do_site_context,
             "site_site": self.do_site_site,
             "site_summary": self.do_site_summary,
-            "site_aerial": self.do_site_aerial,
             "site_model": self.do_site_model,
             "site_future": self.do_site_future,
             "site_location": self.do_site_location,
@@ -5027,14 +5064,16 @@ class Window:
     #: hover. The values must match what the rest of the window expects to
     #: read back -- ``SHEET_CHOICES`` below is where the sheet titles are
     #: turned into the word the command line wants.
+    #: The choice rows whose tiles are switches of their own rather than one
+    #: of a set, and the older spellings each reads as the tiles they mean.
+    #: "Bands and times" was the Plans row's third tile until both could be lit.
+    TILE_MULTI: ClassVar[frozenset[str]] = frozenset({"Plans"})
+    TILE_ALIASES: ClassVar[dict[str, dict[str, tuple[str, ...]]]] = {
+        "Plans": {"Bands and times": ("Bands by hour", "Sun at each time")},
+    }
+
     TILE_CHOICES: ClassVar[dict[str, tuple[tuple[str, str, str], ...]]] = {
         "Plans": (
-            (
-                "Bands and times",
-                "plans_both",
-                "Bands and times: the whole day banded by hours of sun, and a plan "
-                "at each time showing where the sun falls.",
-            ),
             (
                 "Bands by hour",
                 "plans_bands",
@@ -5104,16 +5143,17 @@ class Window:
         ),
     }
 
-    #: The two Plans choices that leave one kind out. The third, and the
-    #: default, is both.
-    PLAN_BANDS_ONLY = "Bands by hour"
-    PLAN_TIMES_ONLY = "Sun at each time"
+    #: The two Plans tiles, each a switch of its own. Both lit is the default.
+    PLAN_BANDS = "Bands by hour"
+    PLAN_TIMES = "Sun at each time"
 
     def _plan_kinds(self) -> tuple[bool, bool]:
         """``(bands, times)``: which of the two kinds of plan the Plans row
-        asks for. Anything but the two that leave one out is both."""
-        chosen = self.plan_kinds.get().strip()
-        return (chosen != self.PLAN_TIMES_ONLY, chosen != self.PLAN_BANDS_ONLY)
+        asks for. A value naming neither -- a hand-edited file -- is both."""
+        chosen = {part.strip() for part in self.plan_kinds.get().split(",")}
+        if "Bands and times" in chosen or not chosen & {self.PLAN_BANDS, self.PLAN_TIMES}:
+            return True, True
+        return self.PLAN_BANDS in chosen, self.PLAN_TIMES in chosen
 
     #: What the Sheets row offers, and the word each sends.
     SHEET_CHOICES = (
@@ -5912,8 +5952,6 @@ class Window:
             args += ["--context" if self.do_site_context.get() else "--no-context"]
             args += ["--site" if self.do_site_site.get() else "--no-site"]
             args += ["--summary" if self.do_site_summary.get() else "--no-summary"]
-            if self.do_site_aerial.get():
-                args += ["--aerial"]
             if self.do_site_model.get():
                 args += ["--model"]
                 if self.site_radius.get().strip():

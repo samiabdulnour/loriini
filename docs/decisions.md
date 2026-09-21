@@ -3774,3 +3774,35 @@ Tapir's own recipe: the 26.3000 kit and v142. Tapir compiles clean under /W4
 /WX there, so Loriini's /W3 /WX should pass; it has not yet been loaded into
 Archicad.
 
+
+
+### D111 — The aerial photo is fetched and placed without being asked for
+
+Asked 21 September 2026, on learning the orthophoto was placed only when a box
+was ticked: "there should be automatic then."
+
+The box dated from before D92, when nothing could place a picture and the
+tiles were a download for placing by hand. Once `PlaceFigures` and
+`PlaceDrawings` put the photo under both sheets, an unticked box meant a
+context sheet with no ground under the zoning wash -- not what the office's
+sheets look like -- and the tooltip still said it could not be drawn.
+
+So the checkbox is gone from the window and `--aerial` is on by default;
+`--no-aerial` leaves it out for a run that has to be quick or offline. A
+failed imagery fetch stays soft, as it always was: the sheets are drawn
+without it and the run says so. Settings files that still carry
+`site_aerial` are read as before, the key ignored.
+
+
+### D112 — The Plans row lights either or both, not one of three
+
+Asked 21 September 2026: "in solar analysis - the plans. this shouldnt be pick
+option. all should be selecteble, not only one of them?"
+
+D108 made the row three tiles of which one was lit: bands, times, or a third
+tile for both. A third tile that means "the other two" is a pick standing in
+for a switch. `Tiles` now takes `multi`: each tile turns on and off by
+itself, the value is the lit ones joined by commas, and the last one lit
+stays lit, because neither is no plan study at all. "Bands and times" is
+gone as a tile and read as both wherever it is still written down. The row
+is also saved with the window's settings now; it never was.

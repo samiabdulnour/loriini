@@ -294,6 +294,24 @@ def test_the_plans_row_says_which_kind_of_plan_each_study_draws(
     assert "Apartments, ADG total" not in kinds and "Communal open space" not in kinds
 
 
+def test_the_plans_row_lights_either_or_both(hidden_window: Any) -> None:
+    """Bands and times are two switches, not one pick of three. Both start
+    lit, each turns off by itself, the last one lit stays lit, and a file
+    saved when "Bands and times" was a tile of its own restores as both."""
+    row = hidden_window.plan_kinds
+    assert row.get() == "Bands by hour, Sun at each time"
+    assert hidden_window._plan_kinds() == (True, True)
+    row._pick("Bands by hour")
+    assert row.get() == "Sun at each time"
+    assert hidden_window._plan_kinds() == (False, True)
+    row._pick("Sun at each time")
+    assert row.get() == "Sun at each time", "the last one lit stays lit"
+    row._pick("Bands by hour")
+    assert hidden_window._plan_kinds() == (True, True)
+    hidden_window.apply({"plan_kinds": "Bands and times"})
+    assert row.get() == "Bands by hour, Sun at each time"
+
+
 def test_the_communal_study_sends_the_settings_that_change_the_answer(
     hidden_window: Any,
 ) -> None:
@@ -2175,7 +2193,10 @@ def test_the_site_analysis_runs_from_an_address_and_names_its_sheets(hidden_wind
     assert flag(site.args, "--anchor") == ["site"]
     assert flag(site.args, "--scale") == ["3000"]
     assert flag(site.args, "--port") == ["19723"]
-    assert "--aerial" not in site.args
+    # The aerial is not a choice on the page: the CLI fetches and places it
+    # by default, so the window neither asks nor passes a flag.
+    assert "--aerial" not in site.args and "--no-aerial" not in site.args
+    assert not hasattr(hidden_window, "do_site_aerial")
     assert "--model" not in site.args and "--keep-location" not in site.args
     hidden_window.do_site_model.set(True)
     hidden_window.do_site_location.set(False)

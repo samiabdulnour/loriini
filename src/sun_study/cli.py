@@ -7294,14 +7294,14 @@ def site_analysis(
     with_aerial: Annotated[
         bool,
         typer.Option(
-            "--aerial",
+            "--aerial/--no-aerial",
             help=(
-                "Fetch the aerial photo. Without this there is no orthophoto to put "
-                "on the site sheet -- --aerial-as chooses how it is placed, but only "
-                "if it was fetched. The tiles are also saved as georeferenced JPEGs."
+                "Fetch the aerial photo and place it under both sheets; on by default. "
+                "--aerial-as chooses how it is placed. The tiles are also saved as "
+                "georeferenced JPEGs."
             ),
         ),
-    ] = False,
+    ] = True,
     fetch_only: Annotated[
         bool,
         typer.Option("--fetch-only", help="Fetch and save the bundles; do not touch Archicad."),
