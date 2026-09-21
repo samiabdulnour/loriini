@@ -46,18 +46,20 @@ is none of them is a change to argue about first.
    one-pixel rule in ``LINE`` parts the page from the dock, the body from the
    info band, and the band from the run bar. Nothing is ever framed twice, and
    nothing heavier than a pixel is drawn.
-3. **One radius scale.** Four pixels on a control, six on a card, five on the
-   top corners of a tab with a square foot where it meets the page. Zero on
-   paper and on anything drawn -- a sheet has corners, and so does a model.
+3. **One radius scale.** Four pixels on a control, six on a card -- and a tab
+   is a card, as is the page it sits a gap above. Zero on paper and on
+   anything drawn: a sheet has corners, and so does a model.
 4. **Air.** Cards sit sixteen pixels in from the page and eight apart; rows
    step six pixels; the run bar keeps its two kinds of button a clear gap
    apart. Empty page is page, not an unfinished panel.
 5. **Every control lives in a card**, under a header that says what the card
    is for. A study's card is headed by its own tick; a settings card by a
    title. No row floats on the page by itself.
-6. **One mark per state, on its own axis.** Open is the tab joined to the
-   page under a blue cap; queued is the blue name with its dot. The count on a
-   card's header is what its tick is worth, and the dock draws the same.
+6. **One mark per state, on its own axis.** Open is the white tab under a
+   blue cap; queued is the blue name with its dot; on is the tinted tile or
+   the tinted header. No focus ring is drawn on a tab or a tile, because it
+   read as a second mark. The count on a card's header is what its tick is
+   worth, and the dock draws the same.
 7. **Type is Segoe UI, at the body size the operating system uses.** Titles
    are bold, hints are ``HINT`` grey and clear 4.5:1, group captions are small
    capitals. Nothing on a thumbnail carries anything a person must read.
@@ -361,7 +363,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure(
         "TButton",
         foreground=INK,
-        padding=(10, 2),
+        padding=(10, 0),
         font=body,
     )
     style.map(
@@ -372,7 +374,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: The same button, standing on the chrome: the project strip and the run
     #: bar. Its only difference from ``TButton`` is the colour its corners
     #: take, which ``STANDS_ON`` sets -- see the third trap in ``_rounded``.
-    style.configure("Chrome.TButton", foreground=INK, padding=(10, 2), font=body)
+    style.configure("Chrome.TButton", foreground=INK, padding=(10, 0), font=body)
     style.map("Chrome.TButton", foreground=[("disabled", HINT)])
     style.configure("Chrome.TCombobox", foreground=INK)
 
@@ -397,7 +399,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure(
         "Run.TButton",
         foreground=BLUE_DEEP,
-        padding=(12, 2),
+        padding=(12, 0),
         font=strong,
     )
     style.map(
@@ -447,7 +449,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: A tile in a choice row: icon only, no text, and square.
     style.configure(
         "Tile.TButton",
-        padding=(3, 1),
+        padding=(4, 1),
     )
     #: The chosen tile. Filled blue, and the drawing inside it is the white
     #: one -- the same move the printer driver makes.
@@ -457,7 +459,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: that has to stay readable, so they take the named-card treatment.
     style.configure(
         "TileOn.TButton",
-        padding=(3, 1),
+        padding=(4, 1),
     )
 
     # -- chips: a chosen name, and the button that drops it ----------------
@@ -496,7 +498,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure(
         "Add.TButton",
         foreground=BODY,
-        padding=(7, 0),
+        padding=(7, 1),
         font=body,
     )
     style.map(
@@ -745,9 +747,15 @@ def _rounded(style: ttk.Style) -> None:
         "tab": tabs is not None,
         "tabopen": tabs is not None,
     }
+    #: The same innards without the focus ring. A tab or a tile is pressed
+    #: with the mouse and shows its state in its face; the dotted rectangle
+    #: Tk draws round a focused button read as a second selection mark.
+    quiet: Any = ("Button.padding", inside(("Button.label", {"sticky": "nswe"})))
     for name, worn_as in WEARS.items():
         if worn_as == "flat" or not ready.get(worn_as, False):
             style.layout(name, flat)
+        elif worn_as in {"tab", "tabopen", "tile", "tileon"}:
+            style.layout(name, [(f"Loriini.{worn_as}", inside(quiet))])
         else:
             style.layout(name, [(f"Loriini.{worn_as}", inside(label))])
 

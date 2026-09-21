@@ -339,7 +339,7 @@ def wheel_reaches_the_pointer(root: tk.Misc) -> None:
 
     And a ttk combobox answers the wheel by changing its own value. On a page
     that scrolls, that is not a nuisance but a fault: a colleague rolls past
-    "Sheet master" on the way down and the sheets are built on a different
+    "Master layout" on the way down and the sheets are built on a different
     title block, with nothing on screen to say so. The class binding goes, and
     a combobox then scrolls the form under it like everything else.
     """
@@ -612,7 +612,7 @@ class Tiles(ttk.Frame):
                 self,
                 style="Tile.TButton",
                 command=partial(self._pick, value),
-                **icons.button_options(icon, 20),
+                **icons.button_options(icon, 16),
             )
             button.grid(row=0, column=column, padx=(0, 2))
             # Every tile says what it is in words as well. Seven unlabelled
@@ -768,6 +768,49 @@ class Ticks(ttk.Frame):
             halves = [half.strip() for half in text.replace("to", "-").split("-")]
             return [half for half in halves if half]
         return [part.strip() for part in text.split(",") if part.strip()]
+
+
+class Toggles(ttk.Frame):
+    """A row of on-or-off buttons, each with its picture, over a BooleanVar.
+
+    What a row of check boxes becomes when the choices have pictures: the
+    three assessment days, each a sun at its own height. The variables are
+    the caller's, so everything that read a tick before reads it still; the
+    buttons only show and flip them. ``paint`` is called by the window's
+    ``_sync`` as well as on a press, because a test or a preset can set the
+    variable without pressing anything.
+    """
+
+    def __init__(self, parent: tk.Misc, *, on_change: Callable[[], None] | None = None) -> None:
+        super().__init__(parent)
+        self._on_change = on_change
+        self._items: list[tuple[tk.BooleanVar, ttk.Button]] = []
+
+    def add(self, variable: tk.BooleanVar, label: str, icon: str) -> ttk.Button:
+        """One more button, bound to ``variable``. Returned so the caller
+        can explain it, as every control in the window is explained."""
+        button = ttk.Button(
+            self,
+            text=label,
+            style="Tile.TButton",
+            takefocus=False,
+            command=partial(self._flip, variable),
+            **icons.button_options(icon, 16),
+        )
+        button.grid(row=0, column=len(self._items), padx=(0, 4))
+        self._items.append((variable, button))
+        self.paint()
+        return button
+
+    def _flip(self, variable: tk.BooleanVar) -> None:
+        variable.set(not variable.get())
+        self.paint()
+        if self._on_change is not None:
+            self._on_change()
+
+    def paint(self) -> None:
+        for variable, button in self._items:
+            button.configure(style="TileOn.TButton" if variable.get() else "Tile.TButton")
 
 
 class Chips(ttk.Frame):
@@ -1627,33 +1670,39 @@ def draw_sheet(
     # is; a whole-day plan by its day; everything else by when, because that
     # is what tells one sheet of a study from the next. A sheet that is one
     # of a pair says so, as the run names it.
+    # -- what this drawing is ------------------------------------------
+    #
+    # The drawing's name first and largest -- "Communal open space by hour",
+    # "Shadow diagram" -- because that is what a person is looking for
+    # across the panel; the day and the hour under it, and which of a pair
+    # it is; and last, small, what the sun is doing.
     timed = bool(sheet.time)
     if timed:
-        title = f"{sheet.day.upper()}  ·  {sheet.time}"
+        when = f"{sheet.day} \u00b7 {sheet.time}"
     elif sheet.day:
-        title = f"{sheet.day.upper()}  ·  ALL DAY"
+        when = f"{sheet.day} \u00b7 the whole day"
     else:
-        title = sheet.kind.upper()
+        when = ""
     if sheet.parts > 1:
-        title += f"   ({sheet.part} of {sheet.parts})"
-    # Set larger than it will print. A thumbnail is not a print preview, and
-    # the name is what tells one sheet from the next across the panel.
-    words(10, 185, title, 11, theme.INK, bold=True)
+        when += f"   ({sheet.part} of {sheet.parts})"
+    words(10, 181, sheet.kind.upper(), 10, theme.INK, bold=True)
+    if when:
+        words(10, 192, when, 7, theme.BODY)
     if not timed:
-        words(10, 198, _untimed_note(sheet)[0], 7, theme.HINT)
+        words(10, 201, _untimed_note(sheet)[0], 6, theme.HINT)
     elif sheet.elevation is None:
-        words(10, 198, "Project location not set — no sun to draw", 7, theme.RED)
+        words(10, 201, "Project location not set \u2014 no sun to draw", 6, theme.RED)
     elif len(sheet.drawings) == 1:
         cast = (
-            f" · shadow {sheet.reach:.1f}x the height"
+            f" \u00b7 shadow {sheet.reach:.1f}x the height"
             if sheet.reach is not None and sheet.study == "Shadow diagram"
             else ""
         )
         words(
             10,
-            198,
-            f"Sun {sheet.elevation:.1f}° · azimuth {sheet.azimuth:.0f}°{cast}",
-            7,
+            201,
+            f"Sun {sheet.elevation:.1f}\u00b0 \u00b7 azimuth {sheet.azimuth:.0f}\u00b0{cast}",
+            6,
             theme.HINT,
         )
     else:
@@ -1662,8 +1711,8 @@ def draw_sheet(
         if sheet.empty:
             note += f", {sheet.empty} cell{'' if sheet.empty == 1 else 's'} empty"
         if ups:
-            note += f" · sun {min(ups):.0f}° to {max(ups):.0f}°"
-        words(10, 198, note, 7, theme.HINT)
+            note += f" \u00b7 sun {min(ups):.0f}\u00b0 to {max(ups):.0f}\u00b0"
+        words(10, 201, note, 6, theme.HINT)
 
     # -- the title block, at the width General is set to ----------------
     #
@@ -1883,18 +1932,26 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
             )
 
     # -- what it is ----------------------------------------------------
-    title = f"{sheet.kind.upper()}  ·  {sheet.day}" if sheet.day else sheet.kind.upper()
+    #
+    # Named first, like a sheet; then the day or the reach, and what the
+    # geometry is, in a line -- not what it is not.
     paper.create_text(
-        10, height * 0.885, text=title, anchor="w", fill=theme.INK, font=_face(11, True)
+        10,
+        height * 0.875,
+        text=sheet.kind.upper(),
+        anchor="w",
+        fill=theme.INK,
+        font=_face(10, True),
     )
     if facade:
-        note = "The facade banded by hours of sun, as a 3D skin — not a sheet"
+        what = "the building's skin, banded by hours of sun"
     elif future:
-        note = "The envelopes the controls allow around the site — not a sheet"
+        what = "the envelopes the controls allow around the site"
     else:
-        note = "Terrain and neighbours in 3D, on their own layers — not a sheet"
+        what = "terrain and neighbours, in 3D"
+    line = f"{sheet.day} \u00b7 {what}" if sheet.day else what
     paper.create_text(
-        10, height * 0.945, text=note, anchor="w", fill=theme.HINT, font=_face(7, False)
+        10, height * 0.935, text=line, anchor="w", fill=theme.BODY, font=_face(7, False)
     )
 
 
@@ -2225,6 +2282,9 @@ class Window:
         #: And the box each one heads, with the line at the right of its
         #: header that says what the tick is worth.
         self.study_boxes: dict[str, tuple[ttk.Frame, ttk.Label]] = {}
+        #: Every row of toggle buttons, so ``_sync`` can repaint them when a
+        #: variable is set without a press -- by a preset, or by a test.
+        self.toggle_rows: list[Toggles] = []
         self.root.title(PRODUCT)
         # Never taller than the screen. A window opened past the bottom edge
         # cannot be dragged back by its title bar, so everything below the
@@ -2637,11 +2697,11 @@ class Window:
         tools export a model.
         """
         outer = frame
-        frame, row = self._panel(outer, 0, title="The sheet everything lands on"), 0
+        frame, row = self._panel(outer, 0, title="Layouts and title block"), 0
         self.master, row = self._combo(
             frame,
             row,
-            "Sheet master",
+            "Master layout",
             "Title block the layouts are built on.",
             "A no-scale master is the right one: the drawings are shrunk to fit "
             "the page, so they are no longer at any stated scale and a title "
@@ -2677,7 +2737,7 @@ class Window:
         )
         self.sheets.set(self.SHEET_CHOICES[1][0])
 
-        frame, row = self._panel(outer, 1, title="Where the results are filed"), 0
+        frame, row = self._panel(outer, 1, title="Archicad layers the results are drawn on"), 0
 
         # One per tool, not one for the lot. The four are four drawings read
         # by different people, and under a single number the layer list ran
@@ -2694,7 +2754,7 @@ class Window:
         self.prefix_solar, row = self._entry(
             frame,
             row,
-            "Prefix — solar analysis",
+            "Layer prefix — solar analysis",
             naming.SOLAR_PREFIX,
             "The apartment results and the facade bands.",
             shared_detail,
@@ -2702,7 +2762,7 @@ class Window:
         self.prefix_shadow, row = self._entry(
             frame,
             row,
-            "Prefix — shadow diagram",
+            "Layer prefix — shadow diagram",
             naming.SHADOW_PREFIX,
             "The shadow sheets, which are about the neighbourhood rather than the apartments.",
             shared_detail,
@@ -2710,7 +2770,7 @@ class Window:
         self.prefix_sun, row = self._entry(
             frame,
             row,
-            "Prefix — sun views",
+            "Layer prefix — sun views",
             naming.SUN_VIEW_PREFIX,
             "The 3D documents aimed along the sun, and their sheets.",
             shared_detail,
@@ -2718,7 +2778,7 @@ class Window:
         self.prefix_site, row = self._entry(
             frame,
             row,
-            "Prefix — site analysis",
+            "Layer prefix — site analysis",
             naming.SITE_PREFIX,
             "The site and context worksheets, and the summary of controls.",
             shared_detail,
@@ -2726,7 +2786,7 @@ class Window:
         self.prefix_context, row = self._entry(
             frame,
             row,
-            "Site group — context",
+            "Layer group — context model",
             naming.CONTEXT_PREFIX,
             "The office's own group, where the neighbours already live.",
             "Not one of this tool's numbers: the fetched neighbours and the "
@@ -2739,7 +2799,7 @@ class Window:
             "number is yours to choose — the wording after it is the "
             "template's.",
         )
-        frame, row = self._panel(outer, 2, title="Archicad"), 0
+        frame, row = self._panel(outer, 2, title="Archicad connection"), 0
         self.wait_min, row = self._entry(
             frame,
             row,
@@ -2760,7 +2820,7 @@ class Window:
         forced on, what the neighbours are, what is kept off, and the height
         above which nothing counts. Asked once here rather than in each."""
         outer = frame
-        frame, row = self._panel(outer, 0, title="Which storeys count"), 0
+        frame, row = self._panel(outer, 0, title="Storeys measured"), 0
         self.storey_from, row = self._combo(
             frame,
             row,
@@ -2789,7 +2849,7 @@ class Window:
             "both ends are asked for. An element is kept when any part of it "
             "reaches the band, so a wall crossing either end stays whole.",
         )
-        frame, row = self._panel(outer, 1, title="Which days every solar tool studies"), 0
+        frame, row = self._panel(outer, 1, title="Days studied"), 0
 
         # The day and the year sit with the solar tools rather than in
         # General, because they are not general: the site drawings do not read
@@ -2803,15 +2863,14 @@ class Window:
         # Every ticked day runs the tools once each, and every name a run
         # makes carries its day, so the sets stand beside each other in the
         # project rather than over each other.
-        days = ttk.Frame(frame)
-        days.grid(row=row, column=0, columnspan=2, sticky="w")
-        for column, (name, (_, title)) in enumerate(ASSESSMENT_DAYS.items()):
+        days = Toggles(frame, on_change=self._sync)
+        days.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.toggle_rows.append(days)
+        for name, (_, title) in ASSESSMENT_DAYS.items():
             state = tk.BooleanVar(value=name == "winter")
             self.days[name] = state
-            box = ttk.Checkbutton(
-                days, text=title.split(",")[0], variable=state, command=self._sync
-            )
-            box.grid(row=0, column=column, sticky="w", padx=(0, PAD))
+            # A button with the sun at that day's height, rather than a box.
+            box = days.add(state, title.split(",")[0], f"day_{name}")
             Tooltip(
                 box,
                 f"{title}. "
@@ -2847,7 +2906,7 @@ class Window:
             "The year only shifts the sun positions slightly; it is here so a "
             "study can be repeated against the same day as an earlier report.",
         )
-        frame, row = self._panel(outer, 2, title="What leaves Archicad"), 0
+        frame, row = self._panel(outer, 2, title="Model export: the layers that leave Archicad"), 0
         self._caption(
             frame,
             row,
@@ -2857,7 +2916,7 @@ class Window:
         self.combination, row = self._combo(
             frame,
             row,
-            "Export combination",
+            "Layer combination",
             "The office layer combination the IFC export starts from.",
             "The translator exports what is shown, so the layer state is an "
             "input to every number this tool produces. The run sets it from "
@@ -2868,7 +2927,7 @@ class Window:
         self.require, row = self._picker(
             frame,
             row,
-            "Also export",
+            "Layers forced visible",
             "Layers forced into the export whatever the combination says.",
             "Shared by the facade skin and the communal study, which is why "
             "it is here rather than in either. The zone layers must be in the "
@@ -2893,7 +2952,7 @@ class Window:
         self.hide, row = self._picker(
             frame,
             row,
-            "Keep off drawings",
+            "Layers hidden on sheets",
             "Layers switched off on the study drawings and in the export.",
             "Grids and dimension layers usually: they are the practice's own "
             "annotation and clutter a sun study without adding to it. What "
@@ -2986,11 +3045,11 @@ class Window:
         # The two settings all three studies share, in a card of their own:
         # nothing floats on the page by itself.
         outer = frame
-        frame, row = self._panel(outer, 0, title="Filing and plans"), 0
+        frame, row = self._panel(outer, 0, title="Layout Book filing, and what the plans show"), 0
         self.adg_subset, row = self._combo(
             frame,
             row,
-            "ADG sheets filed under",
+            "Subset — ADG sheets",
             "Layout Book subset the banded sheets go into.",
             "So the sheets sit with the practice's own drawings of that kind "
             "instead of at the root of the book. The subset has to exist "
@@ -3091,7 +3150,7 @@ class Window:
         self.shadow_subset, row = self._combo(
             frame,
             row,
-            "Time-of-day sheets filed under",
+            "Subset — time-of-day sheets",
             "Layout Book subset the clock-time sheets go into.",
             "A sheet that is a time of day belongs with the practice's own, "
             "which is usually a different subset from the banded plans. Same "
@@ -3379,7 +3438,7 @@ class Window:
         self.shadow_study_subset, row = self._combo(
             frame,
             row,
-            "Shadow sheets filed under",
+            "Subset — shadow sheets",
             "Layout Book subset the shadow sheets go into.",
             "Same rule as the other two: the subset has to exist already, "
             "because the Layout Book is the office's structure to organise. A "
@@ -3574,8 +3633,14 @@ class Window:
                 "place by hand with File > External Content.",
             ),
         ):
-            tick = ttk.Checkbutton(frame, text=label, variable=variable, command=self._sync)
-            tick.grid(row=row, column=0, columnspan=2, sticky="w", padx=(18, 0))
+            tick = ttk.Checkbutton(
+                frame,
+                text=label,
+                variable=variable,
+                command=self._sync,
+                **icons.options(label, 16),
+            )
+            tick.grid(row=row, column=0, columnspan=2, sticky="w", padx=(18, 0), pady=(2, 0))
             Tooltip(tick, detail)
             row += 1
         self.do_site_model = tk.BooleanVar(value=False)
@@ -3615,8 +3680,14 @@ class Window:
                 "a city preset; north is kept as it is.",
             ),
         ):
-            tick = ttk.Checkbutton(frame, text=label, variable=variable, command=self._sync)
-            tick.grid(row=row, column=0, columnspan=2, sticky="w", padx=(18, 0))
+            tick = ttk.Checkbutton(
+                frame,
+                text=label,
+                variable=variable,
+                command=self._sync,
+                **icons.options(label, 16),
+            )
+            tick.grid(row=row, column=0, columnspan=2, sticky="w", padx=(18, 0), pady=(2, 0))
             Tooltip(tick, detail)
             row += 1
         self.site_ticks = [
@@ -3713,7 +3784,11 @@ class Window:
         box = ttk.Entry(holder)
         box.grid(row=0, column=0, sticky="ew")
         button = ttk.Button(
-            holder, text="Browse ...", width=11, command=lambda: self._browse(box, label)
+            holder,
+            text="Browse…",
+            width=11,
+            command=lambda: self._browse(box, label),
+            **icons.button_options("folder"),
         )
         button.grid(row=0, column=1, padx=(6, 0))
         line = self._hint(parent, row + 1, hint)
@@ -3946,7 +4021,7 @@ class Window:
     #: How wide the label column is inside a box. Every box has a grid of its
     #: own, so without a number they would each size the column to their own
     #: longest label and no two boxes' fields would line up down the page.
-    #: This is "Time-of-day sheets filed under" with its drawing beside it.
+    #: This is "Subset — time-of-day sheets" with its drawing beside it.
     LABEL_COLUMN = 208
 
     def _panel(self, outer: ttk.Frame, row: int, *, title: str = "") -> ttk.Frame:
@@ -4354,6 +4429,8 @@ class Window:
 
         # A tab whose study will run says so, without anybody opening it.
         self._paint_tabs()
+        for toggles in self.toggle_rows:
+            toggles.paint()
         sheets = self.planned()
         for name, tick, _where in self._studies():
             on = tick.get()
@@ -5511,20 +5588,20 @@ class Window:
         if not sheet.paper:
             if sheet.kind == FACADE_MODEL:
                 detail = (
-                    "Not a sheet: a thin skin of 3D elements over every surface of "
+                    "A thin skin of 3D elements over every surface of "
                     "the building, one colour per band of sun hours, on its own "
                     "layers -- the massing-stage answer, read in the 3D window."
                 )
             elif sheet.kind == FUTURE_MODEL:
                 detail = (
-                    f"Not a sheet: the envelopes the controls allow on the lots within "
+                    f"The envelopes the controls allow on the lots within "
                     f"{sheet.day} of the site, at the street setback, as 3D geometry on "
                     "its own layers -- what could stand next door, for the shadow "
                     "diagrams to cast."
                 )
             else:
                 detail = (
-                    f"Not a sheet: the terrain and the buildings within {sheet.day} of the "
+                    f"The terrain and the buildings within {sheet.day} of the "
                     "site, as 3D geometry on its own layers from NSW open data -- the "
                     "context every other study casts against."
                 )
@@ -5533,7 +5610,7 @@ class Window:
                 sheet.kind,
                 f"{sheet.kind}, {sheet.day}.",
                 detail,
-                state="not built yet",
+                state="3D model",
             )
             return
         if not sheet.time:

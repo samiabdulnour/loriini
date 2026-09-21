@@ -504,6 +504,16 @@ def cross(colour: str = RED) -> list[Shape]:
     ]
 
 
+def day_sun(cy: float) -> list[Shape]:
+    """The sun at ``cy`` over a horizon line and the ground under it: one
+    picture per assessment day, told apart by how high the sun stands."""
+    return [
+        rect(3, 25, 26, 4, fill=GROUND, outline=None),
+        Line(((3, 25), (29, 25)), fill=INK, width=1.3),
+        *sun(cx=16, cy=cy, r=3.4),
+    ]
+
+
 def arrow(*, up: bool, colour: str = BLUE) -> list[Shape]:
     """The arrow on the settings sheet: up and out of it is a preset written,
     down into it is one read. The convention every upload and download button
@@ -659,20 +669,22 @@ def studies() -> list[Icon]:
         ),
         Icon(
             "communal",
-            "sample dots over the ground, and the patch that clears",
+            "a courtyard between two wings, in sun, with a tree in it",
             [
-                *ground(cy=19.5, half_w=14, half_h=8),
-                Poly(((9.5, 19.5), (16, 15.8), (22.5, 19.5), (16, 23.2)), fill=SUN_T, outline=None),
-                Disc(16, 14.6, 0.85, fill=INK, detail=True),
-                Disc(11.2, 17.4, 0.85, fill=INK),
-                Disc(20.8, 17.4, 0.85, fill=INK),
-                Disc(16, 19.5, 0.85, fill=INK),
-                Disc(6.4, 20.2, 0.85, fill=INK, detail=True),
-                Disc(25.6, 20.2, 0.85, fill=INK, detail=True),
-                Disc(11.2, 22.3, 0.85, fill=INK),
-                Disc(20.8, 22.3, 0.85, fill=INK),
-                Disc(16, 24.9, 0.85, fill=INK, detail=True),
-                Disc(26.8, 5.4, 2.6, fill=SUN),
+                *ground(cy=20.5, half_w=14, half_h=8),
+                # The courtyard itself, lit: the open ground the study measures.
+                Poly(((8.5, 20.5), (16, 16.2), (23.5, 20.5), (16, 24.8)), fill=SUN_T, outline=None),
+                # The two wings that make it a courtyard, seen from the set's corner.
+                Poly(((3.5, 17.5), (9.5, 14), (12.5, 15.7), (6.5, 19.2)), fill=FACE),
+                Poly(((3.5, 17.5), (6.5, 19.2), (6.5, 24.2), (3.5, 22.5)), fill=GREY),
+                Poly(((6.5, 19.2), (12.5, 15.7), (12.5, 20.7), (6.5, 24.2)), fill=GREY_L),
+                Poly(((19.5, 15.7), (25.5, 12.2), (28.5, 13.9), (22.5, 17.4)), fill=FACE),
+                Poly(((19.5, 15.7), (22.5, 17.4), (22.5, 22.4), (19.5, 20.7)), fill=GREY),
+                Poly(((22.5, 17.4), (28.5, 13.9), (28.5, 18.9), (22.5, 22.4)), fill=GREY_L),
+                # A tree, because a tree says open space in one stroke.
+                Line(((16, 24.5), (16, 20.5)), fill=INK, width=1.3),
+                Disc(16, 18.6, 3.0, fill="#DEDDD6", outline=INK),
+                *sun(cx=26.8, cy=5.4, r=2.6),
             ],
         ),
         Icon(
@@ -772,6 +784,12 @@ def controls() -> list[Icon]:
             "a plain red square, the set's only other verb",
             [rect(7, 7, 18, 18, fill=RED, outline=None)],
         ),
+        # The three assessment days, as the sun's height at noon: low in
+        # midwinter, halfway at the equinox, high in midsummer, over the
+        # same horizon line.
+        Icon("day_winter", "the sun low over the horizon -- midwinter", day_sun(21.0)),
+        Icon("day_equinox", "the sun halfway up -- the equinox", day_sun(14.5)),
+        Icon("day_summer", "the sun high -- midsummer", day_sun(8.0)),
         Icon("save_default", "the settings file, ticked", [*sheet(), *tick()]),
         Icon("forget", "the same file, struck out", [*sheet(), *cross()]),
         Icon(

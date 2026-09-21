@@ -3716,3 +3716,26 @@ chosen from the project's own pen tables rather than typed. And the foot of
 the window carries the licence line -- product, version, author, term --
 instead of the prototype warning, which stays on every sheet and export where
 the figures are.
+
+**One height, and more pictures.** Measured rather than eyeballed: every
+button, tile, field and list now asks for the same 29 px, so a row is a row
+whatever it holds. The three assessment days are buttons with the sun at
+that day's height instead of check boxes; the site study's outputs keep
+their boxes and gain their pictures; Browse carries a folder. The dotted
+focus rectangle is gone from tabs and tiles -- their face says their state,
+and the ring read as a second mark.
+
+**Named for the drawing.** A thumbnail led with the day -- *21 JUN · ALL
+DAY* -- which says almost nothing; it now leads with what the drawing is,
+*Communal open space by hour*, *Sun view*, *Facade model*, with the day and
+the hour under it and the sun last and smallest. The models say what they
+are rather than what they are not: "not a sheet" is gone.
+
+**Named for Archicad.** *Where the results are filed* did not say it meant
+layers, and a colleague who has not read the code should not have to guess.
+The cards and rows now use Archicad's own words: *Archicad layers the results
+are drawn on* with *Layer prefix* rows, *Layout Book filing* with *Subset*
+rows, *Master layout*, *Layer combination*, *Layers forced visible*, *Layers
+hidden on sheets*, *Model export: the layers that leave Archicad*. The
+communal icon is a courtyard between two wings with a tree in it, in place of
+a field of dots nobody could read.
