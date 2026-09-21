@@ -1429,6 +1429,9 @@ HEAD_ON = "#E8F0FC"
 HEAD_OFF = "#F1F1F0"
 #: The window's chrome, behind the tabs and under the scrollbar in the dock.
 CHROME = "#F0F0F0"
+#: The page a section sits on, a shade lighter than the surround. The open
+#: tab's face is drawn in it so the tab joins the page. ``theme.PAGE``.
+PAGE = "#F5F5F5"
 
 
 @dataclass(frozen=True)
@@ -1512,7 +1515,7 @@ FACES: dict[str, Face] = {
     # rounded where it meets nothing and square where it meets its page.
     "tab_rest": Face(CHROME, CHROME, radius=0, **TAB),
     "tab_hover": Face("#E8F0FC", "#E8F0FC", radius=5, square_foot=True, **TAB),
-    "tab_open": Face("#FFFFFF", "#FFFFFF", radius=5, square_foot=True, cap=BLUE, cap_tall=3, **TAB),
+    "tab_open": Face(PAGE, PAGE, radius=5, square_foot=True, cap=BLUE, cap_tall=3, **TAB),
     # A pill, and the only one: a bar is the single control whose ends mean
     # nothing, so nothing is lost by rounding them away.
     "bar_trough": Face("#FFFFFF", "#FFFFFF", "#DCDCDC", wide=256, tall=10, radius=5),

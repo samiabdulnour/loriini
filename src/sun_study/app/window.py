@@ -263,7 +263,8 @@ class Scroller(ttk.Frame):
         scrollbar runs in -- and a white gutter down a grey panel is what
         forgetting one of them looks like."""
         on_chrome = ground == theme.CHROME
-        super().__init__(parent, style="Dock.TFrame" if on_chrome else "TFrame")
+        frame_style = {theme.CHROME: "Dock.TFrame", theme.PAGE: "Page.TFrame"}.get(ground, "TFrame")
+        super().__init__(parent, style=frame_style)
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
         self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0, background=ground)
@@ -276,16 +277,27 @@ class Scroller(ttk.Frame):
         )
         self.bar.grid(row=0, column=1, sticky="ns")
         self.canvas.configure(yscrollcommand=self.bar.set)
-        self.content = ttk.Frame(self.canvas, style="Dock.TFrame" if on_chrome else "TFrame")
+        self.content = ttk.Frame(self.canvas, style=frame_style)
         self._item = self.canvas.create_window((0, 0), window=self.content, anchor="nw")
         self.content.bind("<Configure>", self._measured)
         self.canvas.bind("<Configure>", self._widened)
 
     def _measured(self, _event: object = None) -> None:
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self._show_bar_if_needed()
 
     def _widened(self, event: tk.Event[tk.Misc]) -> None:
         self.canvas.itemconfigure(self._item, width=event.width)
+        self._show_bar_if_needed()
+
+    def _show_bar_if_needed(self) -> None:
+        """A bar only when there is something below the fold. A trough that
+        moves nothing is a line down the page for no reason."""
+        needed = self.content.winfo_reqheight() > self.canvas.winfo_height() > 1
+        if needed:
+            self.bar.grid()
+        else:
+            self.bar.grid_remove()
 
     @property
     def scrollable(self) -> bool:
@@ -2339,15 +2351,19 @@ class Window:
         # so it stays put while the settings above it change tab and scroll.
         # Run has to be findable without hunting through sections, and the one
         # line a run has to say about itself has to stay where it was put.
-        base = ttk.Frame(self.root, style="Chrome.TFrame", padding=(PAD, 0, PAD, PAD))
+        base = ttk.Frame(self.root, style="Chrome.TFrame", padding=(PAD, 6, PAD, PAD))
         base.pack(side="bottom", fill="x")
         base.columnconfigure(0, weight=1)
+        # The contours: a one-pixel rule above the run bar, and another above
+        # the band, so the three regions across the bottom read as three.
+        ttk.Frame(self.root, style="Rule.TFrame", height=1).pack(side="bottom", fill="x")
 
         # Above it, the one strip that explains whatever is under the pointer.
         # Packed to the bottom too, so it sits between the settings and Run and
         # cannot be scrolled away from either.
         self.info = InfoBand(self.root)
         self.info.pack(side="bottom", fill="x")
+        ttk.Frame(self.root, style="Rule.TFrame", height=1).pack(side="bottom", fill="x")
         Tooltip.band = self.info
 
         self._project_picker()
@@ -2364,6 +2380,8 @@ class Window:
         self._narrow = False
         self.root.bind("<Configure>", self._fit, add="+")
         self.dock.pack(side="right", fill="y")
+        # The contour between the page and the dock: one pixel, and thin.
+        ttk.Frame(middle, style="Rule.TFrame", width=1).pack(side="right", fill="y")
         self.pane = ttk.Frame(middle, style="Chrome.TFrame")
         self.pane.pack(side="left", fill="both", expand=True)
 
@@ -2592,10 +2610,12 @@ class Window:
         window opens, so reading the project fills all six at once and moving
         between them costs nothing.
         """
-        pane = Scroller(self.stack)
+        pane = Scroller(self.stack, ground=theme.PAGE)
         self.panes.append(pane)
         self.pane_of[title] = pane
-        frame = ttk.Frame(pane.content, padding=(2, PAD, PAD, PAD))
+        # The page: light grey, with the cards sixteen pixels in from its
+        # edge on the left and eight on the right, where the bar runs.
+        frame = ttk.Frame(pane.content, style="Page.TFrame", padding=(PAD, 10, PAD, 12))
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
         return frame
@@ -2958,7 +2978,10 @@ class Window:
         whichever of them the model can answer -- so where the banded
         sheets are filed is asked once, at the top, for all three.
         """
-        row = 0
+        # The two settings all three studies share, in a card of their own:
+        # nothing floats on the page by itself.
+        outer = frame
+        frame, row = self._panel(outer, 0, title="Filing and plans"), 0
         self.adg_subset, row = self._combo(
             frame,
             row,
@@ -2988,7 +3011,7 @@ class Window:
         # The study's own box. Everything from here to the end of the block
         # is built inside it, by the simple means of pointing ``frame`` at it:
         # the rows beneath neither know nor care.
-        outer, resume = frame, row
+        resume = 1
         frame, row = self._panel(outer, resume), 0
         plans_box = ttk.Checkbutton(
             frame,
@@ -3813,7 +3836,10 @@ class Window:
             width=18,
             **icons.button_options("save_default"),
         )
-        keep.grid(row=0, column=2, padx=(6, 0))
+        # A clear gap between the two kinds of button: Run and Stop act on
+        # the project, the four to the right act on this window's settings.
+        buttons.columnconfigure(2, minsize=28)
+        keep.grid(row=0, column=3, padx=(6, 0))
         Tooltip(
             keep,
             "Remembers every section -- the ticks, the fields and which "
@@ -3832,7 +3858,7 @@ class Window:
             width=11,
             **icons.button_options("forget"),
         )
-        drop.grid(row=0, column=3, padx=(6, 0))
+        drop.grid(row=0, column=4, padx=(6, 0))
         Tooltip(
             drop,
             "Throws the saved settings away and puts every section back to "
@@ -3853,7 +3879,7 @@ class Window:
             width=14,
             **icons.button_options("save_preset"),
         )
-        keep_as.grid(row=0, column=4, padx=(6, 0))
+        keep_as.grid(row=0, column=5, padx=(6, 0))
         Tooltip(
             keep_as,
             "Writes every section -- the ticks, the fields and which section "
@@ -3871,7 +3897,7 @@ class Window:
             width=14,
             **icons.button_options("load_preset"),
         )
-        take.grid(row=0, column=5, padx=(6, 0))
+        take.grid(row=0, column=6, padx=(6, 0))
         Tooltip(
             take,
             "Fills the window in from a preset file. Only what the file names "
@@ -3935,8 +3961,8 @@ class Window:
         are set up, not switched on. A study's box is headed by ``_head``.
         """
         head = theme.PANEL_HEAD
-        box = ttk.Frame(outer, style="Box.TFrame", padding=(11, head + 9, 11, 10))
-        box.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(6, 6))
+        box = ttk.Frame(outer, style="Box.TFrame", padding=(14, head + 12, 14, 14))
+        box.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         box.columnconfigure(0, minsize=self.LABEL_COLUMN)
         box.columnconfigure(1, weight=1)
         if title:
@@ -4027,10 +4053,10 @@ class Window:
         where there were forty.
         """
         name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="w", pady=(3, 0))
+        name.grid(row=row, column=0, sticky="w", pady=(6, 0))
         box = ttk.Entry(parent)
         box.insert(0, initial)
-        box.grid(row=row, column=1, sticky="ew", pady=(3, 0))
+        box.grid(row=row, column=1, sticky="ew", pady=(6, 0))
         line = self._hint(parent, row + 1, hint)
         for target in (name, box):
             Tooltip(target, detail, title=label, short=self._saying(line))
@@ -4052,9 +4078,9 @@ class Window:
         thing a person checks here.
         """
         name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="nw", pady=(4, 0))
+        name.grid(row=row, column=0, sticky="nw", pady=(6, 0))
         holder = ttk.Frame(parent)
-        holder.grid(row=row, column=1, sticky="ew", pady=(4, 0))
+        holder.grid(row=row, column=1, sticky="ew", pady=(6, 0))
         holder.columnconfigure(1, weight=1)
 
         layer = ttk.Combobox(holder, values=[], width=22)
@@ -4091,9 +4117,9 @@ class Window:
         thing as far as everything that reads it is concerned.
         """
         name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="w", pady=(4, 0))
+        name.grid(row=row, column=0, sticky="w", pady=(6, 0))
         made = Tiles(parent, self.TILE_CHOICES[label], on_change=self._sync)
-        made.grid(row=row, column=1, sticky="w", pady=(4, 0))
+        made.grid(row=row, column=1, sticky="w", pady=(6, 0))
         line = self._hint(parent, row + 1, hint)
         Tooltip(name, detail, title=label, short=self._saying(line))
         return made, row + 1
@@ -4118,10 +4144,10 @@ class Window:
         moved off the keyboard did not have to move anywhere else.
         """
         name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="w", pady=(4, 0))
+        name.grid(row=row, column=0, sticky="w", pady=(6, 0))
         made = Ticks(parent, choices, key=key, span=span, on_change=self._sync)
         made.insert(0, initial)
-        made.grid(row=row, column=1, sticky="w", pady=(4, 0))
+        made.grid(row=row, column=1, sticky="w", pady=(6, 0))
         line = self._hint(parent, row + 1, hint)
         Tooltip(name, detail, title=label, short=self._saying(line))
         return made, row + 1
@@ -4138,7 +4164,7 @@ class Window:
         same record, with a way out of each one, and they wrap.
         """
         name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="nw", pady=(4, 0))
+        name.grid(row=row, column=0, sticky="nw", pady=(6, 0))
         box = Chips(
             parent,
             add=lambda: self._choose(box, label, hint),
@@ -4146,7 +4172,7 @@ class Window:
             empty="no layers chosen",
             label=label,
         )
-        box.grid(row=row, column=1, sticky="ew", pady=(4, 0))
+        box.grid(row=row, column=1, sticky="ew", pady=(6, 0))
         line = self._hint(parent, row + 1, hint)
         for target in (name, box):
             Tooltip(

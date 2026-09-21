@@ -3664,3 +3664,39 @@ one long line -- so the row now measures the scroller's canvas less its own
 offset. And `grid` lines columns up down the page, so the chips are `place`d
 from measured widths, each row from the left, and the row states its own
 size because placed children do not size their parent.
+
+### D109 — The window's design principles: three surfaces, thin contours, one radius scale, air
+
+Asked 21 September 2026, after a review of the window as built: *"some tabs,
+windows inside the program are not fully detailed ... there should be couple
+contours distinguishing different windows ... really need to commit to some
+design principles. rounded corners etc"*, and the brief: *"everything very
+airy. archicad, light grey, light blue, apple kind of style. thin contour."*
+
+**The review found four things.** The page and every panel were white, so on
+a short tab the panel dissolved into empty page and the only contour was a
+hairline doing all the work. Two rows on Solar analysis floated outside any
+panel. The run bar gave Run, Stop and four settings actions equal weight in
+one row. And the page scrollbar drew its trough down a page that did not
+scroll. The palette, the type, the rounded faces and the dock were sound.
+
+**The principles are written into `theme.py`'s docstring**, seven of them,
+and every change since is one of them: three surfaces (light grey ground,
+white cards, blue tint for chosen); thin one-pixel contours wherever a region
+ends and never a frame inside a frame; one radius scale (4 px controls, 6 px
+cards, 5 px tab tops, 0 on paper and geometry); air, with cards inset and
+rows stepping six pixels; every control in a card under a header; one mark
+per state on its own axis; Segoe UI at the system size.
+
+**What changed to meet them.** A `PAGE` colour, a shade lighter than the
+surround, under the sections; the open tab's face redrawn in it so the tab
+still joins the page; cards standing on it rather than on white, which is a
+`STANDS_ON` entry because a face's corners show the style's background. A
+one-pixel rule between page and dock, above the info band and above the run
+bar. A *Filing and plans* card for the two shared rows. A gap in the run bar
+between the run buttons and the settings buttons. The scrollbar shown only
+when the page is taller than its pane. Wider card padding and row spacing.
+
+*Not changed, on purpose:* the queued mark. The orange dot on a drawing tab's
+icon is the sun the section icons carry, not a second queued mark; queued is
+the blue name and its dot, one mark on one axis, as before.

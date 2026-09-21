@@ -2670,15 +2670,13 @@ def test_a_faced_control_stands_on_its_own_colour(hidden_window: Any) -> None:
         if not layout or not str(layout[0][0]).startswith("Loriini."):
             continue
         parent = widget.master
-        stands_on = (
-            ground_of(parent)
-            if isinstance(parent, widgets.Widget)
-            else str(parent.cget("background")).upper()
-        )
-        # A box's header is tinted by the box's own face, and what sits on it
-        # is never faced; chips sit on the page. So the parent's style colour
-        # is the ground for everything that wears a face.
-        if ground_of(widget) != stands_on:
+        if isinstance(parent, widgets.Widget):
+            # A card's style colour is the page, for its corners; what sits
+            # on the card sits on its white fill. ``theme.INSIDE`` says so.
+            stands_on = theme.INSIDE.get(style_of(parent), "") or ground_of(parent)
+        else:
+            stands_on = str(parent.cget("background")).upper()
+        if ground_of(widget) != stands_on.upper():
             wrong.append(f"{style_of(widget)} is styled for {ground_of(widget)} on {stands_on}")
 
     assert not wrong, sorted(set(wrong))

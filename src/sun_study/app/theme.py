@@ -27,6 +27,40 @@ white and this keeps that standard rather than drifting paler for looks.
 open the window. Every step is guarded and the worst case is the plain ttk
 default, which is ugly and entirely usable -- the same rule ``preferences`` and
 ``icons`` follow.
+
+The principles
+--------------
+Settled 21 September 2026 (D109), after a review of the window as built. The
+brief in Sami's words: *airy; Archicad's light grey and light blue; Apple kind
+of style; thin contour.* Everything below is one of these, and a change that
+is none of them is a change to argue about first.
+
+1. **Three surfaces, and nothing else is a colour.** The ground is light grey:
+   ``CHROME`` for the window's surround and the dock, ``PAGE`` -- a shade
+   lighter -- for the page a section is laid out on. Anything you edit or
+   anything the run makes is a white card on that ground. Blue tint means
+   chosen or switched on. Ochre is the sun and red is a warning, and neither
+   is ever decoration.
+2. **Thin contours, everywhere a region ends.** A card has a one-pixel edge in
+   ``LINE``; a field has one in ``EDGE`` because you can type in it. A
+   one-pixel rule in ``LINE`` parts the page from the dock, the body from the
+   info band, and the band from the run bar. Nothing is ever framed twice, and
+   nothing heavier than a pixel is drawn.
+3. **One radius scale.** Four pixels on a control, six on a card, five on the
+   top corners of a tab with a square foot where it meets the page. Zero on
+   paper and on anything drawn -- a sheet has corners, and so does a model.
+4. **Air.** Cards sit sixteen pixels in from the page and eight apart; rows
+   step six pixels; the run bar keeps its two kinds of button a clear gap
+   apart. Empty page is page, not an unfinished panel.
+5. **Every control lives in a card**, under a header that says what the card
+   is for. A study's card is headed by its own tick; a settings card by a
+   title. No row floats on the page by itself.
+6. **One mark per state, on its own axis.** Open is the tab joined to the
+   page under a blue cap; queued is the blue name with its dot. The count on a
+   card's header is what its tick is worth, and the dock draws the same.
+7. **Type is Segoe UI, at the body size the operating system uses.** Titles
+   are bold, hints are ``HINT`` grey and clear 4.5:1, group captions are small
+   capitals. Nothing on a thumbnail carries anything a person must read.
 """
 
 from __future__ import annotations
@@ -48,6 +82,11 @@ CHROME = "#F0F0F0"
 #: Where the settings are. White, because the icons are drawn on white and a
 #: sheet of paper on grey is not a sheet of paper. Archicad's panels agree.
 SURFACE = "#FFFFFF"
+
+#: The page a section is laid out on: a shade lighter than the surround, so
+#: the white cards on it read as cards and the empty page reads as page. The
+#: open tab's face is drawn in it, which is what joins the tab to the page.
+PAGE = "#F5F5F5"
 
 #: A control nobody has chosen, and the trough of the progress bar.
 MUTED = "#E4E4E4"
@@ -144,13 +183,24 @@ STANDS_ON: dict[str, str] = {
     "TCombobox": SURFACE,
     "Chrome.TCombobox": CHROME,
     "Chip.TFrame": SURFACE,
-    "Box.TFrame": SURFACE,
-    "BoxOff.TFrame": SURFACE,
+    # A card stands on the page, not on white: its rounded corners would
+    # otherwise show four white nicks on the grey.
+    "Box.TFrame": PAGE,
+    "BoxOff.TFrame": PAGE,
     # The progress bar is a pill, and a pill is nearly all corner. It used to
     # carry ``background=BLUE`` from the days clam drew it, and the first
     # rounded build showed the trough outlined in blue: not a border, but this
     # trap, bleeding through every antialiased pixel of the pill's edge.
     "Horizontal.TProgressbar": CHROME,
+}
+
+#: What sits *inside* a faced frame stands on the face's fill, not on the
+#: colour the frame's corners show. A card's style background is the page,
+#: for its corners; the fields on the card are on its white. The window's
+#: stands-on test reads this before it reads a parent's style.
+INSIDE: dict[str, str] = {
+    "Box.TFrame": SURFACE,
+    "BoxOff.TFrame": SURFACE,
 }
 
 
@@ -214,6 +264,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure("TFrame", background=SURFACE)
     style.configure("TLabel", background=SURFACE, foreground=BODY)
     style.configure("TSeparator", background=LINE)
+    #: The page under the cards, and the one-pixel rule between regions.
+    style.configure("Page.TFrame", background=PAGE)
+    style.configure("Rule.TFrame", background=LINE)
 
     #: The line under a control, on the content surface.
     style.configure("Hint.TLabel", background=SURFACE, foreground=HINT)
