@@ -1090,6 +1090,7 @@ def report_zone_bands(
     spacing_m: float,
     hours: float | None = None,
     hourly: bool = False,
+    bands: bool = True,
     sheet: bool = False,
     stats: bool = False,
     csv_out: Path | None = None,
@@ -1252,32 +1253,39 @@ def report_zone_bands(
     titles: dict[str, str] = {}
     problem = False
 
-    # 1. The whole day, banded.
+    # 1. The whole day, banded -- unless the run asked for the hours alone,
+    #    in which case neither whole-day plan is drawn and the hourly set
+    #    below is the study. The figures are computed either way, because
+    #    the areas sheet and the CSV quote them.
     label = "Communal"
     layer = f"{layer_prefix} {label}"
-    drawn = _draw_zone_groups(
-        connection,
-        [
-            CellGroup(
-                label=band.label,
-                mask=_band_mask(minutes, band.lower_minutes, band.upper_minutes),
-                style=style,
-                area_m2=band.area_m2,
-                share=band.share,
-            )
-            for band, style in zip(banded.bands, styles, strict=False)
-        ],
-        shared,
-        layer_name=layer,
-        title=f"Solar access to communal open space, {when}",
-        on_storey=on_storey,
-        max_residual_m=max_residual_m,
+    drawn = (
+        _draw_zone_groups(
+            connection,
+            [
+                CellGroup(
+                    label=band.label,
+                    mask=_band_mask(minutes, band.lower_minutes, band.upper_minutes),
+                    style=style,
+                    area_m2=band.area_m2,
+                    share=band.share,
+                )
+                for band, style in zip(banded.bands, styles, strict=False)
+            ],
+            shared,
+            layer_name=layer,
+            title=f"Solar access to communal open space, {when}",
+            on_storey=on_storey,
+            max_residual_m=max_residual_m,
+        )
+        if bands
+        else None
     )
     # A sheet is offered only for a layer that has something on it. See
     # ``_draw_zone_groups``: a refusal still counts as a problem, but it must
     # not put a label into ``made``, or the run builds a layout, a view and a
     # layer combination around an empty layer and reports it as done.
-    problem |= drawn is None or not drawn.complete
+    problem |= bands and (drawn is None or not drawn.complete)
     if drawn is not None:
         made.append((label, layer))
         tables[label] = _table_rows("communal open space", banded, styles)
@@ -1285,8 +1293,9 @@ def report_zone_bands(
 
     # 2. The threshold, as two areas. What a DCP asks is not how the hours
     #    spread but how much of the space clears the minimum, and a
-    #    seven-band plan makes a reader do that sum by eye.
-    if hours:
+    #    seven-band plan makes a reader do that sum by eye. A whole-day
+    #    plan like the first, so it goes with it.
+    if hours and bands:
         achieved = minutes >= hours * 60.0
         total = float(samples.areas.sum())
         area = float(samples.areas[achieved].sum())
@@ -3386,6 +3395,18 @@ def massing(
             ),
         ),
     ] = False,
+    zone_bands: Annotated[
+        bool,
+        typer.Option(
+            "--zone-bands/--no-zone-bands",
+            help=(
+                "Draw the whole-day plans: the Zones banded by hours of sun, "
+                "and the threshold split when --zone-hours is given. Off, with "
+                "--zone-hourly, leaves only the plans at each hour; the areas "
+                "sheet and the CSV are written either way."
+            ),
+        ),
+    ] = True,
     zone_view_combination: Annotated[
         str,
         typer.Option(
@@ -3822,6 +3843,7 @@ def massing(
             spacing_m=zone_grid or ground_grid,
             hours=zone_hours,
             hourly=zone_hourly,
+            bands=zone_bands,
             sheet=zone_sheet,
             stats=zone_stats,
             csv_out=zone_csv,

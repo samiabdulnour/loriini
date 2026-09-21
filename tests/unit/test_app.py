@@ -261,18 +261,37 @@ def test_the_apartment_study_keeps_the_adg_window(hidden_window: Any) -> None:
     assert "--window-end" not in plans.args
 
 
-def test_the_hourly_plans_are_on_by_default_and_can_be_turned_off(
+def test_the_plans_row_says_which_kind_of_plan_each_study_draws(
     hidden_window: Any,
 ) -> None:
+    """Bands are the whole day striped by hours of sun; times are the sun
+    where it actually falls at each instant. Both by default, and either
+    alone on request -- for the apartments and the communal space alike,
+    each through its own command's flags."""
     hidden_window.do_facade.set(False)
     hidden_window.communal.set("06 | Zone.Balcony")
     hidden_window.do_communal.set(True)
-    (communal,) = hidden_window.jobs()
-    assert "--zone-hourly" in communal.args
+    hidden_window.do_plans.set(True)
+    hidden_window.apartments.set("06 | Zone.Units")
 
-    hidden_window.do_hourly.set(False)
-    (communal,) = hidden_window.jobs()
-    assert "--zone-hourly" not in communal.args
+    plans, communal = hidden_window.jobs()
+    assert "--draw" in plans.args and flag(plans.args, "--plan-instant")
+    assert "--zone-hourly" in communal.args and "--no-zone-bands" not in communal.args
+
+    hidden_window.plan_kinds.set("Bands by hour")
+    plans, communal = hidden_window.jobs()
+    assert "--draw" in plans.args and not flag(plans.args, "--plan-instant")
+    assert "--zone-hourly" not in communal.args and "--no-zone-bands" not in communal.args
+
+    hidden_window.plan_kinds.set("Sun at each time")
+    plans, communal = hidden_window.jobs()
+    assert "--no-draw" in plans.args and "--sheet" in plans.args
+    assert flag(plans.args, "--plan-instant") == ["09:00", "12:00", "15:00"]
+    assert "--zone-hourly" in communal.args and "--no-zone-bands" in communal.args
+
+    kinds = {sheet.kind for sheet in hidden_window.planned()}
+    assert "Apartments" in kinds and window.COMMUNAL_HOURLY in kinds
+    assert "Apartments, ADG total" not in kinds and "Communal open space" not in kinds
 
 
 def test_the_communal_study_sends_the_settings_that_change_the_answer(
@@ -533,7 +552,7 @@ def test_the_hourly_communal_plans_are_as_many_as_the_window_has_hours(
     ]
     assert all(not sheet.time for sheet in sheets if sheet is not hourly[0]), "whole-day sheets"
 
-    hidden_window.do_hourly.set(False)
+    hidden_window.plan_kinds.set("Bands by hour")
     assert not [s for s in hidden_window.planned() if s.kind == window.COMMUNAL_HOURLY]
 
 
@@ -555,6 +574,155 @@ def test_the_sun_views_follow_their_own_hours(hidden_window: Any) -> None:
 
     hidden_window.eye_hours.insert(0, "9, 3pm")
     assert [sheet.time for sheet in hidden_window.planned()] == ["09:00", "15:00"]
+
+
+def test_the_hours_are_pressed_not_typed_and_still_read_as_the_run_reads_them(
+    hidden_window: Any,
+) -> None:
+    """The rows of hours and days are buttons, and the field's text is what
+    they mean, in the spelling each command takes: whole hours for the
+    shadows, times of day for the plans, a range for the communal window,
+    dates for the shadow days."""
+    hours = hidden_window.shadow_hours
+    hours.delete(0, "end")
+    hours._toggle("9")
+    hours._toggle("12")
+    hours._toggle("15")
+    assert hours.get() == "9, 12, 15"
+    hours._toggle("12")
+    assert hours.get() == "9, 15", "pressed again is off"
+
+    times = hidden_window.instants
+    times.delete(0, "end")
+    times._toggle("12:00")
+    assert times.get() == "12:00"
+
+    window_row = hidden_window.communal_window
+    window_row.delete(0, "end")
+    window_row._toggle("08:00")
+    window_row._toggle("15:00")
+    assert window_row.get() == "08:00-15:00", "a span is its two ends"
+    assert window_row._lit() == {f"{hour:02d}:00" for hour in range(8, 16)}, "lit between"
+
+    days = hidden_window.shadow_dates
+    days.delete(0, "end")
+    days._toggle("06-21")
+    days._toggle("12-21")
+    assert days.get() == "06-21, 12-21"
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+    hidden_window.sheets.set("One layout, all drawings")
+    assert [sheet.day for sheet in hidden_window.planned()] == ["21 Jun", "21 Dec"]
+    assert [sheet.time for sheet in hidden_window.planned()] == ["09:00-15:00"] * 2
+    assert flag(hidden_window.jobs()[0].args, "--shadow-date") == ["06-21, 12-21"]
+
+
+def test_a_saved_field_lights_the_buttons_it_names_and_keeps_its_own_spelling(
+    hidden_window: Any,
+) -> None:
+    """A settings file from the typed days -- ``9,10,11`` or ``9, 3pm`` --
+    lights the right buttons and is sent exactly as it was saved. A value no
+    button stands for lights nothing and is still sent, so a half hour saved
+    on purpose is not rounded to the nearest button."""
+    hours = hidden_window.shadow_hours
+    hours.delete(0, "end")
+    hours.insert(0, "9, 3pm")
+    assert hours.get() == "9, 3pm"
+    assert hours._lit() == {"9", "15"}
+
+    hours.insert(0, "9:30, 12")
+    assert hours.get() == "9:30, 12"
+    assert hours._lit() == {"12"}, "the half hour lights nothing and is still sent"
+
+    window_row = hidden_window.communal_window
+    window_row.insert(0, "8am to 3pm")
+    assert window_row.get() == "8am to 3pm"
+    assert window_row._lit() == {f"{hour:02d}:00" for hour in range(8, 16)}
+
+    days = hidden_window.shadow_dates
+    days.insert(0, "winter, 12-21")
+    assert days._lit() == {"06-21", "12-21"}, "a day by its name lights its date"
+
+
+def test_every_sheet_says_the_scale_the_run_places_it_at(hidden_window: Any) -> None:
+    """The block used to say 1:1000 on every sheet. It now says what each
+    command sends: the sun views' own Scale row, the context sheet's, the
+    shadow diagrams' 1:1000, the plans' 1:200 -- and, honestly, that the
+    site sheet is fitted and the summary has no scale at all."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(True)
+    hidden_window.site_address.insert(0, "1 Example Street")
+    hidden_window.eye_scale.delete(0, "end")
+    hidden_window.eye_scale.insert(0, "250")
+
+    scales = {sheet.kind: sheet.scale for sheet in hidden_window.planned()}
+
+    assert scales["Sun view"] == "1:250"
+    assert scales["Context Analysis"] == "1:3000"
+    assert scales["Site Analysis"] == "to fit"
+    assert scales["Summary of Controls"] == ""
+    assert scales["Shadow diagram"] == "1:1000"
+    assert scales["Apartments"] == scales["Facade bands"] == "1:200"
+    assert scales["Communal open space"] == "1:300"
+
+
+def test_the_three_site_sheets_are_three_different_pictures(hidden_window: Any) -> None:
+    """Context, site and summary are three drawings, and a panel that drew
+    the same pin on all three said they were one."""
+    drawn: dict[str, list[str]] = {}
+    for kind in ("Context Analysis", "Site Analysis", "Summary of Controls"):
+        paper = tk.Canvas(hidden_window.root)
+        window._draw_drawing(paper, "Site analysis", window.Drawing(kind, "", ""), (0, 0, 150, 150))
+        drawn[kind] = sorted(str(paper.type(item)) for item in paper.find_all())
+    assert len({tuple(items) for items in drawn.values()}) == 3
+
+
+def test_a_model_is_shown_as_geometry_and_not_counted_as_a_sheet(hidden_window: Any) -> None:
+    """The site study's context model and future model are geometry on their
+    own layers, not layouts. The panel shows them as what they are -- no
+    paper -- and the count on the strip stays the count of sheets."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_site.set(True)
+    hidden_window.site_address.insert(0, "1 Example Street")
+    hidden_window.site_radius.delete(0, "end")
+    hidden_window.site_radius.insert(0, "300")
+
+    assert all(sheet.paper for sheet in hidden_window.planned()), "no model ticked"
+
+    hidden_window.do_site_model.set(True)
+    hidden_window.do_site_future.set(True)
+    hidden_window._sync()
+    made = hidden_window.planned()
+    models = [sheet for sheet in made if not sheet.paper]
+    assert [(m.kind, m.day) for m in models] == [
+        (window.CONTEXT_MODEL, "300 m"),
+        (window.FUTURE_MODEL, "100 m reach"),
+    ]
+    assert all(m.number == "" for m in models), "not numbered as sheets"
+    assert hidden_window.dock.tally.cget("text") == "3", "three sheets, and the models are not"
+    _box, says = hidden_window.study_boxes[window.SITE_JOB]
+    assert says.cget("text") == "3 sheets, 2 models"
+
+    paper = tk.Canvas(hidden_window.root)
+    window.draw_model(paper, models[0], 300, 212)
+    assert paper.find_withtag("edge"), "and it still takes the blue edge under the pointer"
+
+
+def test_each_site_sheet_follows_its_own_tick(hidden_window: Any) -> None:
+    """Three sheets, three ticks, and the command gets --no-summary when the
+    summary is unticked -- so the panel must drop it too."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_site.set(True)
+    hidden_window.site_address.insert(0, "1 Example Street")
+    hidden_window.do_site_summary.set(False)
+    hidden_window.do_site_context.set(False)
+
+    assert [sheet.kind for sheet in hidden_window.planned()] == ["Site Analysis"]
+    args = hidden_window.jobs()[0].args
+    assert "--no-summary" in args and "--no-context" in args and "--site" in args
 
 
 def test_a_typed_hour_is_spelled_the_way_the_sheet_is_named() -> None:

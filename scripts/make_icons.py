@@ -855,6 +855,44 @@ def settings() -> list[Icon]:
                 rect(14, 7, 9, 8, fill=BLUE_T, outline=BLUE, width=1.1),
             ],
         ),
+        # The Plans row: what the solar plans show. Bands are the whole day
+        # in stripes of sun hours; times are the sun where it actually is at
+        # one moment, so that one carries the sun.
+        Icon(
+            "plans_both",
+            "the sheet split: bands on the left, the sun's patch on the right",
+            [
+                *sheet(),
+                rect(9.5, 8, 5.5, 3.6, fill=SUN, outline=None),
+                rect(9.5, 12.4, 5.5, 3.6, fill=SUN_T, outline=None),
+                rect(9.5, 16.8, 5.5, 3.6, fill=GREY_L, outline=None),
+                rect(9.5, 8, 5.5, 12.4, fill=None, outline=GREY_D, width=1.0),
+                rect(16.5, 8, 6, 12.4, fill=PAPER, outline=GREY_D, width=1.0),
+                Poly(((16.5, 20.4), (16.5, 13), (22.5, 9), (22.5, 20.4)), fill=SUN_T, outline=None),
+                *sun(cx=24.5, cy=6.5, r=2.4),
+            ],
+        ),
+        Icon(
+            "plans_bands",
+            "the sheet banded by hours of sun, most to least",
+            [
+                *sheet(),
+                rect(9.5, 8, 13, 3.6, fill=SUN, outline=None),
+                rect(9.5, 12.4, 13, 3.6, fill=SUN_T, outline=None),
+                rect(9.5, 16.8, 13, 3.6, fill=GREY_L, outline=None),
+                rect(9.5, 8, 13, 12.4, fill=None, outline=GREY_D, width=1.0),
+            ],
+        ),
+        Icon(
+            "plans_times",
+            "the sheet with the sun's patch on the floor at one moment",
+            [
+                *sheet(),
+                rect(9.5, 8, 13, 12.4, fill=PAPER, outline=GREY_D, width=1.0),
+                Poly(((9.5, 20.4), (9.5, 14), (22.5, 8.5), (22.5, 20.4)), fill=SUN_T, outline=None),
+                *sun(cx=24.5, cy=6.5, r=2.4),
+            ],
+        ),
         Icon(
             "origin",
             "the site at nought, nought -- a crosshair, not a place",

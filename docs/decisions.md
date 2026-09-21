@@ -3565,3 +3565,53 @@ carry are dropped and said out loud. `preferences.read` is the one function in
 that module that raises, because the person chose the file and wants to know
 why it did not load. The dialogs open in Documents, not `%APPDATA%`: a preset
 exists to be found.
+
+### D108 — Hours and days are pressed, the plans row picks bands or times, and each sheet says its own scale
+
+Asked 21 September 2026, on seeing the first build with the dealt panel:
+*"bigger names of sheets. correct scale on the sheets written. possibility to
+choose if i want bands by hour or just the sunlight in actual time. site
+analysis and context analysis should have different miniature. days and hours
+needs to be clickable, not write entry."*
+
+**Hours and days are buttons.** Five typed fields -- the plan times, the
+communal window, the shadow days and hours, the sun-view hours -- took three
+spellings between them, and a person had to know which. `Ticks` is a row of
+buttons, six in the morning to seven at night or the four assessment days,
+that answers `get`, `delete` and `insert` the way the Entry did, so
+`Window.apply`, the saved files and the run see the same text as before. The
+text is *kept*, not rebuilt: a file that says `9, 3pm` lights nine and three
+and is sent as `9, 3pm`, and a value no button stands for is sent as typed
+and lights nothing, so nothing saved on purpose is rounded to a button. The
+communal window is a span: press the first hour and the last.
+
+**Bands or times, for both plan studies.** The apartment plans and the
+communal plans each drew the whole day in bands *and* the sun at each time,
+with only the communal hourly set switchable. One Plans row in Solar analysis
+now chooses for both: bands, times, or both. For the apartments, bands is
+`--draw` and times is `--plan-instant`, with `--no-draw --sheet` making the
+instant sheets alone. For the communal space, times is `--zone-hourly` and a
+new `--no-zone-bands` skips the banded and threshold plans; the figures are
+still computed, because the areas sheet and the CSV quote them.
+
+**Each sheet says the scale its command sends.** The block said 1:1000 on
+every thumbnail. It now says what the run will place the drawings at: the sun
+views' own Scale row, the context sheet's, 1:1000 for the shadows, 1:200 for
+the apartment plans and the model, 1:300 for the communal plans -- and
+honestly "to fit" for the site sheet, whose scale the run picks from a list
+to suit the site, and nothing for the summary, which is a table.
+
+**Three site sheets, three pictures**, and the sheet name set at 11 points
+rather than 9, because the name is what tells one sheet from the next across
+the panel and a thumbnail is not a print preview. Each site sheet now follows
+its own tick, as the command does with `--no-context` and the rest.
+
+**A model is drawn as geometry, not as a sheet.** Asked in the same session:
+*"if we creating model, there should not be sheet visible but miniature of
+actual model without the sheet."* The context model and the future model are
+geometry on their own layers and the run makes no layout of them, so the
+panel draws them as an isometric of the ground within the radius, the blocks
+on it and the site among them -- the future model with the allowed envelopes
+dashed over the lots within reach -- with no paper, no shadow and no sheet
+number. The strip's count stays the count of sheets; the study's own line
+says "3 sheets, 2 models".

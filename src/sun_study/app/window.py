@@ -133,6 +133,10 @@ PLANS_JOB = "solar analysis: apartments"
 #: table and not a drawing at all.
 COMMUNAL_HOURLY = "Communal open space by hour"
 COMMUNAL_AREAS = "Communal areas"
+#: The two outputs of the site study that are not sheets: geometry on its
+#: own layers, drawn in the panel as geometry.
+CONTEXT_MODEL = "Context model"
+FUTURE_MODEL = "Future model"
 COMMUNAL_JOB = "solar analysis: communal open space"
 SHADOW_JOB = "shadow diagram"
 SUN_EYE_JOB = "sun views"
@@ -638,6 +642,119 @@ class Tiles(ttk.Frame):
         self.set(value)
 
 
+class Ticks(ttk.Frame):
+    """A row of hours, or of days, each a button that is on or off.
+
+    In place of a text box that took ``9,10,11,12,13,14,15`` and
+    ``08:00-15:00`` and ``06-21, 12-21`` -- three spellings a person had to
+    know and could get wrong. The buttons are the values, and there is
+    nothing to spell.
+
+    It answers ``get``, ``delete`` and ``insert`` the way the Entry it
+    replaces does, for the reason ``Tiles`` does: ``Window.apply`` puts a
+    saved file back through that interface, and the run reads the field's
+    text. The text is kept rather than rebuilt from the buttons: a file that
+    says ``9, 3pm`` lights nine and three and is sent as ``9, 3pm``, and a
+    value no button stands for -- a half hour, a date not offered -- is kept
+    as typed, sent as typed, and lights nothing, so a setting is never
+    silently rounded to the nearest button.
+
+    ``span`` makes the row a range: what is lit runs from the first ticked
+    button to the last, and the text is ``08:00-15:00`` rather than a list,
+    which is how the communal window is asked for.
+    """
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        choices: Sequence[tuple[str, str, str]],
+        *,
+        key: Callable[[str], str],
+        span: bool = False,
+        joiner: str = ", ",
+        on_change: Callable[[], None] | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._choices = list(choices)
+        self._key = key
+        self._span = span
+        self._joiner = joiner
+        self._on_change = on_change
+        self._text = ""
+        self._on: set[str] = set()
+        self._buttons: dict[str, ttk.Button] = {}
+        for column, (value, label, detail) in enumerate(choices):
+            button = ttk.Button(
+                self,
+                text=label,
+                style="Tile.TButton",
+                width=max(2, len(label)),
+                command=partial(self._toggle, value),
+            )
+            button.grid(row=0, column=column, padx=(0, 2))
+            Tooltip(button, detail)
+            self._buttons[value] = button
+        self._paint()
+
+    def _toggle(self, value: str) -> None:
+        if value in self._on:
+            self._on.discard(value)
+        else:
+            self._on.add(value)
+        self._text = self._spell()
+        self._paint()
+        if self._on_change is not None:
+            self._on_change()
+
+    def _spell(self) -> str:
+        """The text the buttons mean, in the row's own order."""
+        lit = [value for value, _label, _detail in self._choices if value in self._on]
+        if not lit:
+            return ""
+        if self._span:
+            return lit[0] if len(lit) == 1 else f"{lit[0]}-{lit[-1]}"
+        return self._joiner.join(lit)
+
+    def _lit(self) -> set[str]:
+        """The buttons shown on: in a span, everything between the ends."""
+        if not self._span or len(self._on) < 2:
+            return set(self._on)
+        order = [value for value, _label, _detail in self._choices]
+        first = min(order.index(value) for value in self._on)
+        last = max(order.index(value) for value in self._on)
+        return set(order[first : last + 1])
+
+    def _paint(self) -> None:
+        lit = self._lit()
+        for value, button in self._buttons.items():
+            button.configure(style="TileOn.TButton" if value in lit else "Tile.TButton")
+
+    def get(self) -> str:
+        """The field's text, exactly as it would be sent."""
+        return self._text
+
+    # -- what makes it a drop-in for the Entry it replaced ------------------
+    def delete(self, first: object = 0, last: object = None) -> None:
+        self._text = ""
+        self._on = set()
+        self._paint()
+
+    def insert(self, index: object, value: str) -> None:
+        """How ``Window.apply`` restores a saved field, and how a test types."""
+        self._text = value
+        wanted = {self._key(part) for part in self._parts(value)} - {""}
+        self._on = {
+            choice for choice, _label, _detail in self._choices if self._key(choice) in wanted
+        }
+        self._paint()
+
+    def _parts(self, text: str) -> list[str]:
+        if self._span:
+            halves = [half.strip() for half in text.replace("to", "-").split("-")]
+            return [half for half in halves if half]
+        return [part.strip() for part in text.split(",") if part.strip()]
+
+
 class Chips(ttk.Frame):
     """The names chosen for a setting, each with the button that drops it.
 
@@ -923,6 +1040,13 @@ class Sheet:
     #: The study's own job name, so a box can say how many sheets *its* tick
     #: is worth. The panel groups by ``study``, which three jobs share.
     job: str = ""
+    #: The scale the run places the drawings at -- ``1:500`` -- or what it
+    #: does instead: a site sheet is fitted, a table has none.
+    scale: str = ""
+    #: False for the outputs that are not sheets at all -- the context model
+    #: and the future model, which are geometry on their own layers. The
+    #: panel draws those as the geometry, with no paper under it.
+    paper: bool = True
 
     @property
     def time(self) -> str:
@@ -1080,8 +1204,11 @@ class Dock(ttk.Frame):
         for old in self._drawn:
             old.destroy()
         self._drawn = []
-        self.tally.config(text=str(len(sheets)))
-        self.shut_tally.config(text=str(len(sheets)))
+        # The count is of sheets. A model in the panel is drawn there because
+        # the run makes it, and not counted here because it is not one.
+        papers = sum(1 for sheet in sheets if sheet.paper)
+        self.tally.config(text=str(papers))
+        self.shut_tally.config(text=str(papers))
         self.filed.config(text=filed)
 
         if not sheets:
@@ -1153,11 +1280,13 @@ class Dock(ttk.Frame):
             highlightthickness=0,
         )
         paper.pack(side="top", padx=10 - lift, pady=(0, 9 - lift))
-        draw_sheet(paper, sheet, self.SHEET_W, self.SHEET_H)
+        # A model is not a sheet, so it is not drawn as one: the geometry
+        # alone, with no paper and no shadow under it.
+        (draw_sheet if sheet.paper else draw_model)(paper, sheet, self.SHEET_W, self.SHEET_H)
         paper.move("all", lift, lift - 1)
         # The shadow: three greys, each a pixel further down and out, under
         # everything else. Tk has no blur, and three steps read as one.
-        for step, grey in ((3, "#E9E9E8"), (2, "#E0E0DE"), (1, "#D3D3D0")):
+        for step, grey in ((3, "#E9E9E8"), (2, "#E0E0DE"), (1, "#D3D3D0")) if sheet.paper else ():
             under = paper.create_rectangle(
                 lift - 1 + step // 2,
                 lift - 1 + step,
@@ -1171,9 +1300,8 @@ class Dock(ttk.Frame):
         def lit(on: bool) -> None:
             # The sheet under the pointer takes the blue edge, which is what
             # says the figures in the band below belong to *this* one.
-            paper.itemconfigure(
-                "edge", outline=theme.BLUE if on else theme.EDGE, width=2 if on else 1
-            )
+            resting = theme.EDGE if sheet.paper else ""
+            paper.itemconfigure("edge", outline=theme.BLUE if on else resting, width=2 if on else 1)
             self._on_pick(sheet if on else None)
 
         paper.bind("<Enter>", lambda _event: lit(True), add="+")
@@ -1200,6 +1328,18 @@ SITE_MM = (66.0, 40.0, 196.0, 168.0)
 BLOCK_MM = (104.0, 78.0, 164.0, 118.0)
 BLOCK_HEIGHT_M = 21.0
 NEIGHBOURS_MM = ((74.0, 48.0, 100.0, 70.0), (170.0, 126.0, 190.0, 160.0))
+#: The blocks around the site on the context sheet, which shows a
+#: neighbourhood where the others show a site.
+CONTEXT_MM = (
+    (72.0, 46.0, 96.0, 66.0),
+    (108.0, 46.0, 136.0, 62.0),
+    (146.0, 46.0, 168.0, 64.0),
+    (72.0, 84.0, 94.0, 112.0),
+    (182.0, 80.0, 194.0, 110.0),
+    (72.0, 128.0, 100.0, 160.0),
+    (118.0, 134.0, 150.0, 160.0),
+    (166.0, 126.0, 190.0, 160.0),
+)
 #: Six flats to a plate, for the apartment sheets.
 FLATS_MM = tuple(
     (78.0 + across * 40.0, 62.0 + down * 42.0, 114.0 + across * 40.0, 100.0 + down * 42.0)
@@ -1223,6 +1363,48 @@ def _clock_text(text: str) -> str:
         return text.strip()
     hours = int(hour) + (12 if afternoon and int(hour) < 12 else 0)
     return f"{hours:02d}:{int(minute or 0):02d}"
+
+
+def _hour_choices(clock: bool) -> list[tuple[str, str, str]]:
+    """Six in the morning to seven at night, as a row of buttons.
+
+    ``clock`` is the spelling the field sends: ``09:00`` for the fields that
+    take a time of day, ``9`` for the ones that take whole hours.
+    """
+    out: list[tuple[str, str, str]] = []
+    for hour in range(6, 20):
+        value = f"{hour:02d}:00" if clock else str(hour)
+        if hour < 12:
+            said = f"{hour} in the morning"
+        elif hour == 12:
+            said = "midday"
+        else:
+            said = f"{hour - 12} in the afternoon"
+        out.append((value, str(hour), f"{said.capitalize()}. Press to include it."))
+    return out
+
+
+def _day_key(text: str) -> str:
+    """A day as ``MM-DD``, however it was written -- or as written, when it
+    is not a day at all."""
+    try:
+        return parse_day(text)
+    except ValueError:
+        return text.strip()
+
+
+#: The four days a shadow set is drawn for, as the row offers them.
+DAY_CHOICES: tuple[tuple[str, str, str], ...] = (
+    ("03-21", "21 Mar", "Autumn equinox, 21 March. Press to include it."),
+    (
+        "06-21",
+        "21 Jun",
+        "Winter solstice, 21 June -- the shortest day, when shadows are longest, and "
+        "the day that decides things. Press to include it.",
+    ),
+    ("09-21", "21 Sep", "Spring equinox, 21 September. Press to include it."),
+    ("12-21", "21 Dec", "Summer solstice, 21 December. Press to include it."),
+)
 
 
 def _hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
@@ -1363,7 +1545,7 @@ def draw_sheet(
                 (frame_mm[0] + frame_mm[2]) / 2,
                 (frame_mm[1] + frame_mm[3]) / 2,
                 "empty",
-                5,
+                6,
                 theme.HINT,
                 anchor="center",
             )
@@ -1371,7 +1553,7 @@ def draw_sheet(
         drawing = sheet.drawings[index]
         if len(frames) > 1:
             paper.create_rectangle(*frame, outline=theme.LINE)
-            words(frame_mm[0] + 1.5, frame_mm[3] - 3.5, drawing.time, 5, theme.HINT)
+            words(frame_mm[0] + 1.5, frame_mm[3] - 3.5, drawing.time, 6, theme.HINT)
             frame = (frame[0], frame[1], frame[2], frame[3] - x(7.0))
         _draw_drawing(paper, sheet.study, drawing, frame)
 
@@ -1415,11 +1597,13 @@ def draw_sheet(
         title = sheet.kind.upper()
     if sheet.parts > 1:
         title += f"   ({sheet.part} of {sheet.parts})"
-    words(10, 186, title, 9, theme.INK, bold=True)
+    # Set larger than it will print. A thumbnail is not a print preview, and
+    # the name is what tells one sheet from the next across the panel.
+    words(10, 185, title, 11, theme.INK, bold=True)
     if not timed:
-        words(10, 196, _untimed_note(sheet)[0], 7, theme.HINT)
+        words(10, 198, _untimed_note(sheet)[0], 7, theme.HINT)
     elif sheet.elevation is None:
-        words(10, 196, "Project location not set — no sun to draw", 7, theme.RED)
+        words(10, 198, "Project location not set — no sun to draw", 7, theme.RED)
     elif len(sheet.drawings) == 1:
         cast = (
             f" · shadow {sheet.reach:.1f}x the height"
@@ -1428,7 +1612,7 @@ def draw_sheet(
         )
         words(
             10,
-            196,
+            198,
             f"Sun {sheet.elevation:.1f}° · azimuth {sheet.azimuth:.0f}°{cast}",
             7,
             theme.HINT,
@@ -1440,7 +1624,7 @@ def draw_sheet(
             note += f", {sheet.empty} cell{'' if sheet.empty == 1 else 's'} empty"
         if ups:
             note += f" · sun {min(ups):.0f}° to {max(ups):.0f}°"
-        words(10, 196, note, 7, theme.HINT)
+        words(10, 198, note, 7, theme.HINT)
 
     # -- the title block, at the width General is set to ----------------
     #
@@ -1500,7 +1684,9 @@ def draw_sheet(
         line += x(6)
         step += 1
     ruled(x(146))
-    stacked(x(149), "1:1000", 5, theme.HINT)
+    # The scale the run will place the drawings at, not a number from the
+    # schematic: a reader checks the block for exactly this.
+    stacked(x(149), sheet.scale or "no scale", 5, theme.HINT)
     ruled(x(163))
     paper.create_text(
         inner,
@@ -1508,7 +1694,131 @@ def draw_sheet(
         text=sheet.number,
         anchor="sw",
         fill=theme.BLUE_DEEP,
-        font=(theme.FACE, 8, "bold"),
+        font=(theme.FACE, 9, "bold"),
+    )
+
+
+#: The blocks around the site in the context model, as ``(x0, y0, x1, y1,
+#: height)`` in tens of metres from the site's centre, seen from the
+#: south-east so the site's front is the near face.
+MODEL_BLOCKS = (
+    (-9.0, -9.0, -5.5, -5.0, 1.2),
+    (-3.5, -9.5, 1.5, -6.5, 0.9),
+    (3.5, -9.0, 8.5, -5.5, 1.6),
+    (-9.5, -2.5, -6.0, 2.5, 0.8),
+    (5.5, -2.0, 9.5, 3.0, 2.2),
+    (-9.0, 4.5, -4.5, 9.0, 1.0),
+    (-2.0, 5.5, 2.5, 9.5, 1.4),
+    (4.5, 5.0, 9.0, 9.0, 0.7),
+)
+#: The site itself, and the envelope the future model draws on its neighbours.
+MODEL_SITE = (-2.5, -2.5, 2.5, 2.5, 2.4)
+
+
+def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
+    """A model, drawn as the geometry: the ground within the radius, the
+    blocks on it, the site among them -- and no paper, because the run makes
+    no sheet of this. Isometric, from the south-east, which is the corner
+    every icon in the set is seen from.
+
+    The future model is the same neighbourhood with the envelopes the
+    controls allow drawn over the lots within reach, taller and hollow, so
+    the eye reads "what could stand here" rather than "what does".
+    """
+    future = sheet.kind == FUTURE_MODEL
+    # The hover edge, invisible at rest: the item the panel turns blue.
+    paper.create_rectangle(0, 0, width - 1, height - 1, fill="", outline="", tags="edge")
+    mid_x, mid_y, k = width * 0.5, height * 0.40, width / 34.0
+
+    def at(x: float, y: float, z: float) -> tuple[float, float]:
+        return (mid_x + (x - y) * 0.866 * k, mid_y + (x + y) * 0.5 * k - z * k)
+
+    def face(
+        points: Sequence[tuple[float, float, float]],
+        fill: str,
+        outline: str,
+        dash: tuple[int, ...] = (),
+    ) -> None:
+        flat: list[float] = []
+        for x, y, z in points:
+            flat += at(x, y, z)
+        paper.create_polygon(flat, fill=fill, outline=outline, dash=dash)
+
+    def block(
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        tall: float,
+        tints: tuple[str, str, str],
+        outline: str,
+        dash: tuple[int, ...] = (),
+    ) -> None:
+        # The two faces towards the viewer, then the top over them.
+        face(((x0, y1, 0), (x1, y1, 0), (x1, y1, tall), (x0, y1, tall)), tints[1], outline, dash)
+        face(((x1, y0, 0), (x1, y1, 0), (x1, y1, tall), (x1, y0, tall)), tints[2], outline, dash)
+        face(
+            ((x0, y0, tall), (x1, y0, tall), (x1, y1, tall), (x0, y1, tall)),
+            tints[0],
+            outline,
+            dash,
+        )
+
+    # -- the ground, with its contours ----------------------------------
+    reach = 11.5
+    face(
+        ((-reach, -reach, 0), (reach, -reach, 0), (reach, reach, 0), (-reach, reach, 0)),
+        "#EEF0E8",
+        SHADOW_GREY,
+    )
+    for level, wobble in ((-7.0, 1.2), (-3.5, 0.6), (4.0, -0.8), (8.0, 0.4)):
+        points: list[float] = []
+        for step in range(0, 13):
+            x = -reach + step * (2 * reach / 12)
+            y = level + wobble * math.sin(step * 0.9) - 0.15 * x
+            points += at(x, y, 0)
+        paper.create_line(points, fill="#CBD0BE", smooth=True)
+    # The radius the data is fetched for, drawn on the ground.
+    ring: list[float] = []
+    for step in range(48):
+        angle = math.tau * step / 48
+        ring += at(math.cos(angle) * reach * 0.92, math.sin(angle) * reach * 0.92, 0)
+    paper.create_polygon(ring, fill="", outline=theme.BLUE, dash=(4, 3), smooth=True)
+
+    # -- the blocks, far to near ---------------------------------------
+    grey = ("#F4F3EE", "#C6C5BE", "#DEDDD6")
+    blue = (theme.BLUE_TINT, "#9DBDEB", "#C3D7F5")
+    # Painter's order: what is further from the viewer -- smaller x + y --
+    # is drawn first, and the site takes its turn among the blocks.
+    standing = [(*block_, grey, theme.INK) for block_ in MODEL_BLOCKS] + [
+        (*MODEL_SITE, blue, theme.BLUE)
+    ]
+    for x0, y0, x1, y1, tall, tints, edge in sorted(standing, key=lambda b: b[0] + b[1]):
+        block(x0, y0, x1, y1, tall, tints, edge)
+        if future and edge is theme.INK and max(abs(x0 + x1), abs(y0 + y1)) / 2 < 8.0:
+            block(
+                x0 + 0.3,
+                y0 + 0.3,
+                x1 - 0.3,
+                y1 - 0.3,
+                tall + 1.6,
+                ("", "", ""),
+                theme.BLUE,
+                dash=(3, 2),
+            )
+
+    # -- what it is ----------------------------------------------------
+    title = f"{sheet.kind.upper()}  ·  {sheet.day}" if sheet.day else sheet.kind.upper()
+    paper.create_text(
+        10, height * 0.885, text=title, anchor="w", fill=theme.INK, font=_face(11, True)
+    )
+    note = (
+        "The envelopes the controls allow around the site — not a sheet"
+        if future
+        else "Terrain and neighbours in 3D, on their own layers — not a sheet"
+    )
+    paper.create_text(
+        10, height * 0.945, text=note, anchor="w", fill=theme.HINT, font=_face(7, False)
     )
 
 
@@ -1617,8 +1927,8 @@ def _draw_drawing(
         yard()
         shadow()
         box(BLOCK_MM, fill=theme.BLUE_TINT, outline=theme.BLUE, width=2)
-    elif kind == COMMUNAL_AREAS:
-        # A schedule: a heading rule, then a row per space.
+    elif kind in (COMMUNAL_AREAS, "Summary of Controls"):
+        # A schedule: a heading rule, then a row per space or per control.
         table = (SITE_MM[0] + 16, SITE_MM[1] + 18, SITE_MM[2] - 16, SITE_MM[3] - 18)
         box(table, fill=theme.SURFACE, outline=theme.EDGE)
         line(table[0], table[1] + 12, table[2], table[1] + 12, theme.INK)
@@ -1632,6 +1942,64 @@ def _draw_drawing(
             table[0] + (table[2] - table[0]) * 0.55,
             table[3],
             theme.LINE,
+        )
+    elif kind == "Context Analysis":
+        # The neighbourhood: the site in the middle of the radius the data
+        # is fetched for, the blocks around it, and the streets between.
+        mid_x, mid_y = (SITE_MM[0] + SITE_MM[2]) / 2, (SITE_MM[1] + SITE_MM[3]) / 2
+        paper.create_oval(
+            px(mid_x - 62),
+            py(mid_y - 62),
+            px(mid_x + 62),
+            py(mid_y + 62),
+            outline=theme.BLUE,
+            dash=(4, 3),
+        )
+        for street in (mid_y - 28, mid_y + 32):
+            paper.create_line(
+                px(SITE_MM[0] - 12),
+                py(street),
+                px(SITE_MM[2] + 12),
+                py(street),
+                fill="#D3D3D0",
+                width=3,
+            )
+        paper.create_line(
+            px(mid_x + 44),
+            py(SITE_MM[1] - 12),
+            px(mid_x + 44),
+            py(SITE_MM[3] + 12),
+            fill="#D3D3D0",
+            width=3,
+        )
+        for block in CONTEXT_MM:
+            box(block, fill="#E4E3DE", outline=SHADOW_GREY)
+        box(BLOCK_MM, fill=theme.BLUE_TINT, outline=theme.BLUE, width=2)
+    elif kind == "Site Analysis":
+        # The site itself: its boundary, the setbacks dashed inside it, the
+        # frontage dimensioned, and the pin where the address lands.
+        lot = (BLOCK_MM[0] - 22, BLOCK_MM[1] - 16, BLOCK_MM[2] + 22, BLOCK_MM[3] + 16)
+        box(lot, fill="#E8F0FC", outline=theme.BLUE, width=2)
+        box(BLOCK_MM, fill="", outline=theme.BLUE, dash=(4, 2))
+        line(lot[0], lot[1] - 7, lot[2], lot[1] - 7, theme.HINT)
+        for end in (lot[0], lot[2]):
+            line(end, lot[1] - 10, end, lot[1] - 4, theme.HINT)
+        pin_x, pin_y = (BLOCK_MM[0] + BLOCK_MM[2]) / 2, BLOCK_MM[1] + 12
+        poly(
+            ((pin_x - 5, pin_y - 7), (pin_x + 5, pin_y - 7), (pin_x, pin_y + 6)),
+            fill=theme.BLUE,
+            outline="",
+        )
+        paper.create_oval(
+            px(pin_x - 6), py(pin_y - 15), px(pin_x + 6), py(pin_y - 3), fill=theme.BLUE, outline=""
+        )
+        paper.create_oval(
+            px(pin_x - 2.2),
+            py(pin_y - 11.2),
+            px(pin_x + 2.2),
+            py(pin_y - 6.8),
+            fill=theme.SURFACE,
+            outline="",
         )
     elif kind.startswith("Communal open space"):
         yard()
@@ -1939,16 +2307,7 @@ class Window:
         self._controls(base)
         # What is typed changes what a run will make as surely as what is
         # ticked, so the panel of sheets hears about keystrokes too.
-        for typed in (
-            self.instants,
-            self.shadow_dates,
-            self.shadow_hours,
-            self.eye_hours,
-            self.communal_window,
-            self.communal_hours,
-            self.year,
-            self.custom_day,
-        ):
+        for typed in (self.communal_hours, self.year, self.custom_day):
             typed.bind("<KeyRelease>", lambda _event: self._sync(), add="+")
         for chosen in (self.adg_subset, self.shadow_subset):
             chosen.bind("<<ComboboxSelected>>", lambda _event: self._sync(), add="+")
@@ -2548,6 +2907,19 @@ class Window:
             "reported rather than invented, with the sheets left at the root.",
         )
 
+        self.plan_kinds, row = self._tiles(
+            frame,
+            row,
+            "Plans",
+            "What the solar plans show: the day in bands, the sun at each time, or both.",
+            "For the apartments and the communal space alike. Bands are the "
+            "whole day on one plan, striped by hours of sun, which is what the "
+            "ADG and a DCP ask about. Times are a plan per instant showing "
+            "where the sun actually falls, which is what somebody standing "
+            "there at nine in the morning asks about. Both is both, and a "
+            "longer run.",
+        )
+
         self.do_plans = tk.BooleanVar(value=False)
         # The study's own box. Everything from here to the end of the block
         # is built inside it, by the simple means of pointing ``frame`` at it:
@@ -2612,15 +2984,17 @@ class Window:
             "for — and a project that names none is assessed on every opening, "
             "which reads as a pass it has not earned.",
         )
-        self.instants, row = self._entry(
+        self.instants, row = self._ticks_row(
             frame,
             row,
             "Plan times",
-            "09:00, 12:00, 15:00",
-            "Times of day to draw a sun patch for. Comma separated.",
-            "One floor-plan sheet per time. Nine, twelve and three are the "
-            "conventional set. Each one adds a set of views and a layout, so a "
-            "long list makes a long run.",
+            "The times of day to draw the sun's patch on the floor for.",
+            "One floor-plan drawing per time. Nine, twelve and three are the "
+            "conventional set. Each one adds a set of views, so a long row "
+            "makes a long run.",
+            _hour_choices(clock=True),
+            key=_clock_text,
+            initial="09:00, 12:00, 15:00",
         )
         self.shadow_subset, row = self._combo(
             frame,
@@ -2642,7 +3016,6 @@ class Window:
         row = self._facade(frame, row)
 
         self.do_communal = tk.BooleanVar(value=False)
-        self.do_hourly = tk.BooleanVar(value=True)
         # The study's own box. Everything from here to the end of the block
         # is built inside it, by the simple means of pointing ``frame`` at it:
         # the rows beneath neither know nor care.
@@ -2667,23 +3040,6 @@ class Window:
             "apartments.",
         )
         row += 1
-        self.hourly_box = ttk.Checkbutton(
-            frame,
-            text="including one plan per hour",
-            variable=self.do_hourly,
-            command=self._sync,
-        )
-        self.hourly_box.grid(row=row, column=0, columnspan=2, sticky="w", padx=(18, 0))
-        Tooltip(
-            self.hourly_box,
-            "A plan for every whole hour in the window -- 08:00, 09:00 and so "
-            "on -- showing what is in sun at that moment, each on its own "
-            "sheet. The banded plan says how much sun a place gets across the "
-            "day and never says when, which is the question somebody standing "
-            "in a courtyard at nine in the morning is asking. Eight more "
-            "sheets from an eight to three window.",
-        )
-        row += 1
         self._caption(frame, row, "Hours of sun over a courtyard, a terrace or a playground.")
         row += 1
 
@@ -2699,18 +3055,21 @@ class Window:
             "Zone outline is the extent measured, and the plane assessed is "
             "one metre above the Zone floor.",
         )
-        self.communal_window, row = self._entry(
+        self.communal_window, row = self._ticks_row(
             frame,
             row,
             "Communal window",
-            "08:00-15:00",
-            "The hours assessed for the communal study, and the threshold below.",
+            "The hours assessed for the communal study: press the first and the last.",
             "The ADG measures 09:00 to 15:00, and that is what the apartment "
             "study uses whatever is typed here. A council DCP may ask for a "
             "wider window for communal open space -- 08:00 to 15:00 is "
             "common -- so this moves the communal study alone. Every drawing "
             "and the areas sheet carry the window they were made with, and "
             "the run says in yellow when it is not the ruleset's.",
+            _hour_choices(clock=True),
+            key=_clock_text,
+            span=True,
+            initial="08:00-15:00",
         )
         self.communal_hours, row = self._entry(
             frame,
@@ -2866,26 +3225,30 @@ class Window:
             "runs on for hundreds of metres. Right arithmetically, and not "
             "what the sheet is asking.",
         )
-        self.shadow_dates, row = self._entry(
+        self.shadow_dates, row = self._ticks_row(
             frame,
             row,
             "Days",
-            DEFAULT_SHADOW_DATES,
-            "MM-DD, comma separated.",
+            "The days a shadow set is drawn for.",
             "21 June is the one that decides things — the shortest day, when "
             "shadows are longest. The equinoxes and midsummer are drawn "
             "alongside it by convention. Each day adds a full set of sheets.",
+            DAY_CHOICES,
+            key=_day_key,
+            initial=DEFAULT_SHADOW_DATES,
         )
-        self.shadow_hours, row = self._entry(
+        self.shadow_hours, row = self._ticks_row(
             frame,
             row,
             "Hours",
-            DEFAULT_SHADOW_HOURS,
-            "Whole hours, comma separated.",
-            "One sheet per hour per day. Nine to three is the assessed "
+            "The whole hours drawn, on each of those days.",
+            "One drawing per hour per day. Nine to three is the assessed "
             "window; the long shadows at either end are correct and surprise "
             "people — on 21 June the sun is about 19 degrees up and a shadow "
             "runs nearly three times the height that casts it.",
+            _hour_choices(clock=False),
+            key=_clock_text,
+            initial=DEFAULT_SHADOW_HOURS,
         )
         self.shadow_favourite, row = self._entry(
             frame,
@@ -3006,14 +3369,15 @@ class Window:
             "practice's sheets do. The views of the 3D window itself are at "
             "1:1 whatever this says; a document is the drawing.",
         )
-        self.eye_hours, row = self._entry(
+        self.eye_hours, row = self._ticks_row(
             frame,
             row,
             "Hours",
-            "",
-            "Whole hours, comma separated. Blank is the ruleset's window, 9 to 15.",
+            "None pressed is the ruleset's window, 9 to 15.",
             "Only for a sheet that needs fewer. The assessment window is the "
             "ruleset's and a set drawn at other hours is not the study.",
+            _hour_choices(clock=False),
+            key=_clock_text,
         )
 
     def _site(self, frame: ttk.Frame) -> None:
@@ -3659,6 +4023,34 @@ class Window:
         Tooltip(name, detail, title=label, short=self._saying(line))
         return made, row + 1
 
+    def _ticks_row(
+        self,
+        parent: ttk.Frame,
+        row: int,
+        label: str,
+        hint: str,
+        detail: str,
+        choices: Sequence[tuple[str, str, str]],
+        *,
+        key: Callable[[str], str],
+        span: bool = False,
+        initial: str = "",
+    ) -> tuple[Ticks, int]:
+        """A row of hours or days to press, in place of a box to type them in.
+
+        The same shape as ``_entry``, and returned as the same kind of thing
+        as far as everything that reads it is concerned, so the fields that
+        moved off the keyboard did not have to move anywhere else.
+        """
+        name = ttk.Label(parent, text=label, **icons.options(label))
+        name.grid(row=row, column=0, sticky="w", pady=(4, 0))
+        made = Ticks(parent, choices, key=key, span=span, on_change=self._sync)
+        made.insert(0, initial)
+        made.grid(row=row, column=1, sticky="w", pady=(4, 0))
+        line = self._hint(parent, row + 1, hint)
+        Tooltip(name, detail, title=label, short=self._saying(line))
+        return made, row + 1
+
     def _picker(
         self, parent: ttk.Frame, row: int, label: str, hint: str, detail: str
     ) -> tuple[Chips, int]:
@@ -3846,7 +4238,6 @@ class Window:
         wrong. A picture of the sheets answers it better than a list of names.
         """
         self.floors_box.config(state="normal" if self.do_facade.get() else "disabled")
-        self.hourly_box.config(state="normal" if self.do_communal.get() else "disabled")
 
         # A tab whose study will run says so, without anybody opening it.
         self._paint_tabs()
@@ -3859,9 +4250,13 @@ class Window:
             if name in self.study_boxes:
                 box, says = self.study_boxes[name]
                 box.configure(style="Box.TFrame" if on else "BoxOff.TFrame")
-                made = sum(1 for sheet in sheets if sheet.job == name)
+                made = sum(1 for sheet in sheets if sheet.job == name and sheet.paper)
+                models = sum(1 for sheet in sheets if sheet.job == name and not sheet.paper)
+                worth = f"{made} sheet" + ("" if made == 1 else "s")
+                if models:
+                    worth += f", {models} model" + ("" if models == 1 else "s")
                 says.configure(
-                    text=(f"{made} sheet" + ("" if made == 1 else "s")) if on else "off",
+                    text=worth if on else "off",
                     style="PanelSays.TLabel" if on else "PanelSaysOff.TLabel",
                 )
         self._refill_dock(sheets)
@@ -3903,7 +4298,7 @@ class Window:
         self.dock.refill(sheets, filed=f"Layout Book: {filed}" if filed else "")
 
     # -- settings that outlive the window ------------------------------------
-    def _fields(self) -> dict[str, ttk.Entry | Tiles | Chips]:
+    def _fields(self) -> dict[str, ttk.Entry | Tiles | Ticks | Chips]:
         """Every typed or chosen setting, under a name that survives a rename.
 
         Written out here rather than gathered off the widget tree, because the
@@ -3985,7 +4380,6 @@ class Window:
             "study_communal": self.do_communal,
             "study_shadows": self.do_shadows,
             "study_sun_eyes": self.do_sun_eyes,
-            "study_hourly": self.do_hourly,
             "study_site": self.do_site,
             "site_context": self.do_site_context,
             "site_site": self.do_site_site,
@@ -4438,6 +4832,25 @@ class Window:
     #: read back -- ``SHEET_CHOICES`` below is where the sheet titles are
     #: turned into the word the command line wants.
     TILE_CHOICES: ClassVar[dict[str, tuple[tuple[str, str, str], ...]]] = {
+        "Plans": (
+            (
+                "Bands and times",
+                "plans_both",
+                "Bands and times: the whole day banded by hours of sun, and a plan "
+                "at each time showing where the sun falls.",
+            ),
+            (
+                "Bands by hour",
+                "plans_bands",
+                "Bands by hour: only the whole-day plans, banded by hours of sun.",
+            ),
+            (
+                "Sun at each time",
+                "plans_times",
+                "Sun at each time: only the plans at each time, showing where the "
+                "sun actually falls at that moment.",
+            ),
+        ),
         "Sheets": (
             (
                 "One layout, all drawings",
@@ -4494,6 +4907,17 @@ class Window:
             ),
         ),
     }
+
+    #: The two Plans choices that leave one kind out. The third, and the
+    #: default, is both.
+    PLAN_BANDS_ONLY = "Bands by hour"
+    PLAN_TIMES_ONLY = "Sun at each time"
+
+    def _plan_kinds(self) -> tuple[bool, bool]:
+        """``(bands, times)``: which of the two kinds of plan the Plans row
+        asks for. Anything but the two that leave one out is both."""
+        chosen = self.plan_kinds.get().strip()
+        return (chosen != self.PLAN_TIMES_ONLY, chosen != self.PLAN_BANDS_ONLY)
 
     #: What the Sheets row offers, and the word each sends.
     SHEET_CHOICES = (
@@ -4599,7 +5023,7 @@ class Window:
             return "", ""
         return halves[0], halves[1]
 
-    def _listed(self, entry: ttk.Entry | Chips) -> list[str]:
+    def _listed(self, entry: ttk.Entry | Ticks | Chips) -> list[str]:
         return [part.strip() for part in entry.get().split(",") if part.strip()]
 
     def _wait_seconds(self) -> str:
@@ -4675,6 +5099,7 @@ class Window:
             day: str,
             clocks: Sequence[str],
             mode: str | None = None,
+            scale: str = "",
         ) -> None:
             """One set of drawings, dealt as ``mode`` says -- or a sheet each
             when the set is not one the Sheets row governs."""
@@ -4695,53 +5120,108 @@ class Window:
                         part=part,
                         parts=len(chunks),
                         job=job,
+                        scale=scale,
                     )
                 )
 
+        # The scales the commands place their drawings at. Read off the same
+        # fields the run reads, or the command's own default where the window
+        # sends none; the plan sheets and the model sheet are the layout
+        # module's default and the communal plans are placed at 1:300.
+        context_scale = f"1:{self.site_scale.get().strip() or '3000'}"
+        eye_scale = f"1:{self.eye_scale.get().strip() or '500'}"
+        plan_scale, communal_scale, shadow_scale = "1:200", "1:300", "1:1000"
+
         if SITE_JOB in queued:
-            for which in ("Context Analysis", "Site Analysis", "Summary of Controls"):
-                # Not at an hour of any day: these are drawn from the address.
-                deal(SITE_JOB, "Site analysis", "site", "ST", which, "", [""])
+            # Not at an hour of any day: these are drawn from the address.
+            # The context sheet is at the scale the tab says; the site sheet
+            # is fitted to the site from a list of scales the run chooses
+            # from, which nothing here can know; the summary is a table.
+            for which, on, scale in (
+                ("Context Analysis", self.do_site_context.get(), context_scale),
+                ("Site Analysis", self.do_site_site.get(), "to fit"),
+                ("Summary of Controls", self.do_site_summary.get(), ""),
+            ):
+                if on:
+                    deal(SITE_JOB, "Site analysis", "site", "ST", which, "", [""], scale=scale)
+            # The models are not sheets and are not numbered as sheets: they
+            # are geometry on their own layers, and the panel draws them as
+            # that. The radius and the reach are the fields the run reads.
+            radius = self.site_radius.get().strip() or "500"
+            reach = self.site_future_reach.get().strip() or "100"
+            for kind, on, extent in (
+                (CONTEXT_MODEL, self.do_site_model.get(), f"{radius} m"),
+                (FUTURE_MODEL, self.do_site_future.get(), f"{reach} m reach"),
+            ):
+                if on:
+                    made.append(
+                        Sheet(
+                            study="Site analysis",
+                            glyph="site",
+                            number="",
+                            kind=kind,
+                            day=extent,
+                            drawings=(Drawing(kind=kind, day="", time=""),),
+                            job=SITE_JOB,
+                            paper=False,
+                        )
+                    )
 
         if FACADE_JOB in queued:
             for day in days:
                 # The coloured model and its views on one sheet, whatever the
                 # Sheets row says: it is one drawing, not a set.
-                deal(FACADE_JOB, "Solar analysis", "analysis", "SA", "Facade bands", day, [""])
+                deal(
+                    FACADE_JOB,
+                    "Solar analysis",
+                    "analysis",
+                    "SA",
+                    "Facade bands",
+                    day,
+                    [""],
+                    scale=plan_scale,
+                )
+        bands, times = self._plan_kinds()
         if PLANS_JOB in queued:
             for day in days:
-                deal(
-                    PLANS_JOB,
-                    "Solar analysis",
-                    "analysis",
-                    "SA",
-                    "Apartments",
-                    day,
-                    self._clocks(self.instants, ("09:00", "12:00", "15:00")),
-                    self._sheet_mode("each"),
-                )
-                deal(
-                    PLANS_JOB,
-                    "Solar analysis",
-                    "analysis",
-                    "SA",
-                    "Apartments, ADG total",
-                    day,
-                    [""],
-                )
+                if times:
+                    deal(
+                        PLANS_JOB,
+                        "Solar analysis",
+                        "analysis",
+                        "SA",
+                        "Apartments",
+                        day,
+                        self._clocks(self.instants, ("09:00", "12:00", "15:00")),
+                        self._sheet_mode("each"),
+                        scale=plan_scale,
+                    )
+                if bands:
+                    deal(
+                        PLANS_JOB,
+                        "Solar analysis",
+                        "analysis",
+                        "SA",
+                        "Apartments, ADG total",
+                        day,
+                        [""],
+                        scale=plan_scale,
+                    )
         if COMMUNAL_JOB in queued:
             for day in days:
-                deal(
-                    COMMUNAL_JOB,
-                    "Solar analysis",
-                    "analysis",
-                    "SA",
-                    "Communal open space",
-                    day,
-                    [""],
-                )
                 threshold = self.communal_hours.get().strip()
-                if threshold:
+                if bands:
+                    deal(
+                        COMMUNAL_JOB,
+                        "Solar analysis",
+                        "analysis",
+                        "SA",
+                        "Communal open space",
+                        day,
+                        [""],
+                        scale=communal_scale,
+                    )
+                if bands and threshold:
                     deal(
                         COMMUNAL_JOB,
                         "Solar analysis",
@@ -4750,8 +5230,9 @@ class Window:
                         f"Communal open space, {threshold} h or more",
                         day,
                         [""],
+                        scale=communal_scale,
                     )
-                if self.do_hourly.get():
+                if times:
                     deal(
                         COMMUNAL_JOB,
                         "Solar analysis",
@@ -4761,6 +5242,7 @@ class Window:
                         day,
                         self._window_clocks(),
                         self._sheet_mode("one"),
+                        scale=communal_scale,
                     )
                 deal(COMMUNAL_JOB, "Solar analysis", "analysis", "SA", COMMUNAL_AREAS, day, [""])
 
@@ -4776,6 +5258,7 @@ class Window:
                     day,
                     hours,
                     self._sheet_mode("two"),
+                    scale=shadow_scale,
                 )
 
         if SUN_EYE_JOB in queued:
@@ -4790,6 +5273,7 @@ class Window:
                     day,
                     hours,
                     self._sheet_mode("two"),
+                    scale=eye_scale,
                 )
 
         return made
@@ -4838,7 +5322,7 @@ class Window:
         return [f"{hour:02d}:00" for hour in range(first, last + 1)]
 
     @staticmethod
-    def _clocks(box: ttk.Entry, fallback: Sequence[str]) -> list[str]:
+    def _clocks(box: ttk.Entry | Ticks, fallback: Sequence[str]) -> list[str]:
         """The times in a field, or the ones the study runs without them,
         each spelled the way a sheet is named for it."""
         times = [part.strip() for part in box.get().split(",") if part.strip()]
@@ -4901,6 +5385,28 @@ class Window:
         """
         if sheet is None:
             self.info.rest()
+            return
+        if not sheet.paper:
+            if sheet.kind == FUTURE_MODEL:
+                detail = (
+                    f"Not a sheet: the envelopes the controls allow on the lots within "
+                    f"{sheet.day} of the site, at the street setback, as 3D geometry on "
+                    "its own layers -- what could stand next door, for the shadow "
+                    "diagrams to cast."
+                )
+            else:
+                detail = (
+                    f"Not a sheet: the terrain and the buildings within {sheet.day} of the "
+                    "site, as 3D geometry on its own layers from NSW open data -- the "
+                    "context every other study casts against."
+                )
+            self.info.show(
+                sheet.glyph,
+                sheet.kind,
+                f"{sheet.kind}, {sheet.day}.",
+                detail,
+                state="not built yet",
+            )
             return
         if not sheet.time:
             detail = _untimed_note(sheet)[1]
@@ -4984,13 +5490,17 @@ class Window:
                 )
 
         if self.do_plans.get():
+            bands, times = self._plan_kinds()
             args = [
                 "archicad-run",
                 "--timezone",
                 TIMEZONE,
                 *common,
                 *self._prefix_flag(self.prefix_solar),
-                "--draw",
+                # --draw is the whole-day sheet, the apartments banded by their
+                # hours of sun; --sheet makes the layouts for both kinds, and
+                # without --draw it makes the plans at each time alone.
+                "--draw" if bands else "--no-draw",
                 "--sheet",
             ]
             if self.apartments.get():
@@ -5018,7 +5528,7 @@ class Window:
                 args += ["--layer-combination", self.combination.get()]
             for name in self._listed(self.hide):
                 args += ["--hide-layer", name]
-            for stamp in self._listed(self.instants):
+            for stamp in self._listed(self.instants) if times else []:
                 args += ["--plan-instant", stamp]
             args += self._band_args()
             if self.master.get():
@@ -5088,8 +5598,11 @@ class Window:
             # areas are what they quote, and a study that draws the one
             # without writing the other invites a figure read off a colour.
             args += ["--zone-sheet", "--zone-stats"]
-            if self.do_hourly.get():
+            bands, times = self._plan_kinds()
+            if times:
                 args += ["--zone-hourly"]
+            if not bands:
+                args += ["--no-zone-bands"]
             args += ["--year", self.year.get().strip() or "2024"]
             # One run per day ticked. Each carries its own date, and a
             # command names everything it makes after the day it studied,

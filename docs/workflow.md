@@ -463,7 +463,24 @@ will use, with the hour under each and a cell the run leaves empty drawn
 empty. Each study is drawn from the fields it really reads: the shadow
 diagrams from their own **Days** and **Hours**, the sun views from theirs,
 the communal study's hourly set from every whole hour of its window. Point
-at a sheet for the sun at every drawing on it.
+at a sheet for the sun at every drawing on it. The title block carries the
+scale each command places its drawings at, or "to fit" for the site sheet.
+The site study's context model and future model are not sheets, so they
+are drawn as the geometry -- ground, blocks, site, and the envelopes the
+controls allow -- with no paper under them, and are not counted as sheets.
+
+The hours and days are rows of buttons rather than boxes to type in: press
+the hours a study draws, press the first and last hour of the communal
+window, press the days the shadow set is for. A settings file saved from the
+typed days still loads, lights the buttons it names, and is sent as saved.
+
+The **Plans** row in Solar analysis says what the apartment and communal
+plans show: *Bands and times* (the default), *Bands by hour* -- the whole
+day on one plan, striped by hours of sun -- or *Sun at each time*, a plan per
+instant showing where the sun actually falls. On the command line that is
+`--draw` and `--plan-instant` for `archicad-run`, and `--zone-bands` and
+`--zone-hourly` for `massing`; `--no-zone-bands` with `--zone-hourly` draws
+the hourly plans alone and still writes the areas sheet and the CSV.
 
 ## Presets
 
