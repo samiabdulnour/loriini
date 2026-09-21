@@ -10,8 +10,12 @@
 //   ProjectCommands.hpp   where the tool is standing, and what it can see
 //
 // The test for belonging here is narrow and worth restating: no JSON command
-// exists for it anywhere, in Tapir or in Archicad's own API. Anything Tapir
-// already does keeps going through Tapir.
+// exists for it anywhere, in Tapir or in Archicad's own API.
+//
+// Tapir's own commands are built in beside them (Tapir/, registered by
+// InstallTapirCommands), so Loriini is the only add-on a workstation needs.
+// They keep Tapir's code and schemas unchanged and answer under a namespace of
+// their own, "LoriiniTapir"; see Tapir/README.md.
 //
 // The second is the interface: a menu and a palette, so Loriini is a thing in
 // Archicad rather than a window a colleague has to go and find in the Start
@@ -30,6 +34,9 @@
 #include "ProjectCommands.hpp"
 #include "ModelCommands.hpp"
 #include "LayoutCommands.hpp"
+
+// Tapir's commands, built in. By relative path on purpose; see the header.
+#include "../Tapir/TapirCommands.hpp"
 
 #include "Launch.hpp"
 #include "LoriiniPalette.hpp"
@@ -174,7 +181,11 @@ GSErrCode __ACENV_CALL Initialize (void)
 		}
 	}
 
-	return NoError;
+	// Then every command Tapir has, under the "LoriiniTapir" namespace, so
+	// that the study needs this one add-on and nothing beside it. After
+	// Loriini's own on purpose: if Tapir's set ever fails to register, the
+	// commands only this add-on has are already answering.
+	return InstallTapirCommands ();
 }
 
 

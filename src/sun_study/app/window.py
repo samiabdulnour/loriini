@@ -3456,7 +3456,7 @@ class Window:
         not offered, because a sun eye set at the wrong date is a plausible
         picture of the wrong day.
 
-        Needs the Loriini add-on beside Tapir, and a floor plan tab in front
+        Needs the Loriini add-on, and a floor plan tab in front
         when it runs: the projection can only be written with the window and
         the current database agreeing, and the run says so if they do not.
         """
@@ -3479,8 +3479,8 @@ class Window:
             box,
             "The model seen from the sun's own position at each hour of the "
             "assessment window, as saved views, 3D Documents and sheets. Off "
-            "by default: it needs the Loriini add-on installed beside Tapir, "
-            "and a floor plan tab in front in Archicad when it runs.",
+            "by default: it needs the Loriini add-on installed, and a floor "
+            "plan tab in front in Archicad when it runs.",
         )
         row += 1
         self._caption(
@@ -3571,7 +3571,7 @@ class Window:
             "and makes whichever of the four outputs are ticked: the Context "
             "Analysis and Site Analysis sheets, the Summary of Controls on a "
             "layout, and the Context Model in 3D. Needs the Loriini add-on "
-            "beside Tapir, and an internet connection. NSW addresses only.",
+            "and an internet connection. NSW addresses only.",
         )
         row += 1
         self._caption(
@@ -4755,16 +4755,17 @@ class Window:
 
     def _offer(self) -> None:
         found = self.options
-        # Nothing here works without the add-on: 116 of the tool's 124
-        # Archicad calls are Tapir commands. So it is said plainly, and Run is
-        # switched off rather than left to fail several steps later.
+        # Nothing here works without the add-on: most of the tool's Archicad
+        # calls are Tapir's commands, which the Loriini add-on carries built
+        # in. So it is said plainly, and Run is switched off rather than left
+        # to fail several steps later.
         self.go.config(state="disabled" if found.tapir_missing else "normal")
         if found.tapir_missing:
             self.status.config(
                 text=(
-                    "Archicad is running but the Tapir add-on is not installed, and "
-                    "nothing here works without it. Install the Archicad 26 build "
-                    "from github.com/ENZYME-APD/tapir-archicad-automation/releases, "
+                    "Archicad is running but the Loriini add-on is not installed, "
+                    "or is too old to carry Tapir's commands, and nothing here works "
+                    "without it. Install the current LoriiniAddOn_AC26_Win.apx, "
                     "restart Archicad, then press Refresh."
                 ),
                 foreground="#a33",
@@ -5947,7 +5948,7 @@ class Window:
             self._write("No Archicad to run against. Open a project, then Refresh.")
             return
         if self.options.tapir_missing:
-            self._write("The Tapir add-on is not installed in this Archicad.")
+            self._write("The Loriini add-on is not installed in this Archicad.")
             return
         if self.do_site.get() and not self.site_address.get().strip():
             self._write("Site analysis is ticked but has no address. Type one in its section.")

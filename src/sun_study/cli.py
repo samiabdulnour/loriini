@@ -7464,7 +7464,7 @@ def site_analysis(
     Fetched from NSW open data -- cadastre, ePlanning, topography, Transport
     for NSW, OpenStreetMap and Valhalla -- and drawn as native fills, lines
     and texts at true ground scale in the project's own frame, with a view of
-    each sheet at its scale. Needs the Loriini add-on beside Tapir: a
+    each sheet at its scale. Needs the Loriini add-on: a
     worksheet can only be drawn into in the session that made it through the
     add-on's own command.
     """

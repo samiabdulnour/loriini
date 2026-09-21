@@ -94,8 +94,9 @@ printing a single number, so a wrong assumption is visible before a figure gets 
 
 ## Against a running Archicad
 
-With Archicad 26 open and the [Tapir add-on](https://github.com/ENZYME-APD/tapir-archicad-automation/releases)
-installed (1.5.1 or newer):
+With Archicad 26 open and the Loriini add-on installed (it carries the
+[Tapir](https://github.com/ENZYME-APD/tapir-archicad-automation) commands built in,
+so Tapir itself is no longer needed):
 
 ```bash
 uv run sun-study archicad-info                                  # what is Archicad reporting?
@@ -137,16 +138,18 @@ worked around: a fill that can carry its own colour and a hole, a worksheet that
 can be drawn into in the session that made it, a layer combination that can be
 activated, and knowing which database the tool is standing in.
 
-So `archicad-addon/` is a small C++ add-on carrying those nine commands, and
-a Loriini menu inside Archicad that starts this app. It runs **beside** Tapir
-rather than replacing or forking it: everything Tapir already does keeps going
-through Tapir, and if Tapir ever ships these, ours is deleted.
+So `archicad-addon/` is a C++ add-on carrying those commands, and a Loriini
+menu inside Archicad that starts this app. It also carries **Tapir's own
+commands built in** (`archicad-addon/Tapir`, Tapir 1.5.8, MIT), so it is the only
+add-on a workstation needs: Tapir no longer has to be installed beside it. See
+[`archicad-addon/Tapir/README.md`](archicad-addon/Tapir/README.md) and D110.
 
 Nobody in the office builds it. Compiling an Archicad add-on needs Visual
 Studio with the v142 toolset, and these workstations have no administrator
 rights, so the `Archicad add-on` workflow builds it on a runner and uploads the
-`.apx`. Installing it needs no rights either: drop the file next to Tapir's and
-add the folder in Options > Add-On Manager.
+`.apx`. Installing it needs no rights either: drop the file into an add-on
+folder and add the folder in Options > Add-On Manager. Once it loads, the Tapir
+add-on can be removed.
 
 [`docs/addon.md`](docs/addon.md) records what was verified, how the two missing
 commands were confirmed missing, and the one convention that is still open.

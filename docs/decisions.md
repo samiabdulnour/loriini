@@ -3739,3 +3739,38 @@ rows, *Master layout*, *Layer combination*, *Layers forced visible*, *Layers
 hidden on sheets*, *Model export: the layers that leave Archicad*. The
 communal icon is a courtyard between two wings with a tree in it, in place of
 a field of dots nobody could read.
+
+### D110 — Tapir is built into the Loriini add-on, and no longer installed on its own
+
+**Decided 21 September 2026.** Every study needed two add-ons side by side:
+Tapir for the ~60 ordinary JSON commands the Python side uses (elements,
+layers, the navigator, hatches, layouts, views) and Loriini for the ones no
+JSON command exposes. Two installs, two versions to keep in step, and two
+things to go wrong on a workstation without admin rights.
+
+**What.** Tapir 1.5.8's command sources (MIT) are copied into
+`archicad-addon/Tapir` and compiled into `LoriiniAddOn_AC26_Win.apx`. Its
+registration list is kept verbatim as `InstallTapirCommands`, called at the end
+of Loriini's `Initialize`: 233 commands. Left out: Tapir's menus, palette,
+script runner and Script UI commands, self-updater and developer commands. No
+command's code was edited. 1.5.8 because it is the build the Python side was
+verified against live; `GetAddOnVersion` still answers 1.5.8, so every version
+gate holds.
+
+**A namespace of its own, `LoriiniTapir`.** Not `TapirCommand`: a standalone
+Tapir left installed would claim the same namespace and names, and Loriini's
+own `CreateSlabs` and `CreateTexts` differ from Tapir's commands of the same
+name. So the one change to Tapir's code is the namespace string in
+`CommandBase.cpp`.
+
+**Either order.** `run_tapir` sends to `LoriiniTapir` first. On a first-call
+"not registered" (4010, at either level, or no add-on response) it retries once
+under `TapirCommand`, and whichever answers is kept for the connection. So an
+old Loriini with Tapir beside it still works, and the new Loriini works with or
+without Tapir. Once the new build loads, Tapir can be removed.
+
+**Unverified until it loads.** The build is CI's (no admin rights here), with
+Tapir's own recipe: the 26.3000 kit and v142. Tapir compiles clean under /W4
+/WX there, so Loriini's /W3 /WX should pass; it has not yet been loaded into
+Archicad.
+

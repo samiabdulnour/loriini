@@ -4,7 +4,7 @@
     uv run python scripts/build_app.py
 
 Leaves ``dist/Loriini.exe``. Copy that anywhere; it needs no Python and no
-install, only an Archicad with the Tapir add-on running on the same machine.
+install, only an Archicad with the Loriini add-on running on the same machine.
 
 Why one file and no console
 ---------------------------

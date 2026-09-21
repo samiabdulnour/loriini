@@ -1,4 +1,4 @@
-"""Transport for Archicad's JSON API and the Tapir add-on.
+"""Transport for Archicad's JSON API and the Loriini add-on.
 
 Everything in this package is written against the protocol as it actually is,
 read out of the Tapir source and its published command definitions, not from
@@ -21,9 +21,14 @@ Archicad 24+ listens on ``http://127.0.0.1:19723`` and takes::
 Tapir's commands are reached through one official command::
 
     {"command": "API.ExecuteAddOnCommand",
-     "parameters": {"addOnCommandId": {"commandNamespace": "TapirCommand",
+     "parameters": {"addOnCommandId": {"commandNamespace": "LoriiniTapir",
                                        "commandName": "<Name>"},
                     "addOnCommandParameters": {...}}}
+
+Tapir's command code is built into the Loriini add-on (``archicad-addon/Tapir``),
+so one add-on is all a workstation needs. Its commands answer under
+``LoriiniTapir``; a standalone Tapir, answering under ``TapirCommand``, is only a
+fallback for a Loriini build that predates this.
 
 **Errors arrive at two levels, and both must be checked.** The outer response
 carries ``succeeded`` and may carry ``error``; the inner Tapir response, under
@@ -59,13 +64,33 @@ __all__ = [
 
 DEFAULT_HOST = "http://127.0.0.1"
 DEFAULT_PORT = 19723
-TAPIR_NAMESPACE = "TapirCommand"
 
-#: This project's own add-on, in ``archicad-addon/``. A second namespace
-#: beside Tapir's rather than a fork of it: it carries only the three things
-#: no JSON command exists for at all, and if Tapir ever ships them it can be
-#: dropped without touching anything else here.
+#: Where Tapir's commands answer inside the Loriini add-on, which carries
+#: Tapir's code (``archicad-addon/Tapir``). Its own namespace rather than
+#: Tapir's, so a standalone Tapir left installed does not claim the same
+#: commands, and so Tapir's ``CreateSlabs`` and ``CreateTexts`` stay apart from
+#: Loriini's commands of the same name.
+TAPIR_NAMESPACE = "LoriiniTapir"
+
+#: The standalone Tapir add-on's namespace. Only a fallback now: used when the
+#: installed Loriini predates the built-in commands and Tapir is still beside
+#: it, so the two add-ons can be updated in either order.
+STANDALONE_TAPIR_NAMESPACE = "TapirCommand"
+
+#: Archicad's answer for a namespace or command no add-on registered. What
+#: separates "this Loriini is too old to carry Tapir" from a real failure.
+NOT_REGISTERED_CODE = 4010
+
+#: This project's own add-on, in ``archicad-addon/``: the commands no JSON
+#: command exists for at all, beside Tapir's under ``TAPIR_NAMESPACE``.
 LORIINI_NAMESPACE = "Loriini"
+
+#: What to do about a missing or too-old add-on, said once so every message
+#: gives the same advice.
+INSTALL_LORIINI = (
+    "Install the current Loriini add-on (LoriiniAddOn_AC26_Win.apx, built by the "
+    "'Archicad add-on' workflow), which has Tapir's commands built in."
+)
 
 #: How long to let Archicad think about one command before giving up on it.
 #: Sized for the slowest thing anyone asks of it -- the IFC export -- on the
@@ -101,11 +126,24 @@ class ArchicadNotRunningError(ArchicadError):
 
 
 class TapirUnavailableError(ArchicadError):
-    """Archicad answered but the Tapir add-on is missing or too old."""
+    """Archicad answered but Tapir's commands are missing or too old.
+
+    They come from the Loriini add-on now; the name is kept because every
+    caller that handles "the add-on is not there" already catches this.
+    """
 
 
 class CommandFailedError(ArchicadError):
-    """Archicad accepted the request and reported a failure."""
+    """Archicad accepted the request and reported a failure.
+
+    ``code`` is Archicad's or the add-on's error code where one was given, so
+    a caller can tell "not registered" from a real failure without matching
+    on the words.
+    """
+
+    def __init__(self, message: str, code: Any = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class Transport(Protocol):
@@ -228,26 +266,28 @@ def _project_name(probe: HttpTransport) -> str:
     Best effort: an instance with no project open still answers ``IsAlive``,
     and knowing a port is live is most of the value even without a name.
     """
-    try:
-        response = probe.send(
-            {
-                "command": "API.ExecuteAddOnCommand",
-                "parameters": {
-                    "addOnCommandId": {
-                        "commandNamespace": TAPIR_NAMESPACE,
-                        "commandName": "GetProjectInfo",
+    for namespace in (TAPIR_NAMESPACE, STANDALONE_TAPIR_NAMESPACE):
+        try:
+            response = probe.send(
+                {
+                    "command": "API.ExecuteAddOnCommand",
+                    "parameters": {
+                        "addOnCommandId": {
+                            "commandNamespace": namespace,
+                            "commandName": "GetProjectInfo",
+                        },
+                        "addOnCommandParameters": {},
                     },
-                    "addOnCommandParameters": {},
-                },
-            }
-        )
-    except ArchicadError:
-        return ""
-    inner = (response.get("result") or {}).get("addOnCommandResponse") or {}
-    if not isinstance(inner, dict):
-        return ""
-    name = inner.get("projectName") or inner.get("projectPath") or ""
-    return str(name) if isinstance(name, str) else ""
+                }
+            )
+        except ArchicadError:
+            return ""
+        inner = (response.get("result") or {}).get("addOnCommandResponse") or {}
+        if not isinstance(inner, dict) or "error" in inner:
+            continue
+        name = inner.get("projectName") or inner.get("projectPath") or ""
+        return str(name) if isinstance(name, str) else ""
+    return ""
 
 
 #: Archicad refuses every API call while a modal dialog is open, and answers
@@ -256,6 +296,17 @@ def _project_name(probe: HttpTransport) -> str:
 #: until it is closed. Worth its own message, because "Invalid program status"
 #: reads like a fault in the tool.
 BUSY_STATUS_CODE = 4001
+
+
+def _not_registered(error: ArchicadError) -> bool:
+    """Whether a failure means "nobody registered that", not "that went wrong".
+
+    Both shapes count: Archicad's code 4010, and an envelope that came back
+    with no add-on response at all.
+    """
+    if isinstance(error, TapirUnavailableError):
+        return True
+    return isinstance(error, CommandFailedError) and error.code == NOT_REGISTERED_CODE
 
 
 def _explain(command: str, error: dict[str, Any]) -> str:
@@ -368,6 +419,7 @@ class ArchicadConnection:
     def __init__(self, transport: Transport | None = None) -> None:
         self._transport = transport if transport is not None else HttpTransport()
         self._tapir_version: str | None = None
+        self._tapir_namespace: str | None = None
         self._database: Database | None = None
 
     # -- raw protocol ----------------------------------------------------
@@ -377,29 +429,50 @@ class ArchicadConnection:
 
         if not response.get("succeeded", False):
             error = response.get("error") or {}
-            raise CommandFailedError(_explain(command, error))
+            raise CommandFailedError(_explain(command, error), error.get("code"))
         return response.get("result")
 
     def run_tapir(self, command: str, parameters: dict[str, Any] | None = None) -> Any:
-        """Run one of Tapir's commands.
+        """Run one of Tapir's commands, as built into the Loriini add-on.
 
         Checks both error levels. The inner one is the dangerous one: the
         official call reports success while the add-on response carries a
         failure, so a client that only looks at ``succeeded`` reads an error
         object as though it were data.
+
+        Until one namespace has answered, a "not registered" from Loriini's is
+        retried once under a standalone Tapir's, and whichever answers is kept
+        for the rest of the connection. That is what lets the Loriini add-on
+        and a leftover Tapir be updated in either order. Once settled there is
+        no retry, so a command that really is missing fails once, plainly.
         """
-        inner = self._run_addon(
-            TAPIR_NAMESPACE,
-            command,
-            parameters,
-            missing=(
-                "The Tapir add-on is probably not installed. Install the AC26 build "
-                "from https://github.com/ENZYME-APD/tapir-archicad-automation/releases"
-            ),
-        )
+        missing = "Tapir's commands are not answering. " + INSTALL_LORIINI
+        if self._tapir_namespace is not None:
+            inner = self._run_addon(self._tapir_namespace, command, parameters, missing=missing)
+        else:
+            try:
+                inner = self._run_addon(TAPIR_NAMESPACE, command, parameters, missing=missing)
+                self._tapir_namespace = TAPIR_NAMESPACE
+            except (TapirUnavailableError, CommandFailedError) as first:
+                if not _not_registered(first):
+                    raise
+                try:
+                    inner = self._run_addon(
+                        STANDALONE_TAPIR_NAMESPACE, command, parameters, missing=missing
+                    )
+                except (TapirUnavailableError, CommandFailedError) as second:
+                    if _not_registered(second):
+                        raise first from None
+                    raise
+                self._tapir_namespace = STANDALONE_TAPIR_NAMESPACE
         if command == "ChangeWindow":
             self._note_change_window(parameters or {}, inner)
         return inner
+
+    @property
+    def tapir_namespace(self) -> str | None:
+        """Which namespace Tapir's commands answered under, once one has."""
+        return self._tapir_namespace
 
     def run_loriini(self, command: str, parameters: dict[str, Any] | None = None) -> Any:
         """Run one of this project's own add-on commands.
@@ -422,8 +495,8 @@ class ArchicadConnection:
             parameters,
             missing=(
                 "The Loriini add-on is not installed. It is built by the "
-                "'Archicad add-on' workflow; copy the .apx next to Tapir's and "
-                "add that folder in Options > Add-On Manager."
+                "'Archicad add-on' workflow; copy the .apx into an add-on folder "
+                "and add that folder in Options > Add-On Manager."
             ),
         )
 
@@ -465,7 +538,8 @@ class ArchicadConnection:
             raise CommandFailedError(
                 f"{namespace} command {command} failed: "
                 f"{error.get('message', 'no message')} "
-                f"(code {error.get('code', 'none')})"
+                f"(code {error.get('code', 'none')})",
+                error.get("code"),
             )
         return inner
 
@@ -541,8 +615,7 @@ class ArchicadConnection:
             needed = ".".join(str(p) for p in minimum)
             raise TapirUnavailableError(
                 f"Tapir {version} is installed but this needs at least {needed}. "
-                f"{because} arrived in {needed}. Update the add-on from "
-                f"https://github.com/ENZYME-APD/tapir-archicad-automation/releases"
+                f"{because} arrived in {needed}. {INSTALL_LORIINI}"
             )
         return version
 
@@ -574,4 +647,10 @@ class ArchicadConnection:
             if version == VERIFIED_AGAINST_TAPIR_VERSION
             else f" (this tool was written against {VERIFIED_AGAINST_TAPIR_VERSION})"
         )
-        return f"Archicad JSON API reachable, Tapir add-on {version}{note}"
+        if self._tapir_namespace == STANDALONE_TAPIR_NAMESPACE:
+            return (
+                f"Archicad JSON API reachable, standalone Tapir add-on {version}{note}. "
+                f"The installed Loriini add-on predates the built-in Tapir commands; "
+                f"update it and Tapir can be removed"
+            )
+        return f"Archicad JSON API reachable, Loriini add-on with Tapir {version} built in{note}"

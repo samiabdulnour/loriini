@@ -28,7 +28,10 @@ version gating. Guards named `ServerMainVers_2600 / 2700 / 2800` do exist, in
 `CommandBase.cpp` and `IssueCommands.cpp`, but they are API-compatibility shims around
 enum and container changes between SDK versions, not command exclusions.
 
-Install from <https://github.com/ENZYME-APD/tapir-archicad-automation/releases>.
+**Since D110 Tapir is not installed separately.** Its 1.5.8 command sources are
+built into the Loriini add-on (`archicad-addon/Tapir`) and answer under the
+`LoriiniTapir` namespace; a standalone Tapir, if still installed, is only a
+fallback that `run_tapir` uses when the Loriini build predates this.
 
 `ArchicadConnection.require_tapir()` checks the version at the handshake, so an old
 add-on fails as a version problem rather than as an unexplained error on whichever

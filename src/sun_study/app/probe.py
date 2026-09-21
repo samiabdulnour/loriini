@@ -243,8 +243,9 @@ def options(port: int) -> ProjectOptions:
         return ProjectOptions(
             tapir_missing=True,
             problems=(
-                "Archicad is running but the Tapir add-on is not installed. "
-                "The study cannot read or draw anything without it.",
+                "Archicad is running but the Loriini add-on is not installed, or "
+                "is too old to carry Tapir's commands. The study cannot read or "
+                "draw anything without it.",
             ),
         )
     except ArchicadError as error:

@@ -5,8 +5,9 @@ name: Archicad add-on
 # Not a convenience. Compiling an Archicad add-on needs Visual Studio with the
 # v142 toolset, and the workstations this tool runs on have no administrator
 # rights, so nobody in the office can install one. A runner can. The output is
-# a single .apx a colleague drops into the folder beside Tapir's, which needs
-# no rights at all.
+# a single .apx a colleague drops into an add-on folder, which needs no rights
+# at all. It carries Tapir's commands built in (archicad-addon/Tapir), so it is
+# the only add-on a workstation needs.
 #
 # The recipe is Tapir's, which is the only combination proven to build an
 # Archicad 26 add-on: a windows-2022 runner, the 26.3000 kit from Graphisoft's

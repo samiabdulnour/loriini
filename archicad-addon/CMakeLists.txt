@@ -136,7 +136,20 @@ file (GLOB AddOnSourceFiles ${AddOnSourcesFolder}/*.c ${AddOnSourcesFolder}/*.cp
 set (AddOnFiles ${AddOnHeaderFiles} ${AddOnSourceFiles})
 source_group ("Sources" FILES ${AddOnFiles})
 
-add_library (AddOn SHARED ${AddOnFiles})
+# Tapir's commands, built in so the Tapir add-on is no longer needed beside
+# this one. See Tapir/README.md for which version, and what was left out.
+#
+# Deliberately NOT added to the include path. Tapir and Loriini each have a
+# ProjectCommands.hpp, an APIEnvir.h and a ResourceIds.hpp; a quoted include
+# looks beside the including file first, so each side finds its own only as
+# long as neither folder is on the other's search path.
+set (TapirSourcesFolder ./Tapir)
+file (GLOB TapirHeaderFiles ${TapirSourcesFolder}/*.h ${TapirSourcesFolder}/*.hpp)
+file (GLOB TapirSourceFiles ${TapirSourcesFolder}/*.cpp)
+set (TapirFiles ${TapirHeaderFiles} ${TapirSourceFiles})
+source_group ("Tapir" FILES ${TapirFiles})
+
+add_library (AddOn SHARED ${AddOnFiles} ${TapirFiles})
 
 set_target_properties (AddOn PROPERTIES OUTPUT_NAME ${AC_ADDON_NAME})
 set_target_properties (AddOn PROPERTIES SUFFIX ".apx")

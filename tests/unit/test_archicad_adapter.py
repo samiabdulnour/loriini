@@ -35,6 +35,7 @@ from sun_study.archicad.connection import (
     DEFAULT_TIMEOUT_SECONDS,
     MINIMUM_TAPIR_VERSION,
     PORT_RANGE,
+    STANDALONE_TAPIR_NAMESPACE,
     TAPIR_NAMESPACE,
     ArchicadConnection,
     ArchicadError,
@@ -267,7 +268,7 @@ def test_missing_add_on_response_names_the_add_on() -> None:
             return {"succeeded": True, "result": {}}
 
     connection = ArchicadConnection(NoAddOn())
-    with pytest.raises(TapirUnavailableError, match="Tapir add-on is probably not installed"):
+    with pytest.raises(TapirUnavailableError, match="Install the current Loriini add-on"):
         connection.run_tapir("GetProjectInfo")
 
 
@@ -4837,15 +4838,98 @@ def test_loriini_commands_go_out_under_their_own_namespace() -> None:
     assert sent["commandName"] == "GetProjection"
 
 
-def test_tapir_keeps_its_own_namespace() -> None:
-    """The refactor that added a second namespace must not have moved the first."""
+def test_tapir_commands_go_to_the_ones_built_into_loriini() -> None:
+    """Tapir's code is inside the Loriini add-on now, under a namespace of its own."""
     transport = FakeTransport({"GetProjectInfo": {"projectName": "Kogarah"}})
     connection = ArchicadConnection(transport)
 
     connection.run_tapir("GetProjectInfo")
 
     sent = transport.sent[-1]["parameters"]["addOnCommandId"]
-    assert sent["commandNamespace"] == "TapirCommand"
+    assert sent["commandNamespace"] == "LoriiniTapir"
+    assert connection.tapir_namespace == "LoriiniTapir"
+
+
+class OnlyNamespace:
+    """An Archicad where exactly one namespace has Tapir's commands registered.
+
+    Anything sent elsewhere answers the way Archicad does for a command no
+    add-on registered: code 4010.
+    """
+
+    def __init__(self, namespace: str, *, outer: bool = False) -> None:
+        self.namespace = namespace
+        self.outer = outer
+        self.sent: list[str] = []
+
+    def send(self, payload: dict[str, Any]) -> dict[str, Any]:
+        where = payload["parameters"]["addOnCommandId"]["commandNamespace"]
+        self.sent.append(where)
+        if where == self.namespace:
+            return {"succeeded": True, "result": {"addOnCommandResponse": {"version": "1.5.8"}}}
+        error = {"code": 4010, "message": "Archicad does not have the registered Add-On command"}
+        if self.outer:
+            return {"succeeded": False, "error": error}
+        return {"succeeded": True, "result": {"addOnCommandResponse": {"error": error}}}
+
+
+@pytest.mark.parametrize("outer", [False, True])
+def test_an_older_loriini_falls_back_to_a_standalone_tapir_once(outer: bool) -> None:
+    """A Loriini build from before Tapir was built in, with Tapir still beside it.
+
+    The first call finds out and every later call goes straight to Tapir, so
+    the add-ons can be updated in either order without a run noticing.
+    Both places Archicad can put the 4010 are covered.
+    """
+    transport = OnlyNamespace(STANDALONE_TAPIR_NAMESPACE, outer=outer)
+    connection = ArchicadConnection(transport)
+
+    assert connection.run_tapir("GetAddOnVersion") == {"version": "1.5.8"}
+    connection.run_tapir("GetAddOnVersion")
+
+    assert transport.sent == [
+        TAPIR_NAMESPACE,
+        STANDALONE_TAPIR_NAMESPACE,
+        STANDALONE_TAPIR_NAMESPACE,
+    ]
+    assert "standalone Tapir" in connection.describe()
+
+
+def test_the_built_in_commands_are_used_even_with_tapir_still_installed() -> None:
+    transport = OnlyNamespace(TAPIR_NAMESPACE)
+    connection = ArchicadConnection(transport)
+
+    connection.run_tapir("GetAddOnVersion")
+    connection.run_tapir("GetAddOnVersion")
+
+    assert transport.sent == [TAPIR_NAMESPACE, TAPIR_NAMESPACE]
+    assert "Loriini add-on with Tapir 1.5.8 built in" in connection.describe()
+
+
+def test_with_neither_add_on_the_message_names_loriini() -> None:
+    connection = ArchicadConnection(OnlyNamespace("nobody"))
+    with pytest.raises(CommandFailedError, match="LoriiniTapir") as caught:
+        connection.run_tapir("GetAddOnVersion")
+    assert caught.value.code == 4010
+
+
+def test_a_real_failure_is_not_retried_under_the_other_namespace() -> None:
+    """Only "not registered" means the namespace is wrong; anything else is the answer."""
+
+    class Refuses:
+        def __init__(self) -> None:
+            self.sent = 0
+
+        def send(self, payload: dict[str, Any]) -> dict[str, Any]:
+            self.sent += 1
+            error = {"code": 3, "message": "bad parameters"}
+            return {"succeeded": True, "result": {"addOnCommandResponse": {"error": error}}}
+
+    transport = Refuses()
+    connection = ArchicadConnection(transport)
+    with pytest.raises(CommandFailedError, match="bad parameters"):
+        connection.run_tapir("GetProjectInfo")
+    assert transport.sent == 1
 
 
 def test_a_missing_loriini_add_on_does_not_blame_tapir() -> None:

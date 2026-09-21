@@ -14,9 +14,10 @@ open rather than guessed at.
 ## Why an add-on at all
 
 Everything else this tool asks of Archicad goes through the
-[Tapir add-on](https://github.com/ENZYME-APD/tapir-archicad-automation), and
-should keep going through it. These three do not, because no command for them
-exists anywhere.
+[Tapir](https://github.com/ENZYME-APD/tapir-archicad-automation) commands. Since
+D110 those are built into this add-on (`archicad-addon/Tapir`, answering under
+the `LoriiniTapir` namespace), so Tapir no longer has to be installed. The
+commands below are Loriini's own, because no command for them exists anywhere.
 
 The office's solar penetration diagram is made by hand like this: set the 3D
 window to a parallel projection aimed along the sun's own direction for one
