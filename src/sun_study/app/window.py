@@ -137,6 +137,9 @@ COMMUNAL_AREAS = "Communal areas"
 #: own layers, drawn in the panel as geometry.
 CONTEXT_MODEL = "Context model"
 FUTURE_MODEL = "Future model"
+#: And the facade study's output, which is the model coloured in bands of
+#: sun hours -- a skin of 3D elements, not a sheet.
+FACADE_MODEL = "Facade model"
 COMMUNAL_JOB = "solar analysis: communal open space"
 SHADOW_JOB = "shadow diagram"
 SUN_EYE_JOB = "sun views"
@@ -790,6 +793,16 @@ class Chips(ttk.Frame):
         self._changed = on_change
         self._empty = empty
         self._made: list[tk.Widget] = []
+        #: The pane the row has to fit inside. Its own width is no guide: a
+        #: frame is given whatever it asks for, and a row that asked for one
+        #: long line was given one long line, off the edge of the page.
+        self._pane: tk.Canvas | None = None
+        node: tk.Misc | None = parent
+        while node is not None and not isinstance(node, tk.Canvas):
+            node = node.master
+        if isinstance(node, tk.Canvas):
+            self._pane = node
+            node.bind("<Configure>", self._reflow, add="+")
         self.bind("<Configure>", self._reflow)
         self._paint()
 
@@ -855,28 +868,42 @@ class Chips(ttk.Frame):
         )
         self._made.append(more)
         self._reflow()
+        # Once more when the chips have been measured: a chip made a moment
+        # ago has no size yet, and a row laid out from sizes of one pixel
+        # is one long line until something resizes the pane.
+        self.after_idle(self._reflow)
 
-    def _reflow(self, _event: object = None) -> None:
+    def room(self) -> int:
+        """How wide a row may be: the pane, less the label column and the
+        margin -- or a guess, before anything has been drawn."""
+        if self._pane is None or self._pane.winfo_width() <= 1:
+            return 420
+        return max(
+            self._pane.winfo_width() - (self.winfo_rootx() - self._pane.winfo_rootx()) - 14, 120
+        )
+
+    def _reflow(self, _event: object = None, *, room: int | None = None) -> None:
         """Lay the chips out in as many rows as it takes.
 
         Tk has no flow layout, so this is it: measure each chip and start a
-        new row when the next one would not fit. Called on every resize
-        because the pane changes width when the dock is folded away.
+        new row when the next one would not fit. Placed, not gridded: a grid
+        lines its columns up down the page, so the second row's chips sat
+        under the first row's column edges with gaps between them where the
+        first row's chips were wider. Called on every resize, because the
+        pane changes width when the dock is folded away.
         """
-        room = self.winfo_width()
-        if room <= 1:
-            room = 420
-        row = column = 0
-        used = 0
+        room = self.room() if room is None else room
+        x = y = tall = 0
         for made in self._made:
-            need = made.winfo_reqwidth() + 4
-            if used and used + need > room:
-                row += 1
-                column = 0
-                used = 0
-            made.grid(row=row, column=column, sticky="w", padx=(0, 4), pady=(0, 3))
-            used += need
-            column += 1
+            need, high = made.winfo_reqwidth(), made.winfo_reqheight()
+            if x and x + need > room:
+                x, y, tall = 0, y + tall + 3, 0
+            made.place(x=x, y=y)
+            x += need + 4
+            tall = max(tall, high)
+        # Placed children do not size their parent, so the row says its own
+        # size: as wide as the pane allows, as tall as the rows came to.
+        self.configure(width=room, height=y + tall + 2)
 
 
 class InfoBand(ttk.Frame):
@@ -1726,6 +1753,7 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     the eye reads "what could stand here" rather than "what does".
     """
     future = sheet.kind == FUTURE_MODEL
+    facade = sheet.kind == FACADE_MODEL
     # The hover edge, invisible at rest: the item the panel turns blue.
     paper.create_rectangle(0, 0, width - 1, height - 1, fill="", outline="", tags="edge")
     mid_x, mid_y, k = width * 0.5, height * 0.40, width / 34.0
@@ -1794,6 +1822,41 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
         (*MODEL_SITE, blue, theme.BLUE)
     ]
     for x0, y0, x1, y1, tall, tints, edge in sorted(standing, key=lambda b: b[0] + b[1]):
+        if facade and edge is theme.BLUE:
+            # The building itself, its two visible faces striped by hours of
+            # sun from the sunny end to the shaded one -- which is the skin
+            # the study builds -- and the sun over it, because the bands
+            # are about the sun.
+            bands = ("#EBC27C", "#F6E2BE", "#FBF0DA", "#E7E6E2")
+            for index, tint in enumerate(bands):
+                along = (x1 - x0) / len(bands)
+                face(
+                    (
+                        (x0 + along * index, y1, 0),
+                        (x0 + along * (index + 1), y1, 0),
+                        (x0 + along * (index + 1), y1, tall),
+                        (x0 + along * index, y1, tall),
+                    ),
+                    tint,
+                    "",
+                )
+                across = (y1 - y0) / len(bands)
+                face(
+                    (
+                        (x1, y0 + across * index, 0),
+                        (x1, y0 + across * (index + 1), 0),
+                        (x1, y0 + across * (index + 1), tall),
+                        (x1, y0 + across * index, tall),
+                    ),
+                    bands[-1 - index],
+                    "",
+                )
+            block(x0, y0, x1, y1, tall, ("#F6E2BE", "", ""), theme.SUN)
+            sun_x, sun_y = at(x1 + 2.5, y0 - 4.0, tall + 2.5)
+            paper.create_oval(
+                sun_x - 7, sun_y - 7, sun_x + 7, sun_y + 7, fill=theme.SUN, outline=""
+            )
+            continue
         block(x0, y0, x1, y1, tall, tints, edge)
         if future and edge is theme.INK and max(abs(x0 + x1), abs(y0 + y1)) / 2 < 8.0:
             block(
@@ -1812,11 +1875,12 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     paper.create_text(
         10, height * 0.885, text=title, anchor="w", fill=theme.INK, font=_face(11, True)
     )
-    note = (
-        "The envelopes the controls allow around the site — not a sheet"
-        if future
-        else "Terrain and neighbours in 3D, on their own layers — not a sheet"
-    )
+    if facade:
+        note = "The facade banded by hours of sun, as a 3D skin — not a sheet"
+    elif future:
+        note = "The envelopes the controls allow around the site — not a sheet"
+    else:
+        note = "Terrain and neighbours in 3D, on their own layers — not a sheet"
     paper.create_text(
         10, height * 0.945, text=note, anchor="w", fill=theme.HINT, font=_face(7, False)
     )
@@ -5181,17 +5245,21 @@ class Window:
 
         if FACADE_JOB in queued:
             for day in days:
-                # The coloured model and its views on one sheet, whatever the
-                # Sheets row says: it is one drawing, not a set.
-                deal(
-                    FACADE_JOB,
-                    "Solar analysis",
-                    "analysis",
-                    "SA",
-                    "Facade bands",
-                    day,
-                    [""],
-                    scale=plan_scale,
+                # Not a sheet. The run colours the model itself -- a thin skin
+                # of 3D elements over the facade, one colour per band -- and
+                # the window does not ask for the views sheet, so what comes
+                # out is geometry, and the panel draws it as geometry.
+                made.append(
+                    Sheet(
+                        study="Solar analysis",
+                        glyph="analysis",
+                        number="",
+                        kind=FACADE_MODEL,
+                        day=self._day_name(day),
+                        drawings=(self._drawing(FACADE_MODEL, day, "12:00"),),
+                        job=FACADE_JOB,
+                        paper=False,
+                    )
                 )
         bands, times = self._plan_kinds()
         if PLANS_JOB in queued:
@@ -5399,7 +5467,13 @@ class Window:
             self.info.rest()
             return
         if not sheet.paper:
-            if sheet.kind == FUTURE_MODEL:
+            if sheet.kind == FACADE_MODEL:
+                detail = (
+                    "Not a sheet: a thin skin of 3D elements over every surface of "
+                    "the building, one colour per band of sun hours, on its own "
+                    "layers -- the massing-stage answer, read in the 3D window."
+                )
+            elif sheet.kind == FUTURE_MODEL:
                 detail = (
                     f"Not a sheet: the envelopes the controls allow on the lots within "
                     f"{sheet.day} of the site, at the street setback, as 3D geometry on "

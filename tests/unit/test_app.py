@@ -675,8 +675,56 @@ def test_every_sheet_says_the_scale_the_run_places_it_at(hidden_window: Any) -> 
     assert scales["Site Analysis"] == "to fit"
     assert scales["Summary of Controls"] == ""
     assert scales["Shadow diagram"] == "1:1000"
-    assert scales["Apartments"] == scales["Facade bands"] == "1:200"
+    assert scales["Apartments"] == "1:200"
     assert scales["Communal open space"] == "1:300"
+    assert scales[window.FACADE_MODEL] == "", "a model has no scale, being not a sheet"
+
+
+def test_the_facade_study_is_a_model_and_not_a_sheet(hidden_window: Any) -> None:
+    """The window never asks for the model-views sheet, so what the facade
+    study makes is the coloured skin in 3D and nothing on paper. The panel
+    said one sheet; it now shows the geometry, one per day."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_facade.set(True)
+    for ticked in hidden_window.days.values():
+        ticked.set(False)
+    hidden_window.days["winter"].set(True)
+    hidden_window.days["summer"].set(True)
+    hidden_window._sync()
+
+    made = hidden_window.planned()
+    assert [(m.kind, m.day, m.paper) for m in made] == [
+        (window.FACADE_MODEL, "21 Jun", False),
+        (window.FACADE_MODEL, "21 Dec", False),
+    ]
+    assert not any("--model-views" in job.args for job in hidden_window.jobs())
+    _box, says = hidden_window.study_boxes[window.FACADE_JOB]
+    assert says.cget("text") == "0 sheets, 2 models"
+    assert hidden_window.dock.tally.cget("text") == "0"
+
+
+def test_a_long_chip_row_wraps_inside_the_pane_and_lines_up_by_row(hidden_window: Any) -> None:
+    """Fourteen apartment names ran off the right of the page in one line,
+    and the rows that did wrap lined up on the first row's column edges. The
+    chips are placed by measuring, within the pane's width, and each row
+    starts at the left."""
+    chips = hidden_window.apartment_names
+    chips.delete(0, "end")
+    chips.insert(0, "FAST FOOD SHOP, 4B, RETAIL, 3B, UT1.A01, 2B, UT2.B02, XXX, UT3.C04, LOBBY")
+    hidden_window.root.update_idletasks()
+
+    chips._reflow(room=300)
+
+    placed = [
+        (int(w.place_info()["x"]), int(w.place_info()["y"]), w.winfo_reqwidth())
+        for w in chips._made
+    ]
+    assert all(x + wide <= 300 for x, _y, wide in placed), "nothing past the edge"
+    rows = sorted({y for _x, y, _w in placed})
+    assert len(rows) >= 3, "three rows or more at that width"
+    assert all(min(x for x, y, _w in placed if y == row) == 0 for row in rows), "each from the left"
+    assert int(chips.cget("height")) > 0 and int(chips.cget("width")) == 300
 
 
 def test_the_three_site_sheets_are_three_different_pictures(hidden_window: Any) -> None:

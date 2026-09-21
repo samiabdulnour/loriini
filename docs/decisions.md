@@ -3648,3 +3648,19 @@ on it and the site among them -- the future model with the allowed envelopes
 dashed over the lots within reach -- with no paper, no shadow and no sheet
 number. The strip's count stays the count of sheets; the study's own line
 says "3 sheets, 2 models".
+
+**The facade study is a model too.** Asked next: *"facade solar analysis is
+not sheet as well as creating 3d geometry. repair its miniature."* Checked
+against `jobs`: the window never sends `--model-views`, so the facade run
+colours the model -- a skin of 3D elements, one colour per band -- and makes
+no layout at all. The panel had drawn it as a sheet. It is now a model per
+day, the building's faces striped by hours of sun with the sun over it.
+
+**Chip rows wrap inside the pane.** From the same screenshot: fourteen
+apartment names ran off the right of the page in one line, and the rows that
+did wrap lined up on the first row's column edges. Two faults. A frame is
+given whatever width it asks for, and a row that measured *itself* asked for
+one long line -- so the row now measures the scroller's canvas less its own
+offset. And `grid` lines columns up down the page, so the chips are `place`d
+from measured widths, each row from the left, and the row states its own
+size because placed children do not size their parent.

@@ -484,6 +484,8 @@ scale each command places its drawings at, or "to fit" for the site sheet.
 The site study's context model and future model are not sheets, so they
 are drawn as the geometry -- ground, blocks, site, and the envelopes the
 controls allow -- with no paper under them, and are not counted as sheets.
+The facade study is the same: it colours the model in bands and makes no
+layout, so the panel shows the banded building, one per day.
 
 The hours and days are rows of buttons rather than boxes to type in: press
 the hours a study draws, press the first and last hour of the communal
