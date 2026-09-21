@@ -71,6 +71,7 @@ from sun_study.archicad.layout import (
     project_map,
 )
 from sun_study.archicad.model_bands import draw_model_bands, fit_to_project
+from sun_study.archicad.paper import PaperSink
 from sun_study.archicad.penetration import (
     MAX_FIT_RESIDUAL_M,
     PATCH_STYLE,
@@ -138,6 +139,7 @@ from sun_study.archicad.sheets import (
     TableRow,
     draw_statistics,
     draw_table,
+    lay_study_on_sheet,
     straighten_and_tile,
 )
 from sun_study.archicad.sun_eyes import (
@@ -1933,6 +1935,7 @@ def report_area_bands(
     folder: str = "",
     instant_subset: str = "",
     analysis_subset: str = "",
+    paper: PaperSink | None = None,
 ) -> bool:
     """The whole-day area figures: printed, drawn, and written out.
 
@@ -1986,6 +1989,7 @@ def report_area_bands(
         "zone_by_apartment": match.by_apartment,
         "zones": read_zones(connection),
         "export_extents": extents,
+        "paper": paper,
     }
 
     problem = False
@@ -2097,6 +2101,7 @@ def report_area_bands(
             also_hide=also_hide,
             instant_subset=instant_subset,
             analysis_subset=analysis_subset,
+            paper=paper,
         )
     return problem
 
@@ -2243,8 +2248,10 @@ def report_penetration(
     instant_subset: str = "",
     analysis_subset: str = "",
     sheets_mode: str = "each",
+    paper: PaperSink | None = None,
 ) -> bool:
-    """Draw the study diagram on the floor plan. True if anything is wrong."""
+    """Draw the study diagram -- on the sheets with ``paper``, else on the
+    floor plan. True if anything is wrong."""
     series = result.instants
     if series is None or series.floor_sunlit is None or series.floor_positions is None:
         typer.secho(
@@ -2311,6 +2318,7 @@ def report_penetration(
             # apartments would be fitting to points that carry the very error
             # it exists to remove.
             turn_deg=_frame_turn(connection, result),
+            paper=paper,
         )
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
@@ -2341,6 +2349,7 @@ def report_penetration(
             instant_subset=instant_subset,
             analysis_subset=analysis_subset,
             sheets=sheets_mode,
+            paper=paper,
         )
     return not drawn.complete
 
@@ -2435,8 +2444,16 @@ def _sheet_per_instant(
     every_sheet_table: Sequence[TableRow] | None = None,
     every_sheet_title: str = "",
     sheets: str = "each",
+    paper: PaperSink | None = None,
 ) -> None:
     """A layer combination, a set of views and the Layouts ``sheets`` says.
+
+    ``paper`` holds the study when it was kept off the floor plan. The views
+    are then of the plan alone -- one combination for all of them, with every
+    layer of this tool's switched off -- and each sheet has its drawings
+    pinned by their origin and the study drawn over them on the layout. No
+    save is asked for on that route, because nothing on it reads a drawing
+    back. See ``sheets.lay_study_on_sheet``.
 
     ``sheets`` deals the instants onto layouts -- all on one, split in two on
     one grid, or one each (the default here, which is what the study sheets
@@ -2475,6 +2492,7 @@ def _sheet_per_instant(
     # exactly what happened when the whole-day sheets were added beside the
     # instants.
     finished: list[tuple[str, str, list[str], int]] = []
+    sheet_views: dict[str, list[StoreyView]] = {}
     if not labels:
         typer.secho(
             "  nothing was drawn, so there are no sheets to make",
@@ -2497,9 +2515,9 @@ def _sheet_per_instant(
         try:
             combination = ensure_layer_combination(
                 connection,
-                naming.named(f"Sun Study {label}"),
-                show=[mine],
-                hide=[*sorted(mine_all - {mine}), *extra_hidden],
+                naming.named("Sun Study Plan" if paper is not None else f"Sun Study {label}"),
+                show=[] if paper is not None else [mine],
+                hide=[*sorted(mine_all - ({mine} if paper is None else set())), *extra_hidden],
                 base=base_combination,
             )
             made_views[label] = views_for_storeys(
@@ -2568,73 +2586,122 @@ def _sheet_per_instant(
             continue
         typer.echo(f"  {name}: {placed.describe().splitlines()[0]}")
         finished.append((name, placed.database_id, chunk_labels, cells))
+        sheet_views[name] = list(views)
 
     if not finished:
         return
 
-    # Saving is what makes a layout readable, and everything below reads it:
-    # a drawing's angle and size are only knowable once it exists. See D39.
-    #
-    # A project that refuses to save therefore has no readable sheets -- but
-    # it does have the fills, which are already in the model, and it has
-    # whatever was written to disk before this. So this says what is missing
-    # and returns, rather than throwing the run away at its last step.
-    try:
-        connection.run_tapir("SaveProject", {})
-    except ArchicadError as error:
-        typer.secho(
-            f"  the layouts are made and the fills are drawn, but Archicad would not save: {error}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        typer.secho(
-            "  Their drawings cannot be straightened or given their tables "
-            "until it does, because a Drawing's size is only readable once "
-            "the layout has been saved. Save in Archicad and re-run.",
-            fg=typer.colors.YELLOW,
-            err=True,
-        )
-        # Back to a floor plan before leaving, as the ordinary way out does.
-        # Placing the drawings left a layout in front, and every read after
-        # this is scoped to the current database: on Kogarah, 21 September
-        # 2026, a refused save returned from here and the banded plan that
-        # followed read no Zones at all -- "0 apartments could be paired" --
-        # so one refusal by Archicad cost a drawing that never needed the save.
-        with contextlib.suppress(ArchicadError):
-            ensure_model_database(connection)
-        return
-    for label, database_id, chunk_labels, cells in finished:
-        try:
-            sheet, _ = layout_sheet(connection, database_id)
-            pass_over = straighten_and_tile(connection, database_id, sheet, cells=cells)
-            # ``every_sheet_table`` wins where it is given: a per-storey sheet
-            # is not one instant, so there is no per-label table to look up --
-            # what belongs on it is the whole day, the same on each storey.
-            # A sheet carrying several instants stacks their tables, each
-            # under its own heading.
-            rows, title = _sheet_table(
-                chunk_labels, tables, titles, every_sheet_table, every_sheet_title, label
-            )
-            drawn = (
-                draw_table(
+    if paper is not None:
+        layer_of = dict(zip(labels, every, strict=True))
+        label_of = {view.name: label for label, views in made_views.items() for view in views}
+        for name, database_id, chunk_labels, cells in finished:
+            try:
+                if zoom is None:
+                    raise ArchicadError(
+                        "the study cannot be laid over the plan without the extent the "
+                        "plans show: there is nothing to size the drawings to"
+                    )
+                sheet, _ = layout_sheet(connection, database_id)
+                laid, placements = lay_study_on_sheet(
                     connection,
                     database_id,
-                    title=title,
-                    rows=rows,
-                    beside=table_beside,
-                    height_mm=table_height_mm,
+                    sheet,
+                    drawings=[
+                        (view.name, paper.take(layer_of[label_of[view.name]], view.storey_index))
+                        for view in sheet_views.get(name, [])
+                    ],
+                    zoom=zoom,
+                    scale=scale,
+                    cells=cells,
                 )
-                if rows
-                else 0
+                rows, title = _sheet_table(
+                    chunk_labels, tables, titles, every_sheet_table, every_sheet_title, name
+                )
+                drawn = (
+                    draw_table(
+                        connection,
+                        database_id,
+                        title=title,
+                        rows=rows,
+                        beside=table_beside,
+                        height_mm=table_height_mm,
+                        placements=placements,
+                    )
+                    if rows
+                    else 0
+                )
+            except ArchicadError as error:
+                typer.secho(f"  {name}: {error}", fg=typer.colors.RED, err=True)
+                continue
+            typer.echo(
+                f"    {name}: {laid.describe()}"
+                + (f", table of {drawn} rows on the sheet" if drawn else "")
             )
+    else:
+        # Saving is what makes a layout readable, and everything below reads it:
+        # a drawing's angle and size are only knowable once it exists. See D39.
+        #
+        # A project that refuses to save therefore has no readable sheets -- but
+        # it does have the fills, which are already in the model, and it has
+        # whatever was written to disk before this. So this says what is missing
+        # and returns, rather than throwing the run away at its last step.
+        try:
+            connection.run_tapir("SaveProject", {})
         except ArchicadError as error:
-            typer.secho(f"  {label}: {error}", fg=typer.colors.YELLOW, err=True)
-            continue
-        typer.echo(
-            "    "
-            + pass_over.describe()
-            + (f", table of {drawn} rows on the sheet" if drawn else "")
-        )
+            typer.secho(
+                "  the layouts are made and the fills are drawn, but Archicad "
+                f"would not save: {error}",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            typer.secho(
+                "  Their drawings cannot be straightened or given their tables "
+                "until it does, because a Drawing's size is only readable once "
+                "the layout has been saved. Save in Archicad and re-run.",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+            # Back to a floor plan before leaving, as the ordinary way out does.
+            # Placing the drawings left a layout in front, and every read after
+            # this is scoped to the current database: on Kogarah, 21 September
+            # 2026, a refused save returned from here and the banded plan that
+            # followed read no Zones at all -- "0 apartments could be paired" --
+            # so one refusal by Archicad cost a drawing that never needed the save.
+            with contextlib.suppress(ArchicadError):
+                ensure_model_database(connection)
+            return
+        for label, database_id, chunk_labels, cells in finished:
+            try:
+                sheet, _ = layout_sheet(connection, database_id)
+                pass_over = straighten_and_tile(connection, database_id, sheet, cells=cells)
+                # ``every_sheet_table`` wins where it is given: a per-storey sheet
+                # is not one instant, so there is no per-label table to look up --
+                # what belongs on it is the whole day, the same on each storey.
+                # A sheet carrying several instants stacks their tables, each
+                # under its own heading.
+                rows, title = _sheet_table(
+                    chunk_labels, tables, titles, every_sheet_table, every_sheet_title, label
+                )
+                drawn = (
+                    draw_table(
+                        connection,
+                        database_id,
+                        title=title,
+                        rows=rows,
+                        beside=table_beside,
+                        height_mm=table_height_mm,
+                    )
+                    if rows
+                    else 0
+                )
+            except ArchicadError as error:
+                typer.secho(f"  {label}: {error}", fg=typer.colors.YELLOW, err=True)
+                continue
+            typer.echo(
+                "    "
+                + pass_over.describe()
+                + (f", table of {drawn} rows on the sheet" if drawn else "")
+            )
 
     # File the sheets where the practice keeps this kind of drawing, rather
     # than at the root of a book of 299 layouts. Split by what the sheet is:
@@ -5627,6 +5694,22 @@ def archicad_run(
             ),
         ),
     ] = False,
+    on_sheet: Annotated[
+        bool,
+        typer.Option(
+            "--on-sheet/--on-plan",
+            help=(
+                "Where the floor diagrams are drawn. On the sheet: the plan is "
+                "placed on the layout as it stands and the study is drawn over "
+                "it there, so the project gains no layers and no fills, and "
+                "nothing waits on Archicad agreeing to save. On the plan is the "
+                "older route, kept for a drawing that has to live in the model: "
+                "fills on a floor-plan layer per diagram, with Element IDs a "
+                "Schedule can total, which a layout element cannot carry. Needs "
+                "--sheet, since on the sheet is the only place it is drawn."
+            ),
+        ),
+    ] = True,
     plan_hours: Annotated[
         float | None,
         typer.Option(
@@ -5974,6 +6057,32 @@ def archicad_run(
                         fg=typer.colors.RED,
                     )
 
+        # One clearing out and one folder for the whole run, before any sheet
+        # is made: the sheet-building steps would otherwise delete each
+        # other's work and file their views separately.
+        #
+        # Before the first of them, which is --draw's. It stood after it until
+        # 21 September 2026, and the clearing goes by the tool's own prefix:
+        # so the per-flat sheet was made, and removed seconds later as "the
+        # previous run", on every run that asked for it beside any other plan
+        # -- which is what the window asks for by default. The console said
+        # "removed 1 views and layouts" on a project that had none.
+        view_folder = ""
+        if sheet:
+            gone, left = remove_previous(connection)
+            view_folder = next_view_folder(connection)
+            typer.echo("")
+            typer.echo(f"  views go in {view_folder!r}")
+            if gone:
+                typer.echo(f"  removed {gone} views and layouts from the previous run")
+            if left:
+                typer.secho(
+                    f"  {left} could not be removed and are still there. A View "
+                    f"a placed Drawing points at cannot be deleted, and Archicad "
+                    f"reports success either way.",
+                    fg=typer.colors.YELLOW,
+                )
+
         if draw:
             typer.echo("")
             try:
@@ -6021,24 +6130,9 @@ def archicad_run(
                     zoom=assessed_extent(read_zones(connection), match, margin_m=10.0),
                 )
 
-        # One clearing out and one folder for the whole run, before any sheet
-        # is made: the two sheet-building steps would otherwise delete each
-        # other's work and file their views separately.
-        view_folder = ""
-        if sheet:
-            gone, left = remove_previous(connection)
-            view_folder = next_view_folder(connection)
-            typer.echo("")
-            typer.echo(f"  views go in {view_folder!r}")
-            if gone:
-                typer.echo(f"  removed {gone} views and layouts from the previous run")
-            if left:
-                typer.secho(
-                    f"  {left} could not be removed and are still there. A View "
-                    f"a placed Drawing points at cannot be deleted, and Archicad "
-                    f"reports success either way.",
-                    fg=typer.colors.YELLOW,
-                )
+        # Only with sheets: on the sheet is the only place that route draws,
+        # and a run that asked for no sheets still wants its diagram somewhere.
+        paper = PaperSink() if on_sheet and sheet else None
 
         if plan_instant:
             typer.echo("")
@@ -6049,6 +6143,7 @@ def archicad_run(
                     wanted=plan_instant,
                     match=match,
                     layer_prefix=layer,
+                    paper=paper,
                     sheets=sheet,
                     master_layout=master_layout,
                     folder=view_folder,
@@ -6082,6 +6177,7 @@ def archicad_run(
                     result,
                     match=match,
                     layer_prefix=layer,
+                    paper=paper,
                     bands=plan_bands,
                     hours=plan_hours,
                     csv_out=csv_out,

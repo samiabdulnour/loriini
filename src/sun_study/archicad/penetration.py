@@ -63,6 +63,7 @@ from sun_study.archicad.ids import (
     group_by_value,
     stamp_in_order,
 )
+from sun_study.archicad.paper import PaperSink
 from sun_study.archicad.read import ArchicadZone
 from sun_study.core.edges import on_lattice, traced_regions
 from sun_study.core.geometry import PlanTransform, rotation_about_z
@@ -158,6 +159,10 @@ class PenetrationReport:
     grouped: GroupReport = NOT_GROUPED
     """One Archicad Group per category."""
 
+    on_paper: bool = False
+    """Handed to a ``PaperSink`` for the sheet step, and not yet anywhere in
+    Archicad: the counts are what *will* be drawn on the layouts."""
+
     @property
     def complete(self) -> bool:
         return not self.unmatched and not self.hidden_layers
@@ -168,7 +173,14 @@ class PenetrationReport:
             f"outlines and {self.labels} labels for {len(self.instants)} instant(s)"
             + (f", replacing {self.removed} from a previous run" if self.removed else "")
         ]
-        lines.append(f"  one layer per instant: {', '.join(self.layers)}")
+        if self.on_paper:
+            lines[0] = (
+                f"prepared {self.patches} patch fills, {self.outlines} assessed-area "
+                f"outlines and {self.labels} labels for {len(self.instants)} instant(s), "
+                f"to be drawn on the sheets and not on the floor plan"
+            )
+        else:
+            lines.append(f"  one layer per instant: {', '.join(self.layers)}")
         if self.storeys:
             shown = ", ".join(str(storey) for storey in sorted(self.storeys))
             lines.append(f"  on storey index {shown}")
@@ -338,6 +350,7 @@ def draw_penetration(
     patch_outline: bool = False,
     caption_height_mm: float = 2.5,
     turn_deg: float = 0.0,
+    paper: PaperSink | None = None,
 ) -> PenetrationReport:
     """Draw the patch, the outline and the label for each instant.
 
@@ -345,6 +358,11 @@ def draw_penetration(
     -- what goes in them is a domain decision and belongs upstream, not here.
     ``export_extents`` gives each apartment's plan extent as the export has
     it, which is what the frames are fitted on. See ``fit_to_plan``.
+
+    ``paper`` takes the elements instead of the floor plan. Nothing is then
+    created here at all -- no layer, no fill, no ID -- and the sheet step draws
+    what was handed over once it knows where each plan sits on its layout.
+    See ``archicad.paper``.
     """
     connection.require_tapir_at_least(
         DRAWING_MINIMUM_TAPIR_VERSION, "CreateHatches, which draws the patch,"
@@ -376,11 +394,12 @@ def draw_penetration(
     gathered: list[GroupReport] = []
 
     for instant in instants:
-        layer = ensure_layer(connection, f"{layer_prefix} {instant.label}")
+        layer = _layer_for(connection, f"{layer_prefix} {instant.label}", paper)
         layers.append(f"{layer_prefix} {instant.label}")
         if layer.hidden:
             hidden.append(f"{layer_prefix} {instant.label}")
-        removed += clear_layer(connection, layer.index)
+        if paper is None:
+            removed += clear_layer(connection, layer.index)
 
         fills: list[dict[str, Any]] = []
         # One ID per fill, in the same order. Only the patches are tagged:
@@ -423,6 +442,9 @@ def draw_penetration(
             if zone.storey_index is not None:
                 storeys.add(zone.storey_index)
 
+        if paper is not None:
+            paper.add(layer.name, fills=fills, polylines=lines, texts=texts, outline=patch_outline)
+            continue
         made = _create_fills(connection, fills, outline=patch_outline)
         tagged.append(stamp_in_order(connection, made, patch_ids))
         if len(made) == len(patch_groups):
@@ -444,6 +466,7 @@ def draw_penetration(
         hidden_layers=tuple(hidden),
         stamped=combined(tagged),
         grouped=_one_group_report(gathered),
+        on_paper=paper is not None,
     )
 
 
@@ -465,8 +488,14 @@ def draw_cell_groups(
     turn_deg: float = 0.0,
     fill_index: int | None = None,
     outline: bool = True,
+    paper: PaperSink | None = None,
 ) -> PenetrationReport:
     """Draw floor cells grouped by band, one colour each, plus a legend.
+
+    ``paper`` takes the fills instead of the floor plan, as it does for
+    ``draw_penetration`` -- and then there is no legend, because the sheet
+    carries the same figures as a table beside the plan, once, rather than in
+    the model beside the building on every storey.
 
     ``max_residual_m`` is how far the fitted frame may be out before this
     refuses. The default is right for a sun patch inside a room, where half a
@@ -515,8 +544,8 @@ def draw_cell_groups(
             + transform.describe_disagreement(max_residual_m)
         )
 
-    layer = ensure_layer(connection, layer_name)
-    removed = clear_layer(connection, layer.index)
+    layer = _layer_for(connection, layer_name, paper)
+    removed = clear_layer(connection, layer.index) if paper is None else 0
 
     fills: list[dict[str, Any]] = []
     band_ids: list[str] = []
@@ -550,6 +579,23 @@ def draw_cell_groups(
                 band_ids.append(fill_id(SOLAR, group.label))
             if zone.storey_index is not None:
                 storeys.add(zone.storey_index)
+
+    if paper is not None:
+        paper.add(layer_name, fills=fills, outline=outline)
+        return PenetrationReport(
+            instants=(title or layer_name,),
+            layers=(layer_name,),
+            patches=len(fills),
+            outlines=0,
+            labels=0,
+            removed=0,
+            fit_residual_m=transform.rmse_m,
+            fit_pairs=len(matched),
+            unmatched=unmatched,
+            storeys=tuple(sorted(storeys)),
+            hidden_layers=(),
+            on_paper=True,
+        )
 
     texts: list[dict[str, Any]] = []
     legend_fills, legend_texts = _band_legend(
@@ -586,6 +632,19 @@ def draw_cell_groups(
         stamped=stamped,
         grouped=grouped,
     )
+
+
+def _layer_for(connection: ArchicadConnection, name: str, paper: PaperSink | None) -> LayerState:
+    """The study's layer -- or, on paper, only its name.
+
+    The elements are built the same either way and name a layer by index, so
+    the paper route needs *a* layer to hand them. It must not be a real one:
+    not creating layers in somebody's project is half of what drawing on the
+    sheet is for, and the index is dropped before anything reaches Archicad.
+    """
+    if paper is None:
+        return ensure_layer(connection, name)
+    return LayerState(identifier="", name=name, index=0)
 
 
 def _legend_origin(zones: Any) -> tuple[float, float]:
