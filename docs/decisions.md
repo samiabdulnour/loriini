@@ -3700,3 +3700,19 @@ when the page is taller than its pane. Wider card padding and row spacing.
 *Not changed, on purpose:* the queued mark. The orange dot on a drawing tab's
 icon is the sun the section icons carry, not a second queued mark; queued is
 the blue name and its dot, one mark on one axis, as before.
+
+**Sized to Archicad's own dialogs.** Sami sent the Work Environment dialog as
+the reference for sizes and choices: buttons no taller than the field beside
+them, a one-pixel edge, a small radius, a grey capitalised band heading a
+section. So every button and field is now set at the same compact height,
+the tiles carry 20 px drawings instead of 24, *+ Add* matches the chips, and
+a settings card's title is capitals on the grey band -- the tint is kept for
+what is switched on. The tabs are rounded cards on the chrome and the page
+is a rounded card of its own a gap below them, because a tab whose face
+merged into the page had no contour and read as neither. The captions over
+the two groups of tabs are gone; the rule between them says it. A rule under
+the project bar parts *which Archicad* from everything else. The pen set is
+chosen from the project's own pen tables rather than typed. And the foot of
+the window carries the licence line -- product, version, author, term --
+instead of the prototype warning, which stays on every sheet and export where
+the figures are.

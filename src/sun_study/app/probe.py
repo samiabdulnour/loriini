@@ -89,6 +89,9 @@ class ProjectOptions:
     subsets: tuple[str, ...] = ()
     """Layout Book subsets, where the sheets can be filed."""
 
+    pen_sets: tuple[str, ...] = ()
+    """The project's pen tables, for the sun views to print in the office's."""
+
     storeys: tuple[int, ...] = ()
 
     storey_names: tuple[str, ...] = ()
@@ -255,6 +258,10 @@ def options(port: int) -> ProjectOptions:
         lambda: connection.run_tapir("GetAttributesByType", {"attributeType": "LayerCombination"}),
     )
     masters = attempt("master layouts", lambda: master_layouts(connection)) or []
+    pens = attempt(
+        "pen sets",
+        lambda: connection.run_tapir("GetAttributesByType", {"attributeType": "PenTable"}),
+    )
     book = attempt(
         "layout book",
         lambda: connection.run_tapir("GetNavigatorItemTree", {"navigatorMapId": "LayoutBook"}),
@@ -285,6 +292,13 @@ def options(port: int) -> ProjectOptions:
             )
         ),
         masters=tuple(item.name for item in masters),
+        pen_sets=tuple(
+            sorted(
+                str(entry.get("name", ""))
+                for entry in ((pens or {}).get("attributes") or [])
+                if str(entry.get("name", "")).strip()
+            )
+        ),
         subsets=tuple(
             sorted(
                 {

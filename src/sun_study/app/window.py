@@ -90,7 +90,7 @@ from sun_study.archicad.connection import DEFAULT_TIMEOUT_SECONDS
 from sun_study.archicad.sheeting import cells_for, parse_sheet_mode, sheet_chunks, sheet_title
 from sun_study.cli import DEFAULT_SHADOW_DATES, DEFAULT_SHADOW_HOURS
 from sun_study.core.solar import UnknownTimezoneError, resolve_timezone, solar_position
-from sun_study.disclaimer import STATUS
+from sun_study.licence import credential
 from sun_study.rules.days import ASSESSMENT_DAYS, day_name, parse_day
 
 PAD = theme.PAD
@@ -612,7 +612,7 @@ class Tiles(ttk.Frame):
                 self,
                 style="Tile.TButton",
                 command=partial(self._pick, value),
-                **icons.button_options(icon, 24),
+                **icons.button_options(icon, 20),
             )
             button.grid(row=0, column=column, padx=(0, 2))
             # Every tile says what it is in words as well. Seven unlabelled
@@ -2454,6 +2454,9 @@ class Window:
             top, text="", style="ChromeHint.TLabel", wraplength=620, justify="left"
         )
         self.status.grid(row=row, column=1, sticky="w", pady=(0, 4))
+        # The contour under the project bar: which Archicad is one question,
+        # asked once, and everything below it is the study.
+        ttk.Frame(self.root, style="Rule.TFrame", height=1).pack(side="top", fill="x")
 
     def _sections(self) -> None:
         """One page per output, reached from a strip of tabs across the top.
@@ -2507,8 +2510,11 @@ class Window:
         # Packed before the stack, so it lands above it.
         self._strip()
 
-        self.stack = ttk.Frame(self.pane)
-        self.stack.pack(side="top", fill="both", expand=True, padx=(PAD, 0))
+        # The page is a card of its own on the chrome -- the lighter grey,
+        # one thin edge, rounded -- a gap below the strip. The sections are
+        # laid out inside it, inset past its corners.
+        self.stack = ttk.Frame(self.pane, style="PageCard.TFrame", padding=6)
+        self.stack.pack(side="top", fill="both", expand=True, padx=(PAD, PAD), pady=(6, PAD))
 
         builders = {
             self.GENERAL: self._general,
@@ -2534,18 +2540,17 @@ class Window:
         strip.pack(side="top", fill="x")
 
         column = 0
-        for kind, group in self.GROUPS:
+        for _kind, group in self.GROUPS:
             if column:
                 # Between the kinds, a rule rather than a wider gap: at this
                 # size a gap reads as two tabs that happen to sit apart, and
-                # the split is the whole point of the arrangement.
+                # the split is the whole point of the arrangement. The rule
+                # says it alone; the words that used to sit over each group
+                # were a second way of saying it.
                 ttk.Separator(strip, orient="vertical").grid(
-                    row=0, column=column, rowspan=2, sticky="ns", padx=12, pady=(3, 4)
+                    row=0, column=column, sticky="ns", padx=12, pady=(6, 6)
                 )
                 column += 1
-            ttk.Label(strip, text=kind, style="Group.TLabel").grid(
-                row=0, column=column, columnspan=len(group), sticky="w", padx=(3, 0)
-            )
             for title in group:
                 self._tab(strip, title, column)
                 column += 1
@@ -2570,7 +2575,7 @@ class Window:
             command=partial(self._show_section, title),
             **icons.tab_options(title, 32),
         )
-        tab.grid(row=1, column=column, sticky="nsew")
+        tab.grid(row=0, column=column, sticky="nsew", padx=(0, 4))
         Tooltip(tab, self.SECTION_BLURB[title])
         self.tabs[title] = tab
 
@@ -3427,12 +3432,11 @@ class Window:
         )
         row += 1
 
-        self.eye_pen_set, row = self._entry(
+        self.eye_pen_set, row = self._combo(
             frame,
             row,
             "Pen set",
-            "",
-            "Name of the pen set the views use. Blank keeps each view's own.",
+            "The project's pen set the views use. Blank keeps each view's own.",
             "The practice's drawing pens, so the sheet prints the way the "
             "other DA drawings do. Read off the office's own sun views on the "
             "reference project as '00 FA Pens'.",
@@ -3931,10 +3935,11 @@ class Window:
         self.note = ttk.Label(base, text="", style="Note.TLabel")
         self.note.grid(row=3, column=0, sticky="ew", pady=(8, 0))
 
-        # The one line of text down here that is not about this run. It is a
-        # statement about what the numbers are worth, it is the same sentence
-        # the README and every exported file carry, and it stays.
-        ttk.Label(base, text=STATUS, foreground=theme.RED, background=theme.CHROME).grid(
+        # The one line of text down here that is not about this run: whose
+        # build this is, and until when. The prototype disclaimer is still on
+        # every sheet and in every export, where the numbers are; the foot of
+        # the window carries the licence instead of shouting it.
+        ttk.Label(base, text=credential(), style="ChromeHint.TLabel").grid(
             row=4, column=0, sticky="w", pady=(8, 0)
         )
 
@@ -3961,7 +3966,13 @@ class Window:
         are set up, not switched on. A study's box is headed by ``_head``.
         """
         head = theme.PANEL_HEAD
-        box = ttk.Frame(outer, style="Box.TFrame", padding=(14, head + 12, 14, 14))
+        # A settings card wears the grey band: it is not switched on, and the
+        # tint means switched on. A study's card is restyled by ``_sync``.
+        box = ttk.Frame(
+            outer,
+            style="BoxOff.TFrame" if title else "Box.TFrame",
+            padding=(14, head + 12, 14, 14),
+        )
         box.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         box.columnconfigure(0, minsize=self.LABEL_COLUMN)
         box.columnconfigure(1, weight=1)
@@ -3971,7 +3982,8 @@ class Window:
             # from the *outside* of the box, because a ttk frame tells Tk its
             # padding is a border and ``place`` otherwise starts inside it --
             # which puts the header on top of the first row instead of over it.
-            ttk.Label(box, text=title, style="BoxTitle.TLabel").place(
+            # Set in capitals, the way Archicad heads a section of a dialog.
+            ttk.Label(box, text=title.upper(), style="BoxTitle.TLabel").place(
                 bordermode="outside", x=10, y=2, height=head - 3, relwidth=1.0, width=-20
             )
         return box
@@ -4722,6 +4734,10 @@ class Window:
         self._fill(self.combination, found.combinations, ("IFC ARCH", "IFC"))
         self._fill(self.shadow_subset, found.subsets, ("SHADOW",))
         self._fill(self.adg_subset, found.subsets, ("ADG",))
+        # Blank first, and no preference: a blank keeps each view's own pen
+        # set, which is what the command does, and the office's set is a
+        # choice rather than a guess.
+        self._fill(self.eye_pen_set, ("", *found.pen_sets), ())
         self._fill(self.shadow_study_subset, found.subsets, ("SHADOW",))
         if not self.subject.get():
             skin = [name for name in found.layers if any(w in name for w in SKIN_WORDS)]

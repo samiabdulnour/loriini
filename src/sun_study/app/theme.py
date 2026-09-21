@@ -187,6 +187,8 @@ STANDS_ON: dict[str, str] = {
     # otherwise show four white nicks on the grey.
     "Box.TFrame": PAGE,
     "BoxOff.TFrame": PAGE,
+    # The page itself is a card on the chrome.
+    "PageCard.TFrame": CHROME,
     # The progress bar is a pill, and a pill is nearly all corner. It used to
     # carry ``background=BLUE`` from the days clam drew it, and the first
     # rounded build showed the trough outlined in blue: not a border, but this
@@ -201,6 +203,7 @@ STANDS_ON: dict[str, str] = {
 INSIDE: dict[str, str] = {
     "Box.TFrame": SURFACE,
     "BoxOff.TFrame": SURFACE,
+    "PageCard.TFrame": PAGE,
 }
 
 
@@ -308,7 +311,7 @@ def apply(root: tk.Misc) -> ttk.Style:
             darkcolor=SURFACE,
             insertcolor=INK,
             arrowcolor=BODY,
-            padding=(5, 4),
+            padding=(5, 2),
         )
         style.map(
             kind,
@@ -353,10 +356,12 @@ def apply(root: tk.Misc) -> ttk.Style:
     # of them is set here: the fill, the edge and the pressed and hover
     # states are all in the picture. What is left is what a picture cannot
     # draw -- the words on it, and the room around them.
+    # Compact, at the height of a field: Archicad's own dialogs set a button
+    # no taller than the list beside it, and so does this.
     style.configure(
         "TButton",
         foreground=INK,
-        padding=(12, 5),
+        padding=(10, 2),
         font=body,
     )
     style.map(
@@ -367,7 +372,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: The same button, standing on the chrome: the project strip and the run
     #: bar. Its only difference from ``TButton`` is the colour its corners
     #: take, which ``STANDS_ON`` sets -- see the third trap in ``_rounded``.
-    style.configure("Chrome.TButton", foreground=INK, padding=(12, 5), font=body)
+    style.configure("Chrome.TButton", foreground=INK, padding=(10, 2), font=body)
     style.map("Chrome.TButton", foreground=[("disabled", HINT)])
     style.configure("Chrome.TCombobox", foreground=INK)
 
@@ -392,7 +397,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure(
         "Run.TButton",
         foreground=BLUE_DEEP,
-        padding=(14, 6),
+        padding=(12, 2),
         font=strong,
     )
     style.map(
@@ -442,7 +447,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: A tile in a choice row: icon only, no text, and square.
     style.configure(
         "Tile.TButton",
-        padding=2,
+        padding=(3, 1),
     )
     #: The chosen tile. Filled blue, and the drawing inside it is the white
     #: one -- the same move the printer driver makes.
@@ -452,7 +457,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: that has to stay readable, so they take the named-card treatment.
     style.configure(
         "TileOn.TButton",
-        padding=2,
+        padding=(3, 1),
     )
 
     # -- chips: a chosen name, and the button that drops it ----------------
@@ -491,7 +496,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure(
         "Add.TButton",
         foreground=BODY,
-        padding=(9, 3),
+        padding=(7, 0),
         font=body,
     )
     style.map(
@@ -548,7 +553,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure("Box.TFrame", background=SURFACE)
     style.configure("BoxOff.TFrame", background=SURFACE)
     #: The title of a box that is not a study and so has no tick to head it.
-    style.configure("BoxTitle.TLabel", background=HEAD_ON, foreground=INK, font=heading)
+    #: A settings card's title, on the grey band: it is not switched on, so
+    #: it does not wear the tint. Set the way Archicad heads a section.
+    style.configure("BoxTitle.TLabel", background=HEAD_OFF, foreground=INK, font=strong)
     #: What the box will make, at the right of its header.
     style.configure("PanelSays.TLabel", background=HEAD_ON, foreground=BLUE_DEEP)
     style.configure("PanelSaysOff.TLabel", background=HEAD_OFF, foreground=HINT)
@@ -722,11 +729,10 @@ def _rounded(style: ttk.Style) -> None:
         # background. Two faces, never one face and a colour.
         element("Loriini.tileon", [tiles[2]], (), lifted)
     if tabs is not None:
-        # Rounded where a tab meets nothing and square where it meets its
-        # page, so the bottom slice is a single row.
-        foot = (FACE_SLICE, FACE_SLICE, FACE_SLICE, 1)
-        element("Loriini.tab", tabs[:2], ("active",), foot)
-        element("Loriini.tabopen", [tabs[2]], (), foot)
+        # A tab is a rounded card on the chrome, all four corners: it sits a
+        # gap above the page rather than joining it.
+        element("Loriini.tab", tabs[:2], ("active",), FACE_SLICE)
+        element("Loriini.tabopen", [tabs[2]], (), FACE_SLICE)
 
     #: Which faces actually loaded. A style whose face is missing is left on
     #: clam's border rather than left with no layout at all.
@@ -757,6 +763,13 @@ def _rounded(style: ttk.Style) -> None:
         element("Loriini.boxoff", [panels[1]], (), box)
         style.layout("Box.TFrame", [("Loriini.box", {"sticky": "nswe"})])
         style.layout("BoxOff.TFrame", [("Loriini.boxoff", {"sticky": "nswe"})])
+
+    page = worn("page")
+    if page is not None:
+        # The page: the lighter grey with one thin edge, a card on the chrome
+        # under the strip. Its inside is what the sections stand on.
+        element("Loriini.page", page, (), 7)
+        style.layout("PageCard.TFrame", [("Loriini.page", {"sticky": "nswe"})])
 
     for kind in ("TEntry", "TCombobox"):
         part = kind.split("T", 1)[1]

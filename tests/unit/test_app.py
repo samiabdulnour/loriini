@@ -785,6 +785,50 @@ def test_each_site_sheet_follows_its_own_tick(hidden_window: Any) -> None:
     assert "--no-summary" in args and "--no-context" in args and "--site" in args
 
 
+def test_the_pen_set_is_chosen_from_the_projects_own_and_blank_is_kept(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Typed, a pen set name was one more thing to misspell. The project's
+    pen tables are offered, blank first -- blank keeps each view's own, which
+    is what the command does -- and nothing is guessed on the person's behalf."""
+    from dataclasses import replace
+
+    found = hidden_window.options
+    monkeypatch.setattr(
+        probe, "options", lambda port: replace(found, pen_sets=("00 FA Pens", "Archicad"))
+    )
+    hidden_window.refresh()
+
+    assert list(hidden_window.eye_pen_set.cget("values")) == ["", "00 FA Pens", "Archicad"]
+    assert hidden_window.eye_pen_set.get() == "", "blank stays blank"
+    assert "--pen-set" not in " ".join(job.args[0] for job in hidden_window.jobs())
+
+    hidden_window.eye_pen_set.set("00 FA Pens")
+    hidden_window.do_sun_eyes.set(True)
+    assert flag(hidden_window.jobs()[-1].args, "--pen-set") == ["00 FA Pens"]
+
+
+def test_the_foot_of_the_window_carries_the_licence_not_a_warning(hidden_window: Any) -> None:
+    from tkinter import ttk as widgets
+
+    from sun_study import AUTHOR
+    from sun_study.licence import EXPIRES, credential
+
+    assert AUTHOR in credential() and str(EXPIRES.year) in credential()
+
+    def labels(parent: Any) -> list[str]:
+        found: list[str] = []
+        for child in parent.winfo_children():
+            if isinstance(child, widgets.Label):
+                found.append(str(child.cget("text")))
+            found.extend(labels(child))
+        return found
+
+    said = labels(hidden_window.root)
+    assert credential() in said
+    assert not [line for line in said if "PROTOTYPE" in line], "the warning lives on the sheets"
+
+
 def test_a_typed_hour_is_spelled_the_way_the_sheet_is_named() -> None:
     assert [window._clock_text(word) for word in ("9", "9am", "3pm", "09:30", "12", "noon")] == [
         "09:00",

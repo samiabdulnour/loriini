@@ -39,9 +39,9 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sun_study import AUTHOR, PRODUCT
+from sun_study import AUTHOR, PRODUCT, __version__
 
-__all__ = ["EXPIRES", "LicenceExpiredError", "check", "has_expired"]
+__all__ = ["EXPIRES", "LicenceExpiredError", "check", "credential", "has_expired"]
 
 #: The last day this build runs. Chosen as a term, not a countdown -- see the
 #: module docstring for why a prototype gets one at all.
@@ -70,6 +70,13 @@ def check(today: dt.date | None = None) -> None:
     """Let the run proceed, or raise ``LicenceExpiredError``. Silent while valid."""
     if has_expired(today):
         raise LicenceExpiredError(explain())
+
+
+def credential() -> str:
+    """The one line the window carries at its foot: whose build this is,
+    which one, and until when. Not a warning, so it is not set in red; the
+    prototype disclaimer stays on every sheet, where the figures are."""
+    return f"{PRODUCT} {__version__} · {AUTHOR} · licensed until {EXPIRES.day} {EXPIRES:%B %Y}"
 
 
 def explain() -> str:

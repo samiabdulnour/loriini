@@ -1514,8 +1514,13 @@ FACES: dict[str, Face] = {
     # is a rounded tint; open, it is the page's own white under a blue cap,
     # rounded where it meets nothing and square where it meets its page.
     "tab_rest": Face(CHROME, CHROME, radius=0, **TAB),
-    "tab_hover": Face("#E8F0FC", "#E8F0FC", radius=5, square_foot=True, **TAB),
-    "tab_open": Face(PAGE, PAGE, radius=5, square_foot=True, cap=BLUE, cap_tall=3, **TAB),
+    # A tab is a rounded card on the chrome: tinted under the pointer, white
+    # with a thin edge and a blue cap when open. It no longer joins the page,
+    # which has a contour of its own and sits a gap below the strip.
+    "tab_hover": Face("#E8F0FC", "#E8F0FC", radius=6, **TAB),
+    "tab_open": Face("#FFFFFF", "#FFFFFF", "#DCDCDC", radius=6, cap=BLUE, cap_tall=3, **TAB),
+    # The page a section sits on: the lighter grey, one thin edge, rounded.
+    "page": Face(PAGE, PAGE, "#DCDCDC", wide=480, tall=320, radius=6),
     # A pill, and the only one: a bar is the single control whose ends mean
     # nothing, so nothing is lost by rounding them away.
     "bar_trough": Face("#FFFFFF", "#FFFFFF", "#DCDCDC", wide=256, tall=10, radius=5),
