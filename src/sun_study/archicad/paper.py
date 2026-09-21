@@ -38,14 +38,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-__all__ = ["MM", "PaperFrame", "PaperSink", "StudyElements", "onto_paper"]
-
-#: A Text's height is a length in the database's own unit. On a floor plan the
-#: drawers give it in millimetres of paper and Archicad reads it so; on a
-#: layout the unit is the metre, and 2.5 sent unchanged is a letter two and a
-#: half metres tall on an 841 mm sheet -- ``sheets.MM`` records the day that
-#: happened. So a height is the one paper length that does have to change.
-MM = 0.001
+__all__ = ["PaperFrame", "PaperSink", "StudyElements", "onto_paper"]
 
 #: Fields that place an element in the model and mean nothing on a sheet. A
 #: layout has no storeys -- a floor index sent there is documented in
@@ -145,10 +138,13 @@ def onto_paper(element: Mapping[str, Any], frame: PaperFrame) -> dict[str, Any]:
     - ``contours`` -- an add-on fill, each with its own ``points``;
     - ``coordinate`` -- a text, one ``{x, y, z}``.
 
-    A pen weight is a paper length in both places and is left alone. A text
-    ``height`` is too, but its *unit* is not the same -- see ``MM`` -- so it
-    is converted. An ``angle`` is turned with the frame, since a text along a
-    shadow's edge has to stay along it.
+    A pen weight and a text ``height`` are paper lengths in both places and
+    are left alone: the add-on's ``CreateTexts`` reads a height as millimetres
+    on paper whichever database is current, and the add-on is the only way
+    onto a sheet. (Converting it to metres, as Tapir's command wants on a
+    layout, drew the first sheets' labels 0.0025 mm tall -- Archicad showed
+    them at its 0.10 mm floor, which is a dot.) An ``angle`` is turned with
+    the frame, since a text along a shadow's edge has to stay along it.
     """
     out: dict[str, Any] = {key: value for key, value in element.items() if key not in _MODEL_ONLY}
     if "coordinates" in out:
@@ -160,8 +156,6 @@ def onto_paper(element: Mapping[str, Any], frame: PaperFrame) -> dict[str, Any]:
         ]
     if "coordinate" in out:
         out["coordinate"] = _moved(out["coordinate"], frame)
-        if "height" in out:
-            out["height"] = float(out["height"]) * MM
     if "angle" in out and frame.angle_rad:
         out["angle"] = float(out["angle"]) + frame.angle_rad
     return out

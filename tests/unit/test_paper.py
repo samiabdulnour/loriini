@@ -90,7 +90,7 @@ def test_a_text_is_as_tall_on_the_sheet_and_turns_with_the_drawing() -> None:
     moved = onto_paper(text, frame)
 
     assert moved["coordinate"] == pytest.approx({"x": 0.5, "y": 0.5, "z": 0.0})
-    assert moved["height"] == pytest.approx(0.0025), "a layout measures a height in metres"
+    assert moved["height"] == 2.5, "millimetres on paper, on the plan and on the sheet alike"
     assert moved["angle"] == pytest.approx(0.3)
     assert "floorIndex" not in moved
 

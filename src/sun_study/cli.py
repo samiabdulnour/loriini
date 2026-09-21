@@ -140,6 +140,7 @@ from sun_study.archicad.sheets import (
     draw_statistics,
     draw_table,
     lay_study_on_sheet,
+    legend_place,
     straighten_and_tile,
 )
 from sun_study.archicad.sun_eyes import (
@@ -2000,9 +2001,13 @@ def report_area_bands(
         whole = band_by_area(samples, series.floor_minutes)
         # The same figures the console prints, on the sheet where a reader
         # looks for them rather than in a terminal nobody keeps.
-        sheet_tables["Bands"] = [
-            row for where, table in tables.items() for row in _table_rows(where, table, styles)
-        ]
+        sheet_tables["Bands"] = (
+            _table_rows("all floor", whole, styles)
+            if paper is not None
+            else [
+                row for where, table in tables.items() for row in _table_rows(where, table, styles)
+            ]
+        )
         sheet_titles["Bands"] = (
             f"Direct sun on the floor, {result.assessment_date:%d %B}, hours by area"
         )
@@ -2624,8 +2629,12 @@ def _sheet_per_instant(
                         title=title,
                         rows=rows,
                         beside=table_beside,
-                        height_mm=table_height_mm,
+                        # Read from across a desk rather than from the screen
+                        # it was checked on: 2.2 mm is the smallest line on the
+                        # practice's own sheets, and a key is not small print.
+                        height_mm=max(table_height_mm, 2.5),
                         placements=placements,
+                        at=legend_place(sheet),
                     )
                     if rows
                     else 0
@@ -3123,6 +3132,37 @@ def _export_by_route(connection: ArchicadConnection, out: Path, route: str) -> P
     return export_ifc(connection, out)
 
 
+def _refuse_stale_export(written: Path, switched_off: Sequence[str]) -> None:
+    """Stop if the export still shows what this run had just switched off.
+
+    The add-on rebuilds the 3D model before reading it, and on Kogarah, 21
+    September 2026, that rebuild twice did not happen: with a layout in front
+    in Archicad the export came back as the model stood *before* the run set
+    its layers -- `09 | Adaptable PRE` in it, which the run had hidden, and the
+    `06 | Zone.SEPP 65` Zones it had forced on missing. That one announced
+    itself, because the apartments were the missing part. Had they not been,
+    the study would have measured the wrong building and said nothing.
+
+    So the export is asked the one question it can answer about itself: does
+    it carry elements on a layer this run switched off. If so it is not this
+    run's model, whatever the cause, and nothing is measured from it.
+    """
+    if written.suffix.lower() == ".ifc" or not switched_off:
+        return
+    carried = {element.layer for element in read_model(written).elements}
+    stale = sorted(carried & set(switched_off))
+    if not stale:
+        return
+    raise ArchicadError(
+        f"The export is not of the model as this run set it: it carries elements on "
+        f"{', '.join(repr(name) for name in stale[:4])}"
+        f"{' and more' if len(stale) > 4 else ''}, which had just been switched off. "
+        f"Archicad kept an older 3D model instead of rebuilding it, which it does when a "
+        f"layout is the window in front. Click the floor plan's tab, or the 3D window's, "
+        f"in Archicad and run again."
+    )
+
+
 def _export_for_massing(
     *,
     port: int,
@@ -3203,6 +3243,11 @@ def _export_for_massing(
     ) as plan:
         typer.echo(plan.describe())
         written = _export_by_route(connection, out, route)
+        try:
+            _refuse_stale_export(written, plan.hidden)
+        except ArchicadError as error:
+            typer.secho(str(error), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from error
     typer.echo(f"  exported {written.stat().st_size / 1e6:.1f} MB")
     # Only an IFC can be bloated by the properties a translator writes; the
     # native file carries none, so the note would be nonsense about it.
@@ -5965,6 +6010,7 @@ def archicad_run(
                     connection, require_layer or [], role="layers named by --require-layer"
                 )
                 exported = _export_by_route(connection, destination, export_route)
+                _refuse_stale_export(exported, plan.hidden)
         except ArchicadError as error:
             typer.secho(str(error), fg=typer.colors.RED, err=True)
             raise typer.Exit(code=2) from error

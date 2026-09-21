@@ -1048,8 +1048,16 @@ def create_texts(
     texts: Sequence[dict[str, Any]],
     *,
     layer_index: int | None = None,
+    heights_in_metres: bool = False,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Write texts; returns what was made and whether they are on ``layer_index``.
+
+    ``heights_in_metres`` is for the sheet tables, which give a height as
+    Tapir wants it on a layout: in the database's unit, metres of paper. The
+    add-on reads a height as millimetres on paper everywhere, so handed those
+    unchanged it drew a 2.2 mm line 0.0022 mm tall -- a row of dots beside the
+    swatches, on 21 September 2026. Converted here, where the route is chosen,
+    because only here is it known which command will read the number.
 
     Through the add-on's ``CreateTexts`` first, and Tapir's only for an add-on
     built before the command existed or no add-on at all. The difference is
@@ -1066,6 +1074,10 @@ def create_texts(
     if not texts:
         return [], True
     wanted = [_addon_text(text, layer_index) for text in texts]
+    if heights_in_metres:
+        for one in wanted:
+            if "height" in one:
+                one["height"] = float(one["height"]) * 1000.0
     made: list[dict[str, Any]] = []
     try:
         for start in range(0, len(wanted), 500):

@@ -43,6 +43,7 @@ __all__ = [
     "draw_table",
     "enter_layout",
     "lay_study_on_sheet",
+    "legend_place",
     "measure_drawings",
     "straighten_and_tile",
 ]
@@ -477,7 +478,7 @@ def draw_statistics(
         )
         written += 1
 
-    create_texts(connection, texts)
+    create_texts(connection, texts, heights_in_metres=True)
     return written
 
 
@@ -492,6 +493,7 @@ def draw_table(
     step_m: float = 0.009,
     beside: bool = False,
     placements: Sequence[DrawingPlacement] | None = None,
+    at: tuple[float, float] | None = None,
 ) -> int:
     """Put the figures table on the sheet itself. Returns the rows drawn.
 
@@ -524,7 +526,12 @@ def draw_table(
                 connection.run_tapir("DeleteElements", {"elements": elements})
         placements = measure_drawings(connection, layout_database_id)
 
-    if not placements:
+    if at is not None:
+        # One place on every sheet, chosen by the caller from the page and not
+        # from the drawings: a legend that follows the plan is somewhere else
+        # on each sheet of a set, and a reader has to find it each time.
+        left, top = at
+    elif not placements:
         left, top = 0.02, 0.20
     elif beside:
         # To the right of the drawing, starting level with its top edge. A
@@ -585,7 +592,7 @@ def draw_table(
 
     if fills:
         connection.run_tapir("CreateHatches", {"hatchesData": fills})
-    create_texts(connection, texts)
+    create_texts(connection, texts, heights_in_metres=True)
     return len(rows)
 
 
@@ -597,6 +604,24 @@ def draw_table(
 #: about 100 mm on the ``DA B1 - VERTICAL`` masters, and the same figure
 #: ``sun_eyes`` keeps clear for the same reason.
 TITLE_BLOCK_MM = 100.0
+
+#: The column kept for the legend, down the right of the sheet beside the
+#: title block, and how far below the top edge it starts. The plans are tiled
+#: in what is left, so the legend never sits on one.
+LEGEND_COLUMN_MM = 95.0
+LEGEND_DROP_MM = 45.0
+
+
+def legend_place(sheet: LayoutSheet, title_block_mm: float = TITLE_BLOCK_MM) -> tuple[float, float]:
+    """Where the legend's top-left corner goes, in metres up from bottom-left.
+
+    Top right, in the column beside the title block: the same spot on every
+    sheet of every study, which is the point of choosing it from the page.
+    """
+    left, top, width, _ = sheet.usable
+    x = left + width - title_block_mm - LEGEND_COLUMN_MM
+    y = sheet.height_mm - top - LEGEND_DROP_MM
+    return (max(x, left) / 1000.0, y / 1000.0)
 
 
 @dataclass(frozen=True)
@@ -683,7 +708,7 @@ def lay_study_on_sheet(
 
     x_min, y_min, x_max, y_max = zoom
     tile = ((x_max - x_min) / scale, (y_max - y_min) / scale)
-    room = replace(sheet, right_mm=sheet.right_mm + title_block_mm)
+    room = replace(sheet, right_mm=sheet.right_mm + title_block_mm + LEGEND_COLUMN_MM)
     tiling = tile_positions(room, max(cells or 0, len(drawings)), tile, gap_m)
 
     ratio, refused = 1.0, False
