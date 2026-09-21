@@ -277,22 +277,27 @@ def test_the_plans_row_says_which_kind_of_plan_each_study_draws(
 
     plans, communal = hidden_window.jobs()
     assert "--draw" in plans.args and flag(plans.args, "--plan-instant")
+    assert "--plan-bands" in plans.args
     assert "--zone-hourly" in communal.args and "--no-zone-bands" not in communal.args
 
     hidden_window.plan_kinds.set("Bands by hour")
     plans, communal = hidden_window.jobs()
     assert "--draw" in plans.args and not flag(plans.args, "--plan-instant")
+    assert "--plan-bands" in plans.args, "the heat map is a whole-day plan too"
     assert "--zone-hourly" not in communal.args and "--no-zone-bands" not in communal.args
+    assert window.APARTMENT_HEAT_MAP in {sheet.kind for sheet in hidden_window.planned()}
 
     hidden_window.plan_kinds.set("Sun at each time")
     plans, communal = hidden_window.jobs()
     assert "--no-draw" in plans.args and "--sheet" in plans.args
+    assert "--plan-bands" not in plans.args
     assert flag(plans.args, "--plan-instant") == ["09:00", "12:00", "15:00"]
     assert "--zone-hourly" in communal.args and "--no-zone-bands" in communal.args
 
     kinds = {sheet.kind for sheet in hidden_window.planned()}
     assert "Apartments" in kinds and window.COMMUNAL_HOURLY in kinds
     assert "Apartments, ADG total" not in kinds and "Communal open space" not in kinds
+    assert window.APARTMENT_HEAT_MAP not in kinds
 
 
 def test_the_plans_row_lights_either_or_both(hidden_window: Any) -> None:
@@ -2096,6 +2101,21 @@ def test_the_shadow_study_sends_one_flag_per_legend_row_by_layer(hidden_window: 
     assert flag(job.args, "--export") == ["native"]
     assert "--shadow-from-views" not in job.args
     assert "--shadow-favourite" not in job.args
+
+
+def test_every_study_that_exports_asks_for_the_native_model(hidden_window: Any) -> None:
+    """No job is left on ``auto``, which falls back to an IFC export when the
+    add-on is out of date: the run is to stop and say so instead."""
+    hidden_window.do_facade.set(True)
+    hidden_window.do_plans.set(True)
+    hidden_window.do_communal.set(True)
+    hidden_window.do_shadows.set(True)
+
+    exporting = [job for job in hidden_window.jobs() if job.args[0] != "site"]
+
+    assert {job.args[0] for job in exporting} >= {"massing", "archicad-run", "shadows"}
+    for job in exporting:
+        assert flag(job.args, "--export") == ["native"], job.args[0]
 
 
 def test_every_hour_on_one_drawing_is_asked_for_only_when_ticked(hidden_window: Any) -> None:

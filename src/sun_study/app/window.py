@@ -140,6 +140,9 @@ FUTURE_MODEL = "Future model"
 #: And the facade study's output, which is the model coloured in bands of
 #: sun hours -- a skin of 3D elements, not a sheet.
 FACADE_MODEL = "Facade model"
+#: The apartments' second whole-day sheet: the floor inside each flat banded
+#: cell by cell, beside the sheet that gives each flat its one ADG figure.
+APARTMENT_HEAT_MAP = "Apartments, floor heat map"
 COMMUNAL_JOB = "solar analysis: communal open space"
 SHADOW_JOB = "shadow diagram"
 SUN_EYE_JOB = "sun views"
@@ -5071,7 +5074,8 @@ class Window:
             (
                 "Bands by hour",
                 "plans_bands",
-                "Bands by hour: only the whole-day plans, banded by hours of sun.",
+                "Bands by hour: only the whole-day plans, banded by hours of sun -- "
+                "each apartment by its own figure, and the floor inside it as a heat map.",
             ),
             (
                 "Sun at each time",
@@ -5446,6 +5450,19 @@ class Window:
                         [""],
                         scale=plan_scale,
                     )
+                    # The floor inside each flat, banded cell by cell. Placed
+                    # coarser than the plans because its legend carries the
+                    # areas beside it -- the command's own 1:300.
+                    deal(
+                        PLANS_JOB,
+                        "Solar analysis",
+                        "analysis",
+                        "SA",
+                        APARTMENT_HEAT_MAP,
+                        day,
+                        [""],
+                        scale=communal_scale,
+                    )
         if COMMUNAL_JOB in queued:
             for day in days:
                 threshold = self.communal_hours.get().strip()
@@ -5701,6 +5718,8 @@ class Window:
                 TIMEZONE,
                 *common,
                 *self._prefix_flag(self.prefix_solar),
+                "--export",
+                "native",
             ]
             for name in self._listed(self.subject):
                 args += ["--subject-layer", name]
@@ -5747,7 +5766,18 @@ class Window:
                 # without --draw it makes the plans at each time alone.
                 "--draw" if bands else "--no-draw",
                 "--sheet",
+                # The native model and never an IFC: a missing ExportModel
+                # stops the run with a sentence instead of quietly exporting
+                # six hundred megabytes of properties nothing here reads.
+                "--export",
+                "native",
             ]
+            if bands:
+                # The heat map beside the flat-by-flat fill: the floor of every
+                # apartment gridded and banded by its own hours of sun, which
+                # is the sheet that shows how far into the room the sun gets.
+                # --draw says whether a flat passes; this says where.
+                args += ["--plan-bands"]
             if self.apartments.get():
                 args += ["--apartment-zone-layer", self.apartments.get()]
             # Without these the layer alone decides, and a layer that mixes
@@ -5805,6 +5835,8 @@ class Window:
                 TIMEZONE,
                 *common,
                 *self._prefix_flag(self.prefix_solar),
+                "--export",
+                "native",
             ]
             if self.communal.get():
                 args += ["--zone-layer", self.communal.get()]
