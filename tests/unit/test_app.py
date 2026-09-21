@@ -81,6 +81,7 @@ def hidden_window(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
             combinations=("01 | Plans - DA", "12 | IFC ARCH. EXPORT"),
             masters=("A4", "DA A1 - VERTICAL COVER/NO SCALE", "DA A1 - VERTICAL - No Scale"),
             subsets=("ADG DIAGRAMS", "PLANS", "SHADOW DIAGRAMS"),
+            overrides=("Clean", "Sun Eye Views", "Zone Colours"),
         ),
     )
     try:
@@ -2064,60 +2065,44 @@ def test_a_chosen_band_becomes_the_two_storey_flags(hidden_window: Any) -> None:
     assert "--exclude-above" not in facade.args, "the metre flag is gone from the window"
 
 
-def test_the_shadow_study_names_views_and_never_layers(hidden_window: Any, tmp_path: Path) -> None:
-    """The whole reason this study reads a folder instead of a combination.
-
-    The office pins geometry in renovation filters, so two views can show the
-    same layers and different buildings, and AC26 cannot even switch to a view
-    through the API to look. Publishing the views hands that to Archicad. A
-    layer flag reaching this command line would mean the window had found a
-    second route to the same answer -- the one that is quietly wrong on
-    exactly these models.
-    """
-    folder = tmp_path / "published"
-    folder.mkdir()
-    for name in ("EXISTING NEIGHBOURING", "TOD MASSING", "TERRAIN"):
-        (folder / f"{name}.ifc").write_text("", encoding="utf-8")
-
+def test_the_shadow_study_sends_one_flag_per_legend_row_by_layer(hidden_window: Any) -> None:
+    """Layers out of the open project, one legend row each, and the native
+    model rather than an IFC or a folder of published views (D113)."""
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
     hidden_window.do_facade.set(False)
     hidden_window.do_shadows.set(True)
-    hidden_window.view_folder.insert(0, str(folder))
-    hidden_window.baseline_views.insert(0, "EXISTING NEIGHBOURING")
-    hidden_window.scenario_views.insert(0, "TOD MASSING")
-    hidden_window.terrain_views.insert(0, "TERRAIN")
+    rows["EXISTING"].insert(0, "01 | Wall.External, 01 | Floor.Structural")
+    rows["PROPOSED"].insert(0, "06 | Zone.Units")
+    hidden_window.terrain_layers.insert(0, "05 | Dims/Notes.DA")
 
     (job,) = hidden_window.jobs()
 
     assert job.args[0] == "shadows"
-    assert "--shadow-from-views" in job.args
-    assert job.args[job.args.index("--shadow-source") + 1] == "EXISTING NEIGHBOURING"
-    assert job.args[job.args.index("--shadow-scenario") + 1] == "TOD MASSING"
-    assert job.args[job.args.index("--shadow-terrain") + 1] == "TERRAIN"
-    assert "--layer-combination" not in job.args
-    assert "--subject-layer" not in job.args
+    assert flag(job.args, "--shadow-source") == [
+        "EXISTING=01 | Wall.External,01 | Floor.Structural"
+    ]
+    assert flag(job.args, "--shadow-scenario") == ["PROPOSED=06 | Zone.Units"]
+    assert flag(job.args, "--shadow-terrain") == ["05 | Dims/Notes.DA"]
+    assert flag(job.args, "--export") == ["native"]
+    assert "--shadow-from-views" not in job.args
+    assert "--shadow-favourite" not in job.args
 
 
-def test_the_views_offered_are_the_ones_actually_published(
-    hidden_window: Any, tmp_path: Path
-) -> None:
-    """Read off the folder, not out of the navigator.
+def test_the_legend_rows_are_the_legends_own_in_its_order(hidden_window: Any) -> None:
+    """Three that accumulate, then three that are compared; the short names are
+    what the drawing matches to the legend's colours."""
+    from sun_study.archicad.shadows import LEGEND
 
-    A view listed in Archicad but missing from the set is the mistake worth
-    catching before a run rather than after, and only the folder knows.
-    """
-    folder = tmp_path / "published"
-    folder.mkdir()
-    (folder / "FUTURE CONTEXT.ifc").write_text("", encoding="utf-8")
-    (folder / "SEARS ENVELOPE.ifc").write_text("", encoding="utf-8")
-    (folder / "notes.txt").write_text("", encoding="utf-8")
-    hidden_window.view_folder.insert(0, str(folder))
-
-    assert hidden_window._published_views() == ["FUTURE CONTEXT", "SEARS ENVELOPE"]
+    assert [(short, role) for short, role, _box in hidden_window.shadow_rows] == [
+        (short, role) for short, _words, role, _rgb in LEGEND
+    ]
 
 
-def test_no_folder_offers_nothing_and_says_so(hidden_window: Any) -> None:
-    """Rather than an empty chooser, which reads as "this project has none"."""
-    assert hidden_window._published_views() == []
+def test_the_legend_rows_survive_a_save(hidden_window: Any) -> None:
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+    rows["TOD"].insert(0, "01 | Floor.Structural")
+    saved = hidden_window.settings()
+    assert saved["shadow_layers_tod"] == "01 | Floor.Structural"
 
 
 def test_the_shadow_study_sends_only_what_was_filled_in(hidden_window: Any) -> None:
@@ -2131,9 +2116,9 @@ def test_the_shadow_study_sends_only_what_was_filled_in(hidden_window: Any) -> N
 
     (job,) = hidden_window.jobs()
 
-    assert "--shadow-favourite" not in job.args
     assert "--shadow-terrain-floor" not in job.args
     assert "--shadow-terrain" not in job.args
+    assert "--shadow-source" not in job.args, "an empty row is left off"
     # The dates and hours have defaults on the page, so they do travel.
     assert "--shadow-date" in job.args
     assert "--shadow-hour" in job.args
@@ -2166,6 +2151,25 @@ def test_the_sun_eye_run_sends_what_is_filled_in_and_nothing_else(hidden_window:
     assert job.args[job.args.index("--override") + 1] == "Sun Eye Views"
     # Blank hours: the ruleset's own window, not an empty flag.
     assert "--hour" not in job.args
+
+
+def test_the_sun_eye_override_and_layers_are_picked_from_the_project(
+    hidden_window: Any,
+) -> None:
+    """Both lists are the open project's own: the overrides through the
+    add-on, which is the only thing that can list them, and the layer
+    combinations through Tapir."""
+    assert list(hidden_window.eye_override.cget("values")) == [
+        "",
+        "Clean",
+        "Sun Eye Views",
+        "Zone Colours",
+    ]
+    assert hidden_window.eye_override.get() == "Sun Eye Views"
+    assert "12 | IFC ARCH. EXPORT" in hidden_window.eye_base_combination.cget("values")
+    assert hidden_window.eye_base_combination.get() in hidden_window.eye_base_combination.cget(
+        "values"
+    )
 
 
 def test_the_sun_eye_settings_survive_a_save(hidden_window: Any) -> None:

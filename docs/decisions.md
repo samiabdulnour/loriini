@@ -3806,3 +3806,46 @@ itself, the value is the lit ones joined by commas, and the last one lit
 stays lit, because neither is no plan study at all. "Bands and times" is
 gone as a tile and read as both wherever it is still written down. The row
 is also saved with the window's settings now; it never was.
+
+
+### D113 — Shadow diagrams come from layers and the native model, drawn in the legend's colours
+
+Asked 21 September 2026: "update it in exe file. so we dont use published
+views of ifc model but layers? no fill favorite. match hatch to this legend
+for shadow analysis. in sun views there should be graphic override and
+layers selectable from actual model."
+
+**The model.** `shadows` takes `--export` like the other studies and defaults
+to `native`: the geometry is the add-on's `ExportModel`, and there is no quiet
+fallback to an IFC. The native file already sits in the project's frame, so
+the drawing frame's check reads its samples as Archicad guids instead of
+looking them up as IFC GlobalIds, and the turn comes out at zero. On the
+native route the database is not moved before the export (the same rule as
+`_export_for_massing`). The terrain layers now go into the export's `only`
+set with the legend rows, because without them a layer-trimmed export has no
+ground and the run stops.
+
+**The window.** The shadow page no longer asks for a folder of published
+views. It has one layer picker per legend row -- Existing, Future, Existing on
+site, TOD, SEARs, Proposed -- plus the ground, all read out of the open
+project, and sends each as `NAME=layer,layer`. What this gives up is what a
+view could say beyond layers (a renovation filter, pinned geometry); a project
+that separates its massings that way has to put them on their own layers.
+`--shadow-from-views` stays on the command line.
+
+**The fills.** Drawn through `Loriini.CreateFills` in the project's solid
+fill, with the legend's own RGB and contour pen 0. No pen matching and no Fill
+Favorite. The colours are `shadows.LEGEND`, read off the marked-up legend
+pixel by pixel. The greys are the SSDA 401 ramp exactly; the three blues were
+off by a few units and were corrected. Rows are coloured by name, not by
+position, so leaving one out does not shift the rest. An add-on without
+`CreateFills` falls back to `CreateHatches` and the report says the colours
+are pens. `--shadow-favourite` still works from the command line and takes
+the Tapir route.
+
+**Sun views.** Graphic override and base layer combination are pickers
+filled from the project. Layer combinations come through Tapir. The overrides
+come through a new add-on command, `GetGraphicOverrideCombinations`
+(`ACAPI_Override_GetOverrideCombinationList`), because Tapir can pin a view
+to an override by name but cannot list them. On an older add-on the field is
+still typed.

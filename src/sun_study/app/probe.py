@@ -92,6 +92,14 @@ class ProjectOptions:
     pen_sets: tuple[str, ...] = ()
     """The project's pen tables, for the sun views to print in the office's."""
 
+    overrides: tuple[str, ...] = ()
+    """Graphic override combinations, for the sun views' glazing override.
+
+    Read through the Loriini add-on, since Tapir can pin a view to one by name
+    and cannot list them. Empty on an older add-on, and the field then takes a
+    typed name as before.
+    """
+
     storeys: tuple[int, ...] = ()
 
     storey_names: tuple[str, ...] = ()
@@ -263,6 +271,12 @@ def options(port: int) -> ProjectOptions:
         "pen sets",
         lambda: connection.run_tapir("GetAttributesByType", {"attributeType": "PenTable"}),
     )
+    # Not through `attempt`: an add-on older than this command is not a
+    # problem with the project, and the field simply stays typed.
+    try:
+        overrides = connection.run_loriini("GetGraphicOverrideCombinations", {})
+    except ArchicadError:
+        overrides = None
     book = attempt(
         "layout book",
         lambda: connection.run_tapir("GetNavigatorItemTree", {"navigatorMapId": "LayoutBook"}),
@@ -298,6 +312,13 @@ def options(port: int) -> ProjectOptions:
                 str(entry.get("name", ""))
                 for entry in ((pens or {}).get("attributes") or [])
                 if str(entry.get("name", "")).strip()
+            )
+        ),
+        overrides=tuple(
+            sorted(
+                str(entry.get("name", ""))
+                for entry in ((overrides or {}).get("combinations") or [])
+                if isinstance(entry, dict) and str(entry.get("name", "")).strip()
             )
         ),
         subsets=tuple(

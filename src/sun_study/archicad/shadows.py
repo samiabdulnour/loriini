@@ -73,6 +73,7 @@ from sun_study.archicad.layout import (
 )
 from sun_study.archicad.read import elements_by_ifc_ids
 from sun_study.archicad.sheeting import DEFAULT_SHEET_MODE, cells_for, sheet_chunks
+from sun_study.archicad.site_analysis import attribute_index
 from sun_study.archicad.views import views_for_storeys
 from sun_study.core.geometry import PlanTransform, rotation_about_z
 from sun_study.core.patches import Ring
@@ -86,6 +87,7 @@ from sun_study.core.shadow import (
 __all__ = [
     "BASELINE_RAMP",
     "DEFAULT_SHEETS",
+    "LEGEND",
     "SCENARIO_RAMP",
     "ShadowDrawReport",
     "ShadowSheetReport",
@@ -94,6 +96,7 @@ __all__ = [
     "draw_shadow_series",
     "drawing_order",
     "layer_name",
+    "legend_colour",
     "project_frame",
     "require_hatch_favourite",
     "sheet_name",
@@ -120,10 +123,39 @@ BASELINE_RAMP: tuple[tuple[int, int, int], ...] = (
     (158, 158, 158),
 )
 SCENARIO_RAMP: tuple[tuple[int, int, int], ...] = (
-    (204, 216, 225),
-    (168, 193, 205),
-    (147, 174, 192),
+    (207, 215, 224),
+    (175, 191, 204),
+    (156, 172, 191),
 )
+
+#: The office's shadow legend, row by row: the short name a run is given, the
+#: words on the sheet, whether it accumulates or is compared, and its colour.
+#:
+#: Colours read off the marked-up legend of 21 September 2026 pixel by pixel.
+#: The greys agree with the SSDA 401 ramp exactly; the blues sit a few units
+#: from the ramp's first sampling and are what the sheet shows now.
+#:
+#: Matched by name rather than dealt out by position, so a project that has no
+#: future context still draws its proposal in the proposal's blue. By
+#: position, leaving a row out would have shifted every later row one colour.
+LEGEND: tuple[tuple[str, str, str, tuple[int, int, int]], ...] = (
+    ("EXISTING", "EXISTING NEIGHBOURING BUILDINGS", BASELINE, BASELINE_RAMP[0]),
+    ("FUTURE", "FUTURE NEIGHBOURING CONTEXT BUILDINGS", BASELINE, BASELINE_RAMP[1]),
+    ("EXISTING ON SITE", "EXISTING STRUCTURES WITHIN THE SITE", BASELINE, BASELINE_RAMP[2]),
+    ("TOD", "CURRENT LEP 2023 BUILDING HEIGHT LIMIT", SCENARIO, SCENARIO_RAMP[0]),
+    ("SEARS", "CANTERBURY BANKSTOWN LEP BUILDING HEIGHT LIMIT", SCENARIO, SCENARIO_RAMP[1]),
+    ("PROPOSED", "PROPOSED BUILDING ENVELOPE", SCENARIO, SCENARIO_RAMP[2]),
+)
+
+
+def legend_colour(label: str) -> tuple[int, int, int] | None:
+    """The legend's colour for a row named either way, or ``None``."""
+    wanted = " ".join(label.split()).casefold()
+    for short, words, _role, rgb in LEGEND:
+        if wanted in (short.casefold(), words.casefold()):
+            return rgb
+    return None
+
 
 #: Where the shadow pens start. A pen number means whatever one project's pen
 #: table says it means, so these are meant to be overridden; the colours above
@@ -150,7 +182,7 @@ def styles_for(sources: Sequence[SourceSpec]) -> dict[str, BandStyle]:
             source.label.upper(),
             float("inf"),
             fill_pen=FIRST_SHADOW_PEN + index,
-            rgb=ramp[position % len(ramp)],
+            rgb=legend_colour(source.label) or ramp[position % len(ramp)],
         )
     return styles
 
@@ -199,6 +231,7 @@ def project_frame(
     *,
     north_radians: float,
     export_bearing_deg: float,
+    archicad_guids: bool = False,
 ) -> tuple[PlanTransform, str]:
     """The rotation and shift taking export coordinates into the project's.
 
@@ -225,6 +258,12 @@ def project_frame(
     being dragged by it. Geometry then gets the last word as a *check* -- if
     the turned pairs do not land on their Archicad counterparts, something
     here is wrong and the run says so rather than drawing a plausible sheet.
+
+    ``archicad_guids`` is for a native export, whose samples already carry
+    Archicad's own guids rather than IFC GlobalIds, so there is nothing to
+    look up. Its geometry is in the project's frame to begin with and both
+    norths come from the same ``place.north``, so the turn comes out zero and
+    the check is then a check that the identity really is the identity.
     """
     project_bearing = (270.0 + math.degrees(north_radians)) % 360.0
     turn = ((project_bearing - export_bearing_deg + 180.0) % 360.0) - 180.0
@@ -233,7 +272,12 @@ def project_frame(
     offset = np.zeros(2, dtype=np.float64)
     residual = float("nan")
     used = 0
-    found = elements_by_ifc_ids(connection, [gid for gid, _, _ in samples]) if samples else {}
+    if not samples:
+        found: dict[str, list[str]] = {}
+    elif archicad_guids:
+        found = {gid: [gid] for gid, _, _ in samples}
+    else:
+        found = elements_by_ifc_ids(connection, [gid for gid, _, _ in samples])
     pairs = [(x, y, found[gid][0]) for gid, x, y in samples if found.get(gid)]
     if pairs:
         boxes: list[Any] = []
@@ -329,6 +373,8 @@ class ShadowDrawReport:
     340 m2 at 9am" -- and a figure somebody has to measure off a drawing with
     a scale rule is a figure that will be measured wrongly.
     """
+    note: str = ""
+    """Said when the fills could not be drawn in the legend's own colours."""
 
     def describe(self) -> str:
         lines = [
@@ -352,6 +398,8 @@ class ShadowDrawReport:
                 "below the terrain. Take the terrain layer out of the context "
                 "layers, or move the datum with --shadow-datum."
             )
+        if self.note:
+            lines.append(f"  {self.note}")
         lines.append(self.stamped.describe())
         if self.grouped.describe():
             lines.append(self.grouped.describe())
@@ -458,6 +506,75 @@ def _fill(
     return hatch
 
 
+def _as_legend_fill(
+    hatch: dict[str, Any], rgb: tuple[int, int, int] | None, solid: int | None
+) -> dict[str, Any]:
+    """One hatch re-spelled for the add-on's ``CreateFills``, in its own colour.
+
+    The legend is a set of colours, and a pen can only approximate one: pen
+    93 means whatever one project's pen table says. ``CreateFills`` takes the
+    colour itself, and takes contour pen 0, which is no contour at all -- the
+    two things ``CreateHatches`` could not do, and the reason a hand-made Fill
+    Favorite was ever needed.
+
+    ``rgb`` of ``None`` is the site boundary, which is an outline and keeps
+    its pen.
+    """
+    one: dict[str, Any] = {
+        "contours": [{"points": list(hatch["coordinates"])}],
+        "layerIndex": hatch["layerIndex"],
+        "fillPen": hatch["fillPenIndex"],
+        "showArea": False,
+    }
+    if "floorInd" in hatch:
+        one["floorIndex"] = hatch["floorInd"]
+    if rgb is None:
+        one["contourPen"] = hatch.get("contourPenIndex", hatch["fillPenIndex"])
+        one["backgroundPen"] = hatch.get("fillBackgroundPenIndex", 0)
+        return one
+    colour = {"red": rgb[0] / 255.0, "green": rgb[1] / 255.0, "blue": rgb[2] / 255.0}
+    one["contourPen"] = 0
+    one["foregroundColour"] = colour
+    one["backgroundColour"] = colour
+    if solid is not None:
+        one["fillIndex"] = solid
+    return one
+
+
+def _create_legend_fills(
+    connection: ArchicadConnection,
+    hatches: Sequence[dict[str, Any]],
+    colours: Sequence[tuple[int, int, int] | None],
+) -> list[dict[str, Any]]:
+    """Every fill through the add-on, answered in Tapir's shape.
+
+    Re-shaped because ``ids.stamp_in_order`` reads ``elementId`` and the
+    add-on answers ``guid``: handed the add-on's shape it would stamp nothing
+    and every schedule would total an empty drawing.
+    """
+    solid = attribute_index(connection, "Fill", ("Solid Fill", "Solid", "Foreground"))
+    made: list[dict[str, Any]] = []
+    for start in range(0, len(hatches), 500):
+        batch = [
+            _as_legend_fill(hatch, colour, solid)
+            for hatch, colour in zip(
+                hatches[start : start + 500], colours[start : start + 500], strict=True
+            )
+        ]
+        answer = connection.run_loriini("CreateFills", {"fills": batch})
+        elements = answer.get("elements") if isinstance(answer, dict) else None
+        if not isinstance(elements, list):
+            raise ArchicadError(f"CreateFills returned no element list: {answer!r}")
+        made.extend(
+            {"elementId": entry["elementId"]}
+            if "elementId" in entry
+            else {"elementId": {"guid": entry["guid"]}}
+            for entry in elements
+            if isinstance(entry, dict) and ("elementId" in entry or "guid" in entry)
+        )
+    return made
+
+
 def _visibility(
     layers: Sequence[Any], showing: str, shared: str, mine: Sequence[str]
 ) -> dict[str, bool]:
@@ -549,6 +666,9 @@ def draw_shadow_series(
     #: ``None`` for a fill that must never be totalled -- see the site
     #: boundary below.
     element_ids: list[str | None] = []
+    #: The legend colour of each fill, in the same order; ``None`` for the
+    #: boundary, which is an outline and not a legend row.
+    colours: list[tuple[int, int, int] | None] = []
     cleared = 0
     made_layers: list[str] = []
     for instant in series.instants:
@@ -562,6 +682,7 @@ def draw_shadow_series(
                 continue
             for ring in instant.regions.get(category, ()):
                 fills.append(_fill(placed(ring), style, layer.index, storey_index, favourite))
+                colours.append(style.rgb)
                 # The hour *and* the category, so one schedule breaks down by
                 # both: how much shadow at 9am, and how much of it is ours.
                 element_ids.append(fill_id(SHADOW, instant.caption, category.upper()))
@@ -582,14 +703,33 @@ def draw_shadow_series(
         # site to the shadow area and report a number nobody could explain.
         # Only measured fills are tagged; the boundary is furniture.
         element_ids.append(None)
+        colours.append(None)
 
     # Batched: twenty-one hours of a tiled shadow is thousands of hatches, and
     # one request carrying all of them is a payload Archicad parses in one go.
+    #
+    # Through the add-on unless a Favorite was named, so each fill is the
+    # legend's own colour with no contour. A Favorite is Tapir's route, and an
+    # add-on too old for CreateFills falls back to it and says so.
     made: list[dict[str, Any]] = []
-    for start in range(0, len(fills), 500):
-        made.extend(
-            create_elements(connection, "CreateHatches", "hatchesData", fills[start : start + 500])
-        )
+    note = ""
+    if not favourite:
+        try:
+            made = _create_legend_fills(connection, fills, colours)
+        except ArchicadError as error:
+            if "not have the registered" not in str(error):
+                raise
+            note = (
+                "the installed Loriini add-on has no CreateFills, so these are pen "
+                "colours with a contour, not the legend's. Install the current build."
+            )
+    if not made:
+        for start in range(0, len(fills), 500):
+            made.extend(
+                create_elements(
+                    connection, "CreateHatches", "hatchesData", fills[start : start + 500]
+                )
+            )
 
     # Positional pairing, and the boundary's ``None`` drops out there: see
     # ``ids.stamp_in_order`` for why a mismatch is refused rather than trimmed.
@@ -627,6 +767,7 @@ def draw_shadow_series(
         stamped=stamped,
         grouped=grouped,
         areas_m2={instant.label: dict(instant.areas_m2) for instant in series.instants},
+        note=note,
     )
 
 

@@ -94,6 +94,8 @@ class ShadowTransport:
         if command == "GetAddOnVersion":
             return {"version": "1.5.7"}
         if command == "GetAttributesByType":
+            if given.get("attributeType") == "Fill":
+                return {"attributes": [{"name": "Solid Fill", "index": 65}]}
             if given.get("attributeType") == "Layer":
                 return {
                     "attributes": [
@@ -123,6 +125,9 @@ class ShadowTransport:
             return {"executionResults": [{"success": True} for _ in given["elements"]]}
         if command == "CreateHatches":
             return {"elements": [{"elementId": {"guid": "fill"}} for _ in given["hatchesData"]]}
+        if command == "CreateFills":
+            # The add-on's shape, not Tapir's: a bare guid.
+            return {"elements": [{"guid": "fill"} for _ in given["fills"]]}
         if command in ("CreateLayers", "CreateLayerCombinations"):
             return {"attributeIds": []}
         if command == "CreateGroups":
@@ -197,9 +202,29 @@ def connect(labels: list[str], stale: int = 0):  # type: ignore[no-untyped-def]
 
 
 def hatches(transport: ShadowTransport) -> list[dict[str, Any]]:
+    """Every fill drawn, by either route, in Tapir's spelling.
+
+    The add-on's ``CreateFills`` is spelled back so the tests can ask the same
+    questions of both: which layer, which storey, which pen.
+    """
     out: list[dict[str, Any]] = []
     for call in transport.all_parameters_for("CreateHatches"):
         out.extend(call["hatchesData"])
+    back = {
+        "layerIndex": "layerIndex",
+        "floorIndex": "floorInd",
+        "fillPen": "fillPenIndex",
+        "backgroundPen": "fillBackgroundPenIndex",
+        "contourPen": "contourPenIndex",
+        "fillIndex": "fillIndex",
+        "showArea": "showArea",
+        "foregroundColour": "foregroundColour",
+    }
+    for call in transport.all_parameters_for("CreateFills"):
+        for fill in call["fills"]:
+            one: dict[str, Any] = {"coordinates": fill["contours"][0]["points"]}
+            one.update({back[key]: value for key, value in fill.items() if key in back})
+            out.append(one)
     return out
 
 
@@ -482,6 +507,54 @@ def test_every_ring_is_moved_into_the_project_frame() -> None:
         assert np.allclose(np.array([[p["x"], p["y"]] for p in moved]), turn.apply(source))
 
 
+def test_a_native_export_is_checked_by_its_own_guids() -> None:
+    """A native export carries Archicad's guids, not IFC GlobalIds, and sits
+    in the project's frame already. Nothing is looked up by IFC id, the turn
+    is zero, and the boxes confirm the identity rather than being skipped."""
+    from sun_study.archicad.shadows import project_frame
+
+    class Boxes:
+        def __init__(self) -> None:
+            self.asked: list[str] = []
+
+        def send(self, payload: dict[str, Any]) -> dict[str, Any]:
+            name = payload["parameters"]["addOnCommandId"]["commandName"]
+            self.asked.append(name)
+            given = payload["parameters"]["addOnCommandParameters"]
+            answer: dict[str, Any] = {"version": "1.5.7"}
+            if name == "Get3DBoundingBoxes":
+                centres = {"a": (10.0, 20.0), "b": (-30.0, 5.0)}
+                answer = {
+                    "boundingBoxes3D": [
+                        {
+                            "boundingBox3D": {
+                                "xMin": centres[e["elementId"]["guid"]][0] - 1,
+                                "xMax": centres[e["elementId"]["guid"]][0] + 1,
+                                "yMin": centres[e["elementId"]["guid"]][1] - 1,
+                                "yMax": centres[e["elementId"]["guid"]][1] + 1,
+                            }
+                        }
+                        for e in given["elements"]
+                    ]
+                }
+            return {"succeeded": True, "result": {"addOnCommandResponse": answer}}
+
+    transport = Boxes()
+    north = np.radians(58.4)
+    frame, note = project_frame(
+        ArchicadConnection(transport),
+        [("a", 10.0, 20.0), ("b", -30.0, 5.0)],
+        north_radians=north,
+        export_bearing_deg=(270.0 + 58.4) % 360.0,
+        archicad_guids=True,
+    )
+
+    assert "GetElementsByIFCIds" not in transport.asked
+    assert np.allclose(frame.rotation, np.eye(2))
+    assert np.allclose(frame.offset, 0.0)
+    assert "checked against 2 elements" in note
+
+
 def test_no_transform_leaves_the_coordinates_alone() -> None:
     """A project that cannot be joined back to its export loses the correction
     and is told so; it must not lose the drawing, or silently gain a rotation
@@ -514,16 +587,53 @@ def test_a_favourite_replaces_the_contour_rather_than_fighting_it() -> None:
     assert len({h["fillPenIndex"] for h in drawn}) > 1
 
 
-def test_without_a_favourite_the_contour_is_hidden_in_the_fills_own_pen() -> None:
-    """The nearest thing to contour-less this add-on reaches unaided."""
+def test_without_a_favourite_each_fill_is_its_legend_colour_with_no_contour() -> None:
+    """Through the add-on's CreateFills: contour pen 0 is no contour at all,
+    and the colour is the legend's own rather than whatever pen 93 is."""
+    from sun_study.archicad.shadows import styles_for
+
     connection, transport = connect(["9AM"])
-    draw_shadow_series(connection, series(["9AM"]))
+    drawn_series = series(["9AM"])
+    draw_shadow_series(connection, drawn_series)
     drawn = hatches(transport)
 
     assert drawn
-    assert all("favoriteName" not in h for h in drawn)
-    assert all(h["contourPenIndex"] == h["fillPenIndex"] for h in drawn)
-    assert all("fillBackgroundPenIndex" in h for h in drawn), "no Favorite to ask"
+    assert not transport.all_parameters_for("CreateHatches"), "the add-on route only"
+    assert all(h["contourPenIndex"] == 0 for h in drawn)
+    assert all(h["fillIndex"] == 65 for h in drawn), "the project's solid fill"
+    wanted = {
+        tuple(round(channel * 255) for channel in (c["red"], c["green"], c["blue"]))
+        for c in (h["foregroundColour"] for h in drawn)
+    }
+    assert wanted <= {style.rgb for style in styles_for(drawn_series.sources).values()}
+
+
+def test_a_legend_row_keeps_its_colour_when_another_is_left_out() -> None:
+    """By name, not by position: a sheet with no future context still draws
+    the proposal in the proposal's blue."""
+    from sun_study.archicad.shadows import LEGEND, styles_for
+    from sun_study.core.shadow import BASELINE, SCENARIO, SourceSpec
+
+    styles = styles_for(
+        [
+            SourceSpec("existing", "EXISTING", BASELINE),
+            SourceSpec("proposed", "PROPOSED", SCENARIO),
+        ]
+    )
+    colours = {short: rgb for short, _words, _role, rgb in LEGEND}
+
+    assert styles["existing"].rgb == colours["EXISTING"] == (235, 235, 235)
+    assert styles["proposed"].rgb == colours["PROPOSED"] == (156, 172, 191)
+
+
+def test_the_fills_are_stamped_even_though_the_add_on_answers_a_bare_guid() -> None:
+    """The add-on answers {"guid"} and the stamper reads {"elementId"}; not
+    re-shaped, every Element ID would silently go unwritten."""
+    connection, transport = connect(["9AM"])
+    report = draw_shadow_series(connection, series(["9AM"]))
+
+    assert transport.stamped, "Element IDs written"
+    assert report.fills == len(hatches(transport))
 
 
 def test_a_favourite_the_project_does_not_have_is_refused() -> None:

@@ -297,12 +297,15 @@ sun-study shadows --port 19723   --shadow-from-views <folder the Publisher Set w
 Publish the set first; the run reads what Publisher wrote and does not export.
 About twenty minutes to publish, seven to run.
 
-The same study is on the **Shadow diagram** tab of `Loriini.exe`. Point
-*Published views* at the folder and the three lists below it are ticked from
-the IFCs actually in it, rather than typed. There is deliberately no layer
-route on that page: a layer combination cannot reproduce a view that differs
-by renovation filter, which is the ordinary case here, and offering both would
-offer a way to be quietly wrong.
+The **Shadow diagram** tab of `Loriini.exe` takes the other route: one layer
+picker per legend row -- Existing, Future, Existing on site, TOD, SEARs,
+Proposed -- and one for the ground, all ticked out of the open project. It
+exports the add-on's own model (`--export native`), so nothing is published
+first, and draws each row as a solid fill in the legend's own colour with no
+contour, through `Loriini.CreateFills`; no Fill Favorite is needed. What it
+cannot reproduce is a view that differs by renovation filter: a massing
+separated that way has to go on its own layer, or run from the command line
+with `--shadow-from-views` as above ([D113](decisions.md)).
 
 `--shadow-source` is something that will be there and accumulates.
 `--shadow-scenario` is something that might be, cast against every source and

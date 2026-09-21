@@ -6491,10 +6491,26 @@ def shadows(
     master_layout: Annotated[str | None, typer.Option("--master-layout")] = None,
     shadow_subset: Annotated[str | None, typer.Option("--shadow-subset")] = None,
     sheets: Annotated[str, typer.Option("--sheets", help=SHEETS_HELP)] = SHADOW_SHEETS,
-    ifc_out: Annotated[Path | None, typer.Option("--ifc-out")] = None,
+    export_route: Annotated[
+        str,
+        typer.Option(
+            "--export",
+            help=(
+                "Where the geometry comes from: 'native' uses the add-on's own model "
+                "and refuses rather than fall back, 'auto' falls back to an IFC "
+                "export, 'ifc' always exports an IFC."
+            ),
+        ),
+    ] = "native",
+    ifc_out: Annotated[
+        Path | None,
+        typer.Option("--ifc-out", help="Keep the exported model here instead of discarding it."),
+    ] = None,
     ifc_in: Annotated[
         Path | None,
-        typer.Option("--ifc-in", help="Analyse this IFC instead of exporting a new one."),
+        typer.Option(
+            "--ifc-in", help="Analyse this model file (IFC or native) instead of exporting."
+        ),
     ] = None,
 ) -> None:
     """Shadow diagrams: what already stands, and what the proposal adds.
@@ -6517,14 +6533,25 @@ def shadows(
     is skipped is producing it, not reading it -- but the file is a snapshot:
     a model edited since it was written is not the model being drawn, and
     nothing here can tell.
+
+    The geometry comes from the add-on's own model by default (``--export
+    native``), not an IFC: the same file the other studies read, a fraction
+    of the size, and already in the project's frame. ``--shadow-from-views``
+    is the exception, since what it reads is what Publisher wrote.
     """
     naming.set_prefix(layer_prefix, default=naming.SHADOW_PREFIX)
+    if export_route not in ("auto", "ifc", "native"):
+        raise typer.BadParameter("takes auto, ifc or native", param_hint="--export")
     moments, labels = _shadow_moments(shadow_date, shadow_hour, year, timezone)
     if not moments:
         typer.secho("No instants to draw.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2)
 
-    connection = _connect(port, timeout)
+    # Without moving the database on the native route, which it cannot
+    # survive: the add-on reads the 3D window's sight, and with the database
+    # moved off it the rebuild misses geometry (see _export_for_massing). The
+    # IFC route keeps its move, because a layout left current exports empty.
+    connection = _connect(port, timeout, switch_database=export_route == "ifc")
     exclude_above, exclude_below = _storey_band(
         port, timeout, above=exclude_above_storey, below=exclude_below_storey, metres=exclude_above
     )
@@ -6612,8 +6639,10 @@ def shadows(
             # write then goes there instead of to the model -- while the window
             # on screen still shows a floor plan and the export still reports
             # success. Measured on a real project: 396 Zones and 40% of the
-            # walls missing from a file that looked fine.
-            ensure_model_database(connection)
+            # walls missing from a file that looked fine. The IFC route only;
+            # the native one must not move the database (see above).
+            if export_route == "ifc":
+                ensure_model_database(connection)
             cleared = clear_selection(connection)
             if cleared:
                 typer.secho(
@@ -6638,6 +6667,10 @@ def shadows(
                 # how that run says which layers to carry.
                 only=(
                     tuple(selector for rule in config.shadow_sources for selector in rule.selectors)
+                    # The ground as well: it is not a legend row, and left out
+                    # of the export the run stops on "nothing matches the
+                    # terrain selector" with the layer sitting right there.
+                    + tuple(shadow_terrain or ())
                     + tuple(subject_layer or ())
                     + tuple(context_layer or ())
                     + tuple(require_layer or ())
@@ -6648,8 +6681,9 @@ def shadows(
                 hide=tuple(hide_layer or ()),
             ) as plan:
                 typer.echo(plan.describe())
-                exported = export_ifc(connection, destination)
-            note = oversized_export_note(exported)
+                exported = _export_by_route(connection, destination, export_route)
+            typer.echo(f"  model written to {exported}")
+            note = oversized_export_note(exported) if exported.suffix.lower() == ".ifc" else ""
             if note:
                 typer.secho(note, fg=typer.colors.YELLOW)
         except ArchicadError as error:
@@ -6877,6 +6911,7 @@ def _shadow_report(
             scene.frame_samples,
             north_radians=read_geo_location(connection).north_radians,
             export_bearing_deg=scene.orientation.normalised_bearing_deg,
+            archicad_guids=scene.provenance.get("schema") == "LORIINI",
         )
         typer.echo(note)
         drawn = draw_shadow_series(connection, series, storey_index=shadow_storey, transform=frame)

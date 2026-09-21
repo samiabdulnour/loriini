@@ -455,4 +455,60 @@ GS::ObjectState ModifyLayersCommand::Execute (const GS::ObjectState& parameters,
 	return result;
 }
 
+
+
+// -- GetGraphicOverrideCombinations -----------------------------------------
+
+GS::String GetGraphicOverrideCombinationsCommand::GetName () const		{ return "GetGraphicOverrideCombinations"; }
+
+GS::Optional<GS::UniString> GetGraphicOverrideCombinationsCommand::GetInputParametersSchema () const
+{
+	return GS::NoValue;
+}
+
+GS::Optional<GS::UniString> GetGraphicOverrideCombinationsCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"combinations": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"properties": { "guid": { "type": "string" }, "name": { "type": "string" } }
+				}
+			},
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState GetGraphicOverrideCombinationsCommand::Execute (const GS::ObjectState& /*parameters*/,
+																GS::ProcessControl& /*processControl*/) const
+{
+	GS::Array<API_Guid> guids;
+	const GSErrCode err = ACAPI_Override_GetOverrideCombinationList (guids);
+	if (err != NoError) {
+		return Failed ("Failed to list the graphic override combinations.", err);
+	}
+
+	GS::Array<GS::ObjectState> combinations;
+	for (const API_Guid& guid : guids) {
+		API_OverrideCombination combination;
+		combination.guid = guid;
+		if (ACAPI_Override_GetOverrideCombination (combination) != NoError) {
+			continue;
+		}
+		GS::ObjectState one;
+		one.Add ("guid", APIGuidToString (guid));
+		one.Add ("name", combination.name);
+		combinations.Push (one);
+	}
+
+	GS::ObjectState result = Succeeded ();
+	result.Add ("combinations", combinations);
+	return result;
+}
+
 }		// namespace Loriini

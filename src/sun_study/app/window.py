@@ -582,6 +582,65 @@ class LayerChooser(tk.Toplevel):
         self._close()
 
 
+#: The shadow diagram's legend, one row each: the short name the run is given
+#: (and matches to the legend's colour in ``archicad.shadows.LEGEND``),
+#: whether it accumulates or is compared, and the row's label, hint and
+#: explanation on the page. The order is the legend's, which is also the order
+#: drawn, back to front.
+SHADOW_LEGEND_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
+    (
+        "EXISTING",
+        "baseline",
+        "Existing",
+        "Existing neighbouring buildings.",
+        "The lightest grey. Always there, whatever is approved: each of these "
+        "rows is charged only for ground the rows before it had not already "
+        "darkened, so their areas add up and their fills abut.",
+    ),
+    (
+        "FUTURE",
+        "baseline",
+        "Future",
+        "Future neighbouring context buildings.",
+        "The middle grey. What the controls allow next door, drawn as already "
+        "there, because the scheme will stand beside it.",
+    ),
+    (
+        "EXISTING ON SITE",
+        "baseline",
+        "Existing on site",
+        "Existing structures within the site.",
+        "The darkest grey. What stands on the site today, so the new shadow "
+        "is read against the old one.",
+    ),
+    (
+        "TOD",
+        "scenario",
+        "TOD",
+        "Current LEP 2023 building height limit.",
+        "The palest blue. A scenario: cast against every grey row and against "
+        "no other blue one, so the blues overlap on the sheet — which is the "
+        "comparison.",
+    ),
+    (
+        "SEARS",
+        "scenario",
+        "SEARs",
+        "Canterbury Bankstown LEP building height limit.",
+        "The middle blue. Compared, not accumulated: putting this under a grey "
+        "row instead tests it against itself and reads as a much smaller "
+        "shadow.",
+    ),
+    (
+        "PROPOSED",
+        "scenario",
+        "Proposed",
+        "Proposed building envelope.",
+        "The strongest blue, drawn last so it is on top: this is the one being applied for.",
+    ),
+)
+
+
 class Tiles(ttk.Frame):
     """A row of drawn choices, in place of a dropdown with three phrasings.
 
@@ -3326,20 +3385,22 @@ class Window:
     def _shadows(self, frame: ttk.Frame) -> None:
         """The shadow diagram: what already stands, and what the proposal adds.
 
-        Every row on this page names a *view*, never a layer, and that is the
-        whole design. A saved view is where the practice has already said what
-        each legend row contains -- and it says it with more than layers: the
-        office pins geometry in renovation filters, so two views can show the
-        same layers and different buildings. A layer combination cannot
-        reproduce that, and on AC26 the API cannot even switch to a view to
-        look (``ChangeWindow`` by navigator item wants 27). Publishing the
-        views as IFCs hands the question to Archicad, which resolves layers,
-        renovation filter and pins the way the drawing does.
+        One row per line of the office's legend, each naming the layers that
+        hold that row's massing, picked out of the open project. The geometry
+        comes from the add-on's own model rather than an IFC, so nothing has
+        to be published first, and each row is drawn in the legend's own
+        colour with no contour.
 
-        So there is deliberately no layer route here, though the command line
-        keeps one for projects that need no views. Offering both would offer a
-        way to be quietly wrong on exactly this office's models, and a shadow
-        sheet built from the wrong massing still looks like a shadow sheet.
+        The rows are fixed because the legend is: three that will be there
+        whatever is approved, which accumulate, and three that are being
+        compared, which overlap. A row left empty is left off the sheet, and
+        the others keep their colours -- they are matched by name, not dealt
+        out by position.
+
+        This replaced a page of published views (D113). A view can say more
+        than a layer combination -- a renovation filter, pinned elements --
+        and a project that separates its massings that way has to keep them
+        on their own layers for this page to reach them.
         """
         row = 0
         self.do_shadows = tk.BooleanVar(value=False)
@@ -3359,57 +3420,29 @@ class Window:
         Tooltip(
             box,
             "The shadow the site casts across itself and its neighbours at "
-            "each hour, drawn as fills on the plan. Off by default: it needs "
-            "views published first, which is a step in Archicad rather than "
-            "here.",
+            "each hour, drawn as fills on the plan in the legend's colours. "
+            "Off by default: it needs a layer chosen for at least one legend "
+            "row.",
         )
         row += 1
         self._caption(
             frame,
             row,
-            "Shadows cast by each massing, hour by hour, drawn from published views.",
+            "Shadows cast by each massing, hour by hour, one legend row to a set of layers.",
         )
         row += 1
 
-        self.view_folder, row = self._folder_row(
-            frame,
-            row,
-            "Published views",
-            "The folder your Publisher Set wrote its IFCs into.",
-            "Publish a set of per-view IFCs from Archicad first, one view per "
-            "legend row. Each file is that view exactly as it draws — layers, "
-            "renovation filter, pinned geometry and all — which is why this "
-            "asks for views and not for layer combinations. The names below "
-            "are read from this folder, so point it here before choosing "
-            "them.",
-        )
-        self.baseline_views, row = self._view_row(
-            frame,
-            row,
-            "Always there",
-            "Views whose buildings will be on the site whatever is approved.",
-            "The existing neighbours, the future context, whatever already "
-            "stands on the site. These accumulate: each is charged only for "
-            "ground the earlier ones had not already darkened, so their areas "
-            "add up and their fills abut instead of overlapping. Order is the "
-            "order drawn, back to front.",
-        )
-        self.scenario_views, row = self._view_row(
-            frame,
-            row,
-            "Being tested",
-            "Views of the massings this sheet is comparing.",
-            "The TOD envelope, the SEARs envelope, the proposal. Each is cast "
-            "against every baseline and against no other scenario — so two "
-            "scenarios overlap on the sheet, which is the comparison being "
-            "drawn. Putting one of these under Always there instead tests it "
-            "against itself and reads as a much smaller shadow.",
-        )
-        self.terrain_views, row = self._view_row(
+        #: The legend, row by row: the name the run is given, whether the row
+        #: accumulates or is compared, and its layer picker. Read by ``jobs``.
+        self.shadow_rows: list[tuple[str, str, Chips]] = []
+        for short, role, label, hint, detail in SHADOW_LEGEND_ROWS:
+            picker, row = self._picker(frame, row, label, hint, detail)
+            self.shadow_rows.append((short, role, picker))
+        self.terrain_layers, row = self._picker(
             frame,
             row,
             "Ground it lands on",
-            "The view holding the terrain. It receives shadow, never casts it.",
+            "The terrain layers. They receive shadow, never cast it.",
             "Shadows land on the ground and on whatever is standing, so the "
             "terrain has to be in the run — but as a receiver. Among the "
             "occluders it puts every sample below the hill in permanent shade "
@@ -3451,17 +3484,6 @@ class Window:
             _hour_choices(clock=False),
             key=_clock_text,
             initial=DEFAULT_SHADOW_HOURS,
-        )
-        self.shadow_favourite, row = self._entry(
-            frame,
-            row,
-            "Fill Favorite",
-            "",
-            "Name of a Fill Favorite to draw with. Blank uses plain fills.",
-            "The way to get the practice's own fill with no contour around "
-            "it: Archicad's CreateHatches has a contour pen and no switch to "
-            "turn the contour off, so a contour-less fill has to come from a "
-            "Favorite made by hand in the project.",
         )
         self.shadow_storey, row = self._entry(
             frame,
@@ -3540,26 +3562,29 @@ class Window:
             "other DA drawings do. Read off the office's own sun views on the "
             "reference project as '00 FA Pens'.",
         )
-        self.eye_override, row = self._entry(
+        self.eye_override, row = self._combo(
             frame,
             row,
             "Graphic override",
-            "Sun Eye Views",
             "The override combination that paints the glazing.",
             "This is the yellow on the diagram: an override rule, not drawn "
             "geometry. It is a different combination from the shadow "
             "diagrams', and a view given the wrong one shows plain glass.",
         )
-        self.eye_base_combination, row = self._entry(
+        self.eye_base_combination, row = self._combo(
             frame,
             row,
             "Layers, from",
-            "04 | Shadow Diagrams",
             "The layer combination the views start from. Zones are then hidden.",
             "Every layer that carries a zone is hidden on top of this, "
             "measured from the zones themselves: zones are bodies in 3D and "
             "sit inside the glazing the diagram is meant to show through.",
         )
+        # What the command itself defaults to, until the project is read and
+        # offers its own; typed values still go through on an older add-on
+        # that cannot list overrides.
+        self.eye_override.set("Sun Eye Views")
+        self.eye_base_combination.set("04 | Shadow Diagrams")
         self.eye_scale, row = self._entry(
             frame,
             row,
@@ -3835,52 +3860,6 @@ class Window:
         box.delete(0, "end")
         box.insert(0, chosen)
         self._sync()
-
-    def _view_row(
-        self, parent: ttk.Frame, row: int, label: str, hint: str, detail: str
-    ) -> tuple[Chips, int]:
-        """A list of published views, ticked from the folder rather than typed.
-
-        The names come from the IFCs on disk, not from Archicad: the folder is
-        the only place that knows which views were actually published, and a
-        view listed in the navigator but missing from the set is exactly the
-        mistake worth catching before a run rather than after.
-
-        Chips, like the layer pickers and for the same reason: these are names
-        chosen out of a list somebody else wrote, and the one thing worth
-        seeing at a glance is *which*.
-        """
-        name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="nw", pady=(4, 0))
-        box = Chips(
-            parent,
-            add=lambda: self._choose(box, label, hint, available=self._published_views()),
-            on_change=self._sync,
-            empty="no views chosen",
-            label=label,
-        )
-        box.grid(row=row, column=1, sticky="ew", pady=(4, 0))
-        line = self._hint(parent, row + 1, hint)
-        for target in (name, box):
-            Tooltip(target, detail, title=label, short=self._saying(line))
-        return box, row + 1
-
-    def _published_views(self) -> list[str]:
-        """The view names the Publisher Set wrote, read off the folder.
-
-        Publisher decorates a filename with whatever the set's naming rule
-        says, so the stem is what the run matches on loosely later; offering
-        the stems here means the two agree by construction rather than by the
-        person typing the same decoration twice.
-        """
-        folder = Path(self.view_folder.get().strip())
-        if not self.view_folder.get().strip() or not folder.is_dir():
-            self._write(
-                "Point Published views at the folder your Publisher Set wrote "
-                "into, then choose from it."
-            )
-            return []
-        return sorted(path.stem for path in folder.glob("*.ifc"))
 
     def _not_yet(self, frame: ttk.Frame, what: str) -> None:
         """A section for an output this version does not make.
@@ -4566,14 +4545,11 @@ class Window:
             "plan_instants": self.instants,
             "plan_kinds": self.plan_kinds,
             "shadow_subset": self.shadow_subset,
-            "shadow_view_folder": self.view_folder,
-            "shadow_baseline_views": self.baseline_views,
-            "shadow_scenario_views": self.scenario_views,
-            "shadow_terrain_views": self.terrain_views,
+            **{f"shadow_layers_{short.lower()}": box for short, _role, box in self.shadow_rows},
+            "shadow_terrain_layers": self.terrain_layers,
             "shadow_terrain_floor": self.terrain_floor,
             "shadow_dates": self.shadow_dates,
             "shadow_hours": self.shadow_hours,
-            "shadow_favourite": self.shadow_favourite,
             "shadow_storey": self.shadow_storey,
             "shadow_study_subset": self.shadow_study_subset,
             "eye_pen_set": self.eye_pen_set,
@@ -4853,6 +4829,12 @@ class Window:
         # set, which is what the command does, and the office's set is a
         # choice rather than a guess.
         self._fill(self.eye_pen_set, ("", *found.pen_sets), ())
+        # Blank first for the override too: a blank sends nothing and the
+        # command's own default holds, where the first name in the list would
+        # be a guess -- and a view given the wrong override shows plain glass.
+        if found.overrides:
+            self._fill(self.eye_override, ("", *found.overrides), ("Sun Eye",))
+        self._fill(self.eye_base_combination, found.combinations, ("Shadow Diagram", "Shadow"))
         self._fill(self.shadow_study_subset, found.subsets, ("SHADOW",))
         if not self.subject.get():
             skin = [name for name in found.layers if any(w in name for w in SKIN_WORDS)]
@@ -5872,27 +5854,24 @@ class Window:
                 *common,
                 *self._prefix_flag(self.prefix_shadow),
             ]
-            # Views, never layers: the folder is a set of per-view IFCs and
-            # Archicad has already resolved each one's layers, renovation
-            # filter and pins. Passing the name bare makes it both the legend
-            # row and what finds the geometry, which is what the view name
-            # already is.
-            if self.view_folder.get().strip():
-                args += ["--shadow-from-views", self.view_folder.get().strip()]
-            for name in self._listed(self.baseline_views):
-                args += ["--shadow-source", name]
-            for name in self._listed(self.scenario_views):
-                args += ["--shadow-scenario", name]
-            for name in self._listed(self.terrain_views):
+            # One legend row per flag, "NAME=layer,layer": the name is the
+            # row's short name, which the drawing matches to the legend's
+            # colour, and the layers are what find its geometry in the
+            # add-on's model. An empty row is left off the sheet.
+            for short, role, box in self.shadow_rows:
+                layers = self._listed(box)
+                if layers:
+                    flag = "--shadow-source" if role == "baseline" else "--shadow-scenario"
+                    args += [flag, f"{short}={','.join(layers)}"]
+            for name in self._listed(self.terrain_layers):
                 args += ["--shadow-terrain", name]
+            args += ["--export", "native"]
             if self.terrain_floor.get().strip():
                 args += ["--shadow-terrain-floor", self.terrain_floor.get().strip()]
             if self.shadow_dates.get().strip():
                 args += ["--shadow-date", self.shadow_dates.get().strip()]
             if self.shadow_hours.get().strip():
                 args += ["--shadow-hour", self.shadow_hours.get().strip()]
-            if self.shadow_favourite.get().strip():
-                args += ["--shadow-favourite", self.shadow_favourite.get().strip()]
             if self.shadow_storey.get().strip():
                 args += ["--shadow-storey", self.shadow_storey.get().strip()]
             args += self._band_args()
