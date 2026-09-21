@@ -235,6 +235,7 @@ from sun_study.report.bands_out import (
     write_bands_csv,
     write_bands_json,
 )
+from sun_study.report.cos_table import write_workbook, zone_tables
 from sun_study.report.csv_out import write_csv
 from sun_study.report.header import build_header
 from sun_study.report.json_out import write_json
@@ -1581,6 +1582,52 @@ def _write_zone_csv(
         writer.writerow(["kind", "label", "area_m2", "share"])
         for kind, label, area, share in rows:
             writer.writerow([kind, label, f"{area:.3f}", f"{share:.5f}"])
+
+
+def _write_zone_table(destination: Path, result: MassingResult, *, hours: float | None) -> int:
+    """The COS schedules, one per measured Zone, as an .xlsx. Returns how many.
+
+    Split by the Zone each sample was cut from, which is the thing every other
+    output of a zone run throws away: five levels measured together are one
+    figure on the console, in the CSV and on each storey's sheet, and the
+    schedule a drawing needs is per terrace.
+    """
+    samples = result.scene.zone_samples
+    if result.zone_sunlit is None:
+        raise typer.BadParameter("the study kept no per-instant results to tabulate")
+
+    def storey_of(zone: str) -> str | None:
+        element = result.model.by_id(zone)
+        return element.storey if element is not None else None
+
+    def name_of(zone: str) -> str:
+        element = result.model.by_id(zone)
+        return (element.name or element.long_name) if element is not None else zone
+
+    tables = zone_tables(
+        samples.parent_ids,
+        samples.areas,
+        samples.positions[:, 2],
+        result.zone_sunlit,
+        result.times,
+        storey_of=storey_of,
+        name_of=name_of,
+        minutes=result.zone_minutes,
+        threshold_hours=hours,
+    )
+    write_workbook(
+        destination,
+        tables,
+        heading=f"COS solar analysis, {result.assessment_date:%d %B %Y}, {_window_of(result)}",
+        notes=(
+            "Sunlit area of each communal open space Zone at each hour; "
+            "percentage = sunlit area / the Zone's area.",
+            f"{PRODUCT} {__version__}, grid {_zone_grid_m(result):g} m, "
+            f"{_zone_plane_m(result):g} m above the Zone floor. {STATUS}.",
+            DISCLAIMER,
+        ),
+    )
+    return len(tables)
 
 
 def _draw_zone_groups(
@@ -3430,6 +3477,18 @@ def massing(
             ),
         ),
     ] = None,
+    zone_table: Annotated[
+        Path | None,
+        typer.Option(
+            "--zone-table",
+            help=(
+                "Write the COS schedules to this .xlsx: one table per Zone -- "
+                "'L2 COS SOLAR ANALYSIS' -- with the sunlit area and its share "
+                "at every hour. A run over several levels sums them everywhere "
+                "else; this splits them back out."
+            ),
+        ),
+    ] = None,
     zone_max_residual: Annotated[
         float,
         typer.Option(
@@ -3809,6 +3868,26 @@ def massing(
 
     typer.echo("")
     typer.secho(result.summary(), fg=typer.colors.GREEN, bold=True)
+
+    if zone_table is not None:
+        # Before anything reaches Archicad, like the CSV: the numbers are the
+        # part of a run worth keeping, and this path needs no connection.
+        if result.zone is None:
+            typer.secho(
+                "  --zone-table needs --zone-layer or --zone-name: there is no "
+                "zone surface to tabulate.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        # The window runs one job per ticked day with the same path; the day
+        # goes in the name, as it does on every layer and sheet, so the
+        # equinox table does not land on top of the midwinter one.
+        tag = naming.day()
+        if tag and tag not in zone_table.stem:
+            zone_table = zone_table.with_name(f"{zone_table.stem} {tag}{zone_table.suffix}")
+        written = _write_zone_table(zone_table, result, hours=zone_hours)
+        typer.echo(f"  wrote {written} COS schedule(s) to {zone_table}")
 
     if model_bands:
         typer.echo("")

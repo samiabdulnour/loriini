@@ -345,6 +345,7 @@ BY_LABEL: dict[str, str] = {
     "Communal height": "height",
     "Communal grid": "grid",
     "Communal areas CSV": "table",
+    "Communal table": "table",
     # Shadow diagram
     "Published views": "folder",
     "Always there": "always_there",

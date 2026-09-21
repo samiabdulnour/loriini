@@ -3120,6 +3120,17 @@ class Window:
             "next — and a figure that opens in a spreadsheet is a figure "
             "somebody can check.",
         )
+        self.communal_table, row = self._entry(
+            frame,
+            row,
+            "Communal table",
+            "",
+            "Where to write the COS schedules as an .xlsx. Blank writes none.",
+            "One table per Zone — L2 COS SOLAR ANALYSIS — with the sunlit area "
+            "and its percentage at every hour, laid out the way the drawing "
+            "shows it. Every other figure from a run over several levels is "
+            "their sum; this is each terrace on its own.",
+        )
 
     def _shadows(self, frame: ttk.Frame) -> None:
         """The shadow diagram: what already stands, and what the proposal adds.
@@ -4325,6 +4336,7 @@ class Window:
             "custom_day": self.custom_day,
             "communal_grid": self.communal_grid,
             "communal_csv": self.communal_csv,
+            "communal_table": self.communal_table,
             "master_layout": self.master,
             "storey_from": self.storey_from,
             "storey_to": self.storey_to,
@@ -5587,6 +5599,8 @@ class Window:
                 args += ["--zone-grid", self.communal_grid.get().strip()]
             if self.communal_csv.get().strip():
                 args += ["--zone-csv", self.communal_csv.get().strip()]
+            if self.communal_table.get().strip():
+                args += ["--zone-table", self.communal_table.get().strip()]
             start, end = self._window()
             if start:
                 args += ["--window-start", start]

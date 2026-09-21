@@ -343,6 +343,18 @@ def test_no_csv_is_written_unless_somewhere_is_named(hidden_window: Any) -> None
     assert flag(communal.args, "--zone-csv") == [r"C:reas.csv"]
 
 
+def test_no_cos_table_is_written_unless_somewhere_is_named(hidden_window: Any) -> None:
+    hidden_window.do_facade.set(False)
+    hidden_window.communal.set("07 | Fills.Areas")
+    hidden_window.do_communal.set(True)
+    (communal,) = hidden_window.jobs()
+    assert "--zone-table" not in communal.args
+
+    hidden_window.communal_table.insert(0, "C:/out/cos.xlsx")
+    (communal,) = hidden_window.jobs()
+    assert flag(communal.args, "--zone-table") == ["C:/out/cos.xlsx"]
+
+
 def test_all_three_studies_run_in_order(hidden_window: Any) -> None:
     hidden_window.do_plans.set(True)
     hidden_window.do_communal.set(True)

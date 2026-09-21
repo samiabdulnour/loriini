@@ -411,6 +411,22 @@ are stacked under a heading each. The command-line defaults are what
 each tool did before: `two` for the shadow diagrams and the sun views,
 `each` for the apartment plans, `one` for the communal plans.
 
+## COS schedules
+
+`massing --zone-table cos.xlsx` -- **Communal table** in the window's
+Communal tab -- writes the schedule each communal open space carries on
+its drawing: one table per Zone, headed `L2 COS SOLAR ANALYSIS`, with the
+sunlit area and its percentage at every hour of the window, then the
+Zone's own area and, with `--zone-hours`, the area reaching that minimum.
+
+A run over several levels reports their *sum* everywhere else -- the
+console, `--zone-csv`, the table on each storey's sheet. This is the one
+output that splits them back out, by the Zone each sample was cut from,
+and the tables add back up to the sum exactly.
+
+On a day other than midwinter the day goes into the file name, so the
+window's one-job-per-day runs leave one workbook each.
+
 ## The day
 
 Every solar tool runs on the ruleset's day, 21 June, unless told

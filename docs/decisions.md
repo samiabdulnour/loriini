@@ -3527,6 +3527,39 @@ somebody's source. A hex dump around a known caption shows the whole `STR#`
 block — length, name line, item — and settles in seconds what reasoning from
 the API got wrong twice.
 
+### D106 — The COS schedule is split per Zone, and written as an .xlsx without a library
+
+Asked 18 September 2026, after the Silverwater options were run over five
+COS levels at once and the per-level figures had to be pulled out by hand:
+*"this is how the table for COS solar should look like ... please implement
+this into our program."* The table is the office's own: `L2 COS SOLAR
+ANALYSIS`, then TIME / AREA (sqm) / PERCENTAGE, a row per hour.
+
+**Every other output of a multi-level zone run is the sum.** The console, the
+`--zone-csv` rows and the table on each storey's sheet all total the Zones
+together, which answers "how much of the communal open space" and hides "how
+does this terrace do". On Silverwater that hid the whole story: only L2 differs
+between the three options, and L3 and L4 barely see the sun in any of them.
+`--zone-table` splits by the Zone each sample was cut from. Verified on the
+three options: the five per-Zone tables add back up to each run's hourly
+totals to the tenth of a square metre.
+
+**The workbook is built from the standard library.** A runtime dependency is a
+conversation here, and an `.xlsx` is a zip of six small XML parts, so there
+was nothing to have it about. Each percentage is a formula over the cells
+beside it and also carries its value: it recalculates when somebody edits an
+area, and still reads right in a previewer that never calculates. Areas are
+rounded as written, so the recalculated share matches the one printed. Checked
+by opening the output in Excel, not only by parsing it.
+
+**The format is the decision; the geometry route is not.** The table reads
+only the per-sample results every route produces, so it carries over unchanged
+when the study moves off the IFC.
+
+*Not done, and worth doing:* the table on each storey's sheet in Archicad is
+still the five-level sum, repeated on every sheet. It should be that storey's
+own schedule, and now that the split exists it can be.
+
 ### D107 — The sheets panel deals by the Sheets row, and the page can be saved as a preset
 
 Asked 21 September 2026, after the window's first build went out: *"the sheets
