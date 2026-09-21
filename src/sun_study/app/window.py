@@ -87,6 +87,7 @@ from sun_study.app import icons, preferences, probe, theme
 from sun_study.app.runner import Run
 from sun_study.archicad import naming
 from sun_study.archicad.connection import DEFAULT_TIMEOUT_SECONDS
+from sun_study.archicad.sheeting import cells_for, parse_sheet_mode, sheet_chunks, sheet_title
 from sun_study.cli import DEFAULT_SHADOW_DATES, DEFAULT_SHADOW_HOURS
 from sun_study.core.solar import UnknownTimezoneError, resolve_timezone, solar_position
 from sun_study.disclaimer import STATUS
@@ -127,6 +128,11 @@ SKIN_WORDS = ("Wall.External", "Floor.", "Balustrade", "Screens")
 #: somebody cannot follow.
 FACADE_JOB = "solar analysis: facade"
 PLANS_JOB = "solar analysis: apartments"
+#: The two communal sheets the panel has to tell apart from the banded plan:
+#: the hourly set, which the Sheets row deals, and the schedule, which is a
+#: table and not a drawing at all.
+COMMUNAL_HOURLY = "Communal open space by hour"
+COMMUNAL_AREAS = "Communal areas"
 COMMUNAL_JOB = "solar analysis: communal open space"
 SHADOW_JOB = "shadow diagram"
 SUN_EYE_JOB = "sun views"
@@ -861,25 +867,18 @@ class InfoBand(ttk.Frame):
 
 
 @dataclass(frozen=True)
-class Sheet:
-    """One layout a run will put in the Layout Book.
+class Drawing:
+    """One drawing on a layout: what it shows, and where the sun is for it.
 
-    Everything here is known before anything runs. The sun is arithmetic on a
-    date and a latitude; the rest is the settings on the page. Which is the
-    whole reason the panel can be drawn at all.
+    A site sheet has no hour and no sun; everything else is one instant of
+    one day, and the sun at that instant is what the thumbnail draws.
     """
 
-    study: str
-    glyph: str
-    number: str
     kind: str
     day: str
     time: str
     azimuth: float | None = None
     elevation: float | None = None
-    #: The study's own job name, so a box can say how many sheets *its* tick
-    #: is worth. The panel groups by ``study``, which three jobs share.
-    job: str = ""
 
     @property
     def bearing(self) -> float | None:
@@ -892,6 +891,66 @@ class Sheet:
         if self.elevation is None or self.elevation <= 0.5:
             return None
         return 1.0 / math.tan(math.radians(self.elevation))
+
+
+@dataclass(frozen=True)
+class Sheet:
+    """One layout a run will put in the Layout Book, and the drawings on it.
+
+    Everything here is known before anything runs. The sun is arithmetic on a
+    date and a latitude; the rest is the settings on the page. Which is the
+    whole reason the panel can be drawn at all.
+
+    How many drawings share a layout is the Sheets choice in General, and it
+    is dealt here by the same ``sheet_chunks`` the run deals with -- so the
+    panel cannot say four sheets where the run makes two. ``cells`` is the
+    grid the layout is laid out on, which for the short second sheet of a
+    pair is larger than the number of drawings on it: the run leaves those
+    cells empty rather than enlarging the rest, and so does the thumbnail.
+    """
+
+    study: str
+    glyph: str
+    number: str
+    kind: str
+    day: str
+    drawings: tuple[Drawing, ...] = ()
+    cells: int = 1
+    #: This sheet's place in its set -- ``(2, 2)`` is the second of two --
+    #: which is how the run titles a sheet that carries several drawings.
+    part: int = 1
+    parts: int = 1
+    #: The study's own job name, so a box can say how many sheets *its* tick
+    #: is worth. The panel groups by ``study``, which three jobs share.
+    job: str = ""
+
+    @property
+    def time(self) -> str:
+        """What the layout is named for: the one hour, or the range."""
+        return sheet_title([drawing.time for drawing in self.drawings if drawing.time])
+
+    @property
+    def empty(self) -> int:
+        """Cells of the grid with no drawing in them."""
+        return max(self.cells - len(self.drawings), 0)
+
+    # The first drawing's sun, which is the sheet's when it carries one --
+    # and what the band quotes for a sheet that carries several.
+    @property
+    def azimuth(self) -> float | None:
+        return self.drawings[0].azimuth if self.drawings else None
+
+    @property
+    def elevation(self) -> float | None:
+        return self.drawings[0].elevation if self.drawings else None
+
+    @property
+    def bearing(self) -> float | None:
+        return self.drawings[0].bearing if self.drawings else None
+
+    @property
+    def reach(self) -> float | None:
+        return self.drawings[0].reach if self.drawings else None
 
 
 class Dock(ttk.Frame):
@@ -1150,6 +1209,22 @@ FLATS_MM = tuple(
 SHADOW_GREY = "#8F8E87"
 
 
+def _clock_text(text: str) -> str:
+    """``9``, ``9am``, ``09:00`` and ``3pm`` as the ``15:00`` a sheet is named for.
+
+    Anything that is not an hour is kept as typed: the run will refuse it,
+    and the panel should show the same word the run is going to refuse.
+    """
+    word = text.strip().lower()
+    afternoon = word.endswith("pm")
+    word = word.removesuffix("am").removesuffix("pm").strip()
+    hour, _, minute = word.partition(":")
+    if not hour.isdigit() or (minute and not minute.isdigit()):
+        return text.strip()
+    hours = int(hour) + (12 if afternoon and int(hour) < 12 else 0)
+    return f"{hours:02d}:{int(minute or 0):02d}"
+
+
 def _hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     """Monotone chain. Eight corners in, the shadow's own outline out."""
     points = sorted(set(points))
@@ -1170,6 +1245,73 @@ def _hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     return half(points) + half(points[::-1])
 
 
+#: The drawing itself, in the sheet's millimetres: a square around the site
+#: and what stands on it. A layout carrying one drawing puts it here, which
+#: is where it always sat; a layout carrying several fits this square into
+#: each cell of its grid, the way the run shrinks its drawings to the cells.
+FRAME_MM = (56.0, 28.0, 206.0, 178.0)
+#: What the cells are cut from: the page less the title block, a margin and
+#: the title line along the bottom.
+MARGIN_MM = 8.0
+CELLS_BOTTOM_MM = 180.0
+
+
+def _grid(
+    count: int, area: tuple[float, float, float, float], gap: float = 3.0
+) -> list[tuple[float, float, float, float]]:
+    """``count`` cells across ``area``, laid out as the run lays a sheet out.
+
+    The same rule as ``sun_eyes.sheet_cells_for``, which is what the run
+    calls: as many across as wastes the fewest cells and then keeps them
+    nearest square, so four drawings are two by two and not three and one.
+    The thumbnail has to agree with the sheet about that, or it shows a row
+    where the run makes a block.
+    """
+    if count <= 0:
+        return []
+    left, top, right, bottom = area
+    width, height = right - left, bottom - top
+
+    def cost(columns: int) -> tuple[int, float]:
+        rows = -(-count // columns)
+        return (columns * rows - count, abs(math.log((width / columns) / (height / rows))))
+
+    columns = min(range(1, count + 1), key=cost)
+    rows = -(-count // columns)
+    cell_w, cell_h = width / columns, height / rows
+    return [
+        (
+            left + (index % columns) * cell_w + gap,
+            top + (index // columns) * cell_h + gap,
+            left + (index % columns + 1) * cell_w - gap,
+            top + (index // columns + 1) * cell_h - gap,
+        )
+        for index in range(count)
+    ]
+
+
+def _untimed_note(sheet: Sheet) -> tuple[str, str]:
+    """What a sheet with no hour on it is instead: the short line under its
+    title, and the sentence the band says when the pointer is on it."""
+    if sheet.study == "Site analysis":
+        return (
+            "Drawn from the address, not from the sun",
+            "Drawn from the address in Site analysis and NSW open data, so it has "
+            "no hour and no sun on it.",
+        )
+    if sheet.kind == COMMUNAL_AREAS:
+        return (
+            "The figures, tabled",
+            "The measured area of every communal space, tabled on a sheet of its "
+            "own, so it has no hour and no sun on it.",
+        )
+    return (
+        "The whole day, banded by hours of sun",
+        "The whole assessment window on one plan, banded by hours of sun, so it "
+        "is not at any one hour and the Sheets row does not deal it.",
+    )
+
+
 def draw_sheet(
     paper: tk.Canvas, sheet: Sheet, width: int, height: int, *, block_mm: float = 40.0
 ) -> None:
@@ -1178,25 +1320,6 @@ def draw_sheet(
 
     def x(value: float) -> float:
         return value * scale
-
-    def box(
-        mm: tuple[float, float, float, float],
-        *,
-        fill: str = "",
-        outline: str = "",
-        dash: tuple[int, ...] = (),
-        width: float = 1.0,
-    ) -> None:
-        paper.create_rectangle(
-            x(mm[0]),
-            x(mm[1]),
-            x(mm[2]),
-            x(mm[3]),
-            fill=fill,
-            outline=outline,
-            dash=dash,
-            width=width,
-        )
 
     def words(
         mm_x: float,
@@ -1222,35 +1345,297 @@ def draw_sheet(
 
     draw_r = SHEET_MM_W - block_mm - 7.0
 
-    # -- the drawing ---------------------------------------------------
+    # -- the drawings ----------------------------------------------------
     #
-    # Each study puts a different thing on its sheets, so each is drawn as
-    # that thing. A shadow under a site-analysis sheet, or under a view taken
-    # from the sun -- where by construction there are no shadows to see -- is
-    # a miniature of something the run will not make.
+    # One drawing takes the sheet, as it always did. Several are dealt onto
+    # the grid the run will use, each shrunk into its cell with its hour under
+    # it -- and a cell the run leaves empty is drawn empty, because the short
+    # second sheet of a pair really does have a hole in it.
+    if sheet.cells <= 1:
+        frames = [FRAME_MM]
+    else:
+        frames = _grid(sheet.cells, (MARGIN_MM, MARGIN_MM, draw_r - 4.0, CELLS_BOTTOM_MM))
+    for index, frame_mm in enumerate(frames):
+        frame = (x(frame_mm[0]), x(frame_mm[1]), x(frame_mm[2]), x(frame_mm[3]))
+        if index >= len(sheet.drawings):
+            paper.create_rectangle(*frame, outline=theme.LINE, dash=(3, 3))
+            words(
+                (frame_mm[0] + frame_mm[2]) / 2,
+                (frame_mm[1] + frame_mm[3]) / 2,
+                "empty",
+                5,
+                theme.HINT,
+                anchor="center",
+            )
+            continue
+        drawing = sheet.drawings[index]
+        if len(frames) > 1:
+            paper.create_rectangle(*frame, outline=theme.LINE)
+            words(frame_mm[0] + 1.5, frame_mm[3] - 3.5, drawing.time, 5, theme.HINT)
+            frame = (frame[0], frame[1], frame[2], frame[3] - x(7.0))
+        _draw_drawing(paper, sheet.study, drawing, frame)
+
+    # -- north, which is up --------------------------------------------
+    north_x, north_y = x(draw_r - 14), x(26)
+    ring = x(7)
+    paper.create_oval(
+        north_x - ring,
+        north_y - ring,
+        north_x + ring,
+        north_y + ring,
+        fill=theme.SURFACE,
+        outline=theme.EDGE,
+    )
+    paper.create_polygon(
+        north_x,
+        north_y - x(6),
+        north_x + x(2.6),
+        north_y + x(2.4),
+        north_x,
+        north_y + x(0.6),
+        north_x - x(2.6),
+        north_y + x(2.4),
+        fill=theme.INK,
+        outline="",
+    )
+    words(draw_r - 14, 15, "N", 6, theme.INK, anchor="center")
+
+    # -- what this drawing is ------------------------------------------
+    #
+    # A site sheet is not at an hour of the day, so it is titled by what it
+    # is; a whole-day plan by its day; everything else by when, because that
+    # is what tells one sheet of a study from the next. A sheet that is one
+    # of a pair says so, as the run names it.
+    timed = bool(sheet.time)
+    if timed:
+        title = f"{sheet.day.upper()}  ·  {sheet.time}"
+    elif sheet.day:
+        title = f"{sheet.day.upper()}  ·  ALL DAY"
+    else:
+        title = sheet.kind.upper()
+    if sheet.parts > 1:
+        title += f"   ({sheet.part} of {sheet.parts})"
+    words(10, 186, title, 9, theme.INK, bold=True)
+    if not timed:
+        words(10, 196, _untimed_note(sheet)[0], 7, theme.HINT)
+    elif sheet.elevation is None:
+        words(10, 196, "Project location not set — no sun to draw", 7, theme.RED)
+    elif len(sheet.drawings) == 1:
+        cast = (
+            f" · shadow {sheet.reach:.1f}x the height"
+            if sheet.reach is not None and sheet.study == "Shadow diagram"
+            else ""
+        )
+        words(
+            10,
+            196,
+            f"Sun {sheet.elevation:.1f}° · azimuth {sheet.azimuth:.0f}°{cast}",
+            7,
+            theme.HINT,
+        )
+    else:
+        ups = [d.elevation for d in sheet.drawings if d.elevation is not None]
+        note = f"{len(sheet.drawings)} drawings"
+        if sheet.empty:
+            note += f", {sheet.empty} cell{'' if sheet.empty == 1 else 's'} empty"
+        if ups:
+            note += f" · sun {min(ups):.0f}° to {max(ups):.0f}°"
+        words(10, 196, note, 7, theme.HINT)
+
+    # -- the title block, at the width General is set to ----------------
+    #
+    # Forty millimetres is forty pixels here, and nothing in it may run out
+    # over the drawing or over the line beneath it. So each line is laid
+    # under the one before by asking the canvas how tall that one came out,
+    # wrapped to the strip: a long drawing title takes two lines and pushes
+    # the date down, rather than printing through it.
+    left = SHEET_MM_W - block_mm
+    box_edge = (left, 0.5, SHEET_MM_W - 0.5, SHEET_MM_H - 0.5)
+    paper.create_rectangle(
+        x(box_edge[0]),
+        x(box_edge[1]),
+        x(box_edge[2]),
+        x(box_edge[3]),
+        fill="#FBFBF9",
+        outline=theme.LINE,
+    )
+    inner = x(left + 3.5)
+    room = x(block_mm - 7.0)
+
+    def stacked(top: float, text: str, size: int, colour: str, *, bold: bool = False) -> float:
+        """One line of the block, under the last. Returns where it ended.
+
+        Wrapped to the strip, and set a point smaller if that is what it
+        takes for its longest word to fit: Tk breaks a word that will not,
+        and "Apartment" over "s" is not a drawing title.
+        """
+        while size > 4 and max(_wide(paper, word, size, bold) for word in text.split()) > room:
+            size -= 1
+        item = paper.create_text(
+            inner,
+            top,
+            text=text,
+            anchor="nw",
+            fill=colour,
+            width=room,
+            font=_face(size, bold),
+        )
+        return float(paper.bbox(item)[3])
+
+    def ruled(at: float) -> None:
+        paper.create_line(inner, at, inner + room, at, fill=theme.LINE)
+
+    foot = stacked(x(5), PRODUCT.upper(), 5, theme.INK, bold=True)
+    ruled(foot + 2)
+    foot = stacked(foot + 5, sheet.kind, 5, theme.INK)
+    if timed:
+        foot = stacked(foot + 1, f"{sheet.day} {sheet.time}", 5, theme.HINT)
+    elif sheet.day:
+        foot = stacked(foot + 1, sheet.day, 5, theme.HINT)
+    # The notes and revisions, which at this size are rules on paper too.
+    line = max(foot + 6, x(62))
+    step = 0
+    while line < x(140):
+        paper.create_line(inner, line, inner + room - (step % 3) * x(6), line, fill="#E7E6E2")
+        line += x(6)
+        step += 1
+    ruled(x(146))
+    stacked(x(149), "1:1000", 5, theme.HINT)
+    ruled(x(163))
+    paper.create_text(
+        inner,
+        x(SHEET_MM_H - 9),
+        text=sheet.number,
+        anchor="sw",
+        fill=theme.BLUE_DEEP,
+        font=(theme.FACE, 8, "bold"),
+    )
+
+
+def _draw_drawing(
+    paper: tk.Canvas, study: str, drawing: Drawing, frame: tuple[float, float, float, float]
+) -> None:
+    """One drawing, fitted into ``frame`` -- canvas pixels -- the way
+    ``FRAME_MM`` sits on a full sheet.
+
+    Each study puts a different thing on its sheets, so each is drawn as
+    that thing. A shadow under a site-analysis sheet, or under a view taken
+    from the sun -- where by construction there are no shadows to see -- is
+    a miniature of something the run will not make.
+    """
+    fx0, fy0, fx1, fy1 = frame
+    frame_w, frame_h = FRAME_MM[2] - FRAME_MM[0], FRAME_MM[3] - FRAME_MM[1]
+    k = min((fx1 - fx0) / frame_w, (fy1 - fy0) / frame_h)
+    ox = fx0 + ((fx1 - fx0) - frame_w * k) / 2 - FRAME_MM[0] * k
+    oy = fy0 + ((fy1 - fy0) - frame_h * k) / 2 - FRAME_MM[1] * k
+
+    def px(mm: float) -> float:
+        return ox + mm * k
+
+    def py(mm: float) -> float:
+        return oy + mm * k
+
+    def box(
+        mm: tuple[float, float, float, float],
+        *,
+        fill: str = "",
+        outline: str = "",
+        dash: tuple[int, ...] = (),
+        width: float = 1.0,
+    ) -> None:
+        paper.create_rectangle(
+            px(mm[0]),
+            py(mm[1]),
+            px(mm[2]),
+            py(mm[3]),
+            fill=fill,
+            outline=outline,
+            dash=dash,
+            width=width,
+        )
+
+    def poly(points: Sequence[tuple[float, float]], *, fill: str, outline: str) -> None:
+        flat: list[float] = []
+        for point_x, point_y in points:
+            flat += [px(point_x), py(point_y)]
+        paper.create_polygon(flat, fill=fill, outline=outline)
+
+    def line(x0: float, y0: float, x1: float, y1: float, fill: str) -> None:
+        paper.create_line(px(x0), py(y0), px(x1), py(y1), fill=fill)
+
+    def shadow() -> None:
+        """The block's shadow at this sun, as a hull of the block and its
+        shifted copy. Exact for the sun even though the block is schematic."""
+        reach, bearing = drawing.reach, drawing.bearing
+        if reach is None or bearing is None:
+            return
+        far = reach * BLOCK_HEIGHT_M
+        shift = (
+            math.sin(math.radians(bearing)) * far,
+            -math.cos(math.radians(bearing)) * far,
+        )
+        corners = [
+            (corner_x + dx, corner_y + dy)
+            for corner_x in (BLOCK_MM[0], BLOCK_MM[2])
+            for corner_y in (BLOCK_MM[1], BLOCK_MM[3])
+            for dx, dy in ((0.0, 0.0), shift)
+        ]
+        poly(_hull(corners), fill="#C7C6C1", outline="")
+
+    def yard() -> None:
+        """The courtyard, gridded the way the study samples it."""
+        court = (BLOCK_MM[0] - 14, BLOCK_MM[1] + 4, BLOCK_MM[2] + 14, BLOCK_MM[3] + 16)
+        box(court, fill="#F6E2BE", outline=theme.SUN)
+        for step in range(1, 6):
+            along = court[0] + (court[2] - court[0]) * step / 6
+            line(along, court[1], along, court[3], "#E9C98F")
+        for step in range(1, 4):
+            down = court[1] + (court[3] - court[1]) * step / 4
+            line(court[0], down, court[2], down, "#E9C98F")
+
     box(SITE_MM, fill="#FCFCFA", outline=SHADOW_GREY, dash=(3, 2))
     for neighbour in NEIGHBOURS_MM:
         box(neighbour, fill="#EFEEEA", outline=SHADOW_GREY)
 
-    if sheet.kind.startswith("Apartments"):
-        lit = _lit_flats(sheet)
+    kind = drawing.kind
+    if kind.startswith("Apartments") and drawing.azimuth is None:
+        # The whole day: the flats in their bands, most sun to least.
+        tints = ("#EBC27C", "#F6E2BE", "#FBF0DA", "#F6E2BE", "#E7E6E2", "#EBC27C")
+        for index, flat in enumerate(FLATS_MM):
+            box(flat, fill=tints[index], outline=theme.EDGE)
+    elif kind.startswith("Apartments"):
+        lit = _lit_flats(drawing.azimuth)
         for index, flat in enumerate(FLATS_MM):
             box(
                 flat,
                 fill="#F6E2BE" if index in lit else theme.SURFACE,
                 outline=theme.SUN if index in lit else theme.EDGE,
             )
-    elif sheet.kind == "Communal open space":
-        # The courtyard, gridded the way the study samples it.
-        yard = (BLOCK_MM[0] - 14, BLOCK_MM[1] + 4, BLOCK_MM[2] + 14, BLOCK_MM[3] + 16)
-        box(yard, fill="#F6E2BE", outline=theme.SUN)
-        for step in range(1, 6):
-            along = yard[0] + (yard[2] - yard[0]) * step / 6
-            paper.create_line(x(along), x(yard[1]), x(along), x(yard[3]), fill="#E9C98F")
-        for step in range(1, 4):
-            down = yard[1] + (yard[3] - yard[1]) * step / 4
-            paper.create_line(x(yard[0]), x(down), x(yard[2]), x(down), fill="#E9C98F")
-    elif sheet.kind == "Facade bands":
+    elif kind == COMMUNAL_HOURLY:
+        # The space at one hour: the yard, and the shadow the block throws
+        # across it -- which is what the hourly plan measures.
+        yard()
+        shadow()
+        box(BLOCK_MM, fill=theme.BLUE_TINT, outline=theme.BLUE, width=2)
+    elif kind == COMMUNAL_AREAS:
+        # A schedule: a heading rule, then a row per space.
+        table = (SITE_MM[0] + 16, SITE_MM[1] + 18, SITE_MM[2] - 16, SITE_MM[3] - 18)
+        box(table, fill=theme.SURFACE, outline=theme.EDGE)
+        line(table[0], table[1] + 12, table[2], table[1] + 12, theme.INK)
+        row = table[1] + 24
+        while row < table[3] - 4:
+            line(table[0] + 4, row, table[2] - 4, row, theme.LINE)
+            row += 12
+        line(
+            table[0] + (table[2] - table[0]) * 0.55,
+            table[1],
+            table[0] + (table[2] - table[0]) * 0.55,
+            table[3],
+            theme.LINE,
+        )
+    elif kind.startswith("Communal open space"):
+        yard()
+    elif kind == "Facade bands":
         # The skin in its bands of sun hours, least to most.
         bands = ("#E7E6E2", "#FBF0DA", "#F6E2BE", "#EBC27C")
         wide = (BLOCK_MM[2] - BLOCK_MM[0]) / len(bands)
@@ -1266,7 +1651,7 @@ def draw_sheet(
                 outline="",
             )
         box(BLOCK_MM, fill="", outline=theme.INK)
-    elif sheet.kind == "Sun view":
+    elif kind == "Sun view":
         # The massing as the sun sees it: three faces and no shadow, because
         # from where the light comes from there is none to see.
         mid_x, top = (BLOCK_MM[0] + BLOCK_MM[2]) / 2, BLOCK_MM[1] - 12
@@ -1301,164 +1686,30 @@ def draw_sheet(
                 "#DEDDD6",
             ),
         ):
-            flatten: list[float] = []
-            for point_x, point_y in points:
-                flatten += [x(point_x), x(point_y)]
-            paper.create_polygon(flatten, fill=tint, outline=theme.INK)
-    elif sheet.study == "Site analysis":
+            poly(points, fill=tint, outline=theme.INK)
+    elif study == "Site analysis":
         # The site itself, outlined, with the address dropped on it.
         box(BLOCK_MM, fill="#E8F0FC", outline=theme.BLUE, dash=(4, 2))
-        pin_x, pin_y = x((BLOCK_MM[0] + BLOCK_MM[2]) / 2), x(BLOCK_MM[1] + 12)
-        paper.create_polygon(
-            pin_x - x(5),
-            pin_y - x(7),
-            pin_x + x(5),
-            pin_y - x(7),
-            pin_x,
-            pin_y + x(6),
+        pin_x, pin_y = (BLOCK_MM[0] + BLOCK_MM[2]) / 2, BLOCK_MM[1] + 12
+        poly(
+            ((pin_x - 5, pin_y - 7), (pin_x + 5, pin_y - 7), (pin_x, pin_y + 6)),
             fill=theme.BLUE,
             outline="",
         )
         paper.create_oval(
-            pin_x - x(6), pin_y - x(15), pin_x + x(6), pin_y - x(3), fill=theme.BLUE, outline=""
+            px(pin_x - 6), py(pin_y - 15), px(pin_x + 6), py(pin_y - 3), fill=theme.BLUE, outline=""
         )
         paper.create_oval(
-            pin_x - x(2.2),
-            pin_y - x(11.2),
-            pin_x + x(2.2),
-            pin_y - x(6.8),
+            px(pin_x - 2.2),
+            py(pin_y - 11.2),
+            px(pin_x + 2.2),
+            py(pin_y - 6.8),
             fill=theme.SURFACE,
             outline="",
         )
     else:
-        reach, bearing = sheet.reach, sheet.bearing
-        if reach is not None and bearing is not None:
-            far = reach * BLOCK_HEIGHT_M
-            shift = (
-                math.sin(math.radians(bearing)) * far,
-                -math.cos(math.radians(bearing)) * far,
-            )
-            corners = [
-                (corner_x + dx, corner_y + dy)
-                for corner_x in (BLOCK_MM[0], BLOCK_MM[2])
-                for corner_y in (BLOCK_MM[1], BLOCK_MM[3])
-                for dx, dy in ((0.0, 0.0), shift)
-            ]
-            outline: list[float] = []
-            for point_x, point_y in _hull(corners):
-                outline += [x(point_x), x(point_y)]
-            paper.create_polygon(outline, fill="#C7C6C1", outline="")
+        shadow()
         box(BLOCK_MM, fill=theme.BLUE_TINT, outline=theme.BLUE, width=2)
-
-    # -- north, which is up --------------------------------------------
-    north_x, north_y = x(draw_r - 14), x(26)
-    ring = x(7)
-    paper.create_oval(
-        north_x - ring,
-        north_y - ring,
-        north_x + ring,
-        north_y + ring,
-        fill=theme.SURFACE,
-        outline=theme.EDGE,
-    )
-    paper.create_polygon(
-        north_x,
-        north_y - x(6),
-        north_x + x(2.6),
-        north_y + x(2.4),
-        north_x,
-        north_y + x(0.6),
-        north_x - x(2.6),
-        north_y + x(2.4),
-        fill=theme.INK,
-        outline="",
-    )
-    words(draw_r - 14, 15, "N", 6, theme.INK, anchor="center")
-
-    # -- what this drawing is ------------------------------------------
-    #
-    # A site sheet is not at an hour of the day, so it is titled by what it
-    # is; everything else is titled by when, because that is what tells one
-    # sheet of a study from the next.
-    timed = bool(sheet.time)
-    title = f"{sheet.day.upper()}  \u00b7  {sheet.time}" if timed else sheet.kind.upper()
-    words(10, 186, title, 9, theme.INK, bold=True)
-    if not timed:
-        words(10, 196, "Drawn from the address, not from the sun", 7, theme.HINT)
-    elif sheet.elevation is None:
-        words(10, 196, "Project location not set \u2014 no sun to draw", 7, theme.RED)
-    else:
-        cast = (
-            f" \u00b7 shadow {sheet.reach:.1f}x the height"
-            if sheet.reach is not None and sheet.study == "Shadow diagram"
-            else ""
-        )
-        words(
-            10,
-            196,
-            f"Sun {sheet.elevation:.1f}\u00b0 \u00b7 azimuth {sheet.azimuth:.0f}\u00b0{cast}",
-            7,
-            theme.HINT,
-        )
-
-    # -- the title block, at the width General is set to ----------------
-    #
-    # Forty millimetres is forty pixels here, and nothing in it may run out
-    # over the drawing or over the line beneath it. So each line is laid
-    # under the one before by asking the canvas how tall that one came out,
-    # wrapped to the strip: a long drawing title takes two lines and pushes
-    # the date down, rather than printing through it.
-    left = SHEET_MM_W - block_mm
-    box((left, 0.5, SHEET_MM_W - 0.5, SHEET_MM_H - 0.5), fill="#FBFBF9", outline=theme.LINE)
-    inner = x(left + 3.5)
-    room = x(block_mm - 7.0)
-
-    def stacked(top: float, text: str, size: int, colour: str, *, bold: bool = False) -> float:
-        """One line of the block, under the last. Returns where it ended.
-
-        Wrapped to the strip, and set a point smaller if that is what it
-        takes for its longest word to fit: Tk breaks a word that will not,
-        and "Apartment" over "s" is not a drawing title.
-        """
-        while size > 4 and max(_wide(paper, word, size, bold) for word in text.split()) > room:
-            size -= 1
-        item = paper.create_text(
-            inner,
-            top,
-            text=text,
-            anchor="nw",
-            fill=colour,
-            width=room,
-            font=_face(size, bold),
-        )
-        return float(paper.bbox(item)[3])
-
-    def ruled(at: float) -> None:
-        paper.create_line(inner, at, inner + room, at, fill=theme.LINE)
-
-    foot = stacked(x(5), PRODUCT.upper(), 5, theme.INK, bold=True)
-    ruled(foot + 2)
-    foot = stacked(foot + 5, sheet.kind, 5, theme.INK)
-    if timed:
-        foot = stacked(foot + 1, f"{sheet.day} {sheet.time}", 5, theme.HINT)
-    # The notes and revisions, which at this size are rules on paper too.
-    line = max(foot + 6, x(62))
-    step = 0
-    while line < x(140):
-        paper.create_line(inner, line, inner + room - (step % 3) * x(6), line, fill="#E7E6E2")
-        line += x(6)
-        step += 1
-    ruled(x(146))
-    stacked(x(149), "1:1000", 5, theme.HINT)
-    ruled(x(163))
-    paper.create_text(
-        inner,
-        x(SHEET_MM_H - 9),
-        text=sheet.number,
-        anchor="sw",
-        fill=theme.BLUE_DEEP,
-        font=(theme.FACE, 8, "bold"),
-    )
 
 
 def _face(size: int, bold: bool) -> tuple[str, int] | tuple[str, int, str]:
@@ -1483,21 +1734,21 @@ def _wide(widget: tk.Misc, word: str, size: int, bold: bool) -> int:
     return _WIDTHS[key]
 
 
-def _lit_flats(sheet: Sheet) -> set[int]:
+def _lit_flats(azimuth: float | None) -> set[int]:
     """Which flats the sun is in, by where it is.
 
     Schematic, and honest about being so: the real answer is what the study
     goes and measures. What it gets right is that three hours of one day are
     three different drawings, because the sun is in three different places.
     """
-    if sheet.azimuth is None:
+    if azimuth is None:
         return set()
     middle_x = sum(flat[0] + flat[2] for flat in FLATS_MM) / (2 * len(FLATS_MM))
     middle_y = sum(flat[1] + flat[3] for flat in FLATS_MM) / (2 * len(FLATS_MM))
     reach = 54.0
     towards = (
-        middle_x + math.sin(math.radians(sheet.azimuth)) * reach,
-        middle_y - math.cos(math.radians(sheet.azimuth)) * reach,
+        middle_x + math.sin(math.radians(azimuth)) * reach,
+        middle_y - math.cos(math.radians(azimuth)) * reach,
     )
     order = sorted(
         range(len(FLATS_MM)),
@@ -1688,7 +1939,16 @@ class Window:
         self._controls(base)
         # What is typed changes what a run will make as surely as what is
         # ticked, so the panel of sheets hears about keystrokes too.
-        for typed in (self.instants, self.shadow_hours, self.year, self.custom_day):
+        for typed in (
+            self.instants,
+            self.shadow_dates,
+            self.shadow_hours,
+            self.eye_hours,
+            self.communal_window,
+            self.communal_hours,
+            self.year,
+            self.custom_day,
+        ):
             typed.bind("<KeyRelease>", lambda _event: self._sync(), add="+")
         for chosen in (self.adg_subset, self.shadow_subset):
             chosen.bind("<<ComboboxSelected>>", lambda _event: self._sync(), add="+")
@@ -2411,6 +2671,7 @@ class Window:
             frame,
             text="including one plan per hour",
             variable=self.do_hourly,
+            command=self._sync,
         )
         self.hourly_box.grid(row=row, column=0, columnspan=2, sticky="w", padx=(18, 0))
         Tooltip(
@@ -3140,6 +3401,48 @@ class Window:
             "project is then read again, so the lists fill from the open "
             "Archicad as they did the first time.",
         )
+        # Presets: the same page, written to a file of the person's choosing
+        # and read back from one. "Save as default" is for what belongs to
+        # the practice; a preset is for what belongs to a job or a colleague
+        # -- the Silverwater setup, the shadow set the council asked for --
+        # and it goes wherever a job's files go rather than into a profile.
+        keep_as = ttk.Button(
+            buttons,
+            text="Save preset…",
+            style="Chrome.TButton",
+            command=self._save_preset,
+            width=14,
+            **icons.button_options("save_preset"),
+        )
+        keep_as.grid(row=0, column=4, padx=(6, 0))
+        Tooltip(
+            keep_as,
+            "Writes every section -- the ticks, the fields and which section "
+            "is open -- to a file you name, to load again later or on another "
+            "machine. The same file as the saved defaults, so one can be "
+            "copied over the other. Nothing about which Archicad is open is "
+            "in it.",
+            title="Save preset",
+        )
+        take = ttk.Button(
+            buttons,
+            text="Load preset…",
+            style="Chrome.TButton",
+            command=self._load_preset,
+            width=14,
+            **icons.button_options("load_preset"),
+        )
+        take.grid(row=0, column=5, padx=(6, 0))
+        Tooltip(
+            take,
+            "Fills the window in from a preset file. Only what the file names "
+            "changes; the rest stays as it is. Anything the open project "
+            "disagrees with is overruled by the project, so a layer saved on "
+            "another job cannot make a run measure a layer that is not here. "
+            "The saved defaults are not touched -- press Save as default to "
+            "keep it.",
+            title="Load preset",
+        )
 
         self.progress = ttk.Progressbar(progress_row, mode="determinate", maximum=100)
         self.progress.grid(row=0, column=0, sticky="ew")
@@ -3779,6 +4082,70 @@ class Window:
         else:
             self._write(f"The page is back to its defaults, but {where} could not be deleted.")
 
+    # -- presets: the same page, in a file of the person's choosing ---------
+    def _save_preset(self) -> None:
+        """Ask where, then write the page there."""
+        where = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Save these settings as a preset",
+            defaultextension=preferences.PRESET_SUFFIX,
+            filetypes=preferences.PRESET_TYPES,
+            initialdir=str(preferences.presets_folder()),
+            initialfile=f"Loriini preset{preferences.PRESET_SUFFIX}",
+        )
+        if where:
+            self.save_preset(Path(where))
+
+    def save_preset(self, where: Path) -> Path | None:
+        """Write the page to ``where``. Public, so the round trip can be
+        tested without a dialog. None, and a line in the log, if the folder
+        would not take it."""
+        try:
+            written = preferences.write(where, self.settings())
+        except OSError as refused:
+            self._write(f"Could not save the preset: {refused}")
+            return None
+        self._write(f"Preset saved: {written}. Load preset reads it back, here or elsewhere.")
+        return written
+
+    def _load_preset(self) -> None:
+        """Ask which, then put it on the page."""
+        where = filedialog.askopenfilename(
+            parent=self.root,
+            title="Load a preset",
+            filetypes=preferences.PRESET_TYPES,
+            initialdir=str(preferences.presets_folder()),
+        )
+        if where:
+            self.load_preset(Path(where))
+
+    def load_preset(self, where: Path) -> bool:
+        """Put the settings in ``where`` on the page. True if they landed.
+
+        Only what the file names changes -- ``apply`` leaves the rest alone
+        -- and the project then has the last word, exactly as it does over
+        the saved defaults: layer names it does not carry are dropped and
+        said out loud, and the emptied fields are filled from the project
+        again. A file that is not a preset is reported in the log, with the
+        reason, rather than raised: the person chose it and wants to know
+        why it did not take, and a window that closes over a wrong file is
+        the worse answer.
+        """
+        try:
+            saved = preferences.read(where)
+        except (OSError, ValueError) as refused:
+            self._write(f"Could not load {where.name}: {refused}")
+            return False
+        self.apply(saved)
+        if self.options.reachable:
+            self._only_what_this_project_has()
+            self._offer()
+        self._write(
+            f"Loaded the preset {where.name}. The open project overrules anything in "
+            "it that this project does not have."
+        )
+        return True
+
     # -- reading the project -------------------------------------------------
     def refresh(self) -> None:
         found = probe.running()
@@ -4284,79 +4651,198 @@ class Window:
     #: view of this and the run is the other one -- two places that must
     #: agree, so they read from one list.
     def planned(self) -> list[Sheet]:
-        """Every layout a run would make, in the order it would make them."""
+        """Every layout a run would make, in the order it would make them.
+
+        Each study's drawings are dealt onto layouts by the same
+        ``sheet_chunks`` the run calls, with the mode the Sheets row sends --
+        or, when that row is blank and sends nothing, the mode each tool
+        falls back to on its own. So the panel and the Layout Book agree
+        about how many sheets a tick is worth and about which hours share
+        one; and the days and hours come from the fields each study really
+        reads, which for the shadow diagrams is their own Days row and not
+        the ticks in Model.
+        """
         made: list[Sheet] = []
         days = self.chosen_days()
         queued = {name for name, tick, _where in self._studies() if tick.get()}
 
-        def add(
-            job: str, study: str, glyph: str, mark: str, kind: str, day: str, clock: str
+        def deal(
+            job: str,
+            study: str,
+            glyph: str,
+            mark: str,
+            kind: str,
+            day: str,
+            clocks: Sequence[str],
+            mode: str | None = None,
         ) -> None:
-            azimuth, elevation = self._sun_at(day, clock)
-            made.append(
-                Sheet(
-                    study=study,
-                    glyph=glyph,
-                    number=f"{mark}.{sum(1 for s in made if s.number.startswith(mark)) + 1:02d}",
-                    kind=kind,
-                    day=self._day_name(day),
-                    time=clock,
-                    azimuth=azimuth,
-                    elevation=elevation,
-                    job=job,
+            """One set of drawings, dealt as ``mode`` says -- or a sheet each
+            when the set is not one the Sheets row governs."""
+            drawings = tuple(self._drawing(kind, day, clock) for clock in clocks)
+            chunks = sheet_chunks(len(drawings), mode or "each")
+            cells = cells_for(chunks)
+            for part, (start, stop) in enumerate(chunks, start=1):
+                nth = sum(1 for s in made if s.number.startswith(mark)) + 1
+                made.append(
+                    Sheet(
+                        study=study,
+                        glyph=glyph,
+                        number=f"{mark}.{nth:02d}",
+                        kind=kind,
+                        day=self._day_name(day),
+                        drawings=drawings[start:stop],
+                        cells=cells,
+                        part=part,
+                        parts=len(chunks),
+                        job=job,
+                    )
                 )
-            )
 
         if SITE_JOB in queued:
             for which in ("Context Analysis", "Site Analysis", "Summary of Controls"):
                 # Not at an hour of any day: these are drawn from the address.
-                add(SITE_JOB, "Site analysis", "site", "ST", which, "", "")
+                deal(SITE_JOB, "Site analysis", "site", "ST", which, "", [""])
 
         if FACADE_JOB in queued:
             for day in days:
-                add(FACADE_JOB, "Solar analysis", "analysis", "SA", "Facade bands", day, "09:00")
+                # The coloured model and its views on one sheet, whatever the
+                # Sheets row says: it is one drawing, not a set.
+                deal(FACADE_JOB, "Solar analysis", "analysis", "SA", "Facade bands", day, [""])
         if PLANS_JOB in queued:
             for day in days:
-                for clock in self._clocks(self.instants, ("09:00", "12:00", "15:00")):
-                    add(PLANS_JOB, "Solar analysis", "analysis", "SA", "Apartments", day, clock)
-                add(
+                deal(
+                    PLANS_JOB,
+                    "Solar analysis",
+                    "analysis",
+                    "SA",
+                    "Apartments",
+                    day,
+                    self._clocks(self.instants, ("09:00", "12:00", "15:00")),
+                    self._sheet_mode("each"),
+                )
+                deal(
                     PLANS_JOB,
                     "Solar analysis",
                     "analysis",
                     "SA",
                     "Apartments, ADG total",
                     day,
-                    "12:00",
+                    [""],
                 )
         if COMMUNAL_JOB in queued:
             for day in days:
-                add(
+                deal(
                     COMMUNAL_JOB,
                     "Solar analysis",
                     "analysis",
                     "SA",
                     "Communal open space",
                     day,
-                    "12:00",
+                    [""],
                 )
+                threshold = self.communal_hours.get().strip()
+                if threshold:
+                    deal(
+                        COMMUNAL_JOB,
+                        "Solar analysis",
+                        "analysis",
+                        "SA",
+                        f"Communal open space, {threshold} h or more",
+                        day,
+                        [""],
+                    )
+                if self.do_hourly.get():
+                    deal(
+                        COMMUNAL_JOB,
+                        "Solar analysis",
+                        "analysis",
+                        "SA",
+                        COMMUNAL_HOURLY,
+                        day,
+                        self._window_clocks(),
+                        self._sheet_mode("one"),
+                    )
+                deal(COMMUNAL_JOB, "Solar analysis", "analysis", "SA", COMMUNAL_AREAS, day, [""])
 
         if SHADOW_JOB in queued:
-            for day in days:
-                for clock in self._clocks(self.shadow_hours, DEFAULT_SHADOW_HOURS.split(",")):
-                    add(SHADOW_JOB, "Shadow diagram", "shadow", "SD", "Shadow diagram", day, clock)
+            hours = self._clocks(self.shadow_hours, DEFAULT_SHADOW_HOURS.split(","))
+            for day in self._shadow_days():
+                deal(
+                    SHADOW_JOB,
+                    "Shadow diagram",
+                    "shadow",
+                    "SD",
+                    "Shadow diagram",
+                    day,
+                    hours,
+                    self._sheet_mode("two"),
+                )
 
         if SUN_EYE_JOB in queued:
+            hours = self._clocks(self.eye_hours, [f"{hour:02d}:00" for hour in range(9, 16)])
             for day in days:
-                for clock in self._clocks(self.instants, ("09:00", "12:00", "15:00")):
-                    add(SUN_EYE_JOB, "Sun views", "views", "SV", "Sun view", day, clock)
+                deal(
+                    SUN_EYE_JOB,
+                    "Sun views",
+                    "views",
+                    "SV",
+                    "Sun view",
+                    day,
+                    hours,
+                    self._sheet_mode("two"),
+                )
 
         return made
 
+    def _drawing(self, kind: str, day: str, clock: str) -> Drawing:
+        """One drawing of a set, with the sun where it will be for it."""
+        azimuth, elevation = self._sun_at(day, clock) if clock else (None, None)
+        return Drawing(
+            kind=kind, day=self._day_name(day), time=clock, azimuth=azimuth, elevation=elevation
+        )
+
+    def _sheet_mode(self, fallback: str) -> str:
+        """The word the Sheets row sends, or the one a tool falls back to when
+        the row is blank and sends nothing. A word nobody can parse is sent as
+        typed and refused by the run; the panel shows the fallback rather than
+        nothing, which is the nearest it can get to a run that will not start."""
+        chosen = self.sheets.get().strip()
+        if not chosen:
+            return fallback
+        for title, word in self.SHEET_CHOICES:
+            if chosen == title:
+                return word
+        try:
+            return parse_sheet_mode(chosen)
+        except ValueError:
+            return fallback
+
+    def _shadow_days(self) -> list[str]:
+        """The days the shadow study draws: its own row, or the command's
+        default when the row is blank -- which is what the run reads."""
+        typed = [part.strip() for part in self.shadow_dates.get().split(",") if part.strip()]
+        return typed or DEFAULT_SHADOW_DATES.split(",")
+
+    def _window_clocks(self) -> list[str]:
+        """Every whole hour of the communal window, which is how many hourly
+        plans the run draws: eight to three is eight, nine to three is seven.
+        A window nobody can parse is the ruleset's own, nine to three, which
+        is what the run falls back to as well."""
+        start, end = (_clock_text(half) for half in self._window())
+        try:
+            first, last = int(start.partition(":")[0]), int(end.partition(":")[0])
+        except ValueError:
+            first, last = 9, 15
+        if not 0 <= first <= last <= 23:
+            first, last = 9, 15
+        return [f"{hour:02d}:00" for hour in range(first, last + 1)]
+
     @staticmethod
     def _clocks(box: ttk.Entry, fallback: Sequence[str]) -> list[str]:
-        """The times in a field, or the ones the study runs without them."""
+        """The times in a field, or the ones the study runs without them,
+        each spelled the way a sheet is named for it."""
         times = [part.strip() for part in box.get().split(",") if part.strip()]
-        return times or [part.strip() for part in fallback]
+        return [_clock_text(part) for part in (times or list(fallback))]
 
     def _day_name(self, day: str) -> str:
         """How a day reads on a sheet: the date, not the season's name.
@@ -4409,35 +4895,46 @@ class Window:
         """What the band says while the pointer is over a sheet in the dock.
 
         The one place the panel can say more than the drawing does: which way
-        and how far, in figures, and that it has not been drawn yet.
+        and how far, in figures, and that it has not been drawn yet. A sheet
+        carrying several drawings lists the sun at each, and says which cells
+        the run will leave empty.
         """
         if sheet is None:
             self.info.rest()
             return
         if not sheet.time:
-            detail = (
-                "Drawn from the address in Site analysis and NSW open data, so it has "
-                "no hour and no sun on it."
-            )
+            detail = _untimed_note(sheet)[1]
         elif sheet.elevation is None:
             detail = (
                 "No project location, so there is no sun to put on it. Set one in "
                 "Options > Project Preferences > Project Location, then press Refresh."
             )
-        else:
+        elif len(sheet.drawings) == 1:
             detail = f"Sun {sheet.elevation:.1f} degrees up, at azimuth {sheet.azimuth:.0f}."
             if sheet.reach is not None and sheet.study == "Shadow diagram":
                 detail += (
                     f" The shadow falls towards {sheet.bearing:.0f} degrees and runs "
                     f"{sheet.reach:.1f} times the height of what casts it."
                 )
-        self.info.show(
-            sheet.glyph,
-            sheet.number,
-            f"{sheet.kind}, {sheet.day} at {sheet.time}." if sheet.time else f"{sheet.kind}.",
-            detail,
-            state="not drawn yet",
-        )
+        else:
+            suns = "; ".join(
+                f"{drawing.time} {drawing.elevation:.0f} degrees up at {drawing.azimuth:.0f}"
+                for drawing in sheet.drawings
+                if drawing.elevation is not None and drawing.azimuth is not None
+            )
+            detail = f"{len(sheet.drawings)} drawings on this layout, {sheet.part} of {sheet.parts}"
+            if sheet.empty:
+                detail += f", with {sheet.empty} cell{'' if sheet.empty == 1 else 's'} left empty"
+            detail += f". Sun: {suns}."
+        if sheet.kind == COMMUNAL_HOURLY:
+            detail += " One such set per storey the space spans."
+        if sheet.time:
+            short = f"{sheet.kind}, {sheet.day} at {sheet.time}."
+        elif sheet.day:
+            short = f"{sheet.kind}, {sheet.day}."
+        else:
+            short = f"{sheet.kind}."
+        self.info.show(sheet.glyph, sheet.number, short, detail, state="not drawn yet")
 
     def jobs(self) -> list[Job]:
         """The command lines the ticked boxes mean. Public, and pure, because

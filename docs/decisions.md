@@ -3526,3 +3526,42 @@ the compiled `.apx` is the reference, not the header signature and not a grep of
 somebody's source. A hex dump around a known caption shows the whole `STR#`
 block — length, name line, item — and settles in seconds what reasoning from
 the API got wrong twice.
+
+### D107 — The sheets panel deals by the Sheets row, and the page can be saved as a preset
+
+Asked 21 September 2026, after the window's first build went out: *"the sheets
+in right bar need to be connected with the sheet setting 1sheet/2sheets/
+multiple sheets ... needs to correspond truthfully to the actual output
+settings"*, and *"make possible to save preset and import presets."*
+
+**The panel was drawing one sheet per drawing whatever General said.** Seven
+shadow hours were seven thumbnails while the run, set to *Two layouts*, made a
+four-and-three pair. The count on the strip was wrong by the same factor, and
+the count is the one thing the panel exists to get right. Three other
+untruths came out in the same pass: the shadow sheets were drawn for the days
+ticked in Model, when the shadow study is one job that reads its own Days row;
+the sun views were drawn at the apartment instants rather than their own
+Hours; and the communal study's threshold plan, its hourly set and its areas
+table were not drawn at all.
+
+**Dealt by the same function the run calls.** `Window.planned` now builds each
+study's drawings and passes them through `sheeting.sheet_chunks` with the mode
+the Sheets row sends -- or, when the row is blank and sends nothing, the mode
+each command falls back to on its own, because that is what a blank row does.
+A `Sheet` carries its `drawings`, the `cells` of the grid it is laid out on,
+and its place in the set; the short second sheet of a pair keeps the first
+one's grid with a cell drawn empty, as the run leaves it. The thumbnail lays
+the cells out by the same wasted-cells-then-nearest-square rule as
+`sun_eyes.sheet_cells_for`, so four drawings are a block and not a row. The
+band lists the sun at every drawing on a sheet.
+
+**Presets are the settings file, wherever the person puts it.** Two buttons
+in the run bar, *Save preset…* and *Load preset…*, write and read the same
+JSON `Save as default` writes -- one format on purpose, so a preset copied
+over `settings.json` is the defaults and the defaults sent on are a preset.
+Loading changes only what the file names, and the open project then has the
+last word exactly as it does over the saved defaults: layer names it does not
+carry are dropped and said out loud. `preferences.read` is the one function in
+that module that raises, because the person chose the file and wants to know
+why it did not load. The dialogs open in Documents, not `%APPDATA%`: a preset
+exists to be found.

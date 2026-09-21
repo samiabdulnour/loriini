@@ -451,3 +451,28 @@ gridded on the floor rather than the ceiling, and `archicad-info --properties`.
 
 **Not solvable by convention:** the tool measures geometric direct sunlight. It is not a
 daylight, illuminance or energy model, and it does not replace a consultant.
+
+## The sheets panel
+
+The panel down the right of `Loriini.exe` is every layout the ticked studies
+will make, dealt the way the **Sheets** row in General deals them -- by the
+same `sheet_chunks` the run calls, so seven shadow hours are one thumbnail,
+two, or seven as the row says, and the count on the strip is the count of
+layouts. A sheet carrying several drawings shows them on the grid the run
+will use, with the hour under each and a cell the run leaves empty drawn
+empty. Each study is drawn from the fields it really reads: the shadow
+diagrams from their own **Days** and **Hours**, the sun views from theirs,
+the communal study's hourly set from every whole hour of its window. Point
+at a sheet for the sun at every drawing on it.
+
+## Presets
+
+**Save preset…** writes every section -- the ticks, the fields, the open
+section -- to a file you name; **Load preset…** reads one back, changing
+only what the file names. It is the same JSON that **Save as default** keeps
+in `%APPDATA%\Loriini\settings.json`, so one can be copied over the other:
+a job's preset sent to the next desk, or a colleague's defaults saved out
+as a preset. The open project has the last word after a load, exactly as it
+does over the saved defaults -- a layer the project does not carry is
+dropped and the log says so. A file that is not a preset is reported in the
+log with the reason, not raised.

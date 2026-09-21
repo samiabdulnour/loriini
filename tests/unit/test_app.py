@@ -412,23 +412,268 @@ def test_a_chip_row_is_still_the_entry_the_settings_file_expects(hidden_window: 
     assert box.get() == ""
 
 
-def test_the_panel_holds_one_sheet_per_hour_per_day(hidden_window: Any) -> None:
-    """What the panel draws is what Run will make, worked out from the ticks
-    and the fields rather than from anything Archicad is asked."""
+def only_shadows(hidden_window: Any, *, dates: str, hours: str) -> None:
+    """One study ticked, on its own days and hours, so a count means something."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
     hidden_window.do_shadows.set(True)
-    for name, ticked in hidden_window.days.items():
-        ticked.set(name in {"winter", "summer"})
-    hidden_window.custom_day.delete(0, "end")
+    hidden_window.shadow_dates.delete(0, "end")
+    hidden_window.shadow_dates.insert(0, dates)
     hidden_window.shadow_hours.delete(0, "end")
-    hidden_window.shadow_hours.insert(0, "09:00, 12:00, 15:00")
+    hidden_window.shadow_hours.insert(0, hours)
+
+
+def test_the_panel_holds_one_sheet_per_hour_per_day(hidden_window: Any) -> None:
+    """What the panel draws is what Run will make, worked out from the ticks
+    and the fields rather than from anything Archicad is asked."""
+    only_shadows(hidden_window, dates="06-21, 12-21", hours="09:00, 12:00, 15:00")
+    hidden_window.sheets.set("A layout per drawing")
 
     sheets = hidden_window.planned()
 
     assert len(sheets) == 6, "two days at three hours"
     assert [sheet.number for sheet in sheets[:3]] == ["SD.01", "SD.02", "SD.03"]
     assert {sheet.study for sheet in sheets} == {"Shadow diagram"}
+    assert [sheet.day for sheet in sheets] == ["21 Jun"] * 3 + ["21 Dec"] * 3
+
+
+def test_the_panel_deals_the_sheets_the_way_the_run_will(hidden_window: Any) -> None:
+    """The Sheets row in General is what the run deals its drawings by, so the
+    panel deals by it too -- through the same ``sheet_chunks`` -- and cannot
+    show seven sheets where the run makes two. The short second sheet of a
+    pair keeps the first one's grid with a cell empty, as the run leaves it."""
+    from sun_study.archicad.sheeting import sheet_chunks
+
+    only_shadows(hidden_window, dates="06-21, 12-21", hours="9,10,11,12,13,14,15")
+
+    hidden_window.sheets.set("A layout per drawing")
+    each = hidden_window.planned()
+    assert len(each) == 14 and all(len(sheet.drawings) == 1 for sheet in each)
+    assert each[0].time == "09:00", "a typed 9 is the 09:00 the sheet is named for"
+
+    hidden_window.sheets.set("Two layouts, half each")
+    two = hidden_window.planned()
+    dealt = [stop - start for start, stop in sheet_chunks(7, "two")]
+    assert [len(sheet.drawings) for sheet in two] == dealt * 2 == [4, 3, 4, 3]
+    assert {sheet.cells for sheet in two} == {4}, "the short sheet keeps the full one's grid"
+    assert [sheet.empty for sheet in two] == [0, 1, 0, 1]
+    assert [(sheet.part, sheet.parts) for sheet in two[:2]] == [(1, 2), (2, 2)]
+    assert [sheet.number for sheet in two] == ["SD.01", "SD.02", "SD.03", "SD.04"]
+    assert (two[0].time, two[1].time) == ("09:00-12:00", "13:00-15:00")
+    assert flag(hidden_window.jobs()[0].args, "--sheets") == ["two"], "and the run is told so"
+
+    hidden_window.sheets.set("One layout, all drawings")
+    one = hidden_window.planned()
+    assert [len(sheet.drawings) for sheet in one] == [7, 7]
+    assert [sheet.parts for sheet in one] == [1, 1], "not one of anything"
+
+
+def test_a_blank_sheets_row_shows_each_tools_own_default(hidden_window: Any) -> None:
+    """A blank row sends no ``--sheets``, and each tool then falls back to
+    what it did before there was a choice -- two for the shadows, a sheet
+    each for the apartment plans. The panel has to fall back the same way,
+    or it shows a choice the run was never sent."""
+    only_shadows(hidden_window, dates="06-21", hours="9,10,11,12,13,14,15")
+    hidden_window.do_plans.set(True)
+    hidden_window.instants.delete(0, "end")
+    hidden_window.instants.insert(0, "09:00, 12:00, 15:00")
+    hidden_window.sheets.set("")
+
+    sheets = hidden_window.planned()
+
+    shadows = [sheet for sheet in sheets if sheet.study == "Shadow diagram"]
+    plans = [sheet for sheet in sheets if sheet.kind == "Apartments"]
+    assert [len(sheet.drawings) for sheet in shadows] == [4, 3]
+    assert [len(sheet.drawings) for sheet in plans] == [1, 1, 1]
+    assert not any("--sheets" in job.args for job in hidden_window.jobs())
+
+
+def test_the_shadow_sheets_follow_their_own_days_row(hidden_window: Any) -> None:
+    """The shadow study is one job with its own Days row, not one run per
+    ticked day like the solar tools, so the ticks in Model are not what it
+    draws -- and the panel must not say they are."""
+    only_shadows(hidden_window, dates="06-21", hours="12")
+    for ticked in hidden_window.days.values():
+        ticked.set(True)
+
+    sheets = hidden_window.planned()
+
+    assert [sheet.day for sheet in sheets] == ["21 Jun"]
+    assert flag(hidden_window.jobs()[0].args, "--shadow-date") == ["06-21"]
+
+
+def test_the_hourly_communal_plans_are_as_many_as_the_window_has_hours(
+    hidden_window: Any,
+) -> None:
+    """Eight to three is eight plans and nine to three is seven, because the
+    run draws every whole hour it measured -- and they are dealt onto sheets
+    by the Sheets row, while the banded plan, the threshold plan and the
+    areas table are one sheet each whatever it says."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_communal.set(True)
+    for ticked in hidden_window.days.values():
+        ticked.set(False)
+    hidden_window.days["winter"].set(True)
+    hidden_window.communal_window.delete(0, "end")
+    hidden_window.communal_window.insert(0, "08:00-15:00")
+    hidden_window.communal_hours.delete(0, "end")
+    hidden_window.communal_hours.insert(0, "2")
+    hidden_window.sheets.set("One layout, all drawings")
+
+    sheets = hidden_window.planned()
+
+    hourly = [sheet for sheet in sheets if sheet.kind == window.COMMUNAL_HOURLY]
+    assert [len(sheet.drawings) for sheet in hourly] == [8]
+    assert hourly[0].time == "08:00-15:00"
+    assert [sheet.kind for sheet in sheets if sheet is not hourly[0]] == [
+        "Communal open space",
+        "Communal open space, 2 h or more",
+        window.COMMUNAL_AREAS,
+    ]
+    assert all(not sheet.time for sheet in sheets if sheet is not hourly[0]), "whole-day sheets"
+
+    hidden_window.do_hourly.set(False)
+    assert not [s for s in hidden_window.planned() if s.kind == window.COMMUNAL_HOURLY]
+
+
+def test_the_sun_views_follow_their_own_hours(hidden_window: Any) -> None:
+    """Their Hours row, or the ruleset's nine to three when it is blank --
+    which is what the command does with a blank ``--hour``."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_sun_eyes.set(True)
+    for ticked in hidden_window.days.values():
+        ticked.set(False)
+    hidden_window.days["winter"].set(True)
+    hidden_window.sheets.set("A layout per drawing")
+
+    hidden_window.eye_hours.delete(0, "end")
+    assert [sheet.time for sheet in hidden_window.planned()] == [
+        f"{hour:02d}:00" for hour in range(9, 16)
+    ]
+
+    hidden_window.eye_hours.insert(0, "9, 3pm")
+    assert [sheet.time for sheet in hidden_window.planned()] == ["09:00", "15:00"]
+
+
+def test_a_typed_hour_is_spelled_the_way_the_sheet_is_named() -> None:
+    assert [window._clock_text(word) for word in ("9", "9am", "3pm", "09:30", "12", "noon")] == [
+        "09:00",
+        "09:00",
+        "15:00",
+        "09:30",
+        "12:00",
+        "noon",
+    ]
+
+
+def test_the_thumbnail_grid_is_the_runs_grid() -> None:
+    """Four drawings are two by two and not four across, which is the rule
+    the run lays a sheet out by; the panel copies it rather than choosing its
+    own, or the thumbnail shows a row where the sheet has a block."""
+    area = (0.0, 0.0, 200.0, 160.0)
+    four = window._grid(4, area)
+    assert len({round(cell[0]) for cell in four}) == 2, "two columns"
+    assert len({round(cell[1]) for cell in four}) == 2, "two rows"
+    three = window._grid(3, area)
+    assert len({round(cell[0]) for cell in three}) == 3, "three across, none wasted"
+    assert window._grid(0, area) == []
+
+
+# -- presets: the page in a file of the person's choosing -----------------
+
+
+def test_a_preset_is_the_page_in_a_file_and_comes_back_from_it(
+    hidden_window: Any, settings_file: Path, tmp_path: Path
+) -> None:
+    """The Silverwater setup, saved beside the job and loaded on the next desk.
+    The saved defaults are not touched by either half of the trip."""
+    hidden_window.prefix_solar.delete(0, "end")
+    hidden_window.prefix_solar.insert(0, "99 |")
+    hidden_window.do_plans.set(True)
+    where = tmp_path / "job" / "silverwater.json"
+
+    assert hidden_window.save_preset(where) == where
+    assert where.is_file()
+    assert not settings_file.exists(), "a preset is not the defaults"
+
+    hidden_window.apply(hidden_window.factory)
+    assert hidden_window.prefix_solar.get() != "99 |", "back to the defaults first"
+
+    assert hidden_window.load_preset(where) is True
+    assert hidden_window.prefix_solar.get() == "99 |"
+    assert hidden_window.do_plans.get() is True
+    assert "silverwater.json" in hidden_window.lines[-1]
+
+
+def test_a_preset_and_the_defaults_are_one_file_format(
+    hidden_window: Any, settings_file: Path, tmp_path: Path
+) -> None:
+    """So a preset copied over settings.json is the defaults, and the
+    defaults copied out are a preset somebody can send on."""
+    hidden_window.livable.insert(0, "_L")
+    where = hidden_window.save_preset(tmp_path / "preset.json")
+    assert where is not None
+
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_bytes(where.read_bytes())
+
+    assert preferences.load()["livable_suffix"] == "_L"
+
+
+def test_a_file_that_is_not_a_preset_is_reported_not_raised(
+    hidden_window: Any, tmp_path: Path
+) -> None:
+    """The person chose the file and wants to know why it did not take. A
+    window that closes over a wrong file is the worse answer, and a window
+    that silently loads nothing is the next worse."""
+    before = hidden_window.settings()
+    notes = tmp_path / "notes.json"
+    notes.write_text("{ this is not json", encoding="utf-8")
+
+    assert hidden_window.load_preset(notes) is False
+    assert "Could not load notes.json" in hidden_window.lines[-1]
+    assert hidden_window.load_preset(tmp_path / "missing.json") is False
+    assert "missing.json" in hidden_window.lines[-1]
+
+    notes.write_text('["a list, not a mapping"]', encoding="utf-8")
+    assert hidden_window.load_preset(notes) is False
+    assert hidden_window.settings() == before, "and nothing on the page moved"
+
+
+def test_a_preset_from_another_job_is_overruled_by_the_open_project(
+    hidden_window: Any, tmp_path: Path
+) -> None:
+    """The one way a loaded setting could make a run measure the wrong thing,
+    closed the same way it is for the saved defaults: the project drops what
+    it does not have, says so, and fills the emptied field itself."""
+    where = tmp_path / "elsewhere.json"
+    preferences.write(where, {"subject_layers": "01 | Wall.External, 09 | SOMEBODY ELSE'S SLABS"})
+
+    assert hidden_window.load_preset(where) is True
+
+    assert hidden_window._listed(hidden_window.subject) == ["01 | Wall.External"]
+    assert "SOMEBODY ELSE" in "\n".join(hidden_window.lines), "and it is said out loud"
+
+
+def test_a_preset_that_cannot_be_written_is_said_not_raised(
+    hidden_window: Any, tmp_path: Path
+) -> None:
+    """A folder that is a file: the nearest a test can get to a locked share."""
+    blocked = tmp_path / "blocked"
+    blocked.write_text("in the way", encoding="utf-8")
+
+    assert hidden_window.save_preset(blocked / "preset.json") is None
+    assert "Could not save the preset" in hidden_window.lines[-1]
+
+
+def test_the_preset_buttons_wear_their_own_pictures(hidden_window: Any) -> None:
+    """Two more sheets in the run bar, told apart by which way the arrow
+    goes. A button without its picture is a button that was renamed in one
+    place and not the other."""
+    assert icons.named("save_preset", 16) is not None
+    assert icons.named("load_preset", 16) is not None
 
 
 def test_a_project_with_no_location_draws_the_sheet_and_says_it_has_no_sun(

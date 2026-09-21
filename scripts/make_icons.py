@@ -504,6 +504,22 @@ def cross(colour: str = RED) -> list[Shape]:
     ]
 
 
+def arrow(*, up: bool, colour: str = BLUE) -> list[Shape]:
+    """The arrow on the settings sheet: up and out of it is a preset written,
+    down into it is one read. The convention every upload and download button
+    already taught, and at 16 px the two are still told apart by which end the
+    head is on."""
+    if up:
+        return [
+            Line(((16, 24), (16, 10.5)), fill=colour, width=2.6),
+            Poly(((10.8, 13.6), (16, 7.6), (21.2, 13.6)), fill=colour, outline=None),
+        ]
+    return [
+        Line(((16, 8), (16, 21.5)), fill=colour, width=2.6),
+        Poly(((10.8, 18.4), (16, 24.4), (21.2, 18.4)), fill=colour, outline=None),
+    ]
+
+
 def north() -> list[Shape]:
     """A north arrow, in interface blue because it is not a thing built."""
     return [Poly(((19.4, 5.6), (21.7, 11.5), (19.4, 10.0), (17.1, 11.5)), fill=BLUE, outline=None)]
@@ -758,6 +774,16 @@ def controls() -> list[Icon]:
         ),
         Icon("save_default", "the settings file, ticked", [*sheet(), *tick()]),
         Icon("forget", "the same file, struck out", [*sheet(), *cross()]),
+        Icon(
+            "save_preset",
+            "the same file with the arrow leaving it -- the page written out as a preset",
+            [*sheet(), *arrow(up=True)],
+        ),
+        Icon(
+            "load_preset",
+            "the same file with the arrow arriving -- a preset read back onto the page",
+            [*sheet(), *arrow(up=False)],
+        ),
         Icon("connected", "the plug seated, and blue", plug(live=True)),
         Icon("disconnected", "the same plug drained, with the red mark", plug(live=False)),
         Icon(
