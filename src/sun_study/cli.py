@@ -2594,6 +2594,14 @@ def _sheet_per_instant(
             fg=typer.colors.YELLOW,
             err=True,
         )
+        # Back to a floor plan before leaving, as the ordinary way out does.
+        # Placing the drawings left a layout in front, and every read after
+        # this is scoped to the current database: on Kogarah, 21 September
+        # 2026, a refused save returned from here and the banded plan that
+        # followed read no Zones at all -- "0 apartments could be paired" --
+        # so one refusal by Archicad cost a drawing that never needed the save.
+        with contextlib.suppress(ArchicadError):
+            ensure_model_database(connection)
         return
     for label, database_id, chunk_labels, cells in finished:
         try:
@@ -5889,6 +5897,13 @@ def archicad_run(
             )
         except GeoreferencingError as error:
             typer.secho(f"Georeferencing error: {error}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from error
+        except SceneConfigError as error:
+            # A sentence, as `massing` gives. A storey named 'LEVEL 04' on a
+            # project that calls it 'LEVEL 04 (5)' is a typo, and the message
+            # already lists the storeys the apartments are on; under a
+            # traceback nobody reads that far.
+            typer.secho(f"Scene setting error: {error}", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=2) from error
         except RulesetError as error:
             typer.secho(f"Ruleset error: {error}", fg=typer.colors.RED, err=True)
