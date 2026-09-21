@@ -125,6 +125,10 @@ class ShadowTransport:
             return {"executionResults": [{"success": True} for _ in given["elements"]]}
         if command == "CreateHatches":
             return {"elements": [{"elementId": {"guid": "fill"}} for _ in given["hatchesData"]]}
+        if command == "CreatePolylines":
+            return {"elements": [{"elementId": {"guid": "line"}} for _ in given["polylinesData"]]}
+        if command == "CreateTexts":
+            return {"elements": [{"guid": "text"} for _ in given["texts"]]}
         if command == "CreateFills":
             # The add-on's shape, not Tapir's: a bare guid.
             return {"elements": [{"guid": "fill"} for _ in given["fills"]]}
@@ -553,6 +557,94 @@ def test_a_native_export_is_checked_by_its_own_guids() -> None:
     assert np.allclose(frame.rotation, np.eye(2))
     assert np.allclose(frame.offset, 0.0)
     assert "checked against 2 elements" in note
+
+
+def test_every_hour_of_the_design_is_outlined_on_one_layer_of_its_own() -> None:
+    """Lines, not fills, on a layer per day, labelled by hour, with a
+    combination showing it; and every hour's own combination hides it."""
+    from sun_study.archicad.shadows import (
+        all_hours_combination_name,
+        all_hours_layer_name,
+        designed_source,
+    )
+
+    labels = ["9AM", "12PM"]
+    grid = ground_plane_grid(
+        (np.array([-40.0, -5.0, 0.0]), np.array([10.0, 5.0, 20.0])),
+        datum_m=0.0,
+        spacing_m=2.0,
+        margin_m=40.0,
+    )
+    sources = default_sources(
+        box((-40.0, -5.0, 0.0), (-30.0, 5.0, 10.0)),
+        box((0.0, -5.0, 0.0), (10.0, 5.0, 20.0)),
+        None,
+    )
+    key = designed_source([source.spec for source in sources])
+    assert key == ADDITIONAL
+    drawn_series = cast_shadows(
+        grid,
+        sources=sources,
+        sun_vectors=np.repeat(WEST_45, len(labels), axis=0),
+        moments=[dt.datetime(2024, 6, 21, 9 + i, tzinfo=dt.UTC) for i in range(len(labels))],
+        labels=labels,
+        spacing_m=2.0,
+        outline=key,
+    )
+    assert all(instant.outlines[key] for instant in drawn_series.instants)
+
+    connection, transport = connect(labels)
+    day = "JUNE 21"
+    transport.layers.append(("all-hours", all_hours_layer_name(day), 300, False))
+    report = draw_shadow_series(connection, drawn_series, all_hours=key)
+
+    lines = [
+        line
+        for call in transport.all_parameters_for("CreatePolylines")
+        for line in call["polylinesData"]
+    ]
+    assert lines and all(line["layerIndex"] == 300 for line in lines)
+    assert all(line["coordinates"][0] == line["coordinates"][-1] for line in lines), "closed"
+    texts = [
+        text["text"]
+        for call in transport.all_parameters_for("CreateTexts")
+        for text in call["texts"]
+    ]
+    assert sorted(texts) == sorted(labels), "one label per hour"
+    assert report.all_hours == (all_hours_combination_name(day),)
+
+    written = transport.all_parameters_for("CreateLayerCombinations")
+    by_name = {
+        entry["name"]: {row["attributeId"]["guid"]: row["isHidden"] for row in entry["layers"]}
+        for call in written
+        for entry in call["layerCombinationDataArray"]
+    }
+    assert by_name[all_hours_combination_name(day)]["all-hours"] is False
+    assert by_name[all_hours_combination_name(day)]["shadow-9AM"] is True
+    assert by_name[combination_name("9AM")]["all-hours"] is True, "an hour alone hides it"
+
+
+def test_the_designed_building_is_proposed_or_else_the_last_scenario() -> None:
+    from sun_study.archicad.shadows import designed_source
+    from sun_study.core.shadow import BASELINE, SCENARIO, SourceSpec
+
+    assert (
+        designed_source(
+            [
+                SourceSpec("EXISTING", "EXISTING", BASELINE),
+                SourceSpec("PROPOSED", "PROPOSED", SCENARIO),
+                SourceSpec("TOD", "TOD", SCENARIO),
+            ]
+        )
+        == "PROPOSED"
+    )
+    assert (
+        designed_source(
+            [SourceSpec("TOD", "TOD", SCENARIO), SourceSpec("SEARS", "SEARS", SCENARIO)]
+        )
+        == "SEARS"
+    )
+    assert designed_source([SourceSpec("EXISTING", "EXISTING", BASELINE)]) is None
 
 
 def test_no_transform_leaves_the_coordinates_alone() -> None:

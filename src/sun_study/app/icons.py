@@ -320,6 +320,7 @@ BY_LABEL: dict[str, str] = {
     "Layer prefix — site analysis": "prefix",
     "Layer group — context model": "group",
     "Archicad wait (min)": "wait",
+    "Tables": "table",
     "Measure from storey": "storey_datum",
     "...to storey": "storey_datum",
     "Days": "custom_day",
@@ -344,8 +345,6 @@ BY_LABEL: dict[str, str] = {
     "Communal threshold": "threshold",
     "Communal height": "height",
     "Communal grid": "grid",
-    "Communal areas CSV": "table",
-    "Communal table": "table",
     # Shadow diagram
     "Existing": "always_there",
     "Future": "always_there",

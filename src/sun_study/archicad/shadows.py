@@ -53,6 +53,7 @@ from sun_study.archicad.draw import (
     clear_layer,
     create_elements,
     ensure_layer,
+    place_texts,
 )
 from sun_study.archicad.ids import (
     NOT_GROUPED,
@@ -85,14 +86,18 @@ from sun_study.core.shadow import (
 )
 
 __all__ = [
+    "ALL_HOURS_WORD",
     "BASELINE_RAMP",
     "DEFAULT_SHEETS",
     "LEGEND",
     "SCENARIO_RAMP",
     "ShadowDrawReport",
     "ShadowSheetReport",
+    "all_hours_combination_name",
+    "all_hours_layer_name",
     "build_shadow_sheets",
     "combination_name",
+    "designed_source",
     "draw_shadow_series",
     "drawing_order",
     "layer_name",
@@ -341,6 +346,34 @@ def combination_name(label: str) -> str:
     return naming.named(f"{naming.SHADOW_WORD} {label}")
 
 
+#: What the drawing of every hour at once is called, after its day.
+ALL_HOURS_WORD = "ALL HOURS"
+
+
+def all_hours_layer_name(date_label: str) -> str:
+    """The layer one day's every-hour outlines are drawn on."""
+    return naming.layer(f"{date_label} {ALL_HOURS_WORD}", naming.SHADOW_WORD)
+
+
+def all_hours_combination_name(date_label: str) -> str:
+    """The combination that shows one day's every-hour drawing and no hour alone."""
+    return naming.named(f"{naming.SHADOW_WORD} {date_label} {ALL_HOURS_WORD}")
+
+
+def designed_source(sources: Sequence[SourceSpec]) -> str | None:
+    """The source whose shadow the every-hour drawing shows.
+
+    The legend's PROPOSED row when there is one, and otherwise the last
+    scenario, which is the one being applied for (see ``drawing_order``).
+    ``None`` with no scenario at all -- a sheet of baselines has no design on it.
+    """
+    for source in sources:
+        if source.key.casefold() in ("proposed", "additional"):
+            return source.key
+    scenarios = [source.key for source in sources if source.role == SCENARIO]
+    return scenarios[-1] if scenarios else None
+
+
 def shared_layer_name() -> str:
     """Where the legend and the site boundary live.
 
@@ -375,6 +408,8 @@ class ShadowDrawReport:
     """
     note: str = ""
     """Said when the fills could not be drawn in the legend's own colours."""
+    all_hours: tuple[str, ...] = ()
+    """The combinations of the every-hour drawings, one per day, if asked for."""
 
     def describe(self) -> str:
         lines = [
@@ -397,6 +432,11 @@ class ShadowDrawReport:
                 "context looks like -- the shadow is being cast onto a datum "
                 "below the terrain. Take the terrain layer out of the context "
                 "layers, or move the datum with --shadow-datum."
+            )
+        if self.all_hours:
+            lines.append(
+                f"  every hour of the design's own shadow on one drawing: "
+                f"{', '.join(self.all_hours)}"
             )
         if self.note:
             lines.append(f"  {self.note}")
@@ -575,6 +615,58 @@ def _create_legend_fills(
     return made
 
 
+def _all_hours_elements(
+    hours: Sequence[tuple[str, Sequence[Ring]]],
+    layer_index: int,
+    storey: int | None,
+    pen: int,
+    height_mm: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """One day's outlines as closed polylines, and each hour's label.
+
+    The label sits on the vertex of that hour's outline farthest from the
+    middle of all of them -- the tip of the shadow, which is where the hours
+    fan apart and where a reader looks for which line is which.
+    """
+    everything = [point for _label, rings in hours for ring in rings for point in ring]
+    if not everything:
+        return [], []
+    middle = np.mean(np.asarray(everything, dtype=np.float64), axis=0)
+
+    lines: list[dict[str, Any]] = []
+    texts: list[dict[str, Any]] = []
+    for label, rings in hours:
+        tip: tuple[float, float] | None = None
+        reach = -1.0
+        for ring in rings:
+            if len(ring) < 3:
+                continue
+            line: dict[str, Any] = {
+                "coordinates": [{"x": x, "y": y} for x, y in (*ring, ring[0])],
+                "layerIndex": layer_index,
+                "linePenIndex": pen,
+            }
+            if storey is not None:
+                line["floorInd"] = storey
+            lines.append(line)
+            for x, y in ring:
+                far = float(np.hypot(x - middle[0], y - middle[1]))
+                if far > reach:
+                    reach, tip = far, (x, y)
+        if tip is None:
+            continue
+        text: dict[str, Any] = {
+            "coordinate": {"x": tip[0], "y": tip[1], "z": 0.0},
+            "text": label,
+            "height": height_mm,
+            "justification": "Center",
+        }
+        if storey is not None:
+            text["floorIndex"] = storey
+        texts.append(text)
+    return lines, texts
+
+
 def _visibility(
     layers: Sequence[Any], showing: str, shared: str, mine: Sequence[str]
 ) -> dict[str, bool]:
@@ -614,8 +706,18 @@ def draw_shadow_series(
     boundary_pen: int = 1,
     transform: PlanTransform | None = None,
     favourite: str | None = None,
+    all_hours: str | None = None,
+    all_hours_pen: int = 1,
+    label_height_mm: float = 2.5,
 ) -> ShadowDrawReport:
     """Draw every instant onto its own layer, and record a combination for each.
+
+    ``all_hours`` names a source whose own shadow was outlined (see
+    ``cast_shadows``); each day then also gets one layer carrying that shadow
+    at every hour as lines, each labelled with its hour at the tip, and a
+    combination showing that layer alone. Lines rather than fills, because
+    fills laid over one another hide each other, and the point of the drawing
+    is to see every hour at once.
 
     ``storey_index`` is which storey the fills belong to; ``None`` omits the
     floor index entirely, which is what a worksheet needs and what a plan must
@@ -658,6 +760,10 @@ def draw_shadow_series(
 
     shared = ensure_layer(connection, shared_layer_name())
     wanted = [layer_name(instant.label) for instant in series.instants]
+    days = _by_date(series) if all_hours else {}
+    # Hidden in every hour's combination too, so a single hour never shows
+    # the every-hour lines over it.
+    wanted += [all_hours_layer_name(day) for day in days]
 
     fills: list[dict[str, Any]] = []
     #: One ID per fill, in the same order. The create command answers in the
@@ -743,6 +849,21 @@ def draw_shadow_series(
         else NOT_GROUPED
     )
 
+    for day, instants in days.items():
+        layer = ensure_layer(connection, all_hours_layer_name(day))
+        cleared += clear_layer(connection, layer.index)
+        lines, texts = _all_hours_elements(
+            [(i.label, [placed(r) for r in i.outlines.get(all_hours or "", ())]) for i in instants],
+            layer.index,
+            storey_index,
+            all_hours_pen,
+            label_height_mm,
+        )
+        if lines:
+            create_elements(connection, "CreatePolylines", "polylinesData", lines)
+        if texts:
+            place_texts(connection, texts, layer.index)
+
     # After the fills, so the combinations are recorded against layers that
     # certainly exist and carry the right visibility.
     project = read_layers(connection)
@@ -755,6 +876,15 @@ def draw_shadow_series(
             _visibility(project, layer_name(instant.label), shared.name, wanted),
         )
         combinations.append(name)
+    every_hour: list[str] = []
+    for day in days:
+        name = all_hours_combination_name(day)
+        ensure_combination(
+            connection,
+            name,
+            _visibility(project, all_hours_layer_name(day), shared.name, wanted),
+        )
+        every_hour.append(name)
 
     return ShadowDrawReport(
         fills=len(fills),
@@ -768,6 +898,7 @@ def draw_shadow_series(
         grouped=grouped,
         areas_m2={instant.label: dict(instant.areas_m2) for instant in series.instants},
         note=note,
+        all_hours=tuple(every_hour),
     )
 
 
@@ -829,8 +960,12 @@ def build_shadow_sheets(
     subset: str | None = None,
     sheets: str = DEFAULT_SHEETS,
     zoom: tuple[float, float, float, float] | None = None,
+    all_hours: bool = False,
 ) -> ShadowSheetReport:
     """One View per hour, then the day's Layouts as ``sheets`` says, filed.
+
+    ``all_hours`` adds, per day, a View of that day's every-hour drawing (see
+    ``draw_shadow_series``) and a sheet of its own carrying it.
 
     The View is the piece that makes this work: it is a view of the *site
     plan*, pinned to that hour's Layer Combination, so the drawing carries the
@@ -889,6 +1024,29 @@ def build_shadow_sheets(
             )
             names.append(name)
             placed += report.drawings_placed
+
+    for date_label in _by_date(series) if all_hours else {}:
+        caption = f"{date_label} {ALL_HOURS_WORD}"
+        views = views_for_storeys(
+            connection,
+            [storey],
+            combination=all_hours_combination_name(date_label),
+            suffix=f"Shadow {caption}",
+            drawing_scale=drawing_scale,
+            zoom=zoom,
+        )
+        made.extend((view.navigator_id, caption) for view in views)
+        name = naming.named(f"{naming.SHADOW_WORD}s - {caption}")
+        report = layout_from_views(
+            connection,
+            [(view.navigator_id, caption) for view in views],
+            layout_name=name,
+            scale=drawing_scale,
+            master_layout=master_layout,
+            cells=cells_for(sheet_chunks(1, sheets)),
+        )
+        names.append(name)
+        placed += report.drawings_placed
 
     # The sheets an earlier run made under another mode -- ``(1 of 2)``
     # beside a new ``JUNE 21`` -- would otherwise stand looking as current.

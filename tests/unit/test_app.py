@@ -350,28 +350,38 @@ def test_a_neighbouring_layer_is_exported_and_kept_out_of_the_denominator(
     assert flag(communal.args, "--context-layer") == ["03 | Site.Neighboring Context"]
 
 
-def test_no_csv_is_written_unless_somewhere_is_named(hidden_window: Any) -> None:
-    hidden_window.do_facade.set(False)
+def test_no_table_is_written_unless_a_folder_is_named(hidden_window: Any) -> None:
     hidden_window.communal.set("06 | Zone.Balcony")
-    hidden_window.do_communal.set(True)
-    (communal,) = hidden_window.jobs()
-    assert "--zone-csv" not in communal.args
-
-    hidden_window.communal_csv.insert(0, r"C:reas.csv")
-    (communal,) = hidden_window.jobs()
-    assert flag(communal.args, "--zone-csv") == [r"C:reas.csv"]
-
-
-def test_no_cos_table_is_written_unless_somewhere_is_named(hidden_window: Any) -> None:
     hidden_window.do_facade.set(False)
-    hidden_window.communal.set("07 | Fills.Areas")
+    hidden_window.do_plans.set(True)
     hidden_window.do_communal.set(True)
-    (communal,) = hidden_window.jobs()
-    assert "--zone-table" not in communal.args
+    plans, communal = hidden_window.jobs()
+    assert "--csv" not in plans.args
+    assert "--zone-csv" not in communal.args and "--zone-table" not in communal.args
 
-    hidden_window.communal_table.insert(0, "C:/out/cos.xlsx")
-    (communal,) = hidden_window.jobs()
-    assert flag(communal.args, "--zone-table") == ["C:/out/cos.xlsx"]
+
+def test_one_tables_folder_takes_every_table(hidden_window: Any, tmp_path: Path) -> None:
+    """One option, not one per table: the apartments and the communal open
+    space all land in the folder named, under names the window chooses."""
+    hidden_window.communal.set("06 | Zone.Balcony")
+    hidden_window.tables.insert(0, str(tmp_path))
+    hidden_window.do_facade.set(False)
+    hidden_window.do_plans.set(True)
+    hidden_window.do_communal.set(True)
+
+    plans, communal = hidden_window.jobs()
+
+    assert flag(plans.args, "--csv") == [str(tmp_path / window.APARTMENTS_TABLE)]
+    assert flag(communal.args, "--zone-csv") == [str(tmp_path / window.COS_AREAS_TABLE)]
+    assert flag(communal.args, "--zone-table") == [str(tmp_path / window.COS_SCHEDULE_TABLE)]
+    assert hidden_window.settings()["tables_folder"] == str(tmp_path)
+
+
+def test_the_tables_folder_can_be_browsed_for(hidden_window: Any) -> None:
+    """A Browse button beside the box, as every folder in the window has."""
+    holder = hidden_window.tables.master
+    buttons = [child for child in holder.winfo_children() if isinstance(child, tk.ttk.Button)]
+    assert buttons, "no Browse beside the tables folder"
 
 
 def test_all_three_studies_run_in_order(hidden_window: Any) -> None:
@@ -1650,7 +1660,7 @@ def test_the_settings_scroll_and_the_run_button_does_not(hidden_window: Any) -> 
     """
     assert in_a_section(hidden_window, hidden_window.prefix_solar), "a setting in General"
     assert in_a_section(hidden_window, hidden_window.grid_m), "and one in Facade skin"
-    assert in_a_section(hidden_window, hidden_window.communal_csv), "and one in Solar diagrams"
+    assert in_a_section(hidden_window, hidden_window.communal_grid), "and one in Solar diagrams"
     assert not in_a_section(hidden_window, hidden_window.go), "Run must stay where it is"
     assert not in_a_section(hidden_window, hidden_window.note), "and so must what it says"
     assert not in_a_section(hidden_window, hidden_window.instance), (
@@ -2086,6 +2096,18 @@ def test_the_shadow_study_sends_one_flag_per_legend_row_by_layer(hidden_window: 
     assert flag(job.args, "--export") == ["native"]
     assert "--shadow-from-views" not in job.args
     assert "--shadow-favourite" not in job.args
+
+
+def test_every_hour_on_one_drawing_is_asked_for_only_when_ticked(hidden_window: Any) -> None:
+    hidden_window.do_facade.set(False)
+    hidden_window.do_shadows.set(True)
+    (job,) = hidden_window.jobs()
+    assert "--shadow-all-hours" not in job.args
+
+    hidden_window.do_shadow_all_hours.set(True)
+    (job,) = hidden_window.jobs()
+    assert "--shadow-all-hours" in job.args
+    assert hidden_window.settings()["shadow_all_hours"] is True
 
 
 def test_the_legend_rows_are_the_legends_own_in_its_order(hidden_window: Any) -> None:

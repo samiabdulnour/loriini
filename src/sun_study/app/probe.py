@@ -21,6 +21,7 @@ from sun_study.archicad.layers import read_layers
 from sun_study.archicad.layout import _walk, master_layouts
 from sun_study.archicad.read import read_geo_location
 from sun_study.archicad.series import ensure_model_database
+from sun_study.archicad.sun_eyes import overrides_in_views
 
 #: Floor area, in square metres, at or above which a zone is a dwelling
 #: rather than something a dwelling contains. The ADG's smallest apartment is
@@ -276,7 +277,10 @@ def options(port: int) -> ProjectOptions:
     try:
         overrides = connection.run_loriini("GetGraphicOverrideCombinations", {})
     except ArchicadError:
-        overrides = None
+        # An add-on without the command: the names the saved views use, which
+        # misses only an override no view has.
+        used = attempt("graphic overrides", lambda: overrides_in_views(connection)) or ()
+        overrides = {"combinations": [{"name": name} for name in used]}
     book = attempt(
         "layout book",
         lambda: connection.run_tapir("GetNavigatorItemTree", {"navigatorMapId": "LayoutBook"}),

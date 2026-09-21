@@ -3849,3 +3849,39 @@ come through a new add-on command, `GetGraphicOverrideCombinations`
 (`ACAPI_Override_GetOverrideCombinationList`), because Tapir can pin a view
 to an override by name but cannot list them. On an older add-on the field is
 still typed.
+
+
+### D114 — One tables folder, every hour on one drawing, and overrides read from the views
+
+Asked 21 September 2026: "I am not able to choose the graphic override for
+sun view if i need something else then default one. the comunal are csv.
+there should be only one option for tables. writing all of them, COS and
+apartments together. and you need to have option to browse through the file
+system to find proper folder to save. in shadows. make possibility to create
+view showing all shadows from designed building in every selected hour in
+one drawing."
+
+**Overrides.** The list came only from the add-on's new command, and the
+Archicad in use had been started a minute before that add-on was installed,
+so the list was empty. With the add-on's command missing, the probe now reads
+the override names the project's saved views use, through Tapir's
+`GetViewSettings`. It found 24 in 0.4 s on the live project. The only override
+it misses is one that no view uses.
+
+**Tables.** The two communal file boxes are gone. General has one **Tables**
+folder with a Browse button, and every table goes there: `Apartments.csv`
+from the apartment study, `COS areas.csv` and `COS schedule.xlsx` from the
+communal one. The command line puts the day in each file's name
+(`_day_tagged`), as it already did for the schedule, so the window's
+one-job-per-day runs sit side by side instead of overwriting.
+
+**Every hour on one drawing.** `--shadow-all-hours` (a tick on the shadow page)
+casts the designed building once more on its own. The designed building is
+the PROPOSED row, or else the last scenario. That cast gives the building's
+whole shadow rather than the part it adds to existing shadow. Each hour is
+traced from it and drawn on one layer per day as closed polylines, with the
+hour written at the tip of each outline. The day then gets a combination, a
+view and a sheet of its own. Outlines rather than fills, because fills laid
+over each other hide each other, and pattern fills stacked on one another
+line up exactly and do not darken. The outlines follow the grid cells, so at
+a 1 m grid they are stepped. Every single-hour combination hides the layer.

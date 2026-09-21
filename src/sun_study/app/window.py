@@ -582,6 +582,12 @@ class LayerChooser(tk.Toplevel):
         self._close()
 
 
+#: What each table is called in the tables folder. The command line puts the
+#: day in the name when a run studies another day than the ruleset's own.
+APARTMENTS_TABLE = "Apartments.csv"
+COS_AREAS_TABLE = "COS areas.csv"
+COS_SCHEDULE_TABLE = "COS schedule.xlsx"
+
 #: The shadow diagram's legend, one row each: the short name the run is given
 #: (and matches to the legend's colour in ``archicad.shadows.LEGEND``),
 #: whether it accumulates or is compared, and the row's label, hint and
@@ -2912,6 +2918,19 @@ class Window:
             "nothing on a run that works; it only decides how long a genuinely "
             "stuck Archicad is waited on.",
         )
+        frame, row = self._panel(outer, 3, title="Tables"), 0
+        self.tables, row = self._folder_row(
+            frame,
+            row,
+            "Tables",
+            "The folder every table is written into. Blank writes none.",
+            "One place for all of them: the apartments' results as "
+            f"{APARTMENTS_TABLE}, and the communal open space as "
+            f"{COS_AREAS_TABLE} and the COS schedules as {COS_SCHEDULE_TABLE}. "
+            "Each run that studies another day puts the day in the file's "
+            "name, so the days stand side by side. Written before anything is "
+            "drawn, so the numbers survive whatever Archicad does next.",
+        )
 
     def _model(self, frame: ttk.Frame) -> None:
         """The model the three solar tools export: what is shown, what is
@@ -3358,29 +3377,6 @@ class Window:
             "an answer nobody asked of it.",
         )
         self.communal_grid.set("0.5")
-        self.communal_csv, row = self._entry(
-            frame,
-            row,
-            "Communal areas CSV",
-            "",
-            "Where to write the figures as a spreadsheet. Blank writes none.",
-            "Every band, the threshold and every hour, with area and share, "
-            "under a header of the settings that produced them. Written before "
-            "anything is drawn, so the numbers survive whatever Archicad does "
-            "next — and a figure that opens in a spreadsheet is a figure "
-            "somebody can check.",
-        )
-        self.communal_table, row = self._entry(
-            frame,
-            row,
-            "Communal table",
-            "",
-            "Where to write the COS schedules as an .xlsx. Blank writes none.",
-            "One table per Zone — L2 COS SOLAR ANALYSIS — with the sunlit area "
-            "and its percentage at every hour, laid out the way the drawing "
-            "shows it. Every other figure from a run over several levels is "
-            "their sum; this is each terrace on its own.",
-        )
 
     def _shadows(self, frame: ttk.Frame) -> None:
         """The shadow diagram: what already stands, and what the proposal adds.
@@ -3485,6 +3481,22 @@ class Window:
             key=_clock_text,
             initial=DEFAULT_SHADOW_HOURS,
         )
+        self.do_shadow_all_hours = tk.BooleanVar(value=False)
+        tick = ttk.Checkbutton(
+            frame,
+            text="Every hour on one drawing",
+            variable=self.do_shadow_all_hours,
+            command=self._sync,
+        )
+        tick.grid(row=row, column=0, columnspan=2, sticky="w", padx=(18, 0), pady=(6, 0))
+        Tooltip(
+            tick,
+            "Also a drawing per day with the designed building's own shadow at "
+            "every hour ticked above, as outlines labelled by hour, with its own "
+            "view and sheet. The designed building is the Proposed row, or the "
+            "last row being tested when Proposed is empty.",
+        )
+        row += 1
         self.shadow_storey, row = self._entry(
             frame,
             row,
@@ -4530,8 +4542,7 @@ class Window:
             "communal_height": self.communal_height,
             "custom_day": self.custom_day,
             "communal_grid": self.communal_grid,
-            "communal_csv": self.communal_csv,
-            "communal_table": self.communal_table,
+            "tables_folder": self.tables,
             "master_layout": self.master,
             "storey_from": self.storey_from,
             "storey_to": self.storey_to,
@@ -4584,6 +4595,7 @@ class Window:
             "study_plans": self.do_plans,
             "study_communal": self.do_communal,
             "study_shadows": self.do_shadows,
+            "shadow_all_hours": self.do_shadow_all_hours,
             "study_sun_eyes": self.do_sun_eyes,
             "study_site": self.do_site,
             "site_context": self.do_site_context,
@@ -5241,6 +5253,11 @@ class Window:
             return "", ""
         return halves[0], halves[1]
 
+    def _tables_folder(self) -> Path | None:
+        """The folder the tables go into, or ``None`` when none is named."""
+        typed = self.tables.get().strip()
+        return Path(typed) if typed else None
+
     def _listed(self, entry: ttk.Entry | Ticks | Chips) -> list[str]:
         return [part.strip() for part in entry.get().split(",") if part.strip()]
 
@@ -5765,6 +5782,9 @@ class Window:
                 args += ["--layout-subset", self.shadow_subset.get()]
             if self.adg_subset.get():
                 args += ["--adg-subset", self.adg_subset.get()]
+            tables = self._tables_folder()
+            if tables is not None:
+                args += ["--csv", str(tables / APARTMENTS_TABLE)]
             args += ["--year", self.year.get().strip() or "2024"]
             # One run per day ticked. Each carries its own date, and a
             # command names everything it makes after the day it studied,
@@ -5813,10 +5833,10 @@ class Window:
                 args += ["--zone-height", self.communal_height.get().strip()]
             if self.communal_grid.get().strip():
                 args += ["--zone-grid", self.communal_grid.get().strip()]
-            if self.communal_csv.get().strip():
-                args += ["--zone-csv", self.communal_csv.get().strip()]
-            if self.communal_table.get().strip():
-                args += ["--zone-table", self.communal_table.get().strip()]
+            tables = self._tables_folder()
+            if tables is not None:
+                args += ["--zone-csv", str(tables / COS_AREAS_TABLE)]
+                args += ["--zone-table", str(tables / COS_SCHEDULE_TABLE)]
             start, end = self._window()
             if start:
                 args += ["--window-start", start]
@@ -5866,6 +5886,8 @@ class Window:
             for name in self._listed(self.terrain_layers):
                 args += ["--shadow-terrain", name]
             args += ["--export", "native"]
+            if self.do_shadow_all_hours.get():
+                args += ["--shadow-all-hours"]
             if self.terrain_floor.get().strip():
                 args += ["--shadow-terrain-floor", self.terrain_floor.get().strip()]
             if self.shadow_dates.get().strip():

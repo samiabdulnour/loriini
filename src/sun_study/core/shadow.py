@@ -66,7 +66,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import numpy.typing as npt
@@ -75,7 +75,7 @@ from sun_study.core.analysis import sunlit_matrix
 from sun_study.core.edges import traced_regions
 from sun_study.core.geometry import TriangleMesh
 from sun_study.core.occlusion import Occluder
-from sun_study.core.patches import Ring, drawable_contours
+from sun_study.core.patches import Ring, drawable_contours, trace_lit_regions
 from sun_study.core.sampling import SamplePoints, horizontal_grid
 
 FloatArray = npt.NDArray[np.float64]
@@ -230,6 +230,15 @@ class ShadowInstant:
     regions: dict[str, tuple[Ring, ...]]
     areas_m2: dict[str, float]
     below_horizon: bool = False
+    outlines: dict[str, tuple[Ring, ...]] = field(default_factory=dict)
+    """The whole shadow of one source cast on its own, as rings to draw as lines.
+
+    Only for a source ``cast_shadows`` was asked to outline, and different in
+    kind from ``regions``: a region is what a source *adds* to the shadow
+    already there, and is cut wherever that shadow was; an outline is the
+    source's own shadow, uncut, which is what a drawing of every hour's shadow
+    on one plan has to show. Outer rings and hole rings alike, unfilled.
+    """
 
     @property
     def caption(self) -> str:
@@ -548,8 +557,14 @@ def cast_shadows(
     spacing_m: float,
     receiving: BoolArray | None = None,
     edge_tolerance_m: float | None = None,
+    outline: str | None = None,
 ) -> ShadowSeries:
     """Trace one shadow fill per source at every instant.
+
+    ``outline`` names a source to cast once more on its own, with nothing
+    else standing, and trace as ``ShadowInstant.outlines``: the whole shadow
+    of the designed building at every hour, for the drawing that puts them all
+    on one plan. One extra cast, and only when asked.
 
     ``receiving`` marks the samples that are real ground. Where a study is
     draped onto a survey that does not cover the whole grid, the rest sit on a
@@ -647,8 +662,23 @@ def cast_shadows(
         against[source.key] = (occluder, before_occluder)
 
     instants: list[ShadowInstant] = []
+    alone: BoolArray | None = None
+    if outline is not None:
+        own = next((source for source in sources if source.key == outline), None)
+        if own is None:
+            raise ValueError(f"No shadow source {outline!r} to outline; the sources are {seen}")
+        alone = _shaded(grid, Occluder(own.mesh), directions) if own.mesh.triangle_count else empty
+
     for index, (moment, label) in enumerate(zip(moments, labels, strict=True)):
         down = not bool(above_horizon[index])
+        outlined: dict[str, tuple[Ring, ...]] = {}
+        if outline is not None and alone is not None:
+            mask = np.zeros(len(grid), dtype=bool) if down else alone[:, index] & ground
+            outlined[outline] = tuple(
+                ring
+                for region in trace_lit_regions(grid.positions, mask, spacing_m)
+                for ring in (region.outer, *region.holes)
+            )
         shape = _lattice_shape(grid) if edge_tolerance_m is not None else None
         at_this_hour = {
             source.key: (
@@ -683,6 +713,7 @@ def cast_shadows(
                 },
                 areas_m2={key: float(mask.sum()) * cell_area for key, mask in at_this_hour.items()},
                 below_horizon=down,
+                outlines=outlined,
             )
         )
 

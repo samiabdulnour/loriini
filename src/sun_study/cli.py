@@ -123,6 +123,7 @@ from sun_study.archicad.shadows import (
 )
 from sun_study.archicad.shadows import (
     build_shadow_sheets,
+    designed_source,
     draw_shadow_series,
     project_frame,
 )
@@ -1241,6 +1242,7 @@ def report_zone_bands(
     # a layer, a sheet, a save -- and the numbers are the part of a run worth
     # keeping. Written first, they survive whatever the project does next.
     if csv_out is not None:
+        csv_out = _day_tagged(csv_out)
         _write_zone_csv(csv_out, result, banded=banded, hours=hours, samples=samples)
         typer.echo(f"  wrote {csv_out}")
 
@@ -1523,6 +1525,20 @@ def _zone_grid_m(result: MassingResult) -> float:
     """The Zone's own grid, which need not be the ground's."""
     config = result.scene.config
     return config.zone_spacing_m or config.ground_spacing_m
+
+
+def _day_tagged(path: Path) -> Path:
+    """``path`` with the run's day in its name, unless it already says it.
+
+    The window runs one job per ticked day into one tables folder, and
+    everything else a run makes -- layers, sheets -- already carries the day,
+    so the equinox figures stand beside the midwinter ones instead of
+    replacing them.
+    """
+    tag = naming.day()
+    if not tag or tag in path.stem:
+        return path
+    return path.with_name(f"{path.stem} {tag}{path.suffix}")
 
 
 def _write_zone_csv(
@@ -2992,8 +3008,10 @@ def report_assessment(
         )
         typer.echo("")
         if csv_out:
+            csv_out = _day_tagged(csv_out)
             typer.echo(f"  wrote {write_csv(csv_out, result.assessment, header)}")
         if json_out:
+            json_out = _day_tagged(json_out)
             typer.echo(f"  wrote {write_json(json_out, result.assessment, header)}")
 
 
@@ -3883,9 +3901,7 @@ def massing(
         # The window runs one job per ticked day with the same path; the day
         # goes in the name, as it does on every layer and sheet, so the
         # equinox table does not land on top of the midwinter one.
-        tag = naming.day()
-        if tag and tag not in zone_table.stem:
-            zone_table = zone_table.with_name(f"{zone_table.stem} {tag}{zone_table.suffix}")
+        zone_table = _day_tagged(zone_table)
         written = _write_zone_table(zone_table, result, hours=zone_hours)
         typer.echo(f"  wrote {written} COS schedule(s) to {zone_table}")
 
@@ -3925,7 +3941,7 @@ def massing(
             bands=zone_bands,
             sheet=zone_sheet,
             stats=zone_stats,
-            csv_out=zone_csv,
+            csv_out=_day_tagged(zone_csv) if zone_csv is not None else None,
             sheets_mode=sheets,
             # The plan the diagrams sit on. Without it each run snapshots
             # whatever the last one left applied, and the sheets lose the
@@ -6487,6 +6503,18 @@ def shadows(
         bool, typer.Option("--sheet/--no-sheet", help="Build views and layouts from the fills.")
     ] = False,
     shadow_storey: Annotated[int, typer.Option("--shadow-storey")] = 0,
+    shadow_all_hours: Annotated[
+        bool,
+        typer.Option(
+            "--shadow-all-hours/--no-shadow-all-hours",
+            help=(
+                "Also draw the designed building's own shadow at every hour on one "
+                "plan, as outlines labelled by hour, with a view and a sheet per "
+                "day. The designed building is the PROPOSED row, or the last "
+                "--shadow-scenario."
+            ),
+        ),
+    ] = False,
     drawing_scale: Annotated[float, typer.Option("--drawing-scale")] = 1000.0,
     master_layout: Annotated[str | None, typer.Option("--master-layout")] = None,
     shadow_subset: Annotated[str | None, typer.Option("--shadow-subset")] = None,
@@ -6586,6 +6614,7 @@ def shadows(
             draw=draw,
             sheet=sheet,
             shadow_storey=shadow_storey,
+            shadow_all_hours=shadow_all_hours,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -6619,6 +6648,7 @@ def shadows(
             draw=draw,
             sheet=sheet,
             shadow_storey=shadow_storey,
+            shadow_all_hours=shadow_all_hours,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -6702,6 +6732,7 @@ def shadows(
             draw=draw,
             sheet=sheet,
             shadow_storey=shadow_storey,
+            shadow_all_hours=shadow_all_hours,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -6728,6 +6759,7 @@ def _shadow_report(
     sheet: bool,
     shadow_storey: int,
     shadow_favourite: str | None,
+    shadow_all_hours: bool = False,
     terrain_floor: float | None,
     edge_tolerance: float,
     drawing_scale: float,
@@ -6829,6 +6861,14 @@ def _shadow_report(
         solar_position(moments, scene.orientation.latitude_deg, scene.orientation.longitude_deg),
         scene.orientation.normalised_bearing_deg,
     )
+    designed = designed_source([source.spec for source in scene.sources])
+    if shadow_all_hours and designed is None:
+        typer.secho(
+            "  --shadow-all-hours needs a design to outline: name a PROPOSED row or a "
+            "--shadow-scenario. Drawing the hours without it.",
+            fg=typer.colors.YELLOW,
+        )
+    outlined = designed if shadow_all_hours else None
     series = cast_shadows(
         grid,
         sources=scene.sources,
@@ -6838,6 +6878,7 @@ def _shadow_report(
         spacing_m=shadow_grid,
         receiving=receiving,
         edge_tolerance_m=edge_tolerance if edge_tolerance > 0 else None,
+        outline=outlined,
     )
 
     lower, upper = scene.bounds
@@ -6914,7 +6955,13 @@ def _shadow_report(
             archicad_guids=scene.provenance.get("schema") == "LORIINI",
         )
         typer.echo(note)
-        drawn = draw_shadow_series(connection, series, storey_index=shadow_storey, transform=frame)
+        drawn = draw_shadow_series(
+            connection,
+            series,
+            storey_index=shadow_storey,
+            transform=frame,
+            all_hours=outlined,
+        )
         typer.echo("")
         typer.echo(drawn.describe())
         if sheet:
@@ -6926,6 +6973,7 @@ def _shadow_report(
                 master_layout=master_layout,
                 subset=shadow_subset,
                 sheets=sheets,
+                all_hours=outlined is not None,
             )
             typer.echo("")
             typer.echo(built.describe())

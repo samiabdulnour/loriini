@@ -1082,3 +1082,21 @@ def test_an_empty_layer_prefix_is_a_usage_error_before_anything_is_touched() -> 
 
     assert invocation.exit_code == 2
     assert "--layer-prefix" in invocation.output
+
+
+def test_a_table_carries_the_day_it_studied_once() -> None:
+    """One tables folder, one job per day: the day keeps the files apart."""
+    from pathlib import Path
+
+    from sun_study.archicad import naming
+    from sun_study.cli import _day_tagged
+
+    try:
+        naming.set_day("MAR 21")
+        once = _day_tagged(Path("out/COS areas.csv"))
+        assert once == Path("out/COS areas MAR 21.csv")
+        assert _day_tagged(once) == once
+        naming.set_day("")
+        assert _day_tagged(Path("out/COS areas.csv")) == Path("out/COS areas.csv")
+    finally:
+        naming.set_day("")
