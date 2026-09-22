@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
 
-from sun_study.site import nsw, osm, transport
+from sun_study.site import nsw, osm, sources, transport
 from sun_study.site.arcgis import FeatureCollection, empty, rings_of
 from sun_study.site.curate import keyword_category
 from sun_study.site.geo import (
@@ -86,6 +86,21 @@ def _now() -> str:
     return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat()
 
 
+def _anything(record: Any) -> bool:
+    """Whether a dataclass of tuples holds anything at all.
+
+    Written once rather than as a nine-term ``or`` at each call site: street
+    furniture is nine kinds of thing today and the tenth would otherwise be a
+    silent omission from whatever asked.
+    """
+    return any(bool(value) for value in vars(record).values())
+
+
+def _any_control(controls: nsw.SiteControls) -> bool:
+    """Whether the planning register answered with anything for this site."""
+    return _anything(controls)
+
+
 @dataclass(frozen=True)
 class Institution:
     """A named complex's own parcel, coloured by what the complex is."""
@@ -134,6 +149,10 @@ class ContextBundle:
     bus: osm.BusData = field(default_factory=osm.BusData)
     isochrones: tuple[transport.Isochrone, ...] = ()
     aerial: Aerial | None = None
+    stops_from_tfnsw: bool = False
+    """Whether ``bus.stops`` came from the Transport for NSW register or from
+    OpenStreetMap. The stops themselves do not say, and the sheet credits
+    whoever they came from, so the run writes it down as it makes the swap."""
     warnings: tuple[str, ...] = ()
     generated_at: str = field(default_factory=_now)
 
@@ -144,6 +163,36 @@ class ContextBundle:
     @property
     def mga_zone(self) -> int:
         return mga_zone(self.centre_lonlat[0])
+
+    def sources_used(self) -> tuple[str, ...]:
+        """Which publishers' data actually reached this sheet.
+
+        Read off the contents rather than off the list of what was asked
+        for: every fetch but the site's own fails soft, so a run whose
+        Overpass mirrors were all down draws a context sheet with no bus
+        routes on it -- and a credit to OpenStreetMap on that sheet would be
+        a claim about a line that is not there.
+
+        Spatial Services is unconditional because the address itself is
+        theirs: nothing downstream exists if the geocode did not answer.
+        """
+        used = [sources.SPATIAL]
+        if self.zoning or self.height_of_building or self.heritage:
+            used.append(sources.EPLANNING)
+        if self.aerial is not None and self.aerial.tiles:
+            used.append(sources.IMAGERY)
+        osm_stops = bool(self.bus.stops) and not self.stops_from_tfnsw
+        if osm_stops or self.bus.routes or self.bus.tram_stops or self.bus.tram_routes:
+            used.append(sources.OSM)
+        if self.isochrones:
+            # Valhalla routes over OpenStreetMap, so a catchment credits both
+            # -- the engine for the walk and the contributors for the streets
+            # it walked down.
+            used.append(sources.VALHALLA)
+            used.append(sources.OSM)
+        if self.stops_from_tfnsw and self.bus.stops:
+            used.append(sources.TFNSW)
+        return tuple(dict.fromkeys(used))
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -169,6 +218,7 @@ class ContextBundle:
             "bus": self.bus.as_dict(),
             "isochrones": [i.as_dict() for i in self.isochrones],
             "aerial": self.aerial.as_dict() if self.aerial else None,
+            "stops_from_tfnsw": self.stops_from_tfnsw,
             "warnings": list(self.warnings),
             "generated_at": self.generated_at,
         }
@@ -199,6 +249,10 @@ class ContextBundle:
                 transport.Isochrone.from_dict(i) for i in data.get("isochrones") or []
             ),
             aerial=Aerial.from_dict(data["aerial"]) if data.get("aerial") else None,
+            # A bundle saved before the flag existed reads as OpenStreetMap's
+            # stops, which is what a run without a key fetched -- and a run
+            # with one is the rarer case.
+            stops_from_tfnsw=bool(data.get("stops_from_tfnsw")),
             warnings=tuple(str(w) for w in data.get("warnings") or []),
             generated_at=str(data.get("generated_at") or _now()),
         )
@@ -237,6 +291,24 @@ class SiteBundle:
     @property
     def mga_zone(self) -> int:
         return mga_zone(self.centre_lonlat[0])
+
+    def sources_used(self) -> tuple[str, ...]:
+        """The same question for the site sheet, off the same principle.
+
+        The bus stops here are Transport for NSW's or they are absent: this
+        sheet asks the register only, and only when a key is in the
+        environment, so there is nothing to tell apart.
+        """
+        used = [sources.SPATIAL]
+        if self.zoning or self.height_of_building or self.floor_space_ratio:
+            used.append(sources.EPLANNING)
+        if self.aerial is not None and self.aerial.tiles:
+            used.append(sources.IMAGERY)
+        if _anything(self.furniture):
+            used.append(sources.OSM)
+        if self.bus_stops:
+            used.append(sources.TFNSW)
+        return tuple(dict.fromkeys(used))
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -300,6 +372,15 @@ class SummaryBundle:
     site_area_m2: float | None
     controls: nsw.SiteControls
     generated_at: str = field(default_factory=_now)
+
+    def sources_used(self) -> tuple[str, ...]:
+        """The table's two: the cadastre for the lots and their area, and
+        ePlanning for every control in the right-hand column. The DCP rows
+        are ruled up empty and are nobody's data."""
+        used = [sources.SPATIAL]
+        if _any_control(self.controls):
+            used.append(sources.EPLANNING)
+        return tuple(used)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -443,6 +524,7 @@ def run_context(
 
         zoning = f_zoning.result()
         bus = soft.take(f_bus)
+        stops_from_tfnsw = False
         key = transport.tfnsw_key()
         if key:
             stops = soft.take(
@@ -452,6 +534,7 @@ def run_context(
             )
             if stops is not None:
                 bus = osm.BusData(tuple(stops), bus.routes, bus.tram_stops, bus.tram_routes)
+                stops_from_tfnsw = True
                 say(f"  bus stops from TfNSW: {len(stops)}")
 
         complexes = tuple(
@@ -509,6 +592,7 @@ def run_context(
             bus=bus,
             isochrones=tuple(catchments),
             aerial=soft.take(f_aerial) if f_aerial is not None else None,
+            stops_from_tfnsw=stops_from_tfnsw,
         )
     finally:
         soft.close()
