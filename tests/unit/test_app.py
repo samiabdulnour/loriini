@@ -300,22 +300,49 @@ def test_the_plans_row_says_which_kind_of_plan_each_study_draws(
     assert window.APARTMENT_HEAT_MAP not in kinds
 
 
-def test_the_plans_row_lights_either_or_both(hidden_window: Any) -> None:
-    """Bands and times are two switches, not one pick of three. Both start
-    lit, each turns off by itself, the last one lit stays lit, and a file
-    saved when "Bands and times" was a tile of its own restores as both."""
+def test_the_plans_row_lights_any_of_three(hidden_window: Any) -> None:
+    """The times, the floor heat map and the apartment total are three
+    switches, not one pick. All start lit, each turns off by itself, the
+    last one lit stays lit, and a file saved when "Bands by hour" was the
+    heat map and the total together restores as both."""
     row = hidden_window.plan_kinds
-    assert row.get() == "Bands by hour, Sun at each time"
-    assert hidden_window._plan_kinds() == (True, True)
-    row._pick("Bands by hour")
-    assert row.get() == "Sun at each time"
-    assert hidden_window._plan_kinds() == (False, True)
+    assert row.get() == "Sun at each time, Floor heat map, Apartment total"
+    assert hidden_window._plan_kinds() == (True, True, True)
+    row._pick("Floor heat map")
+    assert row.get() == "Sun at each time, Apartment total"
+    assert hidden_window._plan_kinds() == (True, False, True)
+    row._pick("Apartment total")
     row._pick("Sun at each time")
     assert row.get() == "Sun at each time", "the last one lit stays lit"
-    row._pick("Bands by hour")
-    assert hidden_window._plan_kinds() == (True, True)
+    assert hidden_window._plan_kinds() == (True, False, False)
+    hidden_window.apply({"plan_kinds": "Bands by hour"})
+    assert row.get() == "Floor heat map, Apartment total"
+    assert hidden_window._plan_kinds() == (False, True, True)
     hidden_window.apply({"plan_kinds": "Bands and times"})
-    assert row.get() == "Bands by hour, Sun at each time"
+    assert row.get() == "Sun at each time, Floor heat map, Apartment total"
+
+
+def test_each_plan_tile_is_its_own_flag_to_the_run(hidden_window: Any) -> None:
+    """Three plans, three flags: the times are ``--plan-instant``, the heat
+    map is ``--plan-bands`` and the apartment total is ``--draw`` -- so a
+    council that wants the totals without the heat map gets exactly that,
+    and the panel deals only the sheets those flags will make."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_plans.set(True)
+    hidden_window.apartments.set("06 | Zone.Units")
+
+    hidden_window.plan_kinds.set("Apartment total")
+    (plans,) = hidden_window.jobs()
+    assert "--draw" in plans.args and "--plan-bands" not in plans.args
+    assert not flag(plans.args, "--plan-instant")
+    kinds = {sheet.kind for sheet in hidden_window.planned()}
+    assert kinds == {"Apartments, ADG total"}
+
+    hidden_window.plan_kinds.set("Floor heat map")
+    (plans,) = hidden_window.jobs()
+    assert "--no-draw" in plans.args and "--plan-bands" in plans.args
+    assert {sheet.kind for sheet in hidden_window.planned()} == {window.APARTMENT_HEAT_MAP}
 
 
 def test_the_communal_study_sends_the_settings_that_change_the_answer(
@@ -482,8 +509,12 @@ def only_shadows(hidden_window: Any, *, dates: str, hours: str) -> None:
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
     hidden_window.do_shadows.set(True)
-    hidden_window.shadow_dates.delete(0, "end")
-    hidden_window.shadow_dates.insert(0, dates)
+    # The dates go in as typed days with every button off, which is how a
+    # settings file from the old row of four dates restores.
+    for lit in hidden_window.shadow_day_ticks.values():
+        lit.set(False)
+    hidden_window.shadow_custom_day.delete(0, "end")
+    hidden_window.shadow_custom_day.insert(0, dates)
     hidden_window.shadow_hours.delete(0, "end")
     hidden_window.shadow_hours.insert(0, hours)
 
@@ -554,9 +585,9 @@ def test_a_blank_sheets_row_shows_each_tools_own_default(hidden_window: Any) -> 
 
 
 def test_the_shadow_sheets_follow_their_own_days_row(hidden_window: Any) -> None:
-    """The shadow study is one job with its own Days row, not one run per
-    ticked day like the solar tools, so the ticks in Model are not what it
-    draws -- and the panel must not say they are."""
+    """The shadow study is one job with its own box of days, not one run per
+    lit day like the solar tools, so the Solar analysis page's days are not
+    what it draws -- and the panel must not say they are."""
     only_shadows(hidden_window, dates="06-21", hours="12")
     for ticked in hidden_window.days.values():
         ticked.set(True)
@@ -650,18 +681,18 @@ def test_the_hours_are_pressed_not_typed_and_still_read_as_the_run_reads_them(
     assert window_row.get() == "08:00-15:00", "a span is its two ends"
     assert window_row._lit() == {f"{hour:02d}:00" for hour in range(8, 16)}, "lit between"
 
-    days = hidden_window.shadow_dates
-    days.delete(0, "end")
-    days._toggle("06-21")
-    days._toggle("12-21")
-    assert days.get() == "06-21, 12-21"
+    # The shadow days are the same three buttons the other sun studies
+    # press, with the diagram's own answer, sent as the dates the command
+    # takes.
+    hidden_window.shadow_day_ticks["summer"].set(True)
+    assert hidden_window._shadow_days() == ["06-21", "12-21"]
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
     hidden_window.do_shadows.set(True)
     hidden_window.sheets.set("One layout, all drawings")
     assert [sheet.day for sheet in hidden_window.planned()] == ["21 Jun", "21 Dec"]
     assert [sheet.time for sheet in hidden_window.planned()] == ["09:00-15:00"] * 2
-    assert flag(hidden_window.jobs()[0].args, "--shadow-date") == ["06-21, 12-21"]
+    assert flag(hidden_window.jobs()[0].args, "--shadow-date") == ["06-21,12-21"]
 
 
 def test_a_saved_field_lights_the_buttons_it_names_and_keeps_its_own_spelling(
@@ -686,9 +717,11 @@ def test_a_saved_field_lights_the_buttons_it_names_and_keeps_its_own_spelling(
     assert window_row.get() == "8am to 3pm"
     assert window_row._lit() == {f"{hour:02d}:00" for hour in range(8, 16)}
 
-    days = hidden_window.shadow_dates
-    days.insert(0, "winter, 12-21")
-    assert days._lit() == {"06-21", "12-21"}, "a day by its name lights its date"
+    # A file from the old row of four dates restores into the shadow box's
+    # own custom-day field, which reads a comma list, by name or by date.
+    hidden_window.apply({"shadow_dates": "winter, 12-21"})
+    assert hidden_window.shadow_custom_day.get() == "winter, 12-21"
+    assert hidden_window._shadow_days() == ["06-21", "12-21"], "a name is its date, once"
 
 
 def test_every_sheet_says_the_scale_the_run_places_it_at(hidden_window: Any) -> None:
@@ -2259,12 +2292,14 @@ def test_the_site_analysis_waits_for_an_address(hidden_window: Any) -> None:
     assert hidden_window.settings()["site_anchor"] == "Project location"
 
 
-def test_a_ticked_day_reaches_every_solar_tool_but_the_shadow_diagram(
+def test_a_lit_day_reaches_the_three_solar_studies_and_no_other_page(
     hidden_window: Any,
 ) -> None:
-    """One set of ticks, and the plans, the facade, the communal study and the
-    sun views all run on those days. The shadow diagram keeps its own list,
-    because it is drawn for all three at once."""
+    """One box of days on the Solar analysis page, and the plans, the facade
+    and the communal study run on those days. The sun views and the shadow
+    diagram each have a box of their own on their own page, and neither
+    hears this one: a day lit for the apartments no longer quietly runs
+    the sun views on it too."""
     hidden_window.do_plans.set(True)
     hidden_window.do_communal.set(True)
     hidden_window.do_shadows.set(True)
@@ -2276,8 +2311,81 @@ def test_a_ticked_day_reaches_every_solar_tool_but_the_shadow_diagram(
     assert flag(by_name["solar analysis: facade"], "--date") == ["summer"]
     assert flag(by_name["solar analysis: apartments"], "--date") == ["summer"]
     assert flag(by_name["solar analysis: communal open space"], "--date") == ["summer"]
-    assert flag(by_name["sun views"], "--date") == ["summer"]
-    assert "--date" not in by_name["shadow diagram"]
+    assert "--date" not in by_name["sun views"], "the views keep their own midwinter"
+    assert flag(by_name["shadow diagram"], "--shadow-date") == ["06-21"]
+
+
+def test_the_sun_views_and_the_shadows_run_on_their_own_days(hidden_window: Any) -> None:
+    """The same three buttons on three pages, and three answers. The views
+    lit for the equinox run once per lit day and say which; the shadows
+    lit for every day are one job with every date."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_sun_eyes.set(True)
+    hidden_window.do_shadows.set(True)
+    hidden_window.eye_days["equinox"].set(True)
+    for lit in hidden_window.shadow_day_ticks.values():
+        lit.set(True)
+
+    jobs = hidden_window.jobs()
+    views = [job for job in jobs if job.label.startswith("sun views")]
+    assert [flag(job.args, "--date") for job in views] == [[], ["equinox"]]
+    assert "21 September" in views[1].label
+    (shadows,) = [job for job in jobs if job.label == "shadow diagram"]
+    assert flag(shadows.args, "--shadow-date") == ["06-21,09-21,12-21"]
+    assert hidden_window.chosen_days() == ["winter"], "the solar box did not move"
+
+    saved = hidden_window.settings()
+    assert saved["sun_view_day_equinox"] is True and saved["day_equinox"] is False
+    assert saved["shadow_day_summer"] is True
+
+
+def test_the_site_outputs_are_buttons_over_the_same_ticks(hidden_window: Any) -> None:
+    """Six lines of small print became two rows of buttons, worded short,
+    over the very same variables -- so a preset that ticked the context
+    model still lights the button, and pressing the button is the tick."""
+    buttons = hidden_window.site_buttons
+    assert list(buttons) == [
+        "Context Analysis sheet",
+        "Site Analysis sheet",
+        "Summary of Controls layout",
+        "Future Context (what the controls allow next door)",
+        "Context Model in 3D (terrain, blocks, neighbours)",
+        "Set the project location from the address",
+    ]
+    assert buttons["Context Model in 3D (terrain, blocks, neighbours)"].cget("text") == "3D context"
+    assert all(button.cget("image") for button in buttons.values()), "each wears its drawing"
+
+    assert hidden_window.do_site_model.get() is False
+    buttons["Context Model in 3D (terrain, blocks, neighbours)"].invoke()
+    assert hidden_window.do_site_model.get() is True
+    hidden_window.apply({"site_model": False})
+    assert str(buttons["Context Model in 3D (terrain, blocks, neighbours)"].cget("style")) == (
+        "Tile.TButton"
+    ), "a preset that unticks it unlights it"
+
+
+def test_the_shadow_storey_is_picked_by_name_and_sent_by_index(hidden_window: Any) -> None:
+    """The command places the fills by storey index, and the window offers
+    the project's storey names -- the same list the height band picks
+    from. A number typed the old way still goes through as the index."""
+    hidden_window.options = replace(
+        hidden_window.options,
+        storey_names=("AHD", "GROUND", "LEVEL 01"),
+        storey_indices=(("AHD", -1), ("GROUND", 6), ("LEVEL 01", 7)),
+    )
+    hidden_window._offer_height_cut()
+    assert list(hidden_window.shadow_storey["values"]) == ["AHD", "GROUND", "LEVEL 01"]
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+
+    hidden_window.shadow_storey.set("GROUND")
+    assert flag(hidden_window.jobs()[0].args, "--shadow-storey") == ["6"]
+    hidden_window.shadow_storey.set("2")
+    assert flag(hidden_window.jobs()[0].args, "--shadow-storey") == ["2"]
+    hidden_window.shadow_storey.set("")
+    assert "--shadow-storey" not in hidden_window.jobs()[0].args
 
 
 def test_several_ticked_days_run_each_tool_once_per_day(hidden_window: Any) -> None:

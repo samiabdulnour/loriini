@@ -912,6 +912,20 @@ def settings() -> list[Icon]:
             ],
         ),
         Icon(
+            "plans_total",
+            "the sheet with each apartment filled whole in its own band",
+            [
+                *sheet(),
+                rect(9.5, 8, 6.5, 6.2, fill=SUN, outline=None),
+                rect(16, 8, 6.5, 6.2, fill=SUN_T, outline=None),
+                rect(9.5, 14.2, 6.5, 6.2, fill=SUN_T, outline=None),
+                rect(16, 14.2, 6.5, 6.2, fill=GREY_L, outline=None),
+                rect(9.5, 8, 13, 12.4, fill=None, outline=GREY_D, width=1.0),
+                Line(((16, 8), (16, 20.4)), fill=GREY_D, width=1.0),
+                Line(((9.5, 14.2), (22.5, 14.2)), fill=GREY_D, width=1.0),
+            ],
+        ),
+        Icon(
             "origin",
             "the site at nought, nought -- a crosshair, not a place",
             [

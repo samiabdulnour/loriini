@@ -88,7 +88,7 @@ from sun_study.app.runner import Run
 from sun_study.archicad import naming
 from sun_study.archicad.connection import DEFAULT_TIMEOUT_SECONDS
 from sun_study.archicad.sheeting import cells_for, parse_sheet_mode, sheet_chunks, sheet_title
-from sun_study.cli import DEFAULT_SHADOW_DATES, DEFAULT_SHADOW_HOURS
+from sun_study.cli import DEFAULT_SHADOW_HOURS
 from sun_study.core.solar import UnknownTimezoneError, resolve_timezone, solar_position
 from sun_study.licence import credential
 from sun_study.rules.days import ASSESSMENT_DAYS, day_name, parse_day
@@ -1573,29 +1573,6 @@ def _hour_choices(clock: bool) -> list[tuple[str, str, str]]:
     return out
 
 
-def _day_key(text: str) -> str:
-    """A day as ``MM-DD``, however it was written -- or as written, when it
-    is not a day at all."""
-    try:
-        return parse_day(text)
-    except ValueError:
-        return text.strip()
-
-
-#: The four days a shadow set is drawn for, as the row offers them.
-DAY_CHOICES: tuple[tuple[str, str, str], ...] = (
-    ("03-21", "21 Mar", "Autumn equinox, 21 March. Press to include it."),
-    (
-        "06-21",
-        "21 Jun",
-        "Winter solstice, 21 June -- the shortest day, when shadows are longest, and "
-        "the day that decides things. Press to include it.",
-    ),
-    ("09-21", "21 Sep", "Spring equinox, 21 September. Press to include it."),
-    ("12-21", "21 Dec", "Summer solstice, 21 December. Press to include it."),
-)
-
-
 def _hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     """Monotone chain. Eight corners in, the shadow's own outline out."""
     points = sorted(set(points))
@@ -2379,9 +2356,18 @@ class Job:
 class Window:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        #: The assessment days, by short name, ticked or not. Built before
-        #: the sections are, because the Model tab fills it as it is drawn.
+        #: The assessment days the solar analysis runs on, by short name,
+        #: ticked or not. Built before the sections are, because the Solar
+        #: analysis tab fills it as it is drawn.
         self.days: dict[str, tk.BooleanVar] = {}
+        #: The same question asked of the sun views, on their own tab and
+        #: with their own answer. One set of ticks used to serve both, which
+        #: put the days on the Model tab -- a page about geometry -- where
+        #: nobody drawing either study thought to look for them.
+        self.eye_days: dict[str, tk.BooleanVar] = {}
+        #: And of the shadow diagram, which had its own row of four dates
+        #: spelled differently from the other two pages' days.
+        self.shadow_day_ticks: dict[str, tk.BooleanVar] = {}
         #: Each study's tick, which is also the header of its block. Kept
         #: so `_sync` can grey the blocks that are switched off: a study
         #: nobody has turned on should not look like a live form.
@@ -2477,8 +2463,8 @@ class Window:
     SECTION_BLURB: ClassVar[dict[str, str]] = {
         GENERAL: (
             "The sheet every output lands on: the master and its title block, "
-            "the layer prefixes that file the results, the storey everything is "
-            "measured from, and which days of the year the sun is put at."
+            "the layer prefixes that file the results, the Archicad connection "
+            "and where the tables go."
         ),
         SITE: (
             "An address in; the Context and Site Analysis sheets, the Summary of "
@@ -2486,20 +2472,23 @@ class Window:
             "neighbours out."
         ),
         MODEL: (
-            "What geometry leaves Archicad and by which route: the layer "
-            "combination it starts from, what is forced in, what the "
+            "What geometry leaves Archicad: the storeys it is measured between, "
+            "the layer combination it starts from, what is forced in, what the "
             "neighbours are, and what is kept off the drawings."
         ),
         DIAGRAMS: (
-            "Hours of direct sun. Three studies: the facade in bands at massing "
-            "stage, the apartments assessed against the ADG, and communal open "
-            "space."
+            "Hours of direct sun, on the days lit here. Three studies: the facade "
+            "in bands at massing stage, the apartments assessed against the ADG, "
+            "and communal open space."
         ),
         SHADOWS: (
             "Shadows cast by each massing, hour by hour, drawn from published "
             "views — one sheet per hour per day."
         ),
-        EYE: ("3D documents aimed straight down the sun, and the sheets they are dealt onto."),
+        EYE: (
+            "3D documents aimed straight down the sun on the days lit here, and "
+            "the sheets they are dealt onto."
+        ),
     }
     #: The facade study lives in the Solar analysis section now; the name
     #: stays for the settings files and tests that knew it as a tab.
@@ -2556,7 +2545,7 @@ class Window:
         self._controls(base)
         # What is typed changes what a run will make as surely as what is
         # ticked, so the panel of sheets hears about keystrokes too.
-        for typed in (self.communal_hours, self.year, self.custom_day):
+        for typed in (self.communal_hours, self.year, self.custom_day, self.eye_custom_day):
             typed.bind("<KeyRelease>", lambda _event: self._sync(), add="+")
         for chosen in (self.adg_subset, self.shadow_subset):
             chosen.bind("<<ComboboxSelected>>", lambda _event: self._sync(), add="+")
@@ -2969,64 +2958,7 @@ class Window:
             "both ends are asked for. An element is kept when any part of it "
             "reaches the band, so a wall crossing either end stays whole.",
         )
-        frame, row = self._panel(outer, 1, title="Days studied"), 0
-
-        # The day and the year sit with the solar tools rather than in
-        # General, because they are not general: the site drawings do not read
-        # them, and a setting shown to somebody drawing a context plan is a
-        # setting they have to decide not to care about.
-        #
-        # Days are ticked and not picked, because a study is usually asked for
-        # on more than one. A council wants midwinter for the test and the
-        # equinox beside it to show the year, and choosing one at a time meant
-        # running the whole tool again and remembering to change the box.
-        # Every ticked day runs the tools once each, and every name a run
-        # makes carries its day, so the sets stand beside each other in the
-        # project rather than over each other.
-        days = Toggles(frame, on_change=self._sync)
-        days.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
-        self.toggle_rows.append(days)
-        for name, (_, title) in ASSESSMENT_DAYS.items():
-            state = tk.BooleanVar(value=name == "winter")
-            self.days[name] = state
-            # A button with the sun at that day's height, rather than a box.
-            box = days.add(state, title.split(",")[0], f"day_{name}")
-            Tooltip(
-                box,
-                f"{title}. "
-                + (
-                    "The shortest day, the worst case the ADG assesses and the only "
-                    "day its two-hour test means anything. Left ticked unless a "
-                    "council asks otherwise."
-                    if name == "winter"
-                    else "Shows the year beside the midwinter case. A run on this day "
-                    "carries it in every layer, view, sheet and property it makes."
-                ),
-            )
-        row += 1
-        self.custom_day, row = self._entry(
-            frame,
-            row,
-            "Custom day",
-            "",
-            "Any other day, as MM-DD. Runs in addition to the ticks.",
-            "For a council that asks for a date the three ticks do not cover "
-            "-- the 22nd rather than the 21st, or a day named in a DCP. "
-            "Written MM-DD, e.g. 07-15. It runs as well as whatever is "
-            "ticked, so the usual pair plus one is three runs of each tool "
-            "rather than a choice between them. The shadow diagram keeps its "
-            "own list of days and does not read this.",
-        )
-        self.year, row = self._entry(
-            frame,
-            row,
-            "Year",
-            "2024",
-            "Which year's sun positions to use.",
-            "The year only shifts the sun positions slightly; it is here so a "
-            "study can be repeated against the same day as an earlier report.",
-        )
-        frame, row = self._panel(outer, 2, title="Model export: the layers that leave Archicad"), 0
+        frame, row = self._panel(outer, 1, title="Model export: the layers that leave Archicad"), 0
         self._caption(
             frame,
             row,
@@ -3079,6 +3011,91 @@ class Window:
             "counts as clutter is a decision about the drawing, so it is named "
             "here rather than guessed from layer names.",
         )
+
+    def _days_panel(
+        self,
+        outer: ttk.Frame,
+        row: int,
+        days: dict[str, tk.BooleanVar],
+        *,
+        study: str,
+        year: bool,
+    ) -> tuple[ttk.Entry, ttk.Entry | None]:
+        """The days a study runs on, in a box of its own on that study's page.
+
+        Asked on the Solar analysis tab and again on the Sun views tab, with
+        an answer each. One set of ticks used to serve both, and it sat on the
+        Model tab -- a page about what geometry leaves Archicad -- where
+        nobody planning either study thought to look for it, and where a day
+        ticked for the apartments quietly ran the sun views on it too. The
+        question belongs with the study it changes, and the two studies are
+        not always asked on the same days: the ADG test is midwinter, and a
+        set of sun views is often wanted for the equinox beside it.
+
+        Days are pressed and not picked, because a study is usually asked for
+        on more than one. A council wants midwinter for the test and the
+        equinox beside it to show the year, and choosing one at a time meant
+        running the whole tool again and remembering to change the box.
+        Every lit day runs the tools once each, and every name a run makes
+        carries its day, so the sets stand beside each other in the project
+        rather than over each other.
+
+        The year is asked once, with the solar analysis, and read by every
+        sun tool: it only shifts the sun positions slightly, and two studies
+        of one project are never wanted against different years. Returned
+        along with the custom-day entry, so the caller keeps both.
+        """
+        frame = self._panel(outer, row, title="Days studied")
+        row = 0
+        toggles = Toggles(frame, on_change=self._sync)
+        toggles.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.toggle_rows.append(toggles)
+        for name, (_, title) in ASSESSMENT_DAYS.items():
+            state = tk.BooleanVar(value=name == "winter")
+            days[name] = state
+            # A button with the sun at that day's height, rather than a box.
+            box = toggles.add(state, title.split(",")[0], f"day_{name}")
+            Tooltip(
+                box,
+                f"{title}. "
+                + (
+                    "The shortest day, the worst case the ADG assesses and the only "
+                    "day its two-hour test means anything. Left lit unless a "
+                    "council asks otherwise."
+                    if name == "winter"
+                    else "Shows the year beside the midwinter case. A run on this day "
+                    "carries it in every layer, view, sheet and property it makes."
+                )
+                + f" Only the {study} reads this row.",
+            )
+        row += 1
+        custom, row = self._entry(
+            frame,
+            row,
+            "Custom day",
+            "",
+            "Any other days, as MM-DD, comma separated. Run in addition to the lit days.",
+            "For a council that asks for a date the three buttons do not cover "
+            "-- the 22nd rather than the 21st, or a day named in a DCP. "
+            "Written MM-DD, e.g. 07-15, and several with commas between. It "
+            "runs as well as whatever is lit, "
+            f"so the usual pair plus one is three runs of the {study} rather "
+            f"than a choice between them. Only the {study} reads this box; "
+            "the other sun studies have a box of their own.",
+        )
+        if not year:
+            return custom, None
+        typed, row = self._entry(
+            frame,
+            row,
+            "Year",
+            "2024",
+            "Which year's sun positions to use, for every sun study.",
+            "The year only shifts the sun positions slightly; it is here so a "
+            "study can be repeated against the same day as an earlier report. "
+            "Asked once: the sun views and the shadow diagram read it too.",
+        )
+        return custom, typed
 
     def _facade(self, frame: ttk.Frame, row: int) -> int:
         """The facade study's rows: the 3D skin, what gets painted, how finely."""
@@ -3162,10 +3179,16 @@ class Window:
         whichever of them the model can answer -- so where the banded
         sheets are filed is asked once, at the top, for all three.
         """
-        # The two settings all three studies share, in a card of their own:
-        # nothing floats on the page by itself.
+        # First the days, because they are the first thing a council names;
+        # then the two settings all three studies share, in a card of their
+        # own: nothing floats on the page by itself.
         outer = frame
-        frame, row = self._panel(outer, 0, title="Layout Book filing, and what the plans show"), 0
+        self.custom_day, year = self._days_panel(
+            outer, 0, self.days, study="solar analysis", year=True
+        )
+        assert year is not None
+        self.year = year
+        frame, row = self._panel(outer, 1, title="Layout Book filing, and what the plans show"), 0
         self.adg_subset, row = self._combo(
             frame,
             row,
@@ -3182,21 +3205,26 @@ class Window:
             frame,
             row,
             "Plans",
-            "What the solar plans show: the day in bands, the sun at each time -- either or both.",
-            "For the apartments and the communal space alike. Bands are the "
-            "whole day on one plan, striped by hours of sun, which is what the "
-            "ADG and a DCP ask about. Times are a plan per instant showing "
-            "where the sun actually falls, which is what somebody standing "
-            "there at nine in the morning asks about. Each tile switches on "
-            "and off by itself; both lit is both, and a longer run. The last "
-            "one lit stays lit, because no plans at all is not a plan study.",
+            "What the apartment plans show: the sun at each time, the floor as a "
+            "heat map, each apartment's total -- any of the three.",
+            "Three plans for three questions. Sun at each time is a plan per "
+            "instant showing where the sun actually falls, which is what "
+            "somebody standing there at nine in the morning asks about. The "
+            "floor heat map grids each apartment and bands every cell by its "
+            "hours of sun over the day, which says how far in the sun gets. "
+            "The apartment total fills each flat whole in the band of its "
+            "hours over the day and writes the figure in, which is what the "
+            "ADG and a DCP ask about. The communal space draws the first and "
+            "one banded plan for either of the other two. Each tile switches "
+            "on and off by itself; the last one lit stays lit, because no "
+            "plans at all is not a plan study.",
         )
 
         self.do_plans = tk.BooleanVar(value=False)
         # The study's own box. Everything from here to the end of the block
         # is built inside it, by the simple means of pointing ``frame`` at it:
         # the rows beneath neither know nor care.
-        resume = 1
+        resume = 2
         frame, row = self._panel(outer, resume), 0
         plans_box = ttk.Checkbutton(
             frame,
@@ -3403,10 +3431,11 @@ class Window:
         """
         row = 0
         self.do_shadows = tk.BooleanVar(value=False)
-        # The study's own box. Everything from here to the end of the block
-        # is built inside it, by the simple means of pointing ``frame`` at it:
-        # the rows beneath neither know nor care.
-        frame, row = self._panel(frame, row), 0
+        # The study's own box. Everything from here to the days box at the
+        # end is built inside it, by the simple means of pointing ``frame``
+        # at it: the rows beneath neither know nor care.
+        outer = frame
+        frame, row = self._panel(outer, row), 0
         box = ttk.Checkbutton(
             frame,
             text="Shadow diagram",
@@ -3459,18 +3488,6 @@ class Window:
             "runs on for hundreds of metres. Right arithmetically, and not "
             "what the sheet is asking.",
         )
-        self.shadow_dates, row = self._ticks_row(
-            frame,
-            row,
-            "Days",
-            "The days a shadow set is drawn for.",
-            "21 June is the one that decides things — the shortest day, when "
-            "shadows are longest. The equinoxes and midsummer are drawn "
-            "alongside it by convention. Each day adds a full set of sheets.",
-            DAY_CHOICES,
-            key=_day_key,
-            initial=DEFAULT_SHADOW_DATES,
-        )
         self.shadow_hours, row = self._ticks_row(
             frame,
             row,
@@ -3500,17 +3517,18 @@ class Window:
             "last row being tested when Proposed is empty.",
         )
         row += 1
-        self.shadow_storey, row = self._entry(
+        self.shadow_storey, row = self._combo(
             frame,
             row,
             "Draw on storey",
-            "0",
-            "Storey index the fills are placed on.",
-            "Where the fills land, not what casts them. A site drawing is "
-            "usually the ground storey — which is not always storey 0: a "
-            "project with a survey datum below it numbers the ground 6, and "
-            "fills drawn on 0 land in a plan nobody opens and read as nothing "
-            "drawn at all.",
+            "The project's storey the fills are placed on. Blank is the ground, storey 0.",
+            "Where the fills land, not what casts them. Picked from the "
+            "project's own storeys once it has been read, because a site "
+            "drawing is usually the ground storey and that is not always "
+            "storey 0: a project with a survey datum below it numbers the "
+            "ground 6, and fills drawn on 0 land in a plan nobody opens and "
+            "read as nothing drawn at all. A number typed here is still taken "
+            "as the storey's index, which is what older settings files hold.",
         )
         self.shadow_study_subset, row = self._combo(
             frame,
@@ -3522,6 +3540,12 @@ class Window:
             "missing one is reported rather than invented, with the sheets "
             "left at the root of the book.",
         )
+        # The diagram's own days, the same three buttons the other two sun
+        # studies press, in a box under the study. They were a row of four
+        # dates inside it, spelled differently from the other pages' days.
+        self.shadow_custom_day, _ = self._days_panel(
+            outer, 1, self.shadow_day_ticks, study="shadow diagram", year=False
+        )
 
     def _sun_eyes(self, frame: ttk.Frame) -> None:
         """The sun eye views: the model seen from the sun, one view per hour.
@@ -3529,9 +3553,10 @@ class Window:
         Everything it can see is in sun and everything hidden is in shade,
         which answers "why is this balcony dark at ten" in one picture. The
         settings here are the ones read off the practice's own diagrams; the
-        date and the hours come from the ruleset's assessment window and are
-        not offered, because a sun eye set at the wrong date is a plausible
-        picture of the wrong day.
+        hours come from the ruleset's assessment window, and the days from
+        the views' own box under the study -- a sun eye set at the wrong
+        date is a plausible picture of the wrong day, so the day is said
+        where the views are asked for.
 
         Needs the Loriini add-on, and a floor plan tab in front
         when it runs: the projection can only be written with the window and
@@ -3539,10 +3564,11 @@ class Window:
         """
         row = 0
         self.do_sun_eyes = tk.BooleanVar(value=False)
-        # The study's own box. Everything from here to the end of the block
-        # is built inside it, by the simple means of pointing ``frame`` at it:
-        # the rows beneath neither know nor care.
-        frame, row = self._panel(frame, row), 0
+        # The study's own box. Everything from here to the days box at the
+        # end is built inside it, by the simple means of pointing ``frame``
+        # at it: the rows beneath neither know nor care.
+        outer = frame
+        frame, row = self._panel(outer, row), 0
         box = ttk.Checkbutton(
             frame,
             text="Sun views",
@@ -3563,7 +3589,7 @@ class Window:
         self._caption(
             frame,
             row,
-            "Seven views along the sun, 9am to 3pm on 21 June, each exact to the "
+            "Seven views along the sun, 9am to 3pm on each day lit below, each exact to the "
             "sun's own bearing; the documents on two sheets.",
         )
         row += 1
@@ -3620,6 +3646,11 @@ class Window:
             _hour_choices(clock=False),
             key=_clock_text,
         )
+        # The views' own days, under the study and not on another tab. They
+        # used to run on whatever the solar analysis was ticked for.
+        self.eye_custom_day, _ = self._days_panel(
+            outer, 1, self.eye_days, study="sun views", year=False
+        )
 
     def _site(self, frame: ttk.Frame) -> None:
         """Site and context analysis from an address, drawn into worksheets.
@@ -3648,7 +3679,7 @@ class Window:
         Tooltip(
             box,
             "Fetches the neighbourhood from NSW open data for the address below "
-            "and makes whichever of the four outputs are ticked: the Context "
+            "and makes whichever of the outputs are lit: the Context "
             "Analysis and Site Analysis sheets, the Summary of Controls on a "
             "layout, and the Context Model in 3D. Needs the Loriini add-on "
             "and an internet connection. NSW addresses only.",
@@ -3657,7 +3688,7 @@ class Window:
         self._caption(
             frame,
             row,
-            "Type the address, tick the outputs, press Run. A few minutes: the "
+            "Type the address, light the outputs, press Run. A few minutes: the "
             "public data services are slow and are asked for everything at once.",
         )
         row += 1
@@ -3676,90 +3707,104 @@ class Window:
         self.do_site_context = tk.BooleanVar(value=True)
         self.do_site_site = tk.BooleanVar(value=True)
         self.do_site_summary = tk.BooleanVar(value=True)
-        for variable, label, detail in (
-            (
-                self.do_site_context,
-                "Context Analysis sheet",
-                "Land use wash by LEP zone, schools and hospitals coloured by what "
-                "they are, heritage items, rail, bus stops and routes, stations, "
-                "5 and 10 minute walking catchments, place and street names, "
-                "and the site -- the DA 003 sheet, at the scale below.",
-            ),
-            (
-                self.do_site_site,
-                "Site Analysis sheet",
-                "The boundary with its dimensions and corner levels, the fall, "
-                "contours, neighbours with storeys and zone, trees, poles, "
-                "hydrants, driveways, kerbside parking, one-way streets, noise "
-                "sources, sun path and prevailing winds -- the DA 004 sheet, "
-                "at whichever of 1:200 to 1:750 fits the site.",
-            ),
-            (
-                self.do_site_summary,
-                "Summary of Controls layout",
-                "The planning-controls table, drawn straight onto a layout of "
-                "its own: zone, height of building, FSR and the gross floor area "
-                "it allows, minimum lot size, heritage, and the ADG figures "
-                "worked out for this site area. Council DCP rows are ruled up "
-                "empty; they are not open data.",
-            ),
-        ):
-            tick = ttk.Checkbutton(
-                frame,
-                text=label,
-                variable=variable,
-                command=self._sync,
-                **icons.options(label, 16),
-            )
-            tick.grid(row=row, column=0, columnspan=2, sticky="w", padx=(18, 0), pady=(2, 0))
-            Tooltip(tick, detail)
-            row += 1
         self.do_site_model = tk.BooleanVar(value=False)
         self.do_site_future = tk.BooleanVar(value=False)
         self.do_site_location = tk.BooleanVar(value=True)
-        for variable, label, detail in (
+        # The outputs are the point of the page, and six ticks with a
+        # sentence each read as the small print under the address. Two rows
+        # of buttons instead, worded in one or two words each, with the
+        # sentence in the tooltip where it costs no room: the sheets on one
+        # row, what is done to the project on the other.
+        self.site_buttons: dict[str, ttk.Button] = {}
+        for label, hint, outputs in (
             (
-                self.do_site_future,
-                "Future Context (what the controls allow next door)",
-                "Each lot near the site, zoned for flats and under a height "
-                "control, set back by the ADG's separation (6, 9 and 12 m by "
-                "height band), stepped, and capped by the LEP's height and "
-                "floor-space ratio. Drawn dashed in magenta on the Site "
-                "Analysis sheet with its storeys written in, and stood as "
-                "slabs on the LORIINI FUTURE layer -- a layer of its own, so a "
-                "shadow diagram can be cast with the neighbours as they are or "
-                "as they could be. The street setback is the council's; 6 m "
-                "unless the run folder's settings say otherwise.",
+                "Sheets",
+                "Which of the three drawings to make. Lit is made.",
+                (
+                    (
+                        self.do_site_context,
+                        "Context",
+                        "Context Analysis sheet",
+                        "Land use wash by LEP zone, schools and hospitals coloured by what "
+                        "they are, heritage items, rail, bus stops and routes, stations, "
+                        "5 and 10 minute walking catchments, place and street names, "
+                        "and the site -- the DA 003 sheet, at the scale below.",
+                    ),
+                    (
+                        self.do_site_site,
+                        "Site",
+                        "Site Analysis sheet",
+                        "The boundary with its dimensions and corner levels, the fall, "
+                        "contours, neighbours with storeys and zone, trees, poles, "
+                        "hydrants, driveways, kerbside parking, one-way streets, noise "
+                        "sources, sun path and prevailing winds -- the DA 004 sheet, "
+                        "at whichever of 1:200 to 1:750 fits the site.",
+                    ),
+                    (
+                        self.do_site_summary,
+                        "Controls",
+                        "Summary of Controls layout",
+                        "The planning-controls table, drawn straight onto a layout of "
+                        "its own: zone, height of building, FSR and the gross floor area "
+                        "it allows, minimum lot size, heritage, and the ADG figures "
+                        "worked out for this site area. Council DCP rows are ruled up "
+                        "empty; they are not open data.",
+                    ),
+                ),
             ),
             (
-                self.do_site_model,
-                "Context Model in 3D (terrain, blocks, neighbours)",
-                "The terrain as one mesh from the contours, every street block "
-                "as a kerbed mesh with the roads left between, and one slab per "
-                "neighbouring building as tall as its storeys say -- or as the "
-                "LEP height control allows, and said to be assumed -- on the "
-                "LORIINI layer, for the shadow diagram and the sun views to "
-                "cast against. The site's own buildings are left out.",
-            ),
-            (
-                self.do_site_location,
-                "Set the project location from the address",
-                "Puts Options > Project Location at the site's centre, with the "
-                "survey point on the MGA2020 grid, so the sun studies and the "
-                "IFC exports know where the project is. Only when the site is "
-                "placed at the project origin, and only if the location is still "
-                "a city preset; north is kept as it is.",
+                "Project",
+                "What is put into the project itself, beyond the sheets. Lit is done.",
+                (
+                    (
+                        self.do_site_future,
+                        "Future context",
+                        "Future Context (what the controls allow next door)",
+                        "Each lot near the site, zoned for flats and under a height "
+                        "control, set back by the ADG's separation (6, 9 and 12 m by "
+                        "height band), stepped, and capped by the LEP's height and "
+                        "floor-space ratio. Drawn dashed in magenta on the Site "
+                        "Analysis sheet with its storeys written in, and stood as "
+                        "slabs on the LORIINI FUTURE layer -- a layer of its own, so a "
+                        "shadow diagram can be cast with the neighbours as they are or "
+                        "as they could be. The street setback is the council's; 6 m "
+                        "unless the run folder's settings say otherwise.",
+                    ),
+                    (
+                        self.do_site_model,
+                        "3D context",
+                        "Context Model in 3D (terrain, blocks, neighbours)",
+                        "The terrain as one mesh from the contours, every street block "
+                        "as a kerbed mesh with the roads left between, and one slab per "
+                        "neighbouring building as tall as its storeys say -- or as the "
+                        "LEP height control allows, and said to be assumed -- on the "
+                        "LORIINI layer, for the shadow diagram and the sun views to "
+                        "cast against. The site's own buildings are left out.",
+                    ),
+                    (
+                        self.do_site_location,
+                        "Location",
+                        "Set the project location from the address",
+                        "Puts Options > Project Location at the site's centre, with the "
+                        "survey point on the MGA2020 grid, so the sun studies and the "
+                        "IFC exports know where the project is. Only when the site is "
+                        "placed at the project origin, and only if the location is still "
+                        "a city preset; north is kept as it is.",
+                    ),
+                ),
             ),
         ):
-            tick = ttk.Checkbutton(
-                frame,
-                text=label,
-                variable=variable,
-                command=self._sync,
-                **icons.options(label, 16),
-            )
-            tick.grid(row=row, column=0, columnspan=2, sticky="w", padx=(18, 0), pady=(2, 0))
-            Tooltip(tick, detail)
+            name = ttk.Label(frame, text=label, **icons.options(label))
+            name.grid(row=row, column=0, sticky="w", pady=(6, 0))
+            buttons = Toggles(frame, on_change=self._sync)
+            buttons.grid(row=row, column=1, sticky="w", pady=(6, 0))
+            self.toggle_rows.append(buttons)
+            Tooltip(name, hint, title=label)
+            for variable, short, full, detail in outputs:
+                # The button wears the drawing its long label always had.
+                button = buttons.add(variable, short, icons.BY_OUTPUT[short])
+                Tooltip(button, detail, title=full)
+                self.site_buttons[full] = button
             row += 1
         self.site_ticks = [
             self.do_site_context,
@@ -4544,6 +4589,7 @@ class Window:
             "communal_hours": self.communal_hours,
             "communal_height": self.communal_height,
             "custom_day": self.custom_day,
+            "sun_view_custom_day": self.eye_custom_day,
             "communal_grid": self.communal_grid,
             "tables_folder": self.tables,
             "master_layout": self.master,
@@ -4562,7 +4608,9 @@ class Window:
             **{f"shadow_layers_{short.lower()}": box for short, _role, box in self.shadow_rows},
             "shadow_terrain_layers": self.terrain_layers,
             "shadow_terrain_floor": self.terrain_floor,
-            "shadow_dates": self.shadow_dates,
+            # The key a file saved by the old row of four dates used; it
+            # restores into the custom-day field, which reads a comma list.
+            "shadow_dates": self.shadow_custom_day,
             "shadow_hours": self.shadow_hours,
             "shadow_storey": self.shadow_storey,
             "shadow_study_subset": self.shadow_study_subset,
@@ -4607,6 +4655,11 @@ class Window:
             "site_model": self.do_site_model,
             "site_future": self.do_site_future,
             "site_location": self.do_site_location,
+            # The three boxes of days, one key per button, so a preset that
+            # studies the equinox beside midwinter opens the same way.
+            **{f"day_{name}": state for name, state in self.days.items()},
+            **{f"sun_view_day_{name}": state for name, state in self.eye_days.items()},
+            **{f"shadow_day_{name}": state for name, state in self.shadow_day_ticks.items()},
         }
 
     #: The section that was showing, saved under its own name. It is neither
@@ -4875,7 +4928,8 @@ class Window:
         is kept: it is a decision, and it outranks anything read here.
         """
         names = list(self.options.storey_names)
-        for box in (self.storey_from, self.storey_to):
+        # The shadow page's storey too: the same list, for the same reason.
+        for box in (self.storey_from, self.storey_to, self.shadow_storey):
             box["values"] = names
         if not names:
             return
@@ -5065,23 +5119,35 @@ class Window:
     #: of a set, and the older spellings each reads as the tiles they mean.
     #: "Bands and times" was the Plans row's third tile until both could be lit.
     TILE_MULTI: ClassVar[frozenset[str]] = frozenset({"Plans"})
+    #: Older spellings of the Plans row, read as the tiles they now mean:
+    #: "Bands and times" was a tile of its own, and "Bands by hour" was the
+    #: heat map and the apartment total together before they were two.
     TILE_ALIASES: ClassVar[dict[str, dict[str, tuple[str, ...]]]] = {
-        "Plans": {"Bands and times": ("Bands by hour", "Sun at each time")},
+        "Plans": {
+            "Bands and times": ("Sun at each time", "Floor heat map", "Apartment total"),
+            "Bands by hour": ("Floor heat map", "Apartment total"),
+        },
     }
 
     TILE_CHOICES: ClassVar[dict[str, tuple[tuple[str, str, str], ...]]] = {
         "Plans": (
             (
-                "Bands by hour",
-                "plans_bands",
-                "Bands by hour: only the whole-day plans, banded by hours of sun -- "
-                "each apartment by its own figure, and the floor inside it as a heat map.",
-            ),
-            (
                 "Sun at each time",
                 "plans_times",
-                "Sun at each time: only the plans at each time, showing where the "
+                "Sun at each time: a plan per time of day, showing where the "
                 "sun actually falls at that moment.",
+            ),
+            (
+                "Floor heat map",
+                "plans_bands",
+                "Floor heat map: the floor of every apartment gridded and banded "
+                "by its own hours of sun over the day -- how far in the sun gets.",
+            ),
+            (
+                "Apartment total",
+                "plans_total",
+                "Apartment total: each apartment filled whole, in the band of its "
+                "hours of sun over the day, with the figure written in.",
             ),
         ),
         "Sheets": (
@@ -5142,16 +5208,23 @@ class Window:
     }
 
     #: The two Plans tiles, each a switch of its own. Both lit is the default.
-    PLAN_BANDS = "Bands by hour"
     PLAN_TIMES = "Sun at each time"
+    PLAN_HEAT = "Floor heat map"
+    PLAN_TOTAL = "Apartment total"
 
-    def _plan_kinds(self) -> tuple[bool, bool]:
-        """``(bands, times)``: which of the two kinds of plan the Plans row
-        asks for. A value naming neither -- a hand-edited file -- is both."""
-        chosen = {part.strip() for part in self.plan_kinds.get().split(",")}
-        if "Bands and times" in chosen or not chosen & {self.PLAN_BANDS, self.PLAN_TIMES}:
-            return True, True
-        return self.PLAN_BANDS in chosen, self.PLAN_TIMES in chosen
+    def _plan_kinds(self) -> tuple[bool, bool, bool]:
+        """``(times, heat, total)``: which of the three kinds of plan the
+        Plans row asks for. Three because they answer three questions: where
+        the sun is at nine, how far into each room it reaches over the day,
+        and whether each flat passes. A value naming none of them -- a
+        hand-edited file -- is all three, and an older spelling is read
+        through the row's aliases."""
+        chosen: set[str] = set()
+        for part in (piece.strip() for piece in self.plan_kinds.get().split(",")):
+            chosen.update(self.TILE_ALIASES["Plans"].get(part, (part,)))
+        if not chosen & {self.PLAN_TIMES, self.PLAN_HEAT, self.PLAN_TOTAL}:
+            return True, True, True
+        return self.PLAN_TIMES in chosen, self.PLAN_HEAT in chosen, self.PLAN_TOTAL in chosen
 
     #: What the Sheets row offers, and the word each sends.
     SHEET_CHOICES = (
@@ -5216,28 +5289,41 @@ class Window:
         Duplicates are dropped, so ticking winter and typing 06-21 is one run
         and not two identical ones over the top of each other.
         """
-        days = [name for name in ASSESSMENT_DAYS if name in self.days and self.days[name].get()]
-        typed = self.custom_day.get().strip()
-        if typed:
+        return self._chosen(self.days, self.custom_day)
+
+    def chosen_view_days(self) -> list[str]:
+        """The same, for the sun views, which have their own row of days."""
+        return self._chosen(self.eye_days, self.eye_custom_day)
+
+    @staticmethod
+    def _chosen(ticks: dict[str, tk.BooleanVar], custom: ttk.Entry) -> list[str]:
+        """The lit days by name, then the typed ones -- several, comma
+        separated, so a settings file that held a list of dates restores."""
+        days = [name for name in ASSESSMENT_DAYS if name in ticks and ticks[name].get()]
+        for typed in (part.strip() for part in custom.get().split(",")):
+            if not typed:
+                continue
             try:
                 mmdd = parse_day(typed)
             except ValueError:
-                days.append(typed)
+                if typed not in days:
+                    days.append(typed)
             else:
                 named = day_name(mmdd)
                 if named not in days:
                     days.append(named)
         return days or ["winter"]
 
-    def _day_label(self, day: str) -> str:
+    def _day_label(self, day: str, among: list[str] | None = None) -> str:
         """How a day reads on a queued job, or "" for the only day there is.
 
         Silent when one day is studied, because the label is then the tool's
         own name and has always been; a suffix on every job would be noise on
         the ordinary run. With several, the day is what tells two otherwise
-        identical jobs apart while they wait.
+        identical jobs apart while they wait. ``among`` is the row the day
+        came from; the solar analysis's own when not said.
         """
-        if len(self.chosen_days()) < 2:
+        if len(self.chosen_days() if among is None else among) < 2:
             return ""
         if day in ASSESSMENT_DAYS:
             return f" -- {ASSESSMENT_DAYS[day][1].split(', ')[-1]}"
@@ -5424,7 +5510,7 @@ class Window:
                         paper=False,
                     )
                 )
-        bands, times = self._plan_kinds()
+        times, heat, total = self._plan_kinds()
         if PLANS_JOB in queued:
             for day in days:
                 if times:
@@ -5439,7 +5525,7 @@ class Window:
                         self._sheet_mode("each"),
                         scale=plan_scale,
                     )
-                if bands:
+                if total:
                     deal(
                         PLANS_JOB,
                         "Solar analysis",
@@ -5450,6 +5536,7 @@ class Window:
                         [""],
                         scale=plan_scale,
                     )
+                if heat:
                     # The floor inside each flat, banded cell by cell. Placed
                     # coarser than the plans because its legend carries the
                     # areas beside it -- the command's own 1:300.
@@ -5466,7 +5553,7 @@ class Window:
         if COMMUNAL_JOB in queued:
             for day in days:
                 threshold = self.communal_hours.get().strip()
-                if bands:
+                if heat or total:
                     deal(
                         COMMUNAL_JOB,
                         "Solar analysis",
@@ -5477,7 +5564,7 @@ class Window:
                         [""],
                         scale=communal_scale,
                     )
-                if bands and threshold:
+                if (heat or total) and threshold:
                     deal(
                         COMMUNAL_JOB,
                         "Solar analysis",
@@ -5519,7 +5606,7 @@ class Window:
 
         if SUN_EYE_JOB in queued:
             hours = self._clocks(self.eye_hours, [f"{hour:02d}:00" for hour in range(9, 16)])
-            for day in days:
+            for day in self.chosen_view_days():
                 deal(
                     SUN_EYE_JOB,
                     "Sun views",
@@ -5558,10 +5645,37 @@ class Window:
             return fallback
 
     def _shadow_days(self) -> list[str]:
-        """The days the shadow study draws: its own row, or the command's
-        default when the row is blank -- which is what the run reads."""
-        typed = [part.strip() for part in self.shadow_dates.get().split(",") if part.strip()]
-        return typed or DEFAULT_SHADOW_DATES.split(",")
+        """The days the shadow study draws, as ``MM-DD`` -- which is how the
+        command takes them -- from the diagram's own box of days. The same
+        three buttons the solar analysis and the sun views press, and its
+        own answer: winter unless something else is lit or typed."""
+        dates: list[str] = []
+        for day in self._chosen(self.shadow_day_ticks, self.shadow_custom_day):
+            try:
+                mmdd = parse_day(day)
+            except ValueError:
+                mmdd = day
+            if mmdd not in dates:
+                dates.append(mmdd)
+        return dates
+
+    def _shadow_storey_index(self) -> str:
+        """What ``--shadow-storey`` is sent: the index of the storey picked by
+        name, a number as typed, or nothing for a blank field.
+
+        The command takes an index, because that is what Archicad places a
+        fill by. The window offers names, because an index is a fact about
+        the storey settings dialog and a name is a fact about the building.
+        A name the project does not have -- a preset from another project --
+        is sent as typed, and the command says what it makes of it.
+        """
+        chosen = self.shadow_storey.get().strip()
+        if not chosen:
+            return ""
+        for name, index in self.options.storey_indices:
+            if name == chosen:
+                return str(index)
+        return chosen
 
     def _window_clocks(self) -> list[str]:
         """Every whole hour of the communal window, which is how many hourly
@@ -5754,17 +5868,18 @@ class Window:
                 )
 
         if self.do_plans.get():
-            bands, times = self._plan_kinds()
+            times, heat, total = self._plan_kinds()
             args = [
                 "archicad-run",
                 "--timezone",
                 TIMEZONE,
                 *common,
                 *self._prefix_flag(self.prefix_solar),
-                # --draw is the whole-day sheet, the apartments banded by their
-                # hours of sun; --sheet makes the layouts for both kinds, and
-                # without --draw it makes the plans at each time alone.
-                "--draw" if bands else "--no-draw",
+                # --draw is the whole-day sheet, each apartment filled whole
+                # in the band of its hours of sun; --sheet makes the layouts
+                # for every kind, and without --draw it makes the other two
+                # alone.
+                "--draw" if total else "--no-draw",
                 "--sheet",
                 # The native model and never an IFC: a missing ExportModel
                 # stops the run with a sentence instead of quietly exporting
@@ -5772,10 +5887,10 @@ class Window:
                 "--export",
                 "native",
             ]
-            if bands:
-                # The heat map beside the flat-by-flat fill: the floor of every
-                # apartment gridded and banded by its own hours of sun, which
-                # is the sheet that shows how far into the room the sun gets.
+            if heat:
+                # The heat map, its own tile now: the floor of every apartment
+                # gridded and banded by its own hours of sun, which is the
+                # sheet that shows how far into the room the sun gets.
                 # --draw says whether a flat passes; this says where.
                 args += ["--plan-bands"]
             if self.apartments.get():
@@ -5880,10 +5995,12 @@ class Window:
             # areas are what they quote, and a study that draws the one
             # without writing the other invites a figure read off a colour.
             args += ["--zone-sheet", "--zone-stats"]
-            bands, times = self._plan_kinds()
+            # The communal plan has two kinds, not three: the open space is
+            # banded as one heat map, so either whole-day tile asks for it.
+            times, heat, total = self._plan_kinds()
             if times:
                 args += ["--zone-hourly"]
-            if not bands:
+            if not (heat or total):
                 args += ["--no-zone-bands"]
             args += ["--year", self.year.get().strip() or "2024"]
             # One run per day ticked. Each carries its own date, and a
@@ -5922,12 +6039,11 @@ class Window:
                 args += ["--shadow-all-hours"]
             if self.terrain_floor.get().strip():
                 args += ["--shadow-terrain-floor", self.terrain_floor.get().strip()]
-            if self.shadow_dates.get().strip():
-                args += ["--shadow-date", self.shadow_dates.get().strip()]
+            args += ["--shadow-date", ",".join(self._shadow_days())]
             if self.shadow_hours.get().strip():
                 args += ["--shadow-hour", self.shadow_hours.get().strip()]
-            if self.shadow_storey.get().strip():
-                args += ["--shadow-storey", self.shadow_storey.get().strip()]
+            if self._shadow_storey_index():
+                args += ["--shadow-storey", self._shadow_storey_index()]
             args += self._band_args()
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
@@ -5962,14 +6078,15 @@ class Window:
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
             args += ["--year", self.year.get().strip() or "2024"]
-            # One run per day ticked. Each carries its own date, and a
-            # command names everything it makes after the day it studied,
-            # so the sets stand beside each other in the project instead of
-            # the second quietly replacing the first.
-            for day in self.chosen_days():
+            # One run per day lit on the views' own row. Each carries its own
+            # date, and a command names everything it makes after the day it
+            # studied, so the sets stand beside each other in the project
+            # instead of the second quietly replacing the first.
+            view_days = self.chosen_view_days()
+            for day in view_days:
                 made.append(
                     Job(
-                        SUN_EYE_JOB + self._day_label(day),
+                        SUN_EYE_JOB + self._day_label(day, view_days),
                         [*args, *self._day_args(day), *self._sheet_args()],
                     )
                 )

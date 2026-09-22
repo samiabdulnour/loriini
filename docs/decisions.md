@@ -3885,3 +3885,55 @@ view and a sheet of its own. Outlines rather than fills, because fills laid
 over each other hide each other, and pattern fills stacked on one another
 line up exactly and do not darken. The outlines follow the grid cells, so at
 a 1 m grid they are stepped. Every single-hour combination hides the layer.
+
+### D115 — Each sun study keeps its own days, the site outputs are buttons, the storey is picked, and the apartment plans are three
+
+Asked 22 September 2026, going through the program build: "in model tab
+there is section days studied - that should be under solar analysis and sun
+views separately. in site analysis ... under it is list of outputs. this
+should be main staff but its so easy to miss. can you make them maybe
+horizontal buttons with simplified text?" And a minute later: "in shadow
+analysis there is 'days' make it the same buttons as they are in solar and
+sun view analysis. they should be the same. draw on storey section should be
+selectable from actual model, not type in stuff. in solar analysis for
+apartments there should be 3 different plans. one mapping the sunlight in
+every hour. one mapping the heatmap ... with band of hours. and one filling
+the whole apartment with united fill telling the number of hours in whole
+apartment in whole day."
+
+**Days.** The one box of three day buttons sat on the Model tab, a page
+about what geometry leaves Archicad, and every solar tool read it, the sun
+views included. The shadow page had its own row of four dates spelled
+differently. Now there is one builder, `_days_panel`, and three boxes headed
+DAYS STUDIED: on Solar analysis (with the Year, which every sun tool still
+reads), on Sun views and on Shadow diagram. Each holds its own three
+buttons and its own custom-day field, and only its own study reads it. The
+custom-day field takes several days with commas between, which is how a
+settings file from the old shadow row (`shadow_dates`) restores: into the
+shadow box's custom field, deduplicated against whatever is lit. The lit
+buttons are saved too, as `day_*`, `sun_view_day_*` and `shadow_day_*`. All
+three default to midwinter alone; the shadow page used to default to three
+days, and now says so with its buttons like the other two.
+
+**Site outputs.** Six ticks, each with a sentence, read as small print under
+the address. They are two rows of buttons now over the same six variables:
+Sheets (Context, Site, Controls) and Project (Future context, 3D context,
+Location). The sentence each tick carried is the button's tooltip, titled
+with the old long label. The icons moved from `BY_LABEL` to `BY_OUTPUT`,
+keyed by the short word, because the label test refuses a table entry no
+widget renders.
+
+**Storey.** "Draw on storey" was a typed index. It is a combo of the
+project's storey names, filled by the same read that fills the height band,
+and the run translates the name to the index the command takes through a
+new `storey_indices` on the probe. A number typed the old way, or restored
+from an older file, still goes through as the index.
+
+**Three plans.** The Plans row had two tiles; "Bands by hour" was the floor
+heat map and the flat-by-flat total together. It has three: Sun at each
+time (`--plan-instant` per time), Floor heat map (`--plan-bands`) and
+Apartment total (`--draw`). Nothing new is drawn; the two whole-day
+drawings were already two sheets, and the run already took them as two
+flags. A file that says "Bands by hour" lights the last two; "Bands and
+times" lights all three. The communal study has one banded plan, so either
+whole-day tile asks for it.

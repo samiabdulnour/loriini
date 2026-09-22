@@ -323,7 +323,6 @@ BY_LABEL: dict[str, str] = {
     "Tables": "table",
     "Measure from storey": "storey_datum",
     "...to storey": "storey_datum",
-    "Days": "custom_day",
     "Custom day": "custom_day",
     "Year": "year",
     # Model -- what leaves Archicad
@@ -364,16 +363,25 @@ BY_LABEL: dict[str, str] = {
     "Scale": "scale",
     # Site tools
     "Address": "address",
-    "Context Analysis sheet": "site_analysis",
-    "Site Analysis sheet": "site_analysis",
-    "Summary of Controls layout": "subset",
-    "Future Context (what the controls allow next door)": "being_tested",
-    "Context Model in 3D (terrain, blocks, neighbours)": "model",
-    "Set the project location from the address": "address",
+    # The two rows of site outputs: the drawings, and what goes into the
+    # project itself.
+    "Project": "model",
     "Context scale": "scale",
     "Site lands at": "site",
     "Model radius (m)": "radius",
     "Future reach (m)": "radius",
     "Street setback (m)": "setback",
     "Run folder": "run_folder",
+}
+
+#: The site page's six outputs, by the short word on each button. They were
+#: six ticks with a sentence each, keyed above by the sentence; the buttons
+#: say one or two words and keep the drawing the sentence had.
+BY_OUTPUT: dict[str, str] = {
+    "Context": "site_analysis",
+    "Site": "site_analysis",
+    "Controls": "subset",
+    "Future context": "being_tested",
+    "3D context": "model",
+    "Location": "address",
 }

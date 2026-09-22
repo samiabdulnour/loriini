@@ -103,6 +103,12 @@ class ProjectOptions:
 
     storeys: tuple[int, ...] = ()
 
+    storey_indices: tuple[tuple[str, int], ...] = ()
+    """Each named storey with its index, bottom to top, so a storey picked by
+    name on the window can be sent to a command that takes the index -- the
+    shadow fills are placed by index, because that is how Archicad places
+    them. Same order and same storeys as ``storey_names``."""
+
     storey_names: tuple[str, ...] = ()
     """Every storey's name, bottom to top, as Archicad spells it.
 
@@ -341,23 +347,26 @@ def options(port: int) -> ProjectOptions:
                 if isinstance(row, dict) and isinstance(row.get("index"), int)
             )
         ),
+        storey_indices=_storey_indices((storeys or {}).get("stories") or []),
         storey_names=_storey_names((storeys or {}).get("stories") or []),
         top_storey_m=_highest_storey((storeys or {}).get("stories") or []),
         problems=tuple(problems),
     )
 
 
-def _storey_names(rows: object) -> tuple[str, ...]:
-    """Storey names in the order a person reads them: lowest first.
+def _storey_indices(rows: object) -> tuple[tuple[str, int], ...]:
+    """Each named storey and its index, in the order a person reads them:
+    lowest first.
 
     By level rather than by index. The two usually agree, and where they do
     not it is the level that matches the storey settings dialog somebody is
     looking at while they choose.
 
     A storey with no name is skipped rather than given a made-up one: the
-    command line takes a name, and a blank cannot be typed or matched.
+    command line takes a name, and a blank cannot be typed or matched. One
+    with no index is skipped too, since the index is what this is for.
     """
-    named: list[tuple[float, str]] = []
+    named: list[tuple[float, str, int]] = []
     if not isinstance(rows, list):
         return ()
     for row in rows:
@@ -365,9 +374,15 @@ def _storey_names(rows: object) -> tuple[str, ...]:
             continue
         name = str(row.get("name", "")).strip()
         level = row.get("level")
-        if name and isinstance(level, (int, float)):
-            named.append((float(level), name))
-    return tuple(name for _, name in sorted(named))
+        index = row.get("index")
+        if name and isinstance(level, (int, float)) and isinstance(index, int):
+            named.append((float(level), name, index))
+    return tuple((name, index) for _, name, index in sorted(named))
+
+
+def _storey_names(rows: object) -> tuple[str, ...]:
+    """The names alone, in the same order, for the pickers that take one."""
+    return tuple(name for name, _index in _storey_indices(rows))
 
 
 def _highest_storey(rows: object) -> float | None:
