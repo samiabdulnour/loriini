@@ -1962,3 +1962,109 @@ def test_the_palette_argument_is_read_off_the_command_line(argv: list[str], expe
     started afterwards would inherit it.
     """
     assert window.wanted_study(argv) == expected
+
+
+# ---------------------------------------------------------------------------
+# The info box. Two buttons, one box, and the two things it must say.
+# ---------------------------------------------------------------------------
+def _every_word(widget: Any) -> str:
+    """All the text under a widget, as one string.
+
+    The box is built out of forty labels and what matters is that a given
+    sentence reached the screen, not which label carries it.
+    """
+    said = []
+    for child in widget.winfo_children():
+        try:
+            text = child.cget("text")
+        except tk.TclError:  # pragma: no cover - a widget with no text option
+            text = ""
+        if text:
+            said.append(str(text))
+        said.append(_every_word(child))
+    return "\n".join(said)
+
+
+def test_the_info_box_names_every_publisher_and_its_licence(hidden_window: Any) -> None:
+    """The question it exists to answer: whose data is on this sheet, and on
+    what terms. A source the box does not mention is a credit nobody gives."""
+    from sun_study.app import about
+    from sun_study.site.sources import SOURCES
+
+    box = about.show(hidden_window.root)
+    try:
+        said = _every_word(box)
+        for source in SOURCES:
+            assert source.name in said, f"{source.name} is fetched from and not named"
+            assert source.licence in said, f"{source.name} is named without its licence"
+            assert source.terms in said, f"{source.name} is named without its terms"
+    finally:
+        box._close()
+
+
+def test_the_info_box_hands_over_the_credit_rather_than_describing_it(
+    hidden_window: Any,
+) -> None:
+    """Ready to copy, in the publishers' own wording. Retyping it is how a
+    title block ends up crediting 'NSW Spatial' and nobody else."""
+    from sun_study.app import about
+    from sun_study.site.sources import credit_line
+
+    box = about.show(hidden_window.root)
+    try:
+        assert box.credit.get("1.0", "end").strip() == credit_line()
+    finally:
+        box._close()
+
+
+def test_the_info_box_carries_the_licence_and_the_prototype_notice(
+    hidden_window: Any,
+) -> None:
+    """The other half of what it is for, and the notice that is on every
+    sheet, the README and the run bar already."""
+    from sun_study import licence
+    from sun_study.app import about
+    from sun_study.disclaimer import STATUS
+
+    box = about.show(hidden_window.root)
+    try:
+        said = _every_word(box)
+        assert STATUS in said
+        for clause in licence.SUMMARY:
+            assert clause in said
+    finally:
+        box._close()
+
+
+def test_the_site_pages_button_opens_the_box_at_the_registers(hidden_window: Any) -> None:
+    """The question occurs on that page, so the button lands on the answer
+    rather than at the top of a box the person then has to read through."""
+    from sun_study.app import about
+
+    hidden_window._about(about.SOURCES_SECTION)
+    box = about._open
+    assert box is not None
+    try:
+        box.update_idletasks()
+        assert box._scroller.canvas.yview()[0] > 0.0, "it opened at the top"
+    finally:
+        box._close()
+
+
+def test_pressing_it_twice_raises_the_box_rather_than_making_a_second(
+    hidden_window: Any,
+) -> None:
+    """Two copies of an info box is never what anybody meant; the first is
+    simply behind the window."""
+    from sun_study.app import about
+
+    first = about.show(hidden_window.root)
+    try:
+        assert about.show(hidden_window.root) is first
+    finally:
+        first._close()
+    assert about._open is None, "closing it must leave nothing behind to raise"
+
+    second = about.show(hidden_window.root)
+    assert second is not first
+    second._close()

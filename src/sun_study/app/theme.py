@@ -109,6 +109,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: The caption over a group of tabs, and nothing else. Small enough to be
     #: read after the tabs rather than before them.
     small = (FACE, 8) if _has_face(FACE) else ("TkDefaultFont", 8)
+    #: A clickable address. Underlined rather than merely blue: colour alone
+    #: is the one mark a colour-blind reader does not get.
+    link = (FACE, 9, "underline") if _has_face(FACE) else ("TkDefaultFont", 9, "underline")
 
     try:
         root.option_add("*Font", body)
@@ -140,6 +143,12 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: A study's own name, above the fields it needs.
     style.configure("Heading.TLabel", background=SURFACE, foreground=INK, font=heading)
     style.configure("Strong.TLabel", background=SURFACE, foreground=INK, font=strong)
+    #: An address on somebody else's site, in the info box and nowhere else.
+    #: Blue and underlined, because a label that opens a browser when clicked
+    #: has to look unlike the two hundred labels that do nothing -- and blue
+    #: is already the colour of the interface here, so it costs the palette
+    #: nothing to say "this one answers".
+    style.configure("Link.TLabel", background=SURFACE, foreground=BLUE, font=link)
 
     #: The window's surround: the project strip at the top, the run bar at the
     #: bottom, the summary down the left.

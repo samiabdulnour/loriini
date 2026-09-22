@@ -10,6 +10,11 @@ datas = [('C:/Users/SamiAbdulnour/Documents/Adobe/Photoshop/sun-study/assets/lor
 # it is in `excludes` below, and `scripts/make_icons.py` is what needs it.
 # `sun_study.app.icons` looks for them at exactly this path under _MEIPASS.
 datas += [('C:/Users/SamiAbdulnour/Documents/Adobe/Photoshop/sun-study/assets/icons', 'assets/icons')]
+# The licence itself, at the root of the bundle, where `sun_study.licence.file`
+# looks for it. The info box summarises the terms from a constant that is in
+# the executable either way; this is what `Read the full licence` shows, and
+# without it that button is hidden rather than broken.
+datas += [('C:/Users/SamiAbdulnour/Documents/Adobe/Photoshop/sun-study/LICENSE', '.')]
 binaries = []
 hiddenimports = []
 datas += collect_data_files('tzdata')
