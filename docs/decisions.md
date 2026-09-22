@@ -3567,3 +3567,31 @@ has no extension and a Windows double-click answers that with "how do you want
 to open this file". `Loriini.spec` now ships it at the root of the bundle; a
 build without it hides the button rather than breaking it, since the summary is
 a constant in the executable either way.
+
+**And the sheet says it too, in the publishers' words and only for what is on
+it.** A box in the window answers the question for whoever opened the window;
+the drawing leaves the office on its own. So the Context and Site Analysis
+sheets carry the credit along the foot of the map field at 2 mm, and the
+Summary of Controls under the note that already says where its figures came
+from.
+
+What it names is read off the bundle -- `sources_used` on each of the three --
+and not off the list of registers the run meant to ask. Every fetch but the
+site's own fails soft, so a run whose Overpass mirrors were all down draws a
+sheet with no bus routes on it, and a credit to OpenStreetMap there would be a
+claim about a line that is not on the drawing. It cuts the other way as well:
+the aerial is credited only when tiles were placed, ePlanning only when the
+controls answered.
+
+The bus stops are the one case that has to be *recorded* rather than read.
+A `Stop` does not carry its provenance, and the same symbols on the same
+sheet are Transport for NSW's or OpenStreetMap's depending on nothing but
+whether a key was in the environment that morning -- so `stops_from_tfnsw`
+is written into the bundle as the run makes the swap, and saved with it, so
+a sheet redrawn from `--from` credits the run that fetched it rather than the
+machine that is redrawing it.
+
+Valhalla's credit is the engine alone. It routes over OpenStreetMap, so a
+catchment adds both slugs and the line reads `...; © OpenStreetMap
+contributors; Walking catchments: Valhalla (FOSSGIS e.V.).` rather than
+naming the contributors twice in one sentence.

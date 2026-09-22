@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import base64
 import math
+import textwrap
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
@@ -75,7 +76,7 @@ from sun_study.archicad.views import (
     ensure_layer_combination,
     views_for_sources,
 )
-from sun_study.site import curate
+from sun_study.site import curate, sources
 from sun_study.site.arcgis import rings_of
 from sun_study.site.envelope import ADG_SEPARATION, Envelope
 from sun_study.site.geo import (
@@ -141,6 +142,11 @@ BAND_MM = 5.5
 #: Spacing of the heritage hatch lines, on paper.
 HATCH_MM = 2.5
 SMALL_MM = 3.0
+#: The data credit under the map. Smaller than everything else on the sheet
+#: on purpose: it is a statement of provenance, read once by whoever sends
+#: the drawing out, and it must not compete with the drawing for a reader
+#: who is looking at the buildings.
+CREDIT_MM = 2.0
 NEIGHBOUR_MM = 3.0
 SUN_MM = 3.0
 
@@ -1034,7 +1040,51 @@ def _furniture_of_sheet(
     drawing.text(
         "Frame", "N", (tip[0] + nx * drawing.mm(4), tip[1] + ny * drawing.mm(4)), height_mm=LABEL_MM
     )
+    _credit(drawing, bundle, corners)
     return (right + drawing.mm(15), top)
+
+
+def _credit_lines(credit: str, width_mm: float) -> list[str]:
+    """The credit broken into lines that fit ``width_mm`` of paper.
+
+    0.55 of the text height is about what this lettering averages per
+    character; erring narrow costs a second line, which is cheap, while
+    erring wide runs the credit off the sheet, which is not.
+    """
+    return textwrap.wrap(credit, max(40, int(width_mm / (CREDIT_MM * 0.55))))
+
+
+def _credit(drawing: Drawing, bundle: ContextBundle | SiteBundle, corners: Sequence[Point]) -> None:
+    """Whose data this sheet is drawn from, along the foot of the map.
+
+    Under the frame rather than in the legend: the legend says what a colour
+    means and is read while looking at the map, and this is read once, by
+    whoever sends the sheet out. It is the standard place for a credit on a
+    map, which is the other reason.
+
+    What it names is what the bundle actually holds -- see ``sources_used``.
+    Every fetch but the site's own fails soft, so crediting the full list
+    would put OpenStreetMap on a sheet whose Overpass mirrors were all down
+    that morning, and a credit is a statement about where a line came from.
+    """
+    line = sources.credit_line(sources.named(bundle.sources_used()))
+    if not line:  # pragma: no cover - a bundle with nothing in it at all
+        return
+    left = min(x for x, _ in corners)
+    bottom = min(y for _, y in corners)
+    # Measured off the frame rather than assumed to be the A1 map field: the
+    # width in ground metres divided by a paper millimetre is the width in
+    # paper millimetres, whatever scale this sheet chose for itself.
+    width_mm = (max(x for x, _ in corners) - left) / drawing.mm(1.0)
+    for row, part in enumerate(_credit_lines(line, width_mm)):
+        drawing.text(
+            "Frame",
+            part,
+            (left, bottom - drawing.mm(6) - row * drawing.mm(CREDIT_MM * 1.6)),
+            height_mm=CREDIT_MM,
+            justification="Left",
+            colour=CADASTRE_GREY,
+        )
 
 
 def _aerial(drawing: Drawing, bundle: ContextBundle | SiteBundle, frame: Frame) -> bool:
@@ -2098,6 +2148,19 @@ def summary_drawing(bundle: SummaryBundle, scale: float = SUMMARY_SCALE) -> Draw
         height_mm=SMALL_MM,
         justification="Left",
     )
+    # The same credit the two sheets carry, under the same note that already
+    # says where the figures came from. A table of somebody else's numbers is
+    # as much a produced work as a map of their lines.
+    credit = sources.credit_line(sources.named(bundle.sources_used()))
+    for row, part in enumerate(_credit_lines(credit, 372.0)):
+        drawing.text(
+            "Table",
+            part,
+            (label_x, y - mm(13) - row * mm(4)),
+            height_mm=CREDIT_MM,
+            justification="Left",
+            colour=CADASTRE_GREY,
+        )
     return drawing
 
 

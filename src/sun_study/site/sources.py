@@ -36,9 +36,33 @@ entries where it matters.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
-__all__ = ["SOURCES", "Source", "credit_line", "needing_a_key"]
+__all__ = [
+    "EPLANNING",
+    "IMAGERY",
+    "OSM",
+    "SOURCES",
+    "SPATIAL",
+    "TFNSW",
+    "VALHALLA",
+    "Source",
+    "credit_line",
+    "named",
+    "needing_a_key",
+]
+
+#: What a bundle calls a source when it says which ones its own contents came
+#: from. Short names rather than the publishers' own, because they are written
+#: down in ``pipeline`` and read back out of saved runs: a title that gains a
+#: department's new name must not orphan last month's bundle.
+SPATIAL = "nsw-spatial"
+EPLANNING = "nsw-eplanning"
+IMAGERY = "nsw-imagery"
+OSM = "openstreetmap"
+VALHALLA = "valhalla"
+TFNSW = "tfnsw"
 
 
 @dataclass(frozen=True)
@@ -50,6 +74,9 @@ class Source:
     NSW both do, and neither is the form anybody would guess at.
     """
 
+    #: How the rest of the program refers to this source: one of the
+    #: constants above, stable across a rename of the service.
+    slug: str
     #: What the service is called, as the endpoint and the documentation call
     #: it, so that a line on a sheet can be traced back to a URL in ``site``.
     name: str
@@ -70,7 +97,7 @@ class Source:
     note: str = ""
     #: The environment variable holding this service's key, where it needs
     #: one. Empty for the five that are open.
-    key: str = ""
+    key_var: str = ""
 
 
 #: Every source a site analysis run can touch, in the order the run meets
@@ -79,6 +106,7 @@ class Source:
 #: somebody else's generosity rather than a government product.
 SOURCES: tuple[Source, ...] = (
     Source(
+        slug=SPATIAL,
         name="NSW Spatial Services (Spatial Collaboration Portal)",
         publisher="Spatial Services, NSW Department of Customer Service",
         provides=(
@@ -96,6 +124,7 @@ SOURCES: tuple[Source, ...] = (
         ),
     ),
     Source(
+        slug=EPLANNING,
         name="NSW ePlanning (EPI Primary Planning Layers)",
         publisher="NSW Department of Planning, Housing and Infrastructure",
         provides=(
@@ -115,6 +144,7 @@ SOURCES: tuple[Source, ...] = (
         ),
     ),
     Source(
+        slug=IMAGERY,
         name="NSW SIX Maps imagery",
         publisher="Spatial Services, NSW Department of Customer Service",
         provides=(
@@ -134,6 +164,7 @@ SOURCES: tuple[Source, ...] = (
         ),
     ),
     Source(
+        slug=OSM,
         name="OpenStreetMap, through the public Overpass mirrors",
         publisher="OpenStreetMap contributors",
         provides=(
@@ -155,12 +186,13 @@ SOURCES: tuple[Source, ...] = (
         ),
     ),
     Source(
+        slug=VALHALLA,
         name="Valhalla routing (valhalla1.openstreetmap.de)",
         publisher="FOSSGIS e.V., on OpenStreetMap data",
         provides="The 5 and 10 minute walking catchments on the Context Analysis sheet.",
         licence="Routing engine: MIT. Underlying data: ODbL, as OpenStreetMap above.",
         terms="https://valhalla.openstreetmap.de/",
-        credit="Walking catchments: Valhalla (FOSSGIS e.V.), © OpenStreetMap contributors",
+        credit="Walking catchments: Valhalla (FOSSGIS e.V.)",
         note=(
             "A public demo server run on somebody else's goodwill, under the "
             "same fair-use expectation as the OSRM and Nominatim demos. One "
@@ -169,6 +201,7 @@ SOURCES: tuple[Source, ...] = (
         ),
     ),
     Source(
+        slug=TFNSW,
         name="Transport for NSW Open Data Hub",
         publisher="Transport for NSW",
         provides=(
@@ -184,26 +217,46 @@ SOURCES: tuple[Source, ...] = (
             "opendata.transport.nsw.gov.au, and is read out of the "
             "environment -- it is never written into a project or a run folder."
         ),
-        key="TFNSW_API_KEY",
+        key_var="TFNSW_API_KEY",
     ),
 )
 
 
-def credit_line(sources: tuple[Source, ...] = SOURCES) -> str:
-    """The one line that goes on a drawing, with each credit said once.
+def named(slugs: Iterable[str]) -> tuple[Source, ...]:
+    """The sources those slugs name, in this list's order.
+
+    The list's order and not the caller's, so two sheets that used the same
+    registers in a different sequence still credit them the same way round --
+    and a slug nothing answers to is dropped rather than raising, because a
+    saved bundle from an older run may name a source that has since gone.
+    """
+    wanted = set(slugs)
+    return tuple(source for source in SOURCES if source.slug in wanted)
+
+
+def credit_line(sources: Iterable[Source] | None = None) -> str:
+    """The line that goes on a drawing, with each credit said once.
 
     De-duplicated rather than listed per service: Spatial Services answers for
     the cadastre, the contours and the aerial, and a sheet that credited it
-    three times would read as a mistake. Order is the list's, which is the
-    order of the run, so the line reads from the site outwards.
+    three times would read as a mistake.
+
+    ``sources`` is what a particular sheet was drawn from -- see the bundles'
+    ``sources_used`` -- and the default is all of them, which is what the info
+    box shows, because that box is about the tool rather than about one run.
+    Crediting a publisher whose service was down that morning is not a
+    courtesy, it is a claim about where a line came from, so the sheets pass
+    their own.
     """
     seen: list[str] = []
-    for source in sources:
+    for source in SOURCES if sources is None else sources:
         if source.credit not in seen:
             seen.append(source.credit)
+    if not seen:  # pragma: no cover - a sheet with nothing on it
+        return ""
     return "Site and context data: " + "; ".join(seen) + "."
 
 
 def needing_a_key() -> tuple[Source, ...]:
     """The sources that answer nothing without a key in the environment."""
-    return tuple(source for source in SOURCES if source.key)
+    return tuple(source for source in SOURCES if source.key_var)

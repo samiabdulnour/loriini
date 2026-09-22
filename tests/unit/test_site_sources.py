@@ -109,7 +109,7 @@ def test_the_one_source_needing_a_key_is_the_one_that_needs_a_key() -> None:
     """And it names the variable, because that is the whole of the fix."""
     keyed = needing_a_key()
     assert [source.name for source in keyed] == ["Transport for NSW Open Data Hub"]
-    assert keyed[0].key == "TFNSW_API_KEY"
+    assert keyed[0].key_var == "TFNSW_API_KEY"
 
 
 def test_the_share_alike_one_says_so() -> None:

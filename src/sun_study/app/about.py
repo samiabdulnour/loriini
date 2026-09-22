@@ -234,10 +234,10 @@ class About(tk.Toplevel):
                     row=inner, column=0, sticky="w", pady=(3, 0)
                 )
                 inner += 1
-            if source.key:
+            if source.key_var:
                 ttk.Label(
                     block,
-                    text=f"Needs a free key in {source.key}.",
+                    text=f"Needs a free key in {source.key_var}.",
                     style="Hint.TLabel",
                     wraplength=WRAP,
                 ).grid(row=inner, column=0, sticky="w", pady=(3, 0))
