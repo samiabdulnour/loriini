@@ -16,7 +16,7 @@ import sys
 from dataclasses import replace
 from itertools import pairwise
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -120,6 +120,7 @@ def test_the_facade_run_forces_the_zone_layers_into_the_export(hidden_window: An
     """Without an IfcSpace there is nothing to fit the skin onto the building
     against, and no IFC combination shows the zone layers -- the failure this
     produces is 'the skin cannot be placed', several minutes in."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     (facade,) = hidden_window.jobs()
     assert facade.args[0] == "massing"
     assert flag(facade.args, "--require-layer") == ["06 | Zone.Balcony", "06 | Zone.Units"]
@@ -130,6 +131,7 @@ def test_an_annotation_layer_that_happens_to_hold_a_zone_is_not_exported(
 ) -> None:
     """``05 | Dims/Notes.DA`` carries 37 Zones on the reference project. They
     are somebody's schedule, not the building."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     (facade,) = hidden_window.jobs()
     assert "05 | Dims/Notes.DA" not in flag(facade.args, "--require-layer")
 
@@ -137,6 +139,7 @@ def test_an_annotation_layer_that_happens_to_hold_a_zone_is_not_exported(
 def test_the_floors_tick_is_what_puts_the_decks_in(hidden_window: Any) -> None:
     """Horizontal faces take more sun than any wall, so a study without them
     shows the least-lit half of the building."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     (with_floors,) = hidden_window.jobs()
     assert "--model-flat" in with_floors.args
 
@@ -162,12 +165,14 @@ def test_the_plans_run_files_its_sheets_where_the_practice_keeps_them(
 def test_the_chosen_archicad_is_the_one_the_study_runs_against(hidden_window: Any) -> None:
     """Two projects open is ordinary, and each instance gets its own port, so
     the default is right only for whichever started first."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.instance.current(1)
     (facade,) = hidden_window.jobs()
     assert flag(facade.args, "--port") == ["19724"]
 
 
 def test_both_ticked_runs_both_in_order(hidden_window: Any) -> None:
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     assert [job.args[0] for job in hidden_window.jobs()] == ["massing", "archicad-run"]
 
@@ -417,6 +422,7 @@ def test_the_tables_folder_can_be_browsed_for(hidden_window: Any) -> None:
 
 
 def test_all_three_studies_run_in_order(hidden_window: Any) -> None:
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     hidden_window.do_communal.set(True)
     assert [job.args[0] for job in hidden_window.jobs()] == [
@@ -431,6 +437,19 @@ def test_nothing_ticked_asks_for_nothing(hidden_window: Any) -> None:
     hidden_window.do_plans.set(False)
     hidden_window.do_communal.set(False)
     assert hidden_window.jobs() == []
+
+
+def test_the_basic_preset_queues_no_study(hidden_window: Any) -> None:
+    """What the window opens with, and what Forget goes back to. A study
+    ticked before anybody chose it runs because it went unnoticed -- and the
+    facade study, which used to be the one, is the longest of them."""
+    assert hidden_window.jobs() == [], "a study is queued on a window nobody has touched"
+
+    hidden_window.do_facade.set(True)
+    hidden_window._forget()
+
+    assert not hidden_window.do_facade.get()
+    assert hidden_window.jobs() == [], "Forget left a study queued"
 
 
 def test_every_control_explains_itself(hidden_window: Any) -> None:
@@ -1322,6 +1341,7 @@ def test_the_living_room_glazing_is_only_named_when_it_is_set(hidden_window: Any
 def test_both_runs_are_told_the_same_layer_prefix(hidden_window: Any) -> None:
     """One field, and every layer, view and sheet either run leaves behind
     carries it -- so all of it can be found, and deleted, in one search."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     facade, plans = hidden_window.jobs()
 
@@ -1336,6 +1356,7 @@ def test_the_archicad_wait_reaches_both_runs_in_seconds(hidden_window: Any) -> N
     and there was no way to say so from the window -- the run stopped partway,
     having already done the slow part.
     """
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     hidden_window.wait_min.delete(0, "end")
     hidden_window.wait_min.insert(0, "45")
@@ -1352,6 +1373,7 @@ def test_a_wait_that_is_not_a_number_falls_back_rather_than_stopping_the_study(
     """A mistyped wait is not a reason to refuse a run. The command line's own
     default is right for every project but the largest, so it is what an
     unreadable field means."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.wait_min.delete(0, "end")
     hidden_window.wait_min.insert(0, typed)
     (facade,) = hidden_window.jobs()
@@ -1369,6 +1391,7 @@ def test_reading_the_project_does_not_wait_the_exports_wait() -> None:
 def test_another_offices_numbering_reaches_the_command_line(hidden_window: Any) -> None:
     """``14`` is right for a project whose layer groups end at 13. The next
     office numbers differently, which is the whole reason for the field."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.prefix_solar.delete(0, "end")
     hidden_window.prefix_solar.insert(0, "ZZ |")
     (facade,) = hidden_window.jobs()
@@ -1465,6 +1488,7 @@ def test_a_zone_is_offered_under_both_of_the_names_archicad_gives_it(
         return ((0.0, 0.0), (side, 0.0), (side, side), (0.0, side))
 
     monkeypatch.setattr(read, "layer_names", lambda _c: {4: "06 | Zone.Units"})
+    monkeypatch.setattr(read, "zone_categories", lambda _c: {})
     monkeypatch.setattr(
         read,
         "zones",
@@ -1489,6 +1513,63 @@ def test_a_zone_is_offered_under_both_of_the_names_archicad_gives_it(
     assert "LOOSE" not in by_label
 
 
+def test_each_zone_name_says_its_zone_category(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``G08`` and ``BY`` are codes to anybody who did not model the project;
+    ``Apartment`` and ``Balcony`` are not. The category most of a name's
+    zones carry is shown beside it in the chooser."""
+    from sun_study.archicad import read
+    from sun_study.archicad.read import ArchicadZone
+
+    square = ((0.0, 0.0), (8.0, 0.0), (8.0, 8.0), (0.0, 8.0))
+    small = ((0.0, 0.0), (3.0, 0.0), (3.0, 3.0), (0.0, 3.0))
+    monkeypatch.setattr(read, "layer_names", lambda _c: {4: "06 | Zone.Units"})
+    monkeypatch.setattr(
+        read, "zone_categories", lambda _c: {"CAT-A": "Apartment", "CAT-B": "Balcony"}
+    )
+    monkeypatch.setattr(
+        read,
+        "zones",
+        lambda _c: (
+            ArchicadZone("a", "", "G08", outline=square, layer_index=4, category_guid="cat-a"),
+            ArchicadZone("b", "", "G08", outline=square, layer_index=4, category_guid="CAT-A"),
+            ArchicadZone("c", "", "BY", outline=small, layer_index=4, category_guid="CAT-B"),
+            ArchicadZone("d", "", "SC", outline=small, layer_index=4),
+        ),
+    )
+
+    _, kinds = probe._zones_by_layer(object())  # type: ignore[arg-type]
+    by_label = {kind.label: kind for kind in kinds}
+
+    assert by_label["G08"].category == "Apartment", "GUIDs are matched without regard to case"
+    assert by_label["BY"].category == "Balcony"
+    assert by_label["SC"].category == ""
+    assert "Apartment" in by_label["G08"].described()
+    assert by_label["SC"].described().startswith("SC (")
+
+
+def test_a_project_whose_categories_cannot_be_read_still_offers_its_zones(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sun_study.archicad import read
+    from sun_study.archicad.connection import ArchicadError
+    from sun_study.archicad.read import ArchicadZone
+
+    def refuse(_c: object) -> dict[str, str]:
+        raise ArchicadError("no ZoneCategory here")
+
+    monkeypatch.setattr(read, "layer_names", lambda _c: {4: "06 | Zone.Units"})
+    monkeypatch.setattr(read, "zone_categories", refuse)
+    monkeypatch.setattr(
+        read,
+        "zones",
+        lambda _c: (ArchicadZone("a", "", "G08", outline=((0, 0), (8, 0), (8, 8)), layer_index=4),),
+    )
+
+    _, kinds = probe._zones_by_layer(object())  # type: ignore[arg-type]
+
+    assert [kind.label for kind in kinds] == ["G08"]
+
+
 def test_the_biggest_zones_are_listed_first_because_they_are_what_is_wanted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1501,6 +1582,7 @@ def test_the_biggest_zones_are_listed_first_because_they_are_what_is_wanted(
         return ((0.0, 0.0), (side, 0.0), (side, side), (0.0, side))
 
     monkeypatch.setattr(read, "layer_names", lambda _c: {1: "06 | Zone.Units"})
+    monkeypatch.setattr(read, "zone_categories", lambda _c: {})
     monkeypatch.setattr(
         read,
         "zones",
@@ -1820,6 +1902,7 @@ def test_a_window_opened_afterwards_is_already_filled_in(
     """The whole point is what happens tomorrow morning, so the reopening is
     what is tested: a second window over the same fake project, reading the
     file the first one wrote."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.livable.insert(0, "_L")
     hidden_window.wait_min.delete(0, "end")
     hidden_window.wait_min.insert(0, "45")
@@ -2014,6 +2097,140 @@ def test_an_empty_search_offers_everything() -> None:
     assert window.matching(names, "|| //") == names, "punctuation alone narrows nothing"
 
 
+# -- the zone rows' Add: it opens whatever the read found ----------------------
+
+
+class _Recorded:
+    """Stands in for the chooser: remembers how it was opened, answers with
+    what it is told to."""
+
+    opened: ClassVar[list[dict[str, Any]]] = []
+    answer: ClassVar[list[str] | None] = None
+
+    def __init__(self, parent: Any, **kwargs: Any) -> None:
+        type(self).opened.append(kwargs)
+        self.result = type(self).answer
+
+
+@pytest.fixture
+def recorded(monkeypatch: pytest.MonkeyPatch, hidden_window: Any) -> type[_Recorded]:
+    _Recorded.opened = []
+    _Recorded.answer = None
+    monkeypatch.setattr(window, "LayerChooser", _Recorded)
+    monkeypatch.setattr(hidden_window.root, "wait_window", lambda _dialog: None)
+    return _Recorded
+
+
+def test_the_zone_add_opens_even_when_the_read_found_no_zones_there(
+    hidden_window: Any, recorded: type[_Recorded]
+) -> None:
+    """It used to write one line at the foot of the window and do nothing,
+    which from where the button is reads as a button that does not work.
+    It opens now, says why the list is empty, and takes a typed name."""
+    hidden_window.apartments.set("01 | Wall.External")  # carries no Zones
+    recorded.answer = ["G08"]
+
+    hidden_window._choose_zone_names(
+        hidden_window.apartment_names, hidden_window.apartments, "Apartment zones"
+    )
+
+    assert len(recorded.opened) == 1, "the chooser did not open"
+    opened = recorded.opened[0]
+    assert opened["typed"] is True
+    assert opened["available"] == []
+    assert "01 | Wall.External" in opened["empty"], "it does not say which layer was empty"
+    assert "Refresh" in opened["empty"]
+    assert hidden_window._listed(hidden_window.apartment_names) == ["G08"]
+
+
+def test_the_balcony_add_opens_the_same_way(hidden_window: Any, recorded: type[_Recorded]) -> None:
+    """Both rows are the same row, and both were reported broken."""
+    hidden_window.balconies.set("06 | Zone.Units")
+    recorded.answer = ["BY"]
+
+    hidden_window._choose_zone_names(
+        hidden_window.balcony_names, hidden_window.balconies, "Balcony zones"
+    )
+
+    opened = recorded.opened[0]
+    assert "BY" in opened["available"], "the zones the read did find are offered"
+    assert opened["empty"] == "", "nothing to apologise for when the list is full"
+    assert hidden_window._listed(hidden_window.balcony_names) == ["BY"]
+
+
+def test_a_read_that_failed_is_named_rather_than_blamed_on_the_layer(
+    hidden_window: Any, recorded: type[_Recorded]
+) -> None:
+    hidden_window.options = replace(
+        hidden_window.options, zone_kinds=(), problems=("zones: Archicad did not answer",)
+    )
+    hidden_window.apartments.set("06 | Zone.Units")
+
+    hidden_window._choose_zone_names(
+        hidden_window.apartment_names, hidden_window.apartments, "Apartment zones"
+    )
+
+    assert "Archicad did not answer" in recorded.opened[0]["empty"]
+
+
+def test_without_a_layer_the_zone_add_says_so_where_the_button_is(
+    monkeypatch: pytest.MonkeyPatch, hidden_window: Any, recorded: type[_Recorded]
+) -> None:
+    from tkinter import messagebox
+
+    said: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        messagebox, "showinfo", lambda title, message, **_: said.append((title, message))
+    )
+    hidden_window.apartments.set("")
+
+    hidden_window._choose_zone_names(
+        hidden_window.apartment_names, hidden_window.apartments, "Apartment zones"
+    )
+
+    assert not recorded.opened, "nothing to list names from without a layer"
+    assert said and "layer" in said[0][1].lower()
+
+
+def test_a_typed_zone_name_is_added_ticked_and_spelt_as_the_project_spells_it(
+    hidden_window: Any,
+) -> None:
+    chooser = window.LayerChooser(
+        hidden_window.root, title="Zones", hint="", available=["G08"], chosen=[], typed=True
+    )
+    assert chooser.typed is not None
+    chooser.typed.insert(0, "  g08 ")
+    chooser._add_typed()
+    chooser.typed.insert(0, "SC  1")
+    chooser._add_typed()
+    chooser._accept()
+
+    assert chooser.result == ["G08", "SC 1"]
+
+
+def test_a_chosen_zone_name_the_list_lacks_is_kept_not_dropped(hidden_window: Any) -> None:
+    """A saved name the read did not see is still what the office meant, and
+    pressing Use these must not quietly take it away."""
+    chooser = window.LayerChooser(
+        hidden_window.root, title="Zones", hint="", available=["BY"], chosen=["G08"], typed=True
+    )
+    chooser._accept()
+
+    assert chooser.result == ["G08"]
+
+
+def test_a_layer_list_still_drops_what_the_project_does_not_have(hidden_window: Any) -> None:
+    """Layers are the other way round on purpose: a layer typed or saved
+    wrongly is a study that measures nothing, so it goes."""
+    chooser = window.LayerChooser(
+        hidden_window.root, title="Layers", hint="", available=["01 | Core"], chosen=["gone"]
+    )
+    assert chooser.typed is None
+    chooser._accept()
+
+    assert chooser.result == []
+
+
 # -- the chooser opening where it was left ---------------------------------
 
 
@@ -2096,6 +2313,7 @@ def test_storeys_that_will_not_read_leave_the_pickers_alone(hidden_window: Any) 
 
 def test_a_chosen_band_becomes_the_two_storey_flags(hidden_window: Any) -> None:
     """Either end may be left open, and both open is the whole model."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.storey_from.set("AHD")
     hidden_window.storey_to.set("ROOF")
     assert hidden_window._band_args() == [
@@ -2200,6 +2418,7 @@ def test_the_shadow_study_sends_only_what_was_filled_in(hidden_window: Any) -> N
 
 
 def test_the_shadow_study_runs_after_the_others(hidden_window: Any) -> None:
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     hidden_window.do_communal.set(True)
     hidden_window.do_shadows.set(True)
@@ -2300,6 +2519,7 @@ def test_a_lit_day_reaches_the_three_solar_studies_and_no_other_page(
     diagram each have a box of their own on their own page, and neither
     hears this one: a day lit for the apartments no longer quietly runs
     the sun views on it too."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     hidden_window.do_communal.set(True)
     hidden_window.do_shadows.set(True)
@@ -2396,6 +2616,7 @@ def test_several_ticked_days_run_each_tool_once_per_day(hidden_window: Any) -> N
     Each run carries its own date, so the sets stand beside each other in the
     project rather than the second replacing the first -- and the queued jobs
     say which day they are for, or two identical labels would be waiting."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.days["equinox"].set(True)
 
     jobs = hidden_window.jobs()
@@ -2407,6 +2628,7 @@ def test_several_ticked_days_run_each_tool_once_per_day(hidden_window: Any) -> N
 def test_the_rulesets_own_day_sends_nothing_so_the_names_stay_as_they_were(
     hidden_window: Any,
 ) -> None:
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     facade, plans = hidden_window.jobs()
     assert "--date" not in facade.args
@@ -2422,6 +2644,7 @@ def test_a_custom_day_runs_as_well_as_the_ticks_and_is_judged_by_the_command(
     hidden_window: Any,
 ) -> None:
     """As well as, not instead of: the usual pair plus one is three runs."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.custom_day.insert(0, "9-22")
     jobs = hidden_window.jobs()
     assert [flag(job.args, "--date") for job in jobs] == [[], ["09-22"]]

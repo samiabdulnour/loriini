@@ -233,6 +233,13 @@ class ArchicadZone:
     apartments all at once, all named the same, and only the layer separates
     them.
     """
+    category_guid: str | None = None
+    """The Zone Category attribute's GUID, which ``zone_categories`` names.
+
+    Kept so a picker can say what a zone *is* in the office's own words --
+    ``Apartment``, ``Balcony``, ``Circulation`` -- beside the name and number,
+    which on a real project are often a code (``G08``, ``BY``) that means
+    nothing to the person who did not model it."""
 
     @property
     def label(self) -> str:
@@ -618,6 +625,10 @@ def _outline(points: Any) -> tuple[tuple[float, float], ...]:
     return tuple(corners) if len(corners) >= 3 else ()
 
 
+#: How many Zones' details are asked for in one request.
+ZONE_BATCH = 300
+
+
 def zones(connection: ArchicadConnection) -> tuple[ArchicadZone, ...]:
     """Every Zone in the project, with its name and number.
 
@@ -630,16 +641,25 @@ def zones(connection: ArchicadConnection) -> tuple[ArchicadZone, ...]:
     if not guids:
         return ()
 
-    details = connection.run_tapir(
-        "GetDetailsOfElements",
-        {"elements": [{"elementId": {"guid": guid}} for guid in guids]},
-    )
-    rows = details.get("detailsOfElements") if isinstance(details, dict) else None
-    if not isinstance(rows, list) or len(rows) != len(guids):
-        raise ArchicadError(
-            f"GetDetailsOfElements returned {len(rows) if isinstance(rows, list) else 'no'} "
-            f"rows for {len(guids)} zones; the lists must be parallel."
+    # In batches. One request for every Zone's outline was one wait against
+    # one timeout, and a project with 1341 Zones asked for all of them at
+    # once from a window that gives each read a minute; a read that runs out
+    # of time loses every Zone, which is how a picker comes to offer none.
+    rows: list[Any] = []
+    for start in range(0, len(guids), ZONE_BATCH):
+        part = guids[start : start + ZONE_BATCH]
+        details = connection.run_tapir(
+            "GetDetailsOfElements",
+            {"elements": [{"elementId": {"guid": guid}} for guid in part]},
         )
+        found_rows = details.get("detailsOfElements") if isinstance(details, dict) else None
+        if not isinstance(found_rows, list) or len(found_rows) != len(part):
+            raise ArchicadError(
+                f"GetDetailsOfElements returned "
+                f"{len(found_rows) if isinstance(found_rows, list) else 'no'} "
+                f"rows for {len(part)} zones; the lists must be parallel."
+            )
+        rows.extend(found_rows)
 
     result: list[ArchicadZone] = []
     for guid, row in zip(guids, rows, strict=True):
@@ -651,6 +671,8 @@ def zones(connection: ArchicadConnection) -> tuple[ArchicadZone, ...]:
         detail = row.get("details") or {}
         floor = row.get("floorIndex")
         layer = row.get("layerIndex")
+        category = detail.get("categoryAttributeId")
+        category_guid = category.get("guid") if isinstance(category, dict) else None
         result.append(
             ArchicadZone(
                 guid=guid,
@@ -661,9 +683,31 @@ def zones(connection: ArchicadConnection) -> tuple[ArchicadZone, ...]:
                 hole_count=len(detail.get("holes") or []),
                 arc_count=len(detail.get("polygonArcs") or []),
                 layer_index=int(layer) if isinstance(layer, (int, float)) else None,
+                category_guid=str(category_guid) if category_guid else None,
             )
         )
     return tuple(sorted(result, key=lambda zone: (zone.number, zone.name, zone.guid)))
+
+
+def zone_categories(connection: ArchicadConnection) -> dict[str, str]:
+    """Zone Category GUID -> its name, for saying what each Zone is.
+
+    Keyed by GUID because that is what a Zone's details carry. Compared upper
+    case: Archicad writes GUIDs upper case in one place and lower in another,
+    and a mismatch on case alone would name every zone as uncategorised.
+    """
+    response = connection.run_tapir("GetAttributesByType", {"attributeType": "ZoneCategory"})
+    listed = response.get("attributes") if isinstance(response, dict) else None
+    found: dict[str, str] = {}
+    for attribute in listed or []:
+        if not isinstance(attribute, dict):
+            continue
+        ident = attribute.get("attributeId")
+        guid = ident.get("guid") if isinstance(ident, dict) else None
+        name = str(attribute.get("name", "")).strip()
+        if guid and name:
+            found[str(guid).upper()] = name
+    return found
 
 
 def storey_level(connection: ArchicadConnection, name: str) -> float:

@@ -693,6 +693,64 @@ def test_zones_refuse_a_details_list_of_the_wrong_length() -> None:
         zones(connection)
 
 
+def test_zones_are_read_in_batches_so_one_timeout_does_not_lose_them_all() -> None:
+    """A project of 1341 Zones asked for every outline in one request, under
+    the window's one-minute read; a request that ran out of time lost every
+    Zone, and the zone pickers then had nothing to offer."""
+    from sun_study.archicad.read import ZONE_BATCH
+
+    count = ZONE_BATCH + 7
+    row = {"floorIndex": 0, "layerIndex": 3, "details": {"name": "Unit", "numberStr": "A"}}
+    connection, transport = connect(
+        {
+            "GetElementsByType": {
+                "elements": [{"elementId": {"guid": f"g{i:04d}"}} for i in range(count)]
+            },
+            "GetDetailsOfElements": Sequential(
+                {"detailsOfElements": [row] * ZONE_BATCH},
+                {"detailsOfElements": [row] * 7},
+            ),
+        }
+    )
+
+    found = zones(connection)
+
+    asked = transport.all_parameters_for("GetDetailsOfElements")
+    assert [len(one["elements"]) for one in asked] == [ZONE_BATCH, 7]
+    assert len(found) == count
+
+
+def test_a_zone_carries_its_category_and_the_categories_are_named() -> None:
+    from sun_study.archicad.read import zone_categories
+
+    connection, _ = connect(
+        {
+            "GetElementsByType": {"elements": [{"elementId": {"guid": "z1"}}]},
+            "GetDetailsOfElements": {
+                "detailsOfElements": [
+                    {
+                        "layerIndex": 3,
+                        "details": {
+                            "name": "Unit",
+                            "numberStr": "G08",
+                            "categoryAttributeId": {"guid": "ab-12"},
+                        },
+                    }
+                ]
+            },
+            "GetAttributesByType": {
+                "attributes": [
+                    {"attributeId": {"guid": "AB-12"}, "index": 5, "name": "Apartment"},
+                    {"attributeId": {"guid": "CD-34"}, "index": 6, "name": "  "},
+                ]
+            },
+        }
+    )
+
+    assert zones(connection)[0].category_guid == "ab-12"
+    assert zone_categories(connection) == {"AB-12": "Apartment"}
+
+
 def test_no_zones_short_circuits_before_asking_for_details() -> None:
     connection, transport = connect({"GetElementsByType": {"elements": []}})
     assert zones(connection) == ()

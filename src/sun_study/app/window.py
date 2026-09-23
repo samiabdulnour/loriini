@@ -466,11 +466,26 @@ class LayerChooser(tk.Toplevel):
         available: Sequence[str],
         chosen: Sequence[str],
         describe: Mapping[str, str] | None = None,
+        typed: bool = False,
+        empty: str = "",
     ) -> None:
         """``describe`` is what a row *reads* as, where the name alone does not
         say enough -- a zone name means little without its size, and ``BY``
         beside ``12 zones, 11 m2`` is a balcony to anybody. The value ticked is
         still the name, so what the caller gets back is what the study takes.
+
+        ``typed`` adds a box for a name the list does not hold. Zone names
+        only: a layer typed wrongly is a study that measures nothing, which
+        is why layers are ticked, but a zone name is exactly what somebody
+        reads off the plan, and a project read that found no Zones on the
+        layer -- a hidden storey, a read that timed out, zones drawn since --
+        otherwise leaves the Add button with nothing to offer and nothing to
+        do. It also keeps names already chosen that the list lacks, rather
+        than dropping them on the way out: a saved zone name the read did not
+        see is still what the office meant.
+
+        ``empty`` is what the list says when there is nothing in it, so the
+        dialog explains itself instead of opening onto a blank pane.
         """
         super().__init__(parent)
         self.title(title)
@@ -483,10 +498,15 @@ class LayerChooser(tk.Toplevel):
         self.result: list[str] | None = None
 
         self._available = list(available)
+        if typed:
+            for name in chosen:
+                if name not in self._available:
+                    self._available.append(name)
         self._describe = dict(describe or {})
+        self._empty = empty
         #: Ticked, kept as a set across filtering: narrowing the list must not
         #: quietly untick what has scrolled out of sight.
-        self._ticked: set[str] = {name for name in chosen if name in set(available)}
+        self._ticked: set[str] = {name for name in chosen if name in set(self._available)}
         self._boxes: dict[str, tk.BooleanVar] = {}
 
         outer = ttk.Frame(self, padding=PAD)
@@ -517,15 +537,31 @@ class LayerChooser(tk.Toplevel):
         self.count = ttk.Label(outer, text="", foreground=HINT)
         self.count.grid(row=3, column=0, sticky="w")
 
+        #: The box for a name the list does not hold; ``None`` for layers.
+        self.typed: ttk.Entry | None = None
+        if typed:
+            own = ttk.Frame(outer)
+            own.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+            own.columnconfigure(1, weight=1)
+            ttk.Label(own, text="Not listed").grid(row=0, column=0, padx=(0, 6))
+            self.typed = ttk.Entry(own)
+            self.typed.grid(row=0, column=1, sticky="ew")
+            self.typed.bind("<Return>", lambda _event: self._add_typed())
+            ttk.Button(own, text="Add name", command=self._add_typed).grid(
+                row=0, column=2, padx=(6, 0)
+            )
+
         buttons = ttk.Frame(outer)
-        buttons.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        buttons.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         buttons.columnconfigure(0, weight=1)
         ttk.Button(buttons, text="Clear all", command=self._clear).grid(row=0, column=0, sticky="w")
         ttk.Button(buttons, text="Cancel", command=self._close).grid(row=0, column=1, padx=6)
         ttk.Button(buttons, text="Use these", command=self._accept).grid(row=0, column=2)
 
         self._repaint()
-        self.query.focus_set()
+        # Straight to the box that can do something: with nothing listed the
+        # search has nothing to search.
+        (self.typed if self.typed is not None and not self._available else self.query).focus_set()
         self.bind("<Escape>", lambda _e: self._close())
         # The window manager's own X, which goes nowhere near the buttons.
         self.protocol("WM_DELETE_WINDOW", self._close)
@@ -535,6 +571,10 @@ class LayerChooser(tk.Toplevel):
         for child in self._list.winfo_children():
             child.destroy()
         self._boxes.clear()
+        if not self._available and self._empty:
+            ttk.Label(self._list, text=self._empty, foreground=HINT, wraplength=460).grid(
+                row=0, column=0, sticky="w"
+            )
         for index, name in enumerate(matching(self._available, self.query.get())):
             state = tk.BooleanVar(value=name in self._ticked)
             self._boxes[name] = state
@@ -555,6 +595,24 @@ class LayerChooser(tk.Toplevel):
 
     def _clear(self) -> None:
         self._ticked.clear()
+        self._repaint()
+
+    def _add_typed(self) -> None:
+        """Put a typed name in the list, ticked. Spacing tidied, case kept:
+        the study matches zone names without regard to case, and the chip
+        should read the way it was typed."""
+        if self.typed is None:
+            return
+        name = " ".join(self.typed.get().split())
+        if not name:
+            return
+        known = {entry.casefold(): entry for entry in self._available}
+        name = known.get(name.casefold(), name)
+        if name not in self._available:
+            self._available.append(name)
+        self._ticked.add(name)
+        self.typed.delete(0, "end")
+        self.query.delete(0, "end")
         self._repaint()
 
     def _close(self) -> None:
@@ -3099,7 +3157,11 @@ class Window:
 
     def _facade(self, frame: ttk.Frame, row: int) -> int:
         """The facade study's rows: the 3D skin, what gets painted, how finely."""
-        self.do_facade = tk.BooleanVar(value=True)
+        # Off, like every other study. The basic preset -- what Forget goes
+        # back to -- is a window with nothing queued: a study that is ticked
+        # before anybody has decided to run it is one that runs because it
+        # was not noticed, and the facade study is the long one.
+        self.do_facade = tk.BooleanVar(value=False)
         self.do_floors = tk.BooleanVar(value=True)
 
         # The study's own box. Everything from here to the end of the block
@@ -4244,15 +4306,7 @@ class Window:
         layer.grid(row=0, column=0, sticky="nw")
         names = Chips(
             holder,
-            add=lambda: self._choose(
-                names,
-                f"{label}: which names",
-                "Zones on the chosen layer. The size beside each name is what "
-                "says what it is: a dwelling is tens of square metres, a "
-                "balcony is a few, a storage cupboard is less.",
-                [kind.label for kind in self._kinds_on(layer.get())],
-                {kind.label: kind.described() for kind in self._kinds_on(layer.get())},
-            ),
+            add=lambda: self._choose_zone_names(names, layer, label),
             on_change=self._sync,
             empty="no names chosen",
             label=label,
@@ -4347,6 +4401,64 @@ class Window:
             )
         return box, row + 1
 
+    def _choose_zone_names(self, box: Chips, layer: ttk.Combobox, label: str) -> None:
+        """The zone row's Add: the names the project read found on the layer.
+
+        It always opens now. It used to open only when the read had found
+        Zones on the chosen layer, and otherwise wrote one line into the note
+        at the foot of the window and did nothing else -- which, from where
+        the button is, is a button that does not work. A layer can hold no
+        Zones the read saw for several good reasons: they are on a storey the
+        read skipped, the read timed out on a big project, they were drawn
+        after the window read the project. So the dialog opens either way,
+        says which of those it looks like, and takes a typed name.
+        """
+        chosen = layer.get().strip()
+        if not chosen:
+            self._tell(
+                f"{label}: no layer",
+                "Choose the layer the Zones are on first, in the box to the left "
+                "of Add. The names offered are the ones on that layer.",
+            )
+            return
+        kinds = self._kinds_on(chosen)
+        empty = ""
+        if not kinds:
+            failed = [line for line in self.options.problems if line.startswith("zones:")]
+            empty = (
+                f"The project read found no Zones on {chosen}. "
+                + (
+                    f"Reading the Zones failed ({failed[0][len('zones:') :].strip()}), "
+                    "so press Refresh to try again, "
+                    if failed
+                    else "If they were drawn since, press Refresh; "
+                )
+                + "or type the names below as they are written on the plan."
+            )
+        self._choose(
+            box,
+            f"{label}: which names",
+            "Zones on the chosen layer. The size beside each name is what says "
+            "what it is: a dwelling is tens of square metres, a balcony is a "
+            "few, a storage cupboard is less.",
+            [kind.label for kind in kinds],
+            {kind.label: kind.described() for kind in kinds},
+            typed=True,
+            empty=empty,
+        )
+
+    def _tell(self, title: str, message: str) -> None:
+        """A sentence somebody has to read before anything else happens.
+
+        A box rather than the note at the foot of the window: the note is
+        where a run reports, and a reason a button did nothing has to be
+        where the button is, or the button looks broken.
+        """
+        from tkinter import messagebox
+
+        self._write(message)
+        messagebox.showinfo(title, message, parent=self.root)
+
     def _choose(
         self,
         box: ttk.Entry | Chips,
@@ -4354,15 +4466,23 @@ class Window:
         hint: str,
         available: Sequence[str] | None = None,
         describe: Mapping[str, str] | None = None,
+        *,
+        typed: bool = False,
+        empty: str = "",
     ) -> None:
         """Tick names into an entry. Leaves it alone if nothing was chosen.
 
         ``available`` defaults to the project's layers, which is what most of
-        these are; a zone row passes the names its layer carries instead.
+        these are; a zone row passes the names its layer carries instead,
+        and ``typed`` so a name the read did not find can still be given.
         """
         offered = list(available) if available is not None else pickable(self.options.layers)
-        if not offered:
-            self._write(f"Nothing to choose from for {label}. Read a project first.")
+        if not offered and not typed:
+            self._tell(
+                label,
+                f"Nothing to choose from for {label}: no project has been read. "
+                "Pick the Archicad at the top of the window and press Refresh.",
+            )
             return
         dialog = LayerChooser(
             self.root,
@@ -4371,6 +4491,8 @@ class Window:
             available=offered,
             chosen=self._listed(box),
             describe=describe,
+            typed=typed,
+            empty=empty,
         )
         self.root.wait_window(dialog)
         if dialog.result is None:

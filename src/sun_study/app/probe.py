@@ -59,6 +59,11 @@ class ZoneKind:
     count: int
     area_m2: float
     """The median of that name's zones, which is what says what they are."""
+    category: str = ""
+    """The Zone Category most of that name's zones carry -- ``Apartment``,
+    ``Balcony`` -- in the office's own words. Shown beside the name because a
+    name is often a code (``G08``, ``BY``) that means nothing to somebody who
+    did not model the project, and the category is what they would say."""
 
     @property
     def dwelling(self) -> bool:
@@ -69,8 +74,11 @@ class ZoneKind:
         return OPEN_SPACE_AREA_M2 <= self.area_m2 < DWELLING_AREA_M2
 
     def described(self) -> str:
-        """For the line under the field, so a guess can be checked."""
-        return f"{self.label} ({self.count} x {self.area_m2:.0f} m2)"
+        """For the line under the field and the chooser, so a guess can be
+        checked: the name, what the office calls that kind of zone, how many
+        and how big."""
+        kind = f" — {self.category}" if self.category else ""
+        return f"{self.label}{kind} ({self.count} x {self.area_m2:.0f} m2)"
 
 
 @dataclass(frozen=True)
@@ -190,15 +198,23 @@ def _zones_by_layer(connection: ArchicadConnection) -> tuple[tuple[str, ...], tu
     every zone twice, on a project with 1341 of them, is the sort of thing a
     person notices while waiting for a window to fill in.
     """
+    from collections import Counter
     from statistics import median
 
-    from sun_study.archicad.read import layer_names
+    from sun_study.archicad.read import layer_names, zone_categories
     from sun_study.archicad.read import zones as read_zones
     from sun_study.archicad.rooms import polygon_area
 
     names = layer_names(connection)
+    # Softly: a category name is a courtesy on the list, and an add-on that
+    # cannot say them is no reason to offer no zones at all.
+    try:
+        category_names = zone_categories(connection)
+    except (ArchicadError, KeyError, ValueError, TypeError):
+        category_names = {}
     carried: set[str] = set()
     areas: dict[tuple[str, str], list[float]] = {}
+    categories: dict[tuple[str, str], Counter[str]] = {}
     for zone in read_zones(connection):
         # Not ``zone.layer_index or -1``: layer index 0 is a real Archicad
         # layer, and every zone on it would silently vanish from the list.
@@ -209,14 +225,27 @@ def _zones_by_layer(connection: ArchicadConnection) -> tuple[tuple[str, ...], tu
             continue
         carried.add(layer)
         area = polygon_area(zone.outline) if zone.outline else 0.0
+        category = category_names.get((zone.category_guid or "").upper(), "")
         for label in {zone.name.strip(), zone.number.strip()}:
             if label:
                 areas.setdefault((layer, label), []).append(area)
+                if category:
+                    categories.setdefault((layer, label), Counter())[category] += 1
 
     kinds = tuple(
         sorted(
             (
-                ZoneKind(layer=layer, label=label, count=len(found), area_m2=median(found))
+                ZoneKind(
+                    layer=layer,
+                    label=label,
+                    count=len(found),
+                    area_m2=median(found),
+                    category=(
+                        categories[(layer, label)].most_common(1)[0][0]
+                        if (layer, label) in categories
+                        else ""
+                    ),
+                )
                 for (layer, label), found in areas.items()
             ),
             # Biggest first, on each layer: the dwellings are what somebody is
