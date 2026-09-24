@@ -1,7 +1,7 @@
 # Loriini on a Mac
 
 The macOS version of the program and of the Archicad add-on: the same study,
-built for a Mac. This branch started from `claude/focused-bardeen-r2qi1n` at
+built for a Mac, on the `macos` branch. It started from `windows` at
 `aa30131`, the newest work at the time: the redesigned window, Tapir built
 into the add-on, and the handover folder built on GitHub.
 
@@ -177,7 +177,7 @@ that it claims macOS 11.
 
 ## Keeping this branch in step with the Windows one
 
-It is meant to take the Windows line's work by merging it in, so almost
+It is meant to take the Windows line's work by merging `windows` in, so almost
 everything here is a new file: `Loriini-macOS.spec`,
 `scripts/build_app_macos.py`, `archicad-addon/RFIX.mac/`, the two `*-macos.yml`
 workflows, `tests/unit/test_macos*.py` and this page. `ci.yml` and

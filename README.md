@@ -161,9 +161,10 @@ commands were confirmed missing, and the one convention that is still open.
 
 ## On a Mac
 
-This branch is the macOS version: the same program and the same add-on, built
-for a Mac. The analysis did not change -- it never knew which platform it was
-on -- so what differs is the shell around it:
+This branch, `macos`, is the macOS version: the same program and the same
+add-on, built for a Mac. The Windows version is the `windows` branch. The
+analysis did not change -- it never knew which platform it was on -- so what
+differs is the shell around it:
 
 - **The add-on** is `LoriiniAddOn_AC26_Mac.bundle`, one bundle with an Intel
   and an Apple silicon half, Tapir built in as on Windows. The
