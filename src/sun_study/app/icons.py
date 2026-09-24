@@ -350,6 +350,7 @@ BY_LABEL: dict[str, str] = {
     "Existing on site": "always_there",
     "TOD": "being_tested",
     "SEARs": "being_tested",
+    "ADG envelope": "being_tested",
     "Proposed": "being_tested",
     "Ground it lands on": "ground_plane",
     "Ignore ground below": "ground_cut",

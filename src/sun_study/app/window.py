@@ -699,6 +699,17 @@ SHADOW_LEGEND_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
         "shadow.",
     ),
     (
+        "ADG ENVELOPE",
+        "scenario",
+        "ADG envelope",
+        "The proposal with room to move: the envelope the ADG allows the site.",
+        "A lilac, drawn just under the proposal: the scheme is compared against "
+        "it, not added to it, so what shows is the fringe of extra shadow the "
+        "room to move would cost -- the answer to 'how much bigger could it be "
+        "before the neighbours notice'. Model it on layers of its own and name "
+        "them here; left empty, the row is left off the sheet.",
+    ),
+    (
         "PROPOSED",
         "scenario",
         "Proposed",

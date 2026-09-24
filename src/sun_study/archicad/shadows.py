@@ -133,6 +133,13 @@ SCENARIO_RAMP: tuple[tuple[int, int, int], ...] = (
     (156, 172, 191),
 )
 
+#: The ADG envelope's colour: a lilac, not a fourth blue. It is the proposal
+#: with room to move -- the same building a little larger -- so it is drawn
+#: just under the proposal and what shows of it is the fringe the extra room
+#: would add; in a fourth blue that fringe could not be told from the
+#: proposal's own edge.
+ADG_ENVELOPE_RGB: tuple[int, int, int] = (192, 182, 214)
+
 #: The office's shadow legend, row by row: the short name a run is given, the
 #: words on the sheet, whether it accumulates or is compared, and its colour.
 #:
@@ -149,6 +156,7 @@ LEGEND: tuple[tuple[str, str, str, tuple[int, int, int]], ...] = (
     ("EXISTING ON SITE", "EXISTING STRUCTURES WITHIN THE SITE", BASELINE, BASELINE_RAMP[2]),
     ("TOD", "CURRENT LEP 2023 BUILDING HEIGHT LIMIT", SCENARIO, SCENARIO_RAMP[0]),
     ("SEARS", "CANTERBURY BANKSTOWN LEP BUILDING HEIGHT LIMIT", SCENARIO, SCENARIO_RAMP[1]),
+    ("ADG ENVELOPE", "ADG BUILDING ENVELOPE", SCENARIO, ADG_ENVELOPE_RGB),
     ("PROPOSED", "PROPOSED BUILDING ENVELOPE", SCENARIO, SCENARIO_RAMP[2]),
 )
 

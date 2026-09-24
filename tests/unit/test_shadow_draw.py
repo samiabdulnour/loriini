@@ -737,3 +737,13 @@ def test_a_favourite_the_project_does_not_have_is_refused() -> None:
 
     with pytest.raises(ArchicadError, match="No Fill favorite"):
         draw_shadow_series(connection, series(["9AM"]), favourite="Nope")
+
+
+def test_the_adg_envelope_wears_its_own_colour_and_not_a_fourth_blue() -> None:
+    from sun_study.archicad.shadows import ADG_ENVELOPE_RGB, LEGEND, SCENARIO_RAMP, legend_colour
+
+    assert legend_colour("ADG ENVELOPE") == ADG_ENVELOPE_RGB
+    assert legend_colour("adg building envelope") == ADG_ENVELOPE_RGB
+    assert ADG_ENVELOPE_RGB not in SCENARIO_RAMP
+    shorts = [short for short, _words, _role, _rgb in LEGEND]
+    assert shorts.index("ADG ENVELOPE") == shorts.index("PROPOSED") - 1

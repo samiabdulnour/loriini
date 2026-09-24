@@ -2382,13 +2382,31 @@ def test_every_hour_on_one_drawing_is_asked_for_only_when_ticked(hidden_window: 
 
 
 def test_the_legend_rows_are_the_legends_own_in_its_order(hidden_window: Any) -> None:
-    """Three that accumulate, then three that are compared; the short names are
+    """Three that accumulate, then four that are compared; the short names are
     what the drawing matches to the legend's colours."""
     from sun_study.archicad.shadows import LEGEND
 
     assert [(short, role) for short, role, _box in hidden_window.shadow_rows] == [
         (short, role) for short, _words, role, _rgb in LEGEND
     ]
+
+
+def test_the_adg_envelope_is_compared_like_the_proposal_and_drawn_under_it(
+    hidden_window: Any,
+) -> None:
+    """The proposal with room to move: a scenario, so it is compared rather
+    than added, and named just before the proposal so the proposal is drawn
+    on top and what shows of the envelope is the extra it would cost."""
+    rows = {short: (role, box) for short, role, box in hidden_window.shadow_rows}
+    shorts = [short for short, _role, _box in hidden_window.shadow_rows]
+    assert rows["ADG ENVELOPE"][0] == "scenario"
+    assert shorts.index("ADG ENVELOPE") == shorts.index("PROPOSED") - 1
+
+    hidden_window.do_shadows.set(True)
+    rows["ADG ENVELOPE"][1].insert(0, "01 | Floor.Structural")
+    job = next(job for job in hidden_window.jobs() if job.args[0] == "shadows")
+
+    assert flag(job.args, "--shadow-scenario") == ["ADG ENVELOPE=01 | Floor.Structural"]
 
 
 def test_the_legend_rows_survive_a_save(hidden_window: Any) -> None:
