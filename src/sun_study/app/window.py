@@ -3822,15 +3822,16 @@ class Window:
                         self.do_site_future,
                         "Future context",
                         "Future Context (what the controls allow next door)",
-                        "Each lot near the site, zoned for flats and under a height "
-                        "control, set back by the ADG's separation (6, 9 and 12 m by "
-                        "height band), stepped, and capped by the LEP's height and "
-                        "floor-space ratio. Drawn dashed in magenta on the Site "
-                        "Analysis sheet with its storeys written in, and stood as "
-                        "slabs on the LORIINI FUTURE layer -- a layer of its own, so a "
-                        "shadow diagram can be cast with the neighbours as they are or "
-                        "as they could be. The street setback is the council's; 6 m "
-                        "unless the run folder's settings say otherwise.",
+                        "Each existing building near the site, on land zoned for flats, "
+                        "kept on its own footprint and raised to the storeys the LEP's "
+                        "height control allows where it stands -- never lowered, so one "
+                        "already over its control is left as it is. Drawn dashed in "
+                        "magenta on the Site Analysis sheet with its storeys written "
+                        "in, and stood as slabs on 'Site Context.Future buildings' -- a "
+                        "layer of its own, so a shadow diagram can be cast with the "
+                        "neighbours as they are or as they could be. The control is the "
+                        "LEP's: the register carries it, and a council's DCP is not "
+                        "open data.",
                     ),
                     (
                         self.do_site_model,
@@ -3839,9 +3840,11 @@ class Window:
                         "The terrain as one mesh from the contours, every street block "
                         "as a kerbed mesh with the roads left between, and one slab per "
                         "neighbouring building as tall as its storeys say -- or as the "
-                        "LEP height control allows, and said to be assumed -- on the "
-                        "LORIINI layer, for the shadow diagram and the sun views to "
-                        "cast against. The site's own buildings are left out.",
+                        "LEP height control allows, and said to be assumed. Three "
+                        "layers in the site group, one per kind -- 'Site "
+                        "Context.Terrain', '.Roads' and '.Buildings' -- so a view can "
+                        "show any of them without the others. The site's own buildings "
+                        "are left out.",
                     ),
                     (
                         self.do_site_location,
@@ -3917,22 +3920,11 @@ class Window:
             row,
             "Future reach (m)",
             "100",
-            "How far from the site's boundary a lot is still its future context.",
-            "The lots across the street and the two behind are what cast a "
-            "shadow on the site or take one from it; a hundred metres is "
-            "those. The envelopes are worked out from the model's square, so "
-            "the reach cannot exceed the model radius.",
-        )
-        self.site_future_setback, row = self._entry(
-            frame,
-            row,
-            "Street setback (m)",
-            "6",
-            "The council's DCP street setback for a flat building.",
-            "The register carries the LEP's height and floor-space ratio but "
-            "not the DCP's setbacks. Side and rear setbacks are the ADG's, by "
-            "height; the street setback is the council's, and 6 m is the "
-            "common figure in a Sydney DCP. Check the DCP.",
+            "How far from the site's boundary a building is still its future context.",
+            "The buildings across the street and the two lots behind are what "
+            "cast a shadow on the site or take one from it; a hundred metres is "
+            "those. They are read from the model's square, so the reach cannot "
+            "exceed the model radius.",
         )
         self.site_out, row = self._folder_row(
             frame,
@@ -4749,7 +4741,6 @@ class Window:
             "site_out": self.site_out,
             "site_radius": self.site_radius,
             "site_future_reach": self.site_future_reach,
-            "site_future_setback": self.site_future_setback,
             "adg_subset": self.adg_subset,
             "layer_prefix": self.prefix_solar,
             "shadow_layer_prefix": self.prefix_shadow,
@@ -6234,8 +6225,6 @@ class Window:
                     args += ["--model-radius", self.site_radius.get().strip()]
                 if self.site_future_reach.get().strip():
                     args += ["--future-reach", self.site_future_reach.get().strip()]
-                if self.site_future_setback.get().strip():
-                    args += ["--future-setback", self.site_future_setback.get().strip()]
             if not self.do_site_location.get():
                 args += ["--keep-location"]
             if self.site_scale.get().strip():

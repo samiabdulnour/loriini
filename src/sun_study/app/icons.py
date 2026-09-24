@@ -370,7 +370,6 @@ BY_LABEL: dict[str, str] = {
     "Site lands at": "site",
     "Model radius (m)": "radius",
     "Future reach (m)": "radius",
-    "Street setback (m)": "setback",
     "Run folder": "run_folder",
 }
 

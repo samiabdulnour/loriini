@@ -54,6 +54,27 @@ KOGARAH = GeoLocation(
 )
 SS = naming.prefix()
 CONTEXT_LAYER = naming.context_layer()
+#: The three layers the context model stands on, buildings last so the
+#: buildings keep index 9, which the tests below read slabs back from.
+CONTEXT_LAYERS = (naming.terrain_layer(), naming.roads_layer(), naming.buildings_layer())
+
+
+def _layer_attributes() -> list[dict[str, Any]]:
+    """The context layers as ``GetAttributesByType`` lists them."""
+    return [
+        {"name": name, "index": 7 + i, "attributeId": {"guid": f"L{7 + i}"}}
+        for i, name in enumerate(CONTEXT_LAYERS)
+    ]
+
+
+def _layer_states() -> list[dict[str, Any]]:
+    """And as ``GetLayers`` does."""
+    return [
+        {"layerAttribute": {"name": name, "isHidden": False, "isLocked": False}}
+        for name in CONTEXT_LAYERS
+    ]
+
+
 FUTURE_LAYER = naming.future_layer()
 
 # A square site about 20 m across, a little east of the project location.
@@ -503,20 +524,8 @@ def test_the_summary_of_controls_is_drawn_straight_onto_a_layout_of_its_own() ->
             },
             "SetCurrentDatabase": {"success": True},
             "GetCurrentDatabase": {"databaseId": {"guid": "LAY"}, "windowType": "Layout"},
-            "GetAttributesByType": {
-                "attributes": [{"name": CONTEXT_LAYER, "index": 9, "attributeId": {"guid": "L9"}}]
-            },
-            "GetLayers": {
-                "layers": [
-                    {
-                        "layerAttribute": {
-                            "name": CONTEXT_LAYER,
-                            "isHidden": False,
-                            "isLocked": False,
-                        }
-                    }
-                ]
-            },
+            "GetAttributesByType": {"attributes": _layer_attributes()},
+            "GetLayers": {"layers": _layer_states()},
             "CreateLayers": {"success": True},
             "GetPenTables": {"penTables": []},
             "CreatePolylines": {"elements": [{"elementId": {"guid": "P"}}]},
@@ -895,21 +904,9 @@ def test_the_neighbours_stand_on_the_ground_and_the_sites_own_are_left_out() -> 
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
     connection, transport_ = connect(
         {
-            "GetAttributesByType": {
-                "attributes": [{"name": CONTEXT_LAYER, "index": 9, "attributeId": {"guid": "L9"}}]
-            },
+            "GetAttributesByType": {"attributes": _layer_attributes()},
             "GetCurrentDatabase": {"databaseId": {"guid": "PLAN"}, "windowType": "FloorPlan"},
-            "GetLayers": {
-                "layers": [
-                    {
-                        "layerAttribute": {
-                            "name": CONTEXT_LAYER,
-                            "isHidden": False,
-                            "isLocked": False,
-                        }
-                    }
-                ]
-            },
+            "GetLayers": {"layers": _layer_states()},
             "CreateMesh": {"success": True, "guid": "MESH"},
             "CreateSlabs": {"elements": [{"elementId": {"guid": "SLAB"}}]},
             "GetDetailsOfElements": {"detailsOfElements": [{"layerIndex": 9}]},
@@ -935,7 +932,9 @@ def test_the_neighbours_stand_on_the_ground_and_the_sites_own_are_left_out() -> 
     mesh = transport_.parameters_for("CreateMesh")
     assert len(mesh["outline"]) == 4 and mesh["skirt"] == "solid"
     assert all("z" in p for p in mesh["outline"])
-    assert mesh["layerIndex"] == 9 and mesh["elementId"] == "SA TERRAIN"
+    # The ground on the terrain layer (7), the buildings on theirs (9): a view
+    # can show the neighbours without the mesh, or the mesh without them.
+    assert mesh["layerIndex"] == 7 and mesh["elementId"] == "SA TERRAIN"
     assert len(mesh["levelLines"]) == 2, "both contours lie inside the extent"
     assert mesh["floorIndex"] == 0, "homed on the storey at level zero"
     slabs = transport_.parameters_for("CreateSlabs")["slabs"]
@@ -999,8 +998,21 @@ def future_bundle() -> SiteBundle:
         polygon(square(east, LAT, 30.0), lotidstring="2//DP1"),
         polygon(square(west, LAT, 30.0), lotidstring="3//DP1"),
     )
+    buildings = (
+        # On the site: what the proposal replaces, never a future neighbour.
+        osm.Building(LON, LAT, tuple(square(LON, LAT, 8.0)), levels=1),
+        # On the R4 lot under the 25 m control, two storeys today: raised.
+        osm.Building(east, LAT, tuple(square(east, LAT, 10.0)), levels=2),
+        # The same lot, already nine storeys -- over the control: left alone.
+        osm.Building(east, LAT + 0.0001, tuple(square(east, LAT + 0.0001, 6.0)), levels=9),
+        # On the R2 lot: a house whose future is a house.
+        osm.Building(west, LAT, tuple(square(west, LAT, 10.0)), levels=1),
+        # Three hundred metres off: beyond the reach.
+        osm.Building(LON + 0.003, LAT, tuple(square(LON + 0.003, LAT, 10.0)), levels=1),
+    )
     return replace(
         site_bundle(),
+        furniture=osm.Furniture(buildings=buildings),
         all_lots=cadastre,
         zoning=collection(
             polygon(square(LON + 0.0002, LAT, 100.0), SYM_CODE="R4"),
@@ -1011,7 +1023,7 @@ def future_bundle() -> SiteBundle:
     )
 
 
-def test_the_lots_are_read_with_their_controls_and_the_envelopes_follow() -> None:
+def test_each_neighbour_is_raised_to_its_height_control_on_its_own_footprint() -> None:
     from sun_study.archicad.future_context import FutureOptions, future_envelopes, lots_of
 
     bundle = future_bundle()
@@ -1023,15 +1035,18 @@ def test_the_lots_are_read_with_their_controls_and_the_envelopes_follow() -> Non
     assert lots["2//DP1"].area_m2 == pytest.approx(900.0, rel=0.01)
 
     report = future_envelopes(bundle, frame, FutureOptions(reach_m=60.0))
-    assert [e.lot.identifier for e in report.envelopes] == ["2//DP1"]
-    assert report.on_site == 1 and report.other_zones == 1
-    (built,) = report.envelopes
-    # A 30 m square with no other lot on any side fronts four streets at
-    # 6 m: an 18 m square lower tier. 1.5:1 on 900 sqm is 1,350 sqm: four
-    # storeys of 324 is 1,296, five would be 1,620.
-    assert built.street_edges == 4
-    assert built.storeys == 4 and built.binding == "fsr"
-    assert built.tiers[0].area_m2 == pytest.approx(18.0 * 18.0, rel=0.01)
+    assert [e.lot.identifier for e in report.envelopes] == ["2//DP1"], "named by its lot"
+    assert report.on_site == 1, "the site's own building"
+    assert report.at_limit == 1, "the nine-storey one is already over its control"
+    assert report.other_zones == 1, "the house on land zoned for houses"
+    assert report.beyond_reach == 1
+    (raised,) = report.envelopes
+    # The building that is there, on its own footprint, raised to the last
+    # whole storey under 25 m: eight of 3.1 m. Not set back, not stepped.
+    assert raised.storeys == 8 and raised.height_m == pytest.approx(24.8)
+    assert raised.binding == "height" and len(raised.tiers) == 1
+    assert raised.tiers[0].area_m2 == pytest.approx(100.0, rel=0.02), "its own 10 m footprint"
+    assert "1 buildings raised to their height control" in report.describe()
 
 
 def test_the_site_sheet_draws_the_envelope_dashed_with_its_storeys_written_in() -> None:
@@ -1047,9 +1062,10 @@ def test_the_site_sheet_draws_the_envelope_dashed_with_its_storeys_written_in() 
         for line in drawing.lines
         if line.colour == "#c2189a" and line.dashed and line.layer.endswith(".Context")
     ]
-    assert len(outlines) == 1, "four storeys is one tier, so one outline"
+    assert len(outlines) == 1, "one raised building, one outline"
     caption = next(t for t in drawing.texts if t.text.startswith("FUTURE"))
-    assert caption.text == "FUTURE 4 STOREY\n12.4 m\nFSR 1.5:1 BINDS"
+    # No ratio on it: nothing applied one, and a caption quoting it would say so.
+    assert caption.text == "FUTURE 8 STOREY\n24.8 m"
     assert any("FUTURE CONTEXT" in t.text for t in drawing.texts), "the legend says what it is"
     assert len(drawing.layers) <= 5, drawing.layers
 
@@ -1118,13 +1134,14 @@ def test_the_envelopes_stand_as_slabs_on_their_own_layer_and_a_rerun_replaces_th
     doomed = transport_.parameters_for("DeleteElements")["elements"]
     assert [e["elementId"]["guid"] for e in doomed] == ["OLD", "OLD"], doomed
     slabs = transport_.parameters_for("CreateSlabs")["slabs"]
-    # Four storeys under a 25 m control: one tier, 0 to 12.4 m, on the ground.
+    # Eight storeys under a 25 m control: the building's own footprint, 0 to
+    # 24.8 m, standing on the ground.
     assert len(slabs) == 1
     assert slabs[0]["layerIndex"] == 10 and slabs[0]["floorIndex"] == 0
-    assert slabs[0]["thickness"] == pytest.approx(12.4)
+    assert slabs[0]["thickness"] == pytest.approx(24.8)
     assert 24.0 < slabs[0]["level"] < 28.0, "on the ground the contours give"
-    assert slabs[0]["elementId"] == "SA FUTURE 2//DP1 4 STOREY 0-12.4 m FSR"
-    assert "1 envelopes, 1 capped by the FSR" in report.describe()
+    assert slabs[0]["elementId"] == "SA FUTURE 2//DP1 8 STOREY 0-24.8 m"
+    assert "1 buildings raised to their height control" in report.describe()
 
 
 def test_the_ratio_survives_the_round_trip_and_an_old_bundle_reads_as_none(
@@ -1176,15 +1193,9 @@ def test_the_model_is_placed_against_the_projects_declared_altitude() -> None:
     bundle = site_bundle()
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
     responses: dict[str, Any] = {
-        "GetAttributesByType": {
-            "attributes": [{"name": CONTEXT_LAYER, "index": 9, "attributeId": {"guid": "L9"}}]
-        },
+        "GetAttributesByType": {"attributes": _layer_attributes()},
         "GetCurrentDatabase": {"databaseId": {"guid": "PLAN"}, "windowType": "FloorPlan"},
-        "GetLayers": {
-            "layers": [
-                {"layerAttribute": {"name": CONTEXT_LAYER, "isHidden": False, "isLocked": False}}
-            ]
-        },
+        "GetLayers": {"layers": _layer_states()},
         "CreateMesh": {"success": True, "guid": "MESH"},
         "CreateSlabs": {"elements": [{"elementId": {"guid": "SLAB"}}]},
         "GetDetailsOfElements": {"detailsOfElements": [{"layerIndex": 9}]},
@@ -1270,11 +1281,11 @@ def test_the_template_layer_is_used_rather_than_a_second_one_made() -> None:
     which fails if the run adds a second layer beside the template's."""
     from sun_study.archicad.context_model import model_context
 
-    connection, transport_ = connect(_context_responses(existing=[CONTEXT_LAYER]))
+    connection, transport_ = connect(_context_responses(existing=list(CONTEXT_LAYERS)))
     model_context(connection, site_bundle(), frame_for(KOGARAH, site_centre=(LON, LAT)))
 
     assert "CreateLayers" not in transport_.commands(), (
-        "the template's own layer was there and a second was made anyway"
+        "the template's own layers were there and a second set was made anyway"
     )
 
 
@@ -1286,13 +1297,21 @@ def test_a_site_group_the_project_does_not_have_gets_its_layers_made() -> None:
 
     naming.set_context_prefix("50 |")
     try:
-        connection, transport_ = connect(
-            _context_responses(existing=[], then=["50 | Site Context.3D"])
-        )
+        wanted = [
+            "50 | Site Context.Terrain",
+            "50 | Site Context.Roads",
+            "50 | Site Context.Buildings",
+        ]
+        connection, transport_ = connect(_context_responses(existing=[], then=wanted))
         model_context(connection, site_bundle(), frame_for(KOGARAH, site_centre=(LON, LAT)))
 
-        made = transport_.parameters_for("CreateLayers")["layerDataArray"][0]
-        assert made["name"] == "50 | Site Context.3D"
+        made = [
+            layer["name"]
+            for call in transport_.all_parameters_for("CreateLayers")
+            for layer in call["layerDataArray"]
+        ]
+        assert made and made[0] == "50 | Site Context.Terrain"
+        assert set(made) <= set(wanted), made
     finally:
         naming.set_context_prefix(naming.CONTEXT_PREFIX)
 
@@ -1327,21 +1346,9 @@ def test_a_datum_given_outright_beats_the_projects_own_altitude() -> None:
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
     connection, transport_ = connect(
         {
-            "GetAttributesByType": {
-                "attributes": [{"name": CONTEXT_LAYER, "index": 9, "attributeId": {"guid": "L9"}}]
-            },
+            "GetAttributesByType": {"attributes": _layer_attributes()},
             "GetCurrentDatabase": {"databaseId": {"guid": "PLAN"}, "windowType": "FloorPlan"},
-            "GetLayers": {
-                "layers": [
-                    {
-                        "layerAttribute": {
-                            "name": CONTEXT_LAYER,
-                            "isHidden": False,
-                            "isLocked": False,
-                        }
-                    }
-                ]
-            },
+            "GetLayers": {"layers": _layer_states()},
             "CreateMesh": {"success": True, "guid": "MESH"},
             "CreateSlabs": {"elements": [{"elementId": {"guid": "SLAB"}}]},
             "GetDetailsOfElements": {"detailsOfElements": [{"layerIndex": 9}]},
@@ -1365,21 +1372,9 @@ def test_a_datum_given_outright_beats_the_projects_own_altitude() -> None:
     # And 'sea' puts it back at true AHD, whatever the project says.
     connection, transport_ = connect(
         {
-            "GetAttributesByType": {
-                "attributes": [{"name": CONTEXT_LAYER, "index": 9, "attributeId": {"guid": "L9"}}]
-            },
+            "GetAttributesByType": {"attributes": _layer_attributes()},
             "GetCurrentDatabase": {"databaseId": {"guid": "PLAN"}, "windowType": "FloorPlan"},
-            "GetLayers": {
-                "layers": [
-                    {
-                        "layerAttribute": {
-                            "name": CONTEXT_LAYER,
-                            "isHidden": False,
-                            "isLocked": False,
-                        }
-                    }
-                ]
-            },
+            "GetLayers": {"layers": _layer_states()},
             "CreateMesh": {"success": True, "guid": "MESH"},
             "CreateSlabs": {"elements": [{"elementId": {"guid": "SLAB"}}]},
             "GetDetailsOfElements": {"detailsOfElements": [{"layerIndex": 9}]},

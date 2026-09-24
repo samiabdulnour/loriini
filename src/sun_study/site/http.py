@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -108,10 +109,29 @@ def get_json(
 OVERPASS_MIRRORS: tuple[str, ...] = (
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
     "https://lz4.overpass-api.de/api/interpreter",
     "https://z.overpass-api.de/api/interpreter",
+    # Last: its certificate had expired when checked on 23 September 2026,
+    # so every request to it failed at the handshake. Cheap to keep -- a
+    # refused handshake is fast -- and it will be back when it is renewed.
     "https://overpass.osm.jp/api/interpreter",
 )
+
+
+#: What an Overpass server writes into ``remark`` when it stopped early. It
+#: answers 200 and well-formed JSON either way, with however many elements it
+#: had reached -- which is indistinguishable from a complete answer unless the
+#: remark is read.
+_CUT_SHORT = re.compile(r"runtime error|timed out|out of memory|timeout", re.IGNORECASE)
+
+
+def cut_short(answer: dict[str, Any]) -> str | None:
+    """The server's own remark when an answer stopped early, else ``None``."""
+    remark = answer.get("remark")
+    if isinstance(remark, str) and _CUT_SHORT.search(remark):
+        return remark.strip()
+    return None
 
 
 def overpass_cache_dir() -> Path:
@@ -147,17 +167,31 @@ def overpass(
     A cached answer younger than ``max_age_s`` is returned without a request.
     When every mirror fails, a stale cached answer is returned with a note;
     only with nothing cached at all does this raise.
+
+    An answer the server cut short is not an answer. A busy Overpass stops at
+    its timeout or its memory limit and still replies 200 with valid JSON --
+    the elements it had got to, and a ``remark`` saying it stopped. Taken at
+    face value that is a context model with half its buildings, and it used
+    to be cached for a month as well, so every later run of the same address
+    was short by the same buildings. It is now tried elsewhere and never
+    cached; only when nothing complete can be had at all -- fresh or stale --
+    is the fullest partial answer used, and said to be partial.
     """
     cache_dir = cache_dir if cache_dir is not None else overpass_cache_dir()
     digest = hashlib.sha1(query.encode("utf-8")).hexdigest()[:16]
     cache_file = cache_dir / f"{digest}.json"
     try:
         if time.time() - cache_file.stat().st_mtime < max_age_s:
-            return dict(json.loads(cache_file.read_text(encoding="utf-8")))
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            # A partial answer cached by an earlier version is not served:
+            # it is the month-long gap this check exists to close.
+            if isinstance(cached, dict) and cut_short(cached) is None:
+                return dict(cached)
     except (OSError, json.JSONDecodeError):
         pass
 
     last: Exception | None = None
+    partial: dict[str, Any] | None = None
     body = urllib.parse.urlencode({"data": query}).encode("utf-8")
     for round_number in range(rounds):
         if round_number:
@@ -181,6 +215,18 @@ def overpass(
             except json.JSONDecodeError as error:
                 last = error
                 continue
+            if not isinstance(parsed, dict):
+                last = FetchError(f"{mirror} -> not an Overpass answer")
+                continue
+            stopped = cut_short(parsed)
+            if stopped is not None:
+                last = FetchError(f"{mirror} -> cut short: {stopped}")
+                count = len(parsed.get("elements") or [])
+                if partial is None or count > len(partial.get("elements") or []):
+                    partial = parsed
+                if log:
+                    log(f"  OSM answered only in part ({count} elements): {stopped[:120]}")
+                continue
             try:
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 cache_file.write_text(text, encoding="utf-8")
@@ -191,7 +237,18 @@ def overpass(
     try:
         stale = json.loads(cache_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        raise FetchError(f"Overpass unavailable on every mirror: {last}") from last
-    if log:
-        log("  OSM unavailable -- using cached data from an earlier run")
-    return dict(stale)
+        stale = None
+    # A cache written before answers were checked may itself be a partial
+    # one; it is only better than a fresh partial answer if it is complete.
+    if isinstance(stale, dict) and cut_short(stale) is None:
+        if log:
+            log("  OSM unavailable -- using cached data from an earlier run")
+        return dict(stale)
+    if partial is not None:
+        if log:
+            log(
+                "  WARN: no complete OSM answer from any mirror; drawing from a partial "
+                "one, so some of what OSM holds here is missing. Run again later."
+            )
+        return dict(partial)
+    raise FetchError(f"Overpass unavailable on every mirror: {last}") from last

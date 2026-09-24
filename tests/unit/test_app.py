@@ -2662,20 +2662,17 @@ def test_a_custom_day_runs_as_well_as_the_ticks_and_is_judged_by_the_command(
 def test_the_future_context_tick_reaches_the_site_command_with_its_settings(
     hidden_window: Any,
 ) -> None:
-    """The reach and the street setback are the two things a designer
-    changes; the zones and the separation are the ADG's and stay put."""
+    """The reach is the one thing a designer changes; the zones stay put."""
     hidden_window.do_site.set(True)
     hidden_window.site_address.insert(0, "1 Test St, Kogarah NSW")
     hidden_window.do_site_future.set(True)
     hidden_window.site_future_reach.delete(0, "end")
     hidden_window.site_future_reach.insert(0, "80")
-    hidden_window.site_future_setback.delete(0, "end")
-    hidden_window.site_future_setback.insert(0, "7.5")
 
     site = next(job for job in hidden_window.jobs() if job.args[0] == "site")
     assert "--future" in site.args
     assert flag(site.args, "--future-reach") == ["80"]
-    assert flag(site.args, "--future-setback") == ["7.5"]
+    assert "--future-setback" not in site.args, "the raised buildings are not set back"
     assert flag(site.args, "--model-radius") == ["500"], "the model's square is what it reads"
     assert "--model" not in site.args
 

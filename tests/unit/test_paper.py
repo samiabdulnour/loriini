@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import pytest
 
@@ -42,7 +43,7 @@ def test_a_clip_frame_holds_the_whole_box_even_when_turned() -> None:
 
 def test_a_hatch_loses_its_storey_and_layer_and_keeps_its_pens() -> None:
     frame = PaperFrame(origin=(0.1, 0.1), scale=100.0)
-    hatch = {
+    hatch: dict[str, Any] = {
         "coordinates": [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}, {"x": 10.0, "y": 5.0}],
         "layerIndex": 135,
         "floorInd": 14,

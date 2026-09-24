@@ -85,8 +85,23 @@ CONTEXT_PREFIX = "03 |"
 #: What the context parts are called under it. ``Future buildings`` is the
 #: spelling the shadow tool's own worked example already uses, so a legend row
 #: written from that example finds the geometry without being told twice.
-CONTEXT_PART = "Site Context.3D"
+#:
+#: The model is three layers, one per kind of thing, rather than one
+#: ``Site Context.3D`` holding all of it. Each is switched on and off for a
+#: different reason: the terrain is what a sun view stands the camera on, the
+#: roads are what a site plan wants to see and a shadow study does not need,
+#: and the buildings are the only part that casts a shadow anybody is asking
+#: about. One layer made every view take all three or none.
+TERRAIN_PART = "Site Context.Terrain"
+ROADS_PART = "Site Context.Roads"
+"""The kerbed street blocks. The roads themselves are the terrain left
+showing between them, which is how the office's own files draw them."""
+BUILDINGS_PART = "Site Context.Buildings"
 FUTURE_PART = "Site Context.Future buildings"
+
+#: The single layer every part went on before they were split. Still named so
+#: a message can tell somebody where an older run's model is.
+CONTEXT_PART = "Site Context.3D"
 
 _context_prefix = CONTEXT_PREFIX
 
@@ -194,7 +209,7 @@ def set_context_prefix(value: str | None) -> str:
     if not chosen:
         raise ValueError(
             "The context prefix cannot be empty: it is the office's own site "
-            "group, the number in front of 'Site Context.3D'. Use the group "
+            "group, the number in front of 'Site Context.Buildings'. Use the group "
             f"the template keeps the neighbours in, such as {CONTEXT_PREFIX!r}."
         )
     _context_prefix = chosen
@@ -206,9 +221,28 @@ def context_prefix() -> str:
     return _context_prefix
 
 
+def terrain_layer() -> str:
+    """Where the ground mesh goes."""
+    return f"{_context_prefix} {TERRAIN_PART}"
+
+
+def roads_layer() -> str:
+    """Where the kerbed street blocks go, which the roads run between."""
+    return f"{_context_prefix} {ROADS_PART}"
+
+
+def buildings_layer() -> str:
+    """Where the neighbouring buildings go."""
+    return f"{_context_prefix} {BUILDINGS_PART}"
+
+
 def context_layer() -> str:
-    """Where the neighbouring buildings and the ground under them go."""
-    return f"{_context_prefix} {CONTEXT_PART}"
+    """Where the neighbours go: the buildings layer, the one that casts.
+
+    The name every caller that means "the context" has always used, kept
+    pointing at the part those callers mean.
+    """
+    return buildings_layer()
 
 
 def future_layer() -> str:

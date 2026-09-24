@@ -7607,9 +7607,10 @@ def site_analysis(
         typer.Option(
             "--future/--no-future",
             help=(
-                "The future context: what the LEP height, the FSR and the ADG's separation "
-                "would let a flat building be on each lot near the site. Drawn on the site "
-                "sheet and stood as slabs on the LORIINI FUTURE layer."
+                "The future context: each existing building near the site, on its own "
+                "footprint, raised to the storeys the LEP's height control allows there. "
+                "Drawn on the site sheet and stood as slabs on the 'Site Context.Future "
+                "buildings' layer."
             ),
         ),
     ] = False,
@@ -7617,19 +7618,9 @@ def site_analysis(
         float,
         typer.Option(
             "--future-reach",
-            help="Metres from the site's boundary a lot is still its future context.",
+            help="Metres from the site's boundary a building is still its future context.",
         ),
     ] = future_context.DEFAULT_REACH_M,
-    future_setback: Annotated[
-        float,
-        typer.Option(
-            "--future-setback",
-            help=(
-                "The street setback, metres: the council's DCP figure, which the register "
-                "does not carry. Side and rear setbacks are the ADG's, by height."
-            ),
-        ),
-    ] = future_context.DEFAULT_FRONT_SETBACK_M,
     datum: Annotated[str, typer.Option("--datum", help=context_model.DATUM_HELP)] = "project",
     aerial_as: Annotated[
         str,
@@ -7647,8 +7638,8 @@ def site_analysis(
         typer.Option(
             "--future-zones",
             help=(
-                "LEP zones a flat building may stand in, comma separated. Lots zoned "
-                "otherwise keep their houses."
+                "LEP zones a flat building may stand in, comma separated. A building on "
+                "land zoned otherwise keeps its height: its future is what stands."
             ),
         ),
     ] = ",".join(future_context.DEFAULT_ZONES),
@@ -7688,8 +7679,9 @@ def site_analysis(
             "--context-prefix",
             help=(
                 "The office's own site group, the number in front of "
-                "'Site Context.3D'. The neighbours and the ground under them "
-                "go there rather than on a layer of this tool's own, so a "
+                "'Site Context.Terrain', '.Roads' and '.Buildings'. The "
+                "neighbours and the ground under them go there, one layer per "
+                "kind, rather than on a layer of this tool's own, so a "
                 "colleague finds them where neighbours live. A layer the "
                 "template already has is used, not duplicated; point this at a "
                 "group the project does not have and the layers are made. "
@@ -7921,7 +7913,6 @@ def site_analysis(
         raise typer.BadParameter(str(error), param_hint="--datum") from error
     future_options = future_context.FutureOptions(
         reach_m=future_reach,
-        front_setback_m=future_setback,
         zones=tuple(z.strip().upper() for z in future_zones.split(",") if z.strip()),
         datum_m=datum_m,
     )

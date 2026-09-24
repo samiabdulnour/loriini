@@ -10,11 +10,20 @@ than remembered.
 from __future__ import annotations
 
 import re
-import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
+from typing import TYPE_CHECKING
 
 import pytest
+
+# Skipped, not collected into an error, where Tk cannot be had -- the same
+# guard as test_app. The Linux runners ship no tkinter, and a plain import
+# here stopped the whole suite at collection before a single test ran.
+if TYPE_CHECKING:
+    import tkinter as tk
+    from tkinter import ttk
+else:
+    tk = pytest.importorskip("tkinter", reason="this machine has no tkinter")
+    from tkinter import ttk
 
 from sun_study.app import icons, theme
 

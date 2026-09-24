@@ -207,19 +207,32 @@ class FutureReport:
     other_zones: int
     no_height: int
     too_small: int
+    at_limit: int = 0
+    """Buildings already as tall as their control allows, or taller: their
+    future is what stands, and the existing context already has it."""
+    raised: bool = False
+    """True when the envelopes are existing buildings raised to their height
+    control, rather than lots set back and stepped."""
 
     def describe(self) -> str:
-        lines = [
-            f"  future context: {len(self.envelopes)} envelopes, "
-            f"{sum(1 for e in self.envelopes if e.binding == 'fsr')} capped by the FSR"
-        ]
+        capped = sum(1 for e in self.envelopes if e.binding == "fsr")
+        if self.raised:
+            headline = (
+                f"  future context: {len(self.envelopes)} buildings raised to their height control"
+            )
+        else:
+            headline = (
+                f"  future context: {len(self.envelopes)} envelopes, {capped} capped by the FSR"
+            )
+        lines = [headline]
         passed = [
             f"{count} {reason}"
             for count, reason in (
                 (self.on_site, "on the site"),
                 (self.other_zones, "zoned for houses or otherwise"),
                 (self.no_height, "without a height control"),
-                (self.too_small, "too small for a building once set back"),
+                (self.at_limit, "already at or over their control"),
+                (self.too_small, "too small to be a building"),
             )
             if count
         ]

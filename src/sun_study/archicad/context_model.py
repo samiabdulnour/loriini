@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
+from functools import partial
 from typing import Any
 
 from sun_study.archicad import naming
@@ -39,6 +40,7 @@ from sun_study.site.arcgis import rings_of
 from sun_study.site.geo import (
     Point,
     clip_ring,
+    convex_hull,
     dissolve,
     lonlat_to_mercator,
     lonlat_to_mga,
@@ -66,8 +68,9 @@ __all__ = [
 #: -- the run would then draw on one layer and look for its own work on
 #: another, with both names looking right on their own.
 def layer_name() -> str:
-    """The layer the fetched context goes on: the office's own site group."""
-    return naming.context_layer()
+    """The layer the neighbouring buildings go on, in the office's own site
+    group. The terrain and the street blocks have layers of their own."""
+    return naming.buildings_layer()
 
 
 #: Floor to floor, where nothing better is recorded. A NSW apartment floor
@@ -97,14 +100,22 @@ class ContextModelReport:
     on_site: int
     """Footprints inside the site, left out."""
     layer: str
+    """The buildings' layer."""
     notes: tuple[str, ...] = ()
+    terrain_layer: str = ""
+    roads_layer: str = ""
 
     def describe(self) -> str:
         lines = [
             "  terrain: "
-            + (f"one mesh from {self.contours} contours" if self.terrain else "not made"),
-            f"  blocks: {self.blocks} meshes {KERB_M * 1000:.0f} mm above the ground; "
-            "the roads are the terrain between them",
+            + (
+                f"one mesh from {self.contours} contours on {self.terrain_layer!r}"
+                if self.terrain
+                else "not made"
+            ),
+            f"  blocks: {self.blocks} meshes {KERB_M * 1000:.0f} mm above the ground"
+            + (f" on {self.roads_layer!r}" if self.roads_layer else "")
+            + "; the roads are the terrain between them",
             f"  neighbours: {self.buildings} slabs on {self.layer!r}, {self.assumed} with assumed "
             f"storeys, {self.on_site} footprints on the site left out",
         ]
@@ -729,8 +740,13 @@ def model_context(
     datum_m: float | None = None,
     say: Callable[[str], None] | None = None,
 ) -> ContextModelReport:
-    """The terrain and the neighbours, in the model, on the ``LORIINI`` layer."""
+    """The terrain, the street blocks and the neighbours, each on its own
+    layer under the office's site group -- see ``naming.TERRAIN_PART``."""
     _on_the_floor_plan(connection)
+    # Made only for what is asked for, so a run of buildings alone does not
+    # leave two empty layers behind it.
+    ground_layer = ensure_layer(connection, naming.terrain_layer()) if terrain else None
+    roads_layer = ensure_layer(connection, naming.roads_layer()) if blocks else None
     layer = ensure_layer(connection, layer_name())
     contours = _contours(bundle, frame)
     ground = _Ground(contours)
@@ -749,7 +765,8 @@ def model_context(
             notes.append("no contours in the bundle; the terrain is not made.")
         else:
             try:
-                _terrain(connection, bundle, frame, contours, layer.index, datum)
+                assert ground_layer is not None
+                _terrain(connection, bundle, frame, contours, ground_layer.index, datum)
                 made_terrain = True
             except ArchicadError as error:
                 notes.append(f"the terrain mesh was refused: {error}")
@@ -762,21 +779,28 @@ def model_context(
         if rings:
             floor_index, floor_level = _datum_storey(connection)
             made_blocks, refused = _block_meshes(
-                connection, rings, ground, layer.index, floor_index, floor_level, datum
+                connection,
+                rings,
+                ground,
+                roads_layer.index if roads_layer is not None else layer.index,
+                floor_index,
+                floor_level,
+                datum,
             )
             if refused:
                 notes.append(f"{len(refused)} block meshes were refused, e.g. {refused[0][:120]}")
     lift = KERB_M if made_blocks else 0.0
 
     site_rings = [frame.ring(ring) for ring in bundle.site_rings]
-    slabs: list[dict[str, Any]] = []
-    identifiers: list[str] = []
+    slabs: list[_Slab] = []
     assumed = 0
     on_site = 0
+    unusable = 0
     if buildings:
         for building in bundle.furniture.buildings:
-            ring = _clean_ring(frame.ring(building.ring))
+            ring = _slab_outline(frame.ring(building.ring))
             if len(ring) < 3 or abs(ring_area(ring)) < 4.0:
+                unusable += int(len(building.ring) >= 3)
                 continue
             centre = ring_centroid(ring)
             if any(point_in_ring(centre[0], centre[1], site) for site in site_rings):
@@ -789,42 +813,46 @@ def model_context(
                 storey_m=storey_m,
             )
             assumed += int(guessed)
+            holes = [
+                hole
+                for hole in (_slab_outline(frame.ring(h)) for h in building.holes)
+                if len(hole) >= 3 and abs(ring_area(hole)) >= 1.0
+            ]
             slabs.append(
-                {
-                    "polygonCoordinates": [{"x": x, "y": y} for x, y in ring],
-                    "level": ground.at(centre) + lift - datum,
-                    "thickness": storeys * storey_m,
-                    "referencePlaneLocation": "Bottom",
-                }
+                _Slab(
+                    outline=ring,
+                    holes=holes,
+                    level=ground.at(centre) + lift - datum,
+                    thickness=storeys * storey_m,
+                    identifier=(
+                        f"SA NEIGHBOUR {storeys} STOREY ({'ASSUMED' if guessed else 'OSM'})"
+                    ),
+                )
             )
-            identifiers.append(f"SA NEIGHBOUR {storeys} STOREY ({'ASSUMED' if guessed else 'OSM'})")
-    made: list[dict[str, Any]] = []
+    if unusable:
+        notes.append(
+            f"{unusable} footprints were too small or too broken to stand up after tidying."
+        )
+    floor_index = _datum_storey(connection)[0]
     # The add-on's CreateSlabs takes the layer, the storey and the ID with
     # the outline, so the three passes Tapir needs (create, move, stamp) are
     # one; Tapir's is the fallback for an add-on built before it existed.
-    own = _slabs_through_the_addon(
-        connection, slabs, identifiers, layer.index, _datum_storey(connection)[0], notes
+    outcome = _create_slabs(
+        partial(_send_through_the_addon, connection, layer.index, floor_index), slabs
     )
-    if own is not None:
-        made = own
-    else:
-        for start in range(0, len(slabs), 200):
-            try:
-                response = connection.run_tapir(
-                    "CreateSlabs", {"slabsData": slabs[start : start + 200]}
-                )
-                batch = _elements(response, "CreateSlabs")
-            except ArchicadError as error:
+    if outcome is None:
+        outcome = _create_slabs(partial(_send_through_tapir, connection), slabs)
+        if outcome is not None and outcome.made:
+            elements = [element for element, _ in outcome.made]
+            moved = move_to_layer(connection, elements, layer.index)
+            if moved != len(elements):
                 notes.append(
-                    f"a batch of {len(slabs[start : start + 200])} slabs was refused: {error}"
+                    f"{len(elements) - moved} slabs stayed on the Slab tool's default layer."
                 )
-                continue
-            made.extend(batch)
-        if made:
-            moved = move_to_layer(connection, made, layer.index)
-            if moved != len(made):
-                notes.append(f"{len(made) - moved} slabs stayed on the Slab tool's default layer.")
-            stamp_in_order(connection, made, identifiers[: len(made)])
+            stamp_in_order(connection, elements, [name for _, name in outcome.made])
+    made = [] if outcome is None else [element for element, _ in outcome.made]
+    if outcome is not None:
+        notes.extend(outcome.describe())
     if say:
         say(f"  {len(made)} neighbours as slabs, {assumed} with assumed storeys")
     return ContextModelReport(
@@ -836,46 +864,212 @@ def model_context(
         on_site=on_site,
         layer=layer.name,
         notes=tuple(notes),
+        terrain_layer=ground_layer.name if ground_layer is not None else "",
+        roads_layer=roads_layer.name if roads_layer is not None else "",
     )
 
 
-def _slabs_through_the_addon(
+#: How many slabs go in one request. Each request is one undo step in
+#: Archicad, which is also why one refused slab takes its whole request with
+#: it -- see ``_create_slabs``.
+SLAB_BATCH = 200
+
+
+@dataclass(frozen=True)
+class _Slab:
+    """One neighbour, ready to send: its outline and holes in project
+    metres, the level its bottom sits at, how tall it is, and its ID."""
+
+    outline: list[Point]
+    holes: list[list[Point]]
+    level: float
+    thickness: float
+    identifier: str
+
+    def simpler(self) -> list[_Slab]:
+        """What to try when Archicad will not take this one as drawn.
+
+        First without its holes -- a courtyard filled in shades a little
+        more than it should, which is the safe side for a sun study -- then
+        as its convex hull, which is the same building with its notches
+        filled. Either is better than a gap where a building stands.
+        """
+        tries: list[_Slab] = []
+        if self.holes:
+            tries.append(replace(self, holes=[]))
+        hull = [(float(x), float(y)) for x, y in convex_hull(self.outline)]
+        hull = _clean_ring(hull)
+        if len(hull) >= 3 and hull != self.outline:
+            tries.append(replace(self, outline=hull, holes=[]))
+        return tries
+
+
+class _NoSuchCommandError(Exception):
+    """The add-on predates its own ``CreateSlabs``."""
+
+
+@dataclass
+class _Created:
+    """What ``_create_slabs`` managed, and what it had to give up on."""
+
+    made: list[tuple[dict[str, Any], str]] = field(default_factory=list)
+    simplified: int = 0
+    lost: list[str] = field(default_factory=list)
+
+    def describe(self) -> list[str]:
+        said: list[str] = []
+        if self.simplified:
+            said.append(
+                f"{self.simplified} footprints Archicad would not take as drawn were "
+                "stood up simplified -- holes filled, or as their convex hull."
+            )
+        if self.lost:
+            said.append(
+                f"{len(self.lost)} footprints were refused even simplified and are "
+                f"missing, e.g. {self.lost[0][:160]}"
+            )
+        return said
+
+
+def _create_slabs(
+    send: Callable[[Sequence[_Slab]], list[dict[str, Any]]],
+    slabs: Sequence[_Slab],
+) -> _Created | None:
+    """Every slab that Archicad will take, and only the bad ones lost.
+
+    Archicad makes a whole request in one undo step and abandons the step at
+    the first slab it refuses, so one footprint OSM drew with a spike or a
+    crossing edge used to take up to 199 good neighbours out of the model
+    with it -- a street with a gap in it, and a note nobody reads. A refused
+    request is now halved and each half tried again, down to the one slab
+    that is the problem, which is then tried simplified before it is given
+    up on. A clean model costs the same one request per two hundred as
+    before; a dirty one costs a few more requests and no buildings.
+
+    ``None`` when the add-on has no ``CreateSlabs`` at all, so the caller
+    can go the Tapir way instead.
+    """
+    done = _Created()
+
+    def attempt(chunk: Sequence[_Slab]) -> None:
+        try:
+            elements = send(chunk)
+        except ArchicadError as error:
+            if len(chunk) > 1:
+                middle = len(chunk) // 2
+                attempt(chunk[:middle])
+                attempt(chunk[middle:])
+                return
+            for simpler in chunk[0].simpler():
+                try:
+                    elements = send([simpler])
+                except ArchicadError:
+                    continue
+                done.simplified += 1
+                done.made.extend(zip(elements, [simpler.identifier], strict=False))
+                return
+            done.lost.append(str(error))
+            return
+        done.made.extend(zip(elements, [slab.identifier for slab in chunk], strict=False))
+
+    try:
+        for start in range(0, len(slabs), SLAB_BATCH):
+            attempt(slabs[start : start + SLAB_BATCH])
+    except _NoSuchCommandError:
+        if done.made:  # pragma: no cover - a command does not vanish mid-run
+            raise
+        return None
+    return done
+
+
+def _send_through_the_addon(
     connection: ArchicadConnection,
-    slabs: Sequence[dict[str, Any]],
-    identifiers: Sequence[str],
     layer_index: int,
     floor_index: int,
-    notes: list[str],
-) -> list[dict[str, Any]] | None:
-    """The slabs through Loriini's ``CreateSlabs``; ``None`` when the add-on
-    does not have the command, so the caller falls back to Tapir's."""
-    made: list[dict[str, Any]] = []
-    for start in range(0, len(slabs), 200):
-        batch = [
-            {
-                "contours": [{"points": one["polygonCoordinates"]}],
-                "level": one["level"],
-                "thickness": one["thickness"],
-                "referencePlane": "bottom",
-                "layerIndex": layer_index,
-                "floorIndex": floor_index,
-                "elementId": identifiers[start + i][:255],
-            }
-            for i, one in enumerate(slabs[start : start + 200])
-        ]
-        try:
-            response = connection.run_loriini("CreateSlabs", {"slabs": batch})
-        except ArchicadError as error:
-            if "not have the registered" in str(error) and not made:
-                return None
-            notes.append(f"a batch of {len(batch)} slabs was refused: {error}")
-            continue
-        elements = response.get("elements") if isinstance(response, dict) else None
-        if not isinstance(elements, list):
-            notes.append(f"CreateSlabs answered without an element list: {response!r}")
-            continue
-        made.extend({"elementId": {"guid": str(e.get("guid", ""))}} for e in elements)
-    return made
+    chunk: Sequence[_Slab],
+) -> list[dict[str, Any]]:
+    """One request to Loriini's ``CreateSlabs``: the created slabs, in order."""
+    batch = [
+        {
+            "contours": [
+                {"points": [{"x": x, "y": y} for x, y in ring]}
+                for ring in (slab.outline, *slab.holes)
+            ],
+            "level": slab.level,
+            "thickness": slab.thickness,
+            "referencePlane": "bottom",
+            "layerIndex": layer_index,
+            "floorIndex": floor_index,
+            "elementId": slab.identifier[:255],
+        }
+        for slab in chunk
+    ]
+    try:
+        response = connection.run_loriini("CreateSlabs", {"slabs": batch})
+    except ArchicadError as error:
+        if "not have the registered" in str(error):
+            raise _NoSuchCommandError from error
+        raise
+    elements = response.get("elements") if isinstance(response, dict) else None
+    if not isinstance(elements, list) or len(elements) != len(chunk):
+        raise ArchicadError(f"CreateSlabs answered without one element per slab: {response!r}")
+    return [{"elementId": {"guid": str(e.get("guid", ""))}} for e in elements]
+
+
+def _send_through_tapir(
+    connection: ArchicadConnection, chunk: Sequence[_Slab]
+) -> list[dict[str, Any]]:
+    """One request to Tapir's ``CreateSlabs``. Holes are not sent this way:
+    it is the path for an add-on too old to have its own, and a courtyard
+    filled in is the safe side for a sun study."""
+    response = connection.run_tapir(
+        "CreateSlabs",
+        {
+            "slabsData": [
+                {
+                    "polygonCoordinates": [{"x": x, "y": y} for x, y in slab.outline],
+                    "level": slab.level,
+                    "thickness": slab.thickness,
+                    "referencePlaneLocation": "Bottom",
+                }
+                for slab in chunk
+            ]
+        },
+    )
+    elements = _elements(response, "CreateSlabs")
+    if len(elements) != len(chunk):
+        raise ArchicadError(f"CreateSlabs made {len(elements)} of {len(chunk)} slabs.")
+    return elements
+
+
+def _slab_outline(ring: Sequence[Point]) -> list[Point]:
+    """A footprint Archicad will take, as near to the one drawn as it can be.
+
+    OSM outlines are drawn by hand, and what Archicad refuses in them is not
+    exotic: two nodes a millimetre apart, a spike where a node was dragged
+    out and back, three nodes in a line that make an edge of no width. So
+    points closer than 5 mm are merged, and a vertex whose corner encloses
+    less than a square centimetre -- a spike, or a point on a straight run --
+    is taken out, until none is left. The building is the same building.
+    """
+    points = _clean_ring(ring)
+    merged: list[Point] = []
+    for point in points:
+        if not merged or math.dist(point, merged[-1]) > 0.005:
+            merged.append(point)
+    if len(merged) > 1 and math.dist(merged[0], merged[-1]) <= 0.005:
+        merged.pop()
+    changed = True
+    while changed and len(merged) > 3:
+        changed = False
+        for i in range(len(merged)):
+            a, b, c = merged[i - 1], merged[i], merged[(i + 1) % len(merged)]
+            corner = abs((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])) / 2.0
+            if corner < 1e-4:
+                del merged[i]
+                changed = True
+                break
+    return merged
 
 
 def ground_at_site(bundle: SiteBundle, frame: Frame) -> float | None:
