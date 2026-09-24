@@ -30,10 +30,24 @@ from sun_study.app import icons, theme
 THEME_SOURCE = Path(theme.__file__).read_text(encoding="utf-8")
 
 
+def _root() -> tk.Tk:
+    """A Tk interpreter, or a skip where there is no display to open one on.
+
+    The Linux runners carry tkinter but no display, so the import succeeds and
+    ``Tk()`` is what fails -- as an error in every test that asks, and the run
+    red for a reason that says nothing about the theme. The same guard as the
+    window's own tests.
+    """
+    try:
+        return tk.Tk()
+    except tk.TclError:  # pragma: no cover - a machine with no display
+        pytest.skip("no display for Tk")
+
+
 @pytest.fixture
 def styled() -> object:
     """A dressed interpreter, thrown away afterwards."""
-    root = tk.Tk()
+    root = _root()
     root.withdraw()
     try:
         yield theme.apply(root)
@@ -125,7 +139,7 @@ def test_nothing_wearing_a_face_still_leans_on_its_background(styled: object) ->
     a background map on ``TButton`` itself. That one is not ours and cannot be
     removed; what matters is that this module has not added any.
     """
-    stock = tk.Tk()
+    stock = _root()
     stock.withdraw()
     try:
         bare = ttk.Style(stock)
@@ -216,7 +230,7 @@ def test_no_face_is_drawn_small_enough_to_be_stamped_a_thousand_times() -> None:
     is at least a hundred pixels along any side it is tiled along.
     """
     folder = icons.folder()
-    root = tk.Tk()
+    root = _root()
     root.withdraw()
     try:
         small = []
@@ -282,7 +296,7 @@ def test_a_missing_face_leaves_a_working_window(monkeypatch: pytest.MonkeyPatch)
     """
     monkeypatch.setattr(icons, "face", lambda name: None)
     monkeypatch.setattr(icons, "named", lambda name, size=20: None)
-    root = tk.Tk()
+    root = _root()
     root.withdraw()
     try:
         style = theme.apply(root)
