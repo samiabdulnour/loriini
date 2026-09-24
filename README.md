@@ -151,6 +151,11 @@ rights, so the `Archicad add-on` workflow builds it on a runner and uploads the
 folder and add the folder in Options > Add-On Manager. Once it loads, the Tapir
 add-on can be removed.
 
+The same workflow makes the whole handover folder: `Loriini.exe` beside the
+add-on, with an install note and the licence, as the `Loriini_AC26_Win`
+artifact on the run's page. [`docs/addon.md`](docs/addon.md#installing-it)
+says where to find it and how to ask for a fresh one.
+
 [`docs/addon.md`](docs/addon.md) records what was verified, how the two missing
 commands were confirmed missing, and the one convention that is still open.
 

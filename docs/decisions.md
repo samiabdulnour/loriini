@@ -4059,3 +4059,41 @@ Valhalla's credit is the engine alone. It routes over OpenStreetMap, so a
 catchment adds both slugs and the line reads `...; © OpenStreetMap
 contributors; Walking catchments: Valhalla (FOSSGIS e.V.).` rather than
 naming the contributors twice in one sentence.
+
+### D118 — The handover folder is built on GitHub, in the add-on's own run
+
+`Loriini.exe` came from one PC. `Loriini.spec` held that machine's absolute
+paths, as every spec PyInstaller writes for itself does, so the recipe ran
+nowhere else and the only executable in existence was whichever one had last
+been built there. The add-on had been built on GitHub from the start, because
+a runner is the only place it can be compiled. The program had not.
+
+**Now both come from one run.** The `Archicad add-on` workflow gains a second
+job. It builds the program with `scripts/build_app.py` on a Windows runner,
+puts the add-on the first job has just compiled beside it with
+`How to install.txt` and `LICENSE.txt`, and uploads the folder as the
+`Loriini_AC26_Win` artifact. Both halves come from the same commit, so an
+executable cannot arrive with an add-on that lacks a command it calls. The
+spec takes every path from `SPECPATH`, so the same recipe still builds on a
+PC, and `build_app.py` writes the same four files there.
+
+**It proves the program starts before handing it over.** A PyInstaller build
+that succeeds can still fail when it runs, on a module or a data file its scan
+missed. So the job starts the packaged executable once, the way the window
+starts its child, with `SUN_STUDY_RUN_CLI=1`, and requires it to list the
+rulesets. That needs the bundled command line and the rulesets' YAML, which
+nothing imports. It opens no window and no IFC, so it is a floor under the
+build rather than a test of every path through it.
+
+**When it runs is a cost decision.** The repository is private, and GitHub
+bills a Windows minute as two. The program takes several, so a folder is made
+by a push that changes the add-on, the spec or the build script, and otherwise
+on request: **Run workflow** on the Actions tab, with the branch picked. It is
+never made for a pull request, whose push has already built the same commit.
+So the newest folder can be a commit or more behind its branch. The install
+note names the commit it was built from, which makes that visible rather than
+assumed.
+
+Artifacts also expire, after 90 days unless the repository says otherwise.
+That is one more reason the folder is cheap to remake and is not kept in the
+repository.

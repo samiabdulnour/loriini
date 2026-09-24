@@ -6,7 +6,12 @@
 Leaves ``dist/Loriini.exe`` and, beside it, the add-on it talks to --
 ``dist/LoriiniAddOn_AC26_Win.apx`` -- so the folder is the whole handover: the
 program to double-click, and the one file to drop into Archicad's add-on
-folder. Neither needs Python or an install.
+folder. Neither needs Python or an install. ``How to install.txt`` and
+``LICENSE.txt`` go in beside them, because whoever unzips the folder has not
+read ``docs/addon.md`` and should not have to.
+
+The same folder is built on GitHub by the ``Archicad add-on`` workflow and
+uploaded as the ``Loriini_AC26_Win`` artifact, for anybody without a checkout.
 
 The add-on is not compiled here: that needs Visual Studio, which the office's
 machines cannot install, so the ``Archicad add-on`` workflow builds it on a
@@ -36,6 +41,7 @@ minutes, which is the right way round.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import shutil
 import subprocess
 import sys
@@ -79,6 +85,13 @@ LOCAL_ADDON = ROOT / "archicad-addon" / "Build" / "RelWithDebInfo" / f"{ADDON}.a
 #: The workflow that builds it, by file name, which is what ``gh`` takes.
 ADDON_WORKFLOW = "archicad-addon.yml"
 
+#: The note that rides beside the two files, named for what it answers.
+INSTALL_NOTE = "How to install.txt"
+
+#: The licence, under a name Windows opens with a double-click. It answers an
+#: extensionless ``LICENSE`` with "how do you want to open this".
+LICENCE_COPY = "LICENSE.txt"
+
 #: Windows reads this out of the .exe for its Properties > Details tab, and
 #: shows it in the UAC prompt and the task manager. Without it the file claims
 #: nothing at all: no author, no version, no description -- which is how a
@@ -112,10 +125,11 @@ VERSION_INFO = f"""VSVersionInfo(
 """
 
 
-def _branch() -> str | None:
+def _git(*arguments: str) -> str | None:
+    """Git's one-line answer, or ``None`` with no git or no repository."""
     try:
-        named = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        answered = subprocess.run(
+            ["git", *arguments],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -123,8 +137,66 @@ def _branch() -> str | None:
         )
     except OSError:
         return None
-    branch = named.stdout.strip()
-    return branch if named.returncode == 0 and branch and branch != "HEAD" else None
+    line = answered.stdout.strip()
+    return line if answered.returncode == 0 and line else None
+
+
+def _branch() -> str | None:
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD")
+    return branch if branch != "HEAD" else None
+
+
+def install_note(today: dt.date | None = None) -> str:
+    """What ``How to install.txt`` says: the files, the three steps, and which
+    build this is, so two folders on a shared drive can be told apart."""
+    branch, commit = _branch(), _git("rev-parse", "--short", "HEAD")
+    day = today or dt.date.today()
+    built = f"Built on {day.day} {day:%B %Y}"
+    if branch:
+        built += f" from {branch}"
+    if commit:
+        built += f" at commit {commit}"
+    return f"""{PRODUCT} {__version__} for Archicad 26
+
+Everything a workstation needs. None of it needs Python, an installer or
+administrator rights.
+
+  {NAME}.exe                  the program
+  {ADDON}.apx    the Archicad 26 add-on, with Tapir's commands
+                               built in
+  {LICENCE_COPY}                  the licence
+
+To install
+
+1. Copy {NAME}.exe and {ADDON}.apx into one folder of your
+   own, for example
+       C:\\Users\\<you>\\Documents\\Loriini\\Add-Ons
+   Keep the two together: the Loriini menu in Archicad starts the
+   {NAME}.exe it finds beside the add-on.
+2. In Archicad 26, open Options > Add-On Manager, add that folder, and
+   restart Archicad.
+3. Start {PRODUCT} from its menu in Archicad, or double-click {NAME}.exe.
+
+A separate Tapir add-on is not needed, and can be removed once this one
+loads.
+
+To update, close Archicad and replace both files with the ones from a newer
+folder.
+
+{PRODUCT} is a prototype. Its figures are not validated for a DA submission.
+
+{built}.
+"""
+
+
+def add_notes(dist: Path) -> None:
+    """The install note and the licence, beside the program and the add-on."""
+    dist.mkdir(parents=True, exist_ok=True)
+    # Notepad reads either line ending since 2018; the office's other readers
+    # of a .txt may not, so the note is written the way Windows writes one.
+    (dist / INSTALL_NOTE).write_text(install_note(), encoding="utf-8", newline="\r\n")
+    shutil.copyfile(ROOT / "LICENSE", dist / LICENCE_COPY)
+    print(f"added  {dist / INSTALL_NOTE}  and  {LICENCE_COPY}")
 
 
 def fetch_addon(into: Path) -> Path | None:
@@ -203,6 +275,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     arguments = parser.parse_args(argv)
     if arguments.addon_only:
+        add_notes(ROOT / "dist")
         return 0 if add_addon(ROOT / "dist", arguments.addon) else 1
 
     try:
@@ -271,8 +344,10 @@ def main(argv: list[str] | None = None) -> int:
     built = ROOT / "dist" / f"{NAME}.exe"
     size = f"{built.stat().st_size / 1e6:.0f} MB" if built.exists() else "?"
     print(f"\nbuilt {built}  ({size})")
+    add_notes(ROOT / "dist")
     # Not a failure of the build, and not a silent success either: a dist
-    # folder without the add-on is half a handover.
+    # folder without the add-on is half a handover. Last, so that when it is
+    # missing the line saying so is the last thing printed.
     return 0 if add_addon(ROOT / "dist", arguments.addon) else 1
 
 
