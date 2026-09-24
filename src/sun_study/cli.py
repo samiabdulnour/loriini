@@ -1937,6 +1937,7 @@ def report_area_bands(
     instant_subset: str = "",
     analysis_subset: str = "",
     paper: PaperSink | None = None,
+    base_combination: str = "",
 ) -> bool:
     """The whole-day area figures: printed, drawn, and written out.
 
@@ -2107,6 +2108,7 @@ def report_area_bands(
             instant_subset=instant_subset,
             analysis_subset=analysis_subset,
             paper=paper,
+            base_combination=base_combination,
         )
     return problem
 
@@ -2254,6 +2256,7 @@ def report_penetration(
     analysis_subset: str = "",
     sheets_mode: str = "each",
     paper: PaperSink | None = None,
+    base_combination: str = "",
 ) -> bool:
     """Draw the study diagram -- on the sheets with ``paper``, else on the
     floor plan. True if anything is wrong."""
@@ -2355,6 +2358,7 @@ def report_penetration(
             analysis_subset=analysis_subset,
             sheets=sheets_mode,
             paper=paper,
+            base_combination=base_combination,
         )
     return not drawn.complete
 
@@ -5668,6 +5672,19 @@ def archicad_run(
             ),
         ),
     ] = "SHADOW DIAGRAMS",
+    plan_combination: Annotated[
+        str,
+        typer.Option(
+            "--plan-combination",
+            help=(
+                "The layer combination the plan sheets are drawn over -- the "
+                "plan a reader expects to see under the sunlight. Defaults to "
+                "--layer-combination. Without either, each run starts from "
+                "whatever the last one left on screen, and over a few runs the "
+                "sheets drift to showing the study and nothing under it."
+            ),
+        ),
+    ] = "",
     adg_subset: Annotated[
         str,
         typer.Option(
@@ -6197,6 +6214,7 @@ def archicad_run(
                     instant_subset=layout_subset,
                     analysis_subset=adg_subset,
                     sheets_mode=sheets,
+                    base_combination=plan_combination or layer_combination or "",
                 )
                 or partial
             )
@@ -6242,6 +6260,7 @@ def archicad_run(
                     zoom=assessed_extent(read_zones(connection), match, margin_m=10.0),
                     instant_subset=layout_subset,
                     analysis_subset=adg_subset,
+                    base_combination=plan_combination or layer_combination or "",
                 )
                 or partial
             )

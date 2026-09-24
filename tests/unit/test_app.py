@@ -414,6 +414,43 @@ def test_the_neighbours_shade_every_solar_study_not_only_the_communal_one(
     assert "05 | Dims/Notes.DA" in flag(plans, "--require-layer"), "forced visible, for all three"
 
 
+def test_the_plans_are_drawn_over_the_offices_own_plan_combination(hidden_window: Any) -> None:
+    """The plan a reader expects under the sunlight, not the model the study
+    reads. Offered from the project, a plan-like one picked, and passed to
+    both plan studies under the names their commands use."""
+    assert hidden_window.plan_combination.get() == "01 | Plans - DA"
+    assert "" in hidden_window.plan_combination.cget("values"), "blank: the model's"
+
+    hidden_window.communal.set("06 | Zone.Balcony")
+    hidden_window.do_plans.set(True)
+    hidden_window.do_communal.set(True)
+    jobs = hidden_window.jobs()
+    plans = next(job.args for job in jobs if job.label.startswith(window.PLANS_JOB))
+    communal = next(job.args for job in jobs if job.label.startswith(window.COMMUNAL_JOB))
+
+    assert flag(plans, "--plan-combination") == ["01 | Plans - DA"]
+    assert flag(communal, "--zone-view-combination") == ["01 | Plans - DA"]
+
+    hidden_window.plan_combination.set("")
+    plans = next(job.args for job in hidden_window.jobs() if job.label.startswith(window.PLANS_JOB))
+    assert "--plan-combination" not in plans, "blank sends nothing; the command falls back"
+
+
+def test_the_tools_own_combination_is_never_offered_as_the_plan(hidden_window: Any) -> None:
+    """It regenerates those every run: a base that is its own output is the
+    drift a base exists to stop."""
+    hidden_window.options = replace(
+        hidden_window.options,
+        combinations=("14 | Sun Study Plan", "12 | IFC ARCH. EXPORT", "02 | GA Plans"),
+    )
+    hidden_window.plan_combination.set("")
+    hidden_window._offer()
+
+    offered = hidden_window.plan_combination.cget("values")
+    assert "14 | Sun Study Plan" not in offered
+    assert hidden_window.plan_combination.get() == "02 | GA Plans"
+
+
 def test_no_table_is_written_unless_a_folder_is_named(hidden_window: Any) -> None:
     hidden_window.communal.set("06 | Zone.Balcony")
     hidden_window.do_facade.set(False)

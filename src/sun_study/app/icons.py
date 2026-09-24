@@ -327,6 +327,7 @@ BY_LABEL: dict[str, str] = {
     "Year": "year",
     # Model -- what leaves Archicad
     "Layer combination": "combination",
+    "Plan combination": "combination",
     "Layers forced visible": "also_export",
     "Neighbouring buildings": "neighbours",
     "Layers hidden on sheets": "keep_off",

@@ -3278,6 +3278,21 @@ class Window:
             "reported rather than invented, with the sheets left at the root.",
         )
 
+        self.plan_combination, row = self._combo(
+            frame,
+            row,
+            "Plan combination",
+            "The layer combination the plans are drawn over, under the sunlight.",
+            "What a reader expects to see under the colours: the walls, the "
+            "doors, the apartment names -- the office's own plan, not the model "
+            "the study reads. Used by the apartment plans and the communal "
+            "plans alike. Left blank, they are drawn over the Model tab's "
+            "combination, which is chosen for measuring and not for looking at. "
+            "Without any, each run would start from whatever the last one left "
+            "on screen, and over a few runs the sheets drift to showing the "
+            "study and nothing under it.",
+        )
+
         self.plan_kinds, row = self._tiles(
             frame,
             row,
@@ -4726,6 +4741,7 @@ class Window:
             "storey_to": self.storey_to,
             "year": self.year,
             "layer_combination": self.combination,
+            "plan_combination": self.plan_combination,
             "subject_layers": self.subject,
             "require_layers": self.require,
             "context_layers": self.context,
@@ -5019,6 +5035,7 @@ class Window:
             ("VERTICAL - No Scale", "VERTICAL NO SCALE", "No Scale", "A1"),
         )
         self._fill(self.combination, found.combinations, ("IFC ARCH", "IFC"))
+        self._offer_plan_combination(found.combinations)
         self._fill(self.shadow_subset, found.subsets, ("SHADOW",))
         self._fill(self.adg_subset, found.subsets, ("ADG",))
         # Blank first, and no preference: a blank keeps each view's own pen
@@ -5133,6 +5150,27 @@ class Window:
             name for name in self.options.layers if " ".join(name.split()).casefold() not in seen
         ]
         return tuple(carrying + rest)
+
+    def _offer_plan_combination(self, combinations: Sequence[str]) -> None:
+        """The plan combination: a plan-like one picked, or none rather than a guess.
+
+        Not ``_fill``, for two reasons. Its fallback is the first name in the
+        list, and a plan drawn over an arbitrary combination is worse than one
+        drawn over the model's, which is what blank means. And never one of
+        this tool's own: it regenerates those every run, and a base that is its
+        own output is the drift a base exists to stop.
+        """
+        own = f"{self.prefix_solar.get().strip() or naming.DEFAULT_PREFIX} "
+        values = [name for name in combinations if not name.startswith(own)]
+        self.plan_combination.config(values=["", *values])
+        if self.plan_combination.get() in values:
+            return
+        for want in ("PLAN", "GA ", "GENERAL ARRANGEMENT"):
+            match = next((v for v in values if want.casefold() in v.casefold()), None)
+            if match is not None:
+                self.plan_combination.set(match)
+                return
+        self.plan_combination.set("")
 
     def _fill(self, box: ttk.Combobox, values: tuple[str, ...], prefer: tuple[str, ...]) -> None:
         """Offer these, and pick the likeliest -- without overriding a choice.
@@ -6058,6 +6096,8 @@ class Window:
             # next door -- more sun than they get, and nothing to say so.
             for name in [*self._listed(self.require), *self._listed(self.context)]:
                 args += ["--require-layer", name]
+            if self.plan_combination.get():
+                args += ["--plan-combination", self.plan_combination.get()]
             for stamp in self._listed(self.instants) if times else []:
                 args += ["--plan-instant", stamp]
             args += self._band_args()
@@ -6112,6 +6152,8 @@ class Window:
                 args += ["--master-layout", self.master.get()]
             if self.adg_subset.get():
                 args += ["--zone-subset", self.adg_subset.get()]
+            if self.plan_combination.get():
+                args += ["--zone-view-combination", self.plan_combination.get()]
             for name in self._listed(self.context):
                 # Both: into the export, because a neighbour that is not
                 # exported shades nothing, and out of the facade denominator.

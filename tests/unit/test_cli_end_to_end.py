@@ -1100,3 +1100,25 @@ def test_a_table_carries_the_day_it_studied_once() -> None:
         assert _day_tagged(Path("out/COS areas.csv")) == Path("out/COS areas.csv")
     finally:
         naming.set_day("")
+
+
+def test_the_apartment_plans_are_given_a_plan_to_sit_on() -> None:
+    """Both plan kinds, the heat map and the hourly plans, used to be made
+    with no base combination at all -- so each run started from what the last
+    one left on screen, and the sheets drifted to showing the study and
+    nothing under it. Pinned in the source because both calls are deep in a
+    run that needs an Archicad."""
+    import ast
+    import inspect
+
+    from sun_study import cli
+
+    tree = ast.parse(inspect.getsource(cli.archicad_run))
+    calls = {
+        node.func.id: {keyword.arg for keyword in node.keywords}
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "base_combination" in calls["report_penetration"]
+    assert "base_combination" in calls["report_area_bands"]
+    assert "--plan-combination" in runner.invoke(cli.app, ["archicad-run", "--help"]).output
