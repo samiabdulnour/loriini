@@ -3,8 +3,22 @@
     uv sync            # once, to install PyInstaller
     uv run python scripts/build_app.py
 
-Leaves ``dist/Loriini.exe``. Copy that anywhere; it needs no Python and no
-install, only an Archicad with the Loriini add-on running on the same machine.
+Leaves ``dist/Loriini.exe`` and, beside it, the add-on it talks to --
+``dist/LoriiniAddOn_AC26_Win.apx`` -- so the folder is the whole handover: the
+program to double-click, and the one file to drop into Archicad's add-on
+folder. Neither needs Python or an install.
+
+The add-on is not compiled here: that needs Visual Studio, which the office's
+machines cannot install, so the ``Archicad add-on`` workflow builds it on a
+runner. This takes it, in order, from
+
+    --addon PATH              a file you name
+    archicad-addon/Build/...  a local build, where somebody has one
+    the workflow's artifact   the newest successful build of this branch,
+                              downloaded with the GitHub CLI (``gh``)
+
+and says plainly when it found none, rather than leaving a dist folder that
+looks complete and is not.
 
 Why one file and no console
 ---------------------------
@@ -21,8 +35,11 @@ minutes, which is the right way round.
 
 from __future__ import annotations
 
+import argparse
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -50,6 +67,17 @@ ICON = ROOT / "assets" / "loriini.ico"
 #: this file on every run and threw away the trimming in it -- 11 MB back onto
 #: the executable, silently. docs/restructure.md has the measurement.
 SPEC = ROOT / "Loriini.spec"
+
+#: The add-on the program talks to, as the workflow names its artifact and its
+#: file. One Archicad version: an .apx is compiled against one major version
+#: and the office runs 26.
+ADDON = "LoriiniAddOn_AC26_Win"
+
+#: Where a local build of it lands, for the machine that has Visual Studio.
+LOCAL_ADDON = ROOT / "archicad-addon" / "Build" / "RelWithDebInfo" / f"{ADDON}.apx"
+
+#: The workflow that builds it, by file name, which is what ``gh`` takes.
+ADDON_WORKFLOW = "archicad-addon.yml"
 
 #: Windows reads this out of the .exe for its Properties > Details tab, and
 #: shows it in the UAC prompt and the task manager. Without it the file claims
@@ -84,7 +112,99 @@ VERSION_INFO = f"""VSVersionInfo(
 """
 
 
-def main() -> int:
+def _branch() -> str | None:
+    try:
+        named = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    branch = named.stdout.strip()
+    return branch if named.returncode == 0 and branch and branch != "HEAD" else None
+
+
+def fetch_addon(into: Path) -> Path | None:
+    """The newest successful add-on build of this branch, from GitHub.
+
+    Through ``gh`` because an artifact is behind a login: it is the one tool
+    that already holds one on a machine where somebody pushes. ``None``, with
+    the reason printed, when there is no ``gh``, no login or no build.
+    """
+    gh = shutil.which("gh")
+    if gh is None:
+        print("  no GitHub CLI (gh) on this machine to fetch the add-on with.")
+        return None
+    listing = [gh, "run", "list", "--workflow", ADDON_WORKFLOW, "--status", "success"]
+    branch = _branch()
+    if branch:
+        listing += ["--branch", branch]
+    listing += ["--limit", "1", "--json", "databaseId", "--jq", ".[0].databaseId"]
+    found = subprocess.run(listing, cwd=ROOT, capture_output=True, text=True, check=False)
+    run_id = found.stdout.strip()
+    if found.returncode != 0 or not run_id or run_id == "null":
+        where = f" of {branch}" if branch else ""
+        print(f"  no successful add-on build{where} to fetch. {found.stderr.strip()}".rstrip())
+        return None
+    print(f"  fetching the add-on from build {run_id}...")
+    fetched = subprocess.run(
+        [gh, "run", "download", run_id, "--name", ADDON, "--dir", str(into)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if fetched.returncode != 0:
+        print(f"  the download failed: {fetched.stderr.strip()}")
+        return None
+    return next(iter(sorted(into.rglob("*.apx"))), None)
+
+
+def find_addon(named: Path | None, scratch: Path) -> Path | None:
+    """Where the add-on is, by the order the module docstring gives."""
+    if named is not None:
+        if named.is_file():
+            return named
+        print(f"  no add-on at {named}.")
+        return None
+    if LOCAL_ADDON.is_file():
+        return LOCAL_ADDON
+    return fetch_addon(scratch)
+
+
+def add_addon(dist: Path, named: Path | None) -> bool:
+    """Put the add-on beside the executable. True when it is there."""
+    with tempfile.TemporaryDirectory() as scratch:
+        found = find_addon(named, Path(scratch))
+        if found is None:
+            print(
+                f"\nNOT IN dist: the add-on. Download {ADDON} from the latest "
+                "'Archicad add-on' run on GitHub and run this with --addon <file>, "
+                "or log in with 'gh auth login' so it can be fetched."
+            )
+            return False
+        dist.mkdir(parents=True, exist_ok=True)
+        placed = dist / f"{ADDON}.apx"
+        shutil.copy2(found, placed)
+    print(f"added  {placed}  (from {found})")
+    return True
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Build Loriini.exe and gather the add-on.")
+    parser.add_argument("--addon", type=Path, help="the add-on .apx to put beside the program")
+    parser.add_argument(
+        "--addon-only",
+        action="store_true",
+        help="only put the add-on into dist; do not rebuild the program",
+    )
+    arguments = parser.parse_args(argv)
+    if arguments.addon_only:
+        return 0 if add_addon(ROOT / "dist", arguments.addon) else 1
+
     try:
         import PyInstaller  # noqa: F401
     except ImportError:
@@ -146,11 +266,14 @@ def main() -> int:
     ]
     print(" ".join(command))
     finished = subprocess.run(command, cwd=ROOT, check=False)
-    if finished.returncode == 0:
-        built = ROOT / "dist" / f"{NAME}.exe"
-        size = f"{built.stat().st_size / 1e6:.0f} MB" if built.exists() else "?"
-        print(f"\nbuilt {built}  ({size})")
-    return finished.returncode
+    if finished.returncode != 0:
+        return finished.returncode
+    built = ROOT / "dist" / f"{NAME}.exe"
+    size = f"{built.stat().st_size / 1e6:.0f} MB" if built.exists() else "?"
+    print(f"\nbuilt {built}  ({size})")
+    # Not a failure of the build, and not a silent success either: a dist
+    # folder without the add-on is half a handover.
+    return 0 if add_addon(ROOT / "dist", arguments.addon) else 1
 
 
 if __name__ == "__main__":

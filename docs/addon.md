@@ -511,11 +511,18 @@ fixing a compile error does not necessarily have them.
 
 No administrator rights needed, which is the point.
 
-1. Download the `LoriiniAddOn_AC26_Win` artifact from the workflow run.
-2. Put the `.apx` in the same folder as Tapir's, e.g.
-   `C:\Users\<you>\Documents\Tapir\Add-Ons\`.
-3. Put `Loriini.exe` in that folder too, if the menu item should start the app.
-4. In Archicad: **Options > Add-On Manager**, add that folder, restart.
+1. Build: `uv run python scripts/build_app.py`. It leaves both files in
+   `dist/` -- `Loriini.exe` and `LoriiniAddOn_AC26_Win.apx` -- taking the add-on
+   from `--addon <file>`, a local build, or the newest successful run of this
+   workflow on the branch, fetched with the GitHub CLI (`gh auth login` once).
+   Without `gh`, download the `LoriiniAddOn_AC26_Win` artifact from the run and
+   pass it with `--addon`; `--addon-only` puts it in `dist/` without rebuilding
+   the program.
+2. Copy both into one folder of your own, e.g.
+   `C:\Users\<you>\Documents\Loriini\Add-Ons\`. Together, because the menu
+   item looks for `Loriini.exe` beside the `.apx`. Tapir is built in and does
+   not need a folder of its own.
+3. In Archicad: **Options > Add-On Manager**, add that folder, restart.
 
 `sun-study archicad-info` reports whether the add-on answered.
 
