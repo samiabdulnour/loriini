@@ -3990,3 +3990,72 @@ left on screen -- the drift ``ensure_layer_combination`` documents, down to
 two layers shown of 155. A **Plan combination** on the Solar analysis tab
 is the base for the apartment and communal plans alike, picked from the
 project's plan-like combinations and never one of the tool's own.
+
+### D117 — The info box says the terms and never the date; the credits sit beside the fetching
+
+Two questions arrive together the first time somebody sends a Context Analysis
+sheet out of the office: *may I pass this program on*, and *whose data is this
+drawing made of*. Both are now answered by one box, opened by the **ⓘ** beside
+the project picker or by **Where this data comes from** on the Site analysis
+tab, which opens the same box scrolled to the registers.
+
+**The data half is the one that matters.** The site analysis fetches from six
+publishers, five of them under CC BY and OpenStreetMap under ODbL, and every
+one of those licences asks for a credit on a produced work. A DA sheet is a
+produced work. Nobody can supply that credit from memory, and two publishers
+ask for particular wording — `© State of New South Wales (Spatial Services, a
+business unit of the Department of Customer Service NSW)` is not what anybody
+writes unprompted. So the list lives in `sun_study.site.sources`, beside the
+code that does the fetching rather than in a document that goes stale the
+first time an endpoint moves, and the box ends with the whole credit line in a
+field with a Copy button. `tests/unit/test_site_sources.py` reads every
+`https://` literal in the `site` package and fails on a host no source answers
+for, which makes adding an endpoint a decision about attribution rather than
+an omission.
+
+**The licence half shows the terms and not the term.** `licence.py` is
+deliberately silent about when a build expires while the build is inside its
+term — no banner, no countdown, nothing in `--help`, and nothing in the window
+— because the term is not the subject of the software and a warning every run
+is noise for a year. An info box is the easiest place to break that by
+accident: a date put there is a countdown, and a colleague reading the licence
+to answer a question about redistribution would meet an expiry they were not
+asking about. So `licence.SUMMARY` states the grant, the restrictions and the
+warranty in six lines and never names a date, `test_licence` pins that it does
+not, and the date stays where it was: said once, at the door, on the day it
+matters.
+
+The full text is the `LICENSE` file, which the box will show on request — in a
+window of its own rather than handed to the operating system, because the file
+has no extension and a Windows double-click answers that with "how do you want
+to open this file". `Loriini.spec` now ships it at the root of the bundle; a
+build without it hides the button rather than breaking it, since the summary is
+a constant in the executable either way.
+
+**And the sheet says it too, in the publishers' words and only for what is on
+it.** A box in the window answers the question for whoever opened the window;
+the drawing leaves the office on its own. So the Context and Site Analysis
+sheets carry the credit along the foot of the map field at 2 mm, and the
+Summary of Controls under the note that already says where its figures came
+from.
+
+What it names is read off the bundle -- `sources_used` on each of the three --
+and not off the list of registers the run meant to ask. Every fetch but the
+site's own fails soft, so a run whose Overpass mirrors were all down draws a
+sheet with no bus routes on it, and a credit to OpenStreetMap there would be a
+claim about a line that is not on the drawing. It cuts the other way as well:
+the aerial is credited only when tiles were placed, ePlanning only when the
+controls answered.
+
+The bus stops are the one case that has to be *recorded* rather than read.
+A `Stop` does not carry its provenance, and the same symbols on the same
+sheet are Transport for NSW's or OpenStreetMap's depending on nothing but
+whether a key was in the environment that morning -- so `stops_from_tfnsw`
+is written into the bundle as the run makes the swap, and saved with it, so
+a sheet redrawn from `--from` credits the run that fetched it rather than the
+machine that is redrawing it.
+
+Valhalla's credit is the engine alone. It routes over OpenStreetMap, so a
+catchment adds both slugs and the line reads `...; © OpenStreetMap
+contributors; Walking catchments: Valhalla (FOSSGIS e.V.).` rather than
+naming the contributors twice in one sentence.

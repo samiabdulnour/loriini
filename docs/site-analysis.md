@@ -138,6 +138,49 @@ coloured by what its name says it is -- `SCHOOL` is education, `HOSPITAL` is
 medical, `CHURCH` is community -- because the register's type codes are
 unreliable and its names are not. The palette is the Oatley legend's.
 
+### Whose data it is
+
+Free is not the same as unconditional. Every publisher above asks to be
+credited on anything drawn from their data, and a DA sheet is exactly that.
+The list, the licences and the wording each publisher asks for live in
+`sun_study.site.sources`, and the window shows them: the **ⓘ** beside the
+project picker, or **Where this data comes from** on the Site analysis tab,
+which opens the same box at the registers. The box ends with the credit line
+for a sheet, ready to copy into a title block.
+
+| source | licence | credit |
+|---|---|---|
+| NSW Spatial Services, and the SIX imagery | CC BY 4.0 | `© State of New South Wales (Spatial Services, a business unit of the Department of Customer Service NSW)` |
+| NSW ePlanning (`EPI` layers) | CC BY 4.0 | `© State of New South Wales and Department of Planning, Housing and Infrastructure` |
+| OpenStreetMap, via Overpass | ODbL 1.0 | `© OpenStreetMap contributors` |
+| Valhalla, FOSSGIS e.V., on OSM data | MIT engine, ODbL data | `Walking catchments: Valhalla (FOSSGIS e.V.)`, beside OpenStreetMap's own |
+| Transport for NSW Open Data Hub | CC BY 4.0 | `© Transport for NSW` |
+
+**The sheets carry it themselves.** Each Context and Site Analysis worksheet
+is drawn with the credit along the foot of its map field, at 2 mm, and the
+Summary of Controls carries it under the note that already says where the
+figures came from. What is named is what that bundle actually holds --
+`ContextBundle.sources_used` and its two siblings read it off the contents,
+not off the list of what was asked for. Every fetch but the site's own fails
+soft, so a run whose Overpass mirrors were all down draws a sheet with no bus
+routes on it, and crediting OpenStreetMap there would be a claim about a line
+that is not on the drawing. Bus stops are the case that needs recording
+rather than inferring: a stop does not say where it came from, so
+`stops_from_tfnsw` is written into the bundle as the run swaps the register's
+stops in, and it is saved with the rest, so a sheet redrawn from `--from`
+credits what that run fetched rather than what today's environment would.
+
+Two of these have an obligation past the credit. ODbL is share-alike: a
+drawing is a produced work and wants the credit and no more, but publishing
+the fetched data itself, or a database derived from it, is the other half of
+that licence and should be read first. The Overpass mirrors and the Valhalla
+demo server are volunteer infrastructure under a fair-use policy, which is
+why OSM answers are cached for a month and a run asks Valhalla once.
+
+`tests/unit/test_site_sources.py` reads every `https://` literal in the
+`site` package and fails on a host no source answers for, so a new endpoint
+is a decision about attribution rather than an omission.
+
 ## What the first live run found
 
 Run on the Kogarah solar study, 18-24 Princes Highway, on 11 September 2026.

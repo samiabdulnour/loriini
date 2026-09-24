@@ -805,6 +805,17 @@ def controls() -> list[Icon]:
         Icon("connected", "the plug seated, and blue", plug(live=True)),
         Icon("disconnected", "the same plug drained, with the red mark", plug(live=False)),
         Icon(
+            "info",
+            "the one button that explains rather than does -- a blue badge "
+            "with an i knocked out of it, the same disc Run wears so the pair "
+            "read as the interface talking rather than as two more drawings",
+            [
+                Disc(16, 16, 12, fill=BLUE),
+                Disc(16, 10.4, 1.9, fill=PAPER),
+                rect(14.1, 13.8, 3.8, 9.4, fill=PAPER, outline=None),
+            ],
+        ),
+        Icon(
             "refresh",
             "look again -- a circular arrow",
             [

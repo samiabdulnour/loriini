@@ -228,3 +228,97 @@ def test_the_window_opens_as_normal_inside_the_term(monkeypatch: pytest.MonkeyPa
     entry.main()
 
     assert opened == [""], "opened, and not preselected to any one study"
+
+
+# ---------------------------------------------------------------------------
+# The terms, which are a different question from the term and are answered on
+# request rather than never.
+# ---------------------------------------------------------------------------
+def test_the_summary_says_what_somebody_may_actually_do_with_it() -> None:
+    """The question a colleague has is "may I give this to the consultant".
+    The clauses that answer it are the ones that have to be in there."""
+    said = " ".join(licence.SUMMARY).lower()
+
+    assert "source-available" in said
+    assert "fuse architects" in said
+    assert "written permission" in said
+    assert "no warranty" in said
+
+
+@pytest.mark.parametrize("clause", licence.SUMMARY)
+def test_the_summary_never_mentions_the_term(clause: str) -> None:
+    """The silence, in the one place it would be easiest to break.
+
+    An info box a person opens to read the licence must not be where they
+    learn the build stops working in a year. That is the countdown this
+    module refuses to give, and a date on a screen nobody was looking at it
+    for is exactly the nag the docstring rules out.
+    """
+    lowered = clause.lower()
+    for word in ("expire", "expiry", "2027", "term ends", "stops running"):
+        assert word not in lowered, f"{word!r} reached the licence summary"
+
+
+def test_the_full_text_is_the_file_itself() -> None:
+    """The summary is a summary and says so; this is what it summarises."""
+    whole = licence.full_text()
+
+    assert whole is not None, "a checkout has a LICENSE file at its root"
+    assert "SOURCE-AVAILABLE LICENCE" in whole
+    assert "NO WARRANTY" in whole
+
+
+def test_a_build_without_the_file_still_answers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A licence file that did not make it into a bundle costs the button
+    that shows it, and nothing else: the window still opens and the summary
+    is still in the executable."""
+    monkeypatch.setattr(licence, "file", lambda: None)
+
+    assert licence.full_text() is None
+    assert licence.SUMMARY
+
+
+@needs_tk
+def test_the_info_box_says_the_terms_and_not_the_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both halves in one place, because they are one decision.
+
+    The box exists to answer "what may I do with this, and whose data is on
+    my sheet". It is not where the build's own term gets announced.
+    """
+    import tkinter as tk
+
+    from sun_study.app import about, theme
+
+    try:
+        root = tk.Tk()
+    except tk.TclError:  # pragma: no cover - a machine with no display
+        pytest.skip("no display for Tk")
+    root.withdraw()
+    theme.apply(root)
+    box = about.show(root)
+    try:
+        said = _text_of(box)
+        assert "Source-available" in said
+        assert f"{licence.EXPIRES:%Y}" not in said
+        for word in ("expire", "expiry", "licence period"):
+            assert word not in said.lower()
+    finally:
+        box._close()
+        root.destroy()
+
+
+def _text_of(widget: object) -> str:
+    """Every word under a widget. The box is forty labels and what matters is
+    that a sentence did or did not reach the screen."""
+    import tkinter as tk
+
+    said = []
+    for child in widget.winfo_children():  # type: ignore[attr-defined]
+        try:
+            text = child.cget("text")
+        except tk.TclError:  # pragma: no cover - a widget with no text option
+            text = ""
+        if text:
+            said.append(str(text))
+        said.append(_text_of(child))
+    return "\n".join(said)

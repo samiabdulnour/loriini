@@ -2661,6 +2661,27 @@ class Window:
             "layer or a Layout Book subset that should appear in the lists "
             "in the sections below.",
         )
+        # The one button up here that changes nothing. It belongs beside the
+        # picker rather than in a section for the same reason the picker does:
+        # what the program is, and whose data it draws, is not a property of
+        # one output. Icon and no word, because it is the only thing in the
+        # window nobody is looking for until they need it, and a labelled
+        # button would take room from the project name, which everybody is.
+        tell = ttk.Button(
+            picker,
+            text="",
+            style="Chrome.TButton",
+            command=self._about,
+            width=3,
+            **icons.button_options("info"),
+        )
+        tell.grid(row=0, column=2, padx=(6, 0))
+        Tooltip(
+            tell,
+            "What this program is, the licence it is used under, and the "
+            "public registers the site analysis fetches its data from — with "
+            "the credit line a sheet drawn from them should carry.",
+        )
         row += 1
         # No line under this one. What it needs to say -- which project, and
         # check it if two are open -- the hover says at length, and the status
@@ -2682,6 +2703,18 @@ class Window:
         # The contour under the project bar: which Archicad is one question,
         # asked once, and everything below it is the study.
         ttk.Frame(self.root, style="Rule.TFrame", height=1).pack(side="top", fill="x")
+
+    def _about(self, at: str = "") -> None:
+        """Open the info box, at the top or at the data sources.
+
+        Imported here rather than at the top of the module: ``about`` reads
+        ``Scroller`` out of this one, so a module-level import either way
+        round is a cycle, and this is the side where the cost is a dictionary
+        lookup the first time somebody presses a button.
+        """
+        from sun_study.app import about
+
+        about.show(self.root, at=at)
 
     def _sections(self) -> None:
         """One page per output, reached from a strip of tabs across the top.
@@ -3782,6 +3815,27 @@ class Window:
             row,
             "Type the address, light the outputs, press Run. A few minutes: the "
             "public data services are slow and are asked for everything at once.",
+        )
+        row += 1
+        # The only section drawn from data nobody here owns, so it is the only
+        # one that carries this. It opens the same box the ⓘ at the top does,
+        # scrolled to the registers -- the question ("where did this line come
+        # from, and what do I have to put on the sheet") occurs on this page,
+        # and an answer two clicks away on another one is an answer nobody
+        # finds until a drawing has already gone out without its credit.
+        where_from = ttk.Button(
+            frame,
+            text="Where this data comes from",
+            command=partial(self._about, "sources"),
+            **icons.button_options("info"),
+        )
+        where_from.grid(row=row, column=0, sticky="w", pady=(2, 6))
+        Tooltip(
+            where_from,
+            "The six public registers a site analysis run fetches from, what "
+            "each one answers for, the licence it is published under and the "
+            "wording it asks to be credited with — and the one line, ready to "
+            "copy, that a sheet drawn from them should carry.",
         )
         row += 1
         self.site_address, row = self._entry(

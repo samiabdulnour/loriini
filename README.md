@@ -183,6 +183,17 @@ Location first. Ported from the office's own `au-site-analysis` generator,
 endpoint for endpoint, so the two agree about where every line comes from;
 run live on the Kogarah solar study. [`docs/site-analysis.md`](docs/site-analysis.md).
 
+Every one of those registers is free and all but one of them asks to be
+credited on whatever is drawn from it, so **each sheet carries the credit
+along the foot of its map** -- naming only the publishers whose data actually
+reached that sheet, because a service that was down costs the drawing its
+layer and there is then nothing of theirs to credit. The window says the same
+thing at length: the **ⓘ** beside the project picker, or **Where this data
+comes from** on the Site analysis tab, which opens the same box at the
+registers, with the licences, the terms and the credit line ready to copy.
+The list itself is `sun_study.site.sources`, beside the code that does the
+fetching, and a test fails on any endpoint it does not cover.
+
 ## Rules are data
 
 Thresholds live in [`src/sun_study/rules/rulesets/nsw_adg.yaml`](src/sun_study/rules/rulesets/nsw_adg.yaml)
@@ -283,7 +294,9 @@ Copyright © 2026 Sami Abdulnour <hi@samiabdulnour.com>. All rights reserved.
 **Source-available, not open source.** The source may be read by anyone. Fuse Architects
 may use, modify and run it internally, including on the firm's own client projects, at no
 charge. Redistribution outside Fuse, resale, sublicensing and offering it as a service all
-need written permission. See [`LICENSE`](LICENSE) for the terms.
+need written permission. See [`LICENSE`](LICENSE) for the terms, which the window also
+shows in short under the **ⓘ** beside the project picker, with `Read the full licence`
+for the whole text.
 
 Versions published before 25 August 2026 were released under the MIT Licence, and that
 grant still applies to those versions.

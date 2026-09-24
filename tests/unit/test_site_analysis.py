@@ -1575,3 +1575,107 @@ def test_locating_a_project_writes_the_grid_and_leaves_north_alone() -> None:
     assert survey["position"]["eastings"] > 0 and survey["position"]["northings"] > 0
     assert survey["geoReferencingParameters"]["crsName"].startswith("EPSG:78"), survey
     assert "MGA zone 56" in survey["geoReferencingParameters"]["description"]
+
+
+# ---------------------------------------------------------------------------
+# The credit along the foot of the sheet. A drawing made from somebody's open
+# data is a produced work, and a produced work carries their name.
+# ---------------------------------------------------------------------------
+def _credit_of(drawing: Any) -> str:
+    """The credit line as drawn, rejoined if it wrapped."""
+    from sun_study.archicad.site_analysis import CREDIT_MM
+
+    return " ".join(t.text for t in drawing.texts if t.height_mm == CREDIT_MM)
+
+
+def test_the_context_sheet_credits_the_registers_it_was_drawn_from() -> None:
+    """In the publishers' own wording, and under the map where a credit
+    goes."""
+    bundle = context_bundle()
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    drawing = context_drawing(bundle, frame)
+
+    credit = _credit_of(drawing)
+    assert "© State of New South Wales (Spatial Services" in credit
+    assert "Department of Planning, Housing and Infrastructure" in credit
+    assert "© OpenStreetMap contributors" in credit
+    assert "Valhalla (FOSSGIS e.V.)" in credit
+
+
+def test_the_credit_sits_under_the_map_and_not_in_it() -> None:
+    from sun_study.archicad.site_analysis import CREDIT_MM
+
+    bundle = context_bundle()
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    drawing = context_drawing(bundle, frame)
+
+    from sun_study.archicad.site_analysis import _map_rectangle
+
+    lines = [t for t in drawing.texts if t.height_mm == CREDIT_MM]
+    assert lines, "nothing was credited at all"
+    corners = _map_rectangle(bundle, frame)
+    floor = min(y for _, y in corners)
+    left = min(x for x, _ in corners)
+    assert all(text.at[1] < floor for text in lines), "the credit is inside the map"
+    assert all(text.at[0] == pytest.approx(left) for text in lines), "it does not start at the edge"
+
+
+def test_a_publisher_whose_service_was_down_is_not_credited() -> None:
+    """The point of reading it off the bundle. A context sheet with no bus
+    routes and no catchments on it has nothing of OpenStreetMap's to credit,
+    and saying otherwise is a claim about a line that is not there."""
+    bundle = context_bundle()
+    bundle.bus = osm.BusData()
+    bundle.isochrones = ()
+
+    drawing = context_drawing(bundle, frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site"))
+
+    credit = _credit_of(drawing)
+    assert "OpenStreetMap" not in credit
+    assert "Valhalla" not in credit
+    assert "Spatial Services" in credit, "the cadastre is still theirs"
+
+
+def test_bus_stops_are_credited_to_whoever_actually_supplied_them() -> None:
+    """A Stop does not say where it came from, so the run writes it down:
+    the same symbols on the same sheet are Transport for NSW's or
+    OpenStreetMap's depending only on whether a key was in the environment."""
+    osm_stops = context_bundle()
+    assert "Transport for NSW" not in _credit_of(
+        context_drawing(osm_stops, frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site"))
+    )
+
+    register = context_bundle()
+    register.stops_from_tfnsw = True
+    credit = _credit_of(
+        context_drawing(register, frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site"))
+    )
+    assert "© Transport for NSW" in credit
+
+
+def test_which_publishers_a_bundle_used_survives_being_saved(tmp_path: Path) -> None:
+    """A sheet redrawn from a saved run must credit what that run fetched,
+    not what today's environment would fetch."""
+    bundle = context_bundle()
+    bundle.stops_from_tfnsw = True
+
+    again = load_context(save(bundle, tmp_path / "data" / "context.json"))
+
+    assert again.sources_used() == bundle.sources_used()
+    assert "tfnsw" in again.sources_used()
+
+
+def test_the_summary_table_credits_the_register_its_figures_came_from() -> None:
+    """A table of somebody else's numbers is as much a produced work as a map
+    of their lines -- and a table with nothing in its controls column owes
+    ePlanning nothing."""
+    from sun_study.archicad.site_analysis import summary_drawing
+
+    controls = nsw.SiteControls(epi_name="Georges River LEP 2021", zone_code="R3", fsr=0.9)
+    filled = SummaryBundle("1 Test St", "1 TEST ST", "LOT 1 - DP 1", 850.0, controls)
+    assert "Department of Planning" in _credit_of(summary_drawing(filled))
+
+    bare = SummaryBundle("1 Test St", "1 TEST ST", "LOT 1 - DP 1", None, nsw.SiteControls())
+    credit = _credit_of(summary_drawing(bare))
+    assert "Department of Planning" not in credit
+    assert "Spatial Services" in credit
