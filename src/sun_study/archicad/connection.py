@@ -47,6 +47,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from sun_study import ADDON_FILE
+
 __all__ = [
     "DEFAULT_TIMEOUT_SECONDS",
     "PORT_RANGE",
@@ -88,7 +90,7 @@ LORIINI_NAMESPACE = "Loriini"
 #: What to do about a missing or too-old add-on, said once so every message
 #: gives the same advice.
 INSTALL_LORIINI = (
-    "Install the current Loriini add-on (LoriiniAddOn_AC26_Win.apx, built by the "
+    f"Install the current Loriini add-on ({ADDON_FILE}, built by the "
     "'Archicad add-on' workflow), which has Tapir's commands built in."
 )
 
@@ -495,8 +497,8 @@ class ArchicadConnection:
             parameters,
             missing=(
                 "The Loriini add-on is not installed. It is built by the "
-                "'Archicad add-on' workflow; copy the .apx into an add-on folder "
-                "and add that folder in Options > Add-On Manager."
+                f"'Archicad add-on' workflow; copy {ADDON_FILE} into an add-on "
+                "folder and add that folder in Options > Add-On Manager."
             ),
         )
 

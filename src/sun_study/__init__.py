@@ -9,9 +9,12 @@ therefore fully testable without an Archicad licence. Everything that talks to
 Archicad lives in the ``archicad`` package and nowhere else.
 """
 
+import sys
+
 from sun_study.disclaimer import DISCLAIMER, STATUS
 
 __all__ = [
+    "ADDON_FILE",
     "AUTHOR",
     "COPYRIGHT",
     "DISCLAIMER",
@@ -46,3 +49,13 @@ COPYRIGHT = "Copyright (c) 2026 Sami Abdulnour. All rights reserved."
 #: the name must not import each other: the window would pull in the whole
 #: command line, numpy and all, to start up.
 STOP_FILE_VAR = "SUN_STUDY_STOP_FILE"
+
+#: The add-on this machine installs, by the file name the ``Archicad add-on``
+#: workflow gives it: an .apx on Windows, a .bundle on a Mac. Every message
+#: that tells somebody to install it names this, so the advice is about the
+#: file on their own screen. Here for the same reason as ``STOP_FILE_VAR``:
+#: the window and the Archicad adapter both say it and must not import each
+#: other to do so.
+ADDON_FILE = (
+    "LoriiniAddOn_AC26_Mac.bundle" if sys.platform == "darwin" else "LoriiniAddOn_AC26_Win.apx"
+)

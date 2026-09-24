@@ -73,3 +73,5 @@ archicad-addon/Build/
 
 # The one spec that builds Loriini.exe is tracked; PyInstaller scratch specs are not.
 !Loriini.spec
+# And the one that builds Loriini.app from it; see docs/macos.md.
+!Loriini-macOS.spec

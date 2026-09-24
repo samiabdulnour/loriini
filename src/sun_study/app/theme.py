@@ -62,11 +62,13 @@ is none of them is a change to argue about first.
    worth, and the dock draws the same.
 7. **Type is Segoe UI, at the body size the operating system uses.** Titles
    are bold, hints are ``HINT`` grey and clear 4.5:1, group captions are small
-   capitals. Nothing on a thumbnail carries anything a person must read.
+   capitals. Nothing on a thumbnail carries anything a person must read. On a
+   Mac it is the Mac's own face at the same size on screen -- see ``points``.
 """
 
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import ttk
@@ -209,8 +211,40 @@ INSIDE: dict[str, str] = {
 }
 
 
-FACE = "Segoe UI"
-MONO = "Consolas"
+#: Whether this is the Mac build. Asked once, here, and read by everything in
+#: the window that has to look different there -- which is the type and the
+#: Dock's icon, and nothing else.
+MACOS = sys.platform == "darwin"
+
+#: The face and the log's face. On a Mac, the system's own: Tk gives its
+#: default font the family ``.AppleSystemUIFont``, which is San Francisco --
+#: the Mac's Segoe UI -- and a family Tk cannot find falls back to that same
+#: font rather than failing, so this cannot leave a Mac without type. Menlo
+#: has been the Mac's monospace since 10.6 and lines up the log the way
+#: Consolas does.
+FACE = ".AppleSystemUIFont" if MACOS else "Segoe UI"
+MONO = "Menlo" if MACOS else "Consolas"
+
+#: How many of a Mac's points make one of this window's.
+#:
+#: Tk sizes type in points and turns a point into pixels at the screen's own
+#: rate. Windows counts 96 pixels to the inch against a point's 72, so the 9
+#: points this window is set in are 12 pixels there, and every measurement in
+#: it -- the rows, the cards, the thumbnails' lettering -- was drawn against
+#: those 12. Tk on a Mac counts a point as one pixel, as the Mac does, so the
+#: same 9 came out a quarter smaller. Asking a Mac for four thirds as much
+#: puts the same 12 pixels on its screen.
+MAC_POINTS = 4 / 3
+
+
+def points(size: int) -> int:
+    """A type size as this window was designed in it, for the screen it is on.
+
+    Unchanged off a Mac. Every size in the window goes through here -- the
+    styles below, the log, and the lettering drawn on the thumbnails -- so the
+    words keep their proportion to the boxes they were measured to fit.
+    """
+    return round(size * MAC_POINTS) if MACOS else size
 
 
 def _has_face(name: str) -> bool:
@@ -238,15 +272,16 @@ def apply(root: tk.Misc) -> ttk.Style:
     except tk.TclError:  # pragma: no cover - a Tk built without clam
         return style
 
-    body = (FACE, 9) if _has_face(FACE) else ("TkDefaultFont", 9)
-    strong = (FACE, 9, "bold") if _has_face(FACE) else ("TkDefaultFont", 9, "bold")
-    heading = (FACE, 10, "bold") if _has_face(FACE) else ("TkDefaultFont", 10, "bold")
+    family = FACE if _has_face(FACE) else "TkDefaultFont"
+    body = (family, points(9))
+    strong = (family, points(9), "bold")
+    heading = (family, points(10), "bold")
     #: The caption over a group of tabs, and nothing else. Small enough to be
     #: read after the tabs rather than before them.
-    small = (FACE, 8) if _has_face(FACE) else ("TkDefaultFont", 8)
+    small = (family, points(8))
     #: A clickable address. Underlined rather than merely blue: colour alone
     #: is the one mark a colour-blind reader does not get.
-    link = (FACE, 9, "underline") if _has_face(FACE) else ("TkDefaultFont", 9, "underline")
+    link = (family, points(9), "underline")
 
     try:
         root.option_add("*Font", body)
@@ -910,4 +945,4 @@ def _own_tick(style: ttk.Style) -> None:
 
 def log_font() -> tuple[str, int]:
     """What the log is set in."""
-    return (MONO, 9) if _has_face(MONO) else ("TkFixedFont", 9)
+    return (MONO, points(9)) if _has_face(MONO) else ("TkFixedFont", points(9))

@@ -1,0 +1,60 @@
+name: CI (macOS)
+
+# The suite on a Mac, for the macOS version of the program.
+#
+# ci.yml runs it on Ubuntu and Windows and is left as the Windows line has
+# it, so merging that line into this one never has to reconcile a workflow.
+# This is the third platform beside it, and it earns its place: a Mac runner
+# has a display, so the window's own tests -- the ones Ubuntu skips for want
+# of one -- run here against Tk on a Mac, with the Mac's type sizes and the
+# Mac's font. mypy is run too, because it reads `sys.platform` and so checks
+# the Mac branches as reachable code here and nowhere else. Lint and format
+# are not: they say the same thing on every platform, and ci.yml says it.
+#
+# Deliberately narrower than ci.yml, because the repository is private and
+# GitHub bills a Mac minute as ten: one Python, the newer of the two ci.yml
+# tests, and only for a push that changes the program or its tests. A pull
+# request does not run it again for the commit its push already ran it for.
+# For anything else, Run workflow on the Actions tab.
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/ci-macos.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: "1"
+
+jobs:
+  test:
+    name: macOS / py3.12
+    runs-on: macos-latest
+    # A hung run is billed at ten times the minute until GitHub's own six-hour
+    # limit; the suite takes a few.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install the project
+        run: uv sync --python 3.12
+
+      - name: Type check
+        run: uv run mypy
+
+      - name: Test
+        run: uv run pytest -v

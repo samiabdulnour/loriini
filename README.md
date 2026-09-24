@@ -159,6 +159,31 @@ says where to find it and how to ask for a fresh one.
 [`docs/addon.md`](docs/addon.md) records what was verified, how the two missing
 commands were confirmed missing, and the one convention that is still open.
 
+## On a Mac
+
+This branch is the macOS version: the same program and the same add-on, built
+for a Mac. The analysis did not change -- it never knew which platform it was
+on -- so what differs is the shell around it:
+
+- **The add-on** is `LoriiniAddOn_AC26_Mac.bundle`, one bundle with an Intel
+  and an Apple silicon half, Tapir built in as on Windows. The
+  `Archicad add-on (macOS)` workflow builds it from the Mac kit the way Tapir
+  builds its own, and checks it carries what Archicad looks for.
+- **The program** is `Loriini.app`, for Apple silicon on macOS 11 or later,
+  made by `scripts/build_app_macos.py` -- `scripts/build_app.py` hands over to
+  it on a Mac. The same workflow makes the whole folder, the program beside the
+  add-on with an install note, as the `Loriini_AC26_Mac` artifact.
+- **The window** is set in the Mac's own face at the size Windows shows it,
+  keeps its settings in `~/Library/Application Support/Loriini`, and is started
+  from the Loriini menu and palette in Archicad as on a PC.
+
+Neither half is signed with a Developer ID, so the Mac holds both back until
+told they are wanted: `xattr -dr com.apple.quarantine <the folder>`, once, as
+the install note says. `CI (macOS)` runs the suite on a Mac, the window's tests
+included. **Nothing here has run inside Archicad on a Mac yet**;
+[`docs/macos.md`](docs/macos.md) says what was checked and how, and what the
+first run on a Mac has to settle.
+
 ## Site and context analysis
 
 The other end of a DA: the sheets an office draws before there is a building.

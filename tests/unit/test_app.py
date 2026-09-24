@@ -1794,7 +1794,11 @@ def test_the_window_is_dressed_before_it_is_shown(monkeypatch: pytest.MonkeyPatc
 
     ``default=`` rather than a plain call, so the dialogs and message boxes
     raised later inherit it instead of each needing to be found.
+
+    Off a Mac, which is asked here so the macOS runner checks this branch too;
+    the Mac's own is in test_macos.
     """
+    monkeypatch.setattr(theme, "MACOS", False)
     worn: list[dict[str, Any]] = []
 
     class Fake:

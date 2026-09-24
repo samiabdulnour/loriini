@@ -7,10 +7,13 @@
 // `C1083: Cannot open include file`.
 //
 // What it actually does matters here. `WINDOWS` is defined from the compiler's
-// own `_MSC_VER`, and `AddOnMain.cpp` guards its `ShellExecuteW` call on
-// exactly that symbol -- so without this file that guard would silently take
-// the "not Windows" branch on a Windows build, and the menu item would report
-// that starting the app is not wired up on this platform.
+// own `_MSC_VER`, and `Launch.cpp` picks how to start the app on exactly that
+// symbol -- so without this file that choice would silently take the Mac
+// branch on a Windows build.
+//
+// On a Mac the compiler defines nothing of the sort; the build passes
+// `macintosh` itself (CMakeLists.txt), and CoreServices is what the kit's own
+// example includes for it before any Graphisoft header.
 
 #ifndef LORIINI_APIENVIR_H
 #define LORIINI_APIENVIR_H
@@ -23,6 +26,10 @@
 
 #if defined (WINDOWS)
 	#include "Win32Interface.hpp"
+#endif
+
+#if defined (macintosh)
+	#include <CoreServices/CoreServices.h>
 #endif
 
 #if !defined (ACExtension)

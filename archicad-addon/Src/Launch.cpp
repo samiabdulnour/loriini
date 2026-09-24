@@ -7,6 +7,14 @@
 #if defined (WINDOWS)
 	#include <windows.h>
 	#include <shellapi.h>
+#else
+	#include <crt_externs.h>
+	#include <spawn.h>
+	#include <sys/wait.h>
+
+	#include <cstring>
+	#include <string>
+	#include <vector>
 #endif
 
 namespace Loriini {
@@ -14,12 +22,20 @@ namespace Loriini {
 namespace {
 
 // What the app is called on disk. Looked for beside the add-on itself, which
-// is where the install instructions put it: one folder holding the .apx and
-// the .exe, so moving Loriini to another workstation is copying a folder.
+// is where the install instructions put it: one folder holding the add-on and
+// the program, so moving Loriini to another workstation is copying a folder.
+//
+// On a Mac the program is an application bundle -- a folder the Finder shows
+// as one file -- so what sits beside LoriiniAddOn_AC26_Mac.bundle is
+// Loriini.app.
+#if defined (WINDOWS)
 const char* APP_FILE_NAME = "Loriini.exe";
+#else
+const char* APP_FILE_NAME = "Loriini.app";
+#endif
 
 
-// The folder this .apx is loaded from.
+// The folder this add-on is loaded from.
 //
 // Asked of Archicad rather than assumed, because there is no fixed place: an
 // office without administrator rights registers its add-on folder by hand in
@@ -34,6 +50,60 @@ bool OwnFolder (IO::Location& folder)
 	folder = ownFile;
 	return folder.DeleteLastLocalName () == NoError;
 }
+
+
+#if !defined (WINDOWS)
+
+// Runs `open` and says whether it managed to start the app.
+//
+// Through LaunchServices rather than by running the program inside the bundle
+// directly. LaunchServices is what brings the window to the front with its own
+// Dock icon, and it starts the app in a session of its own rather than as a
+// child of Archicad -- so nothing of Archicad's environment is inherited, the
+// same reason the study travels as an argument (see Launch.hpp).
+//
+// `-n` asks for a new instance every time, which is what ShellExecute does on
+// Windows. Without it `open` only brings a Loriini that is already running to
+// the front and drops `--args`, so a palette button pressed while the window
+// is open would ask for its study and be ignored.
+bool OpenWithLaunchServices (const GS::UniString& application, const GS::UniString& study)
+{
+	// Owned strings first and pointers into them after, because posix_spawn
+	// wants `char*` and the helper `ToCStr` returns does not outlive its line --
+	// the same trap the Windows branch below had to be rebuilt around.
+	std::vector<std::string> words = { "/usr/bin/open", "-n", "-a", application.ToCStr (CC_UTF8).Get () };
+	if (!study.IsEmpty ()) {
+		words.push_back ("--args");
+		words.push_back ("--study");
+		words.push_back (study.ToCStr (CC_UTF8).Get ());
+	}
+	std::vector<char*> argv;
+	for (std::string& word : words) {
+		argv.push_back (&word[0]);
+	}
+	argv.push_back (nullptr);
+
+	// `environ` itself is out of reach from a bundle -- only a program being
+	// linked whole gets it -- so it is asked for, as environ(7) says to.
+	pid_t child = 0;
+	const int refused = posix_spawn (&child, argv[0], nullptr, nullptr, argv.data (), *_NSGetEnviron ());
+	if (refused != 0) {
+		ACAPI_WriteReport ("Loriini: could not run /usr/bin/open: " + GS::UniString (std::strerror (refused)), true);
+		return false;
+	}
+
+	// `open` hands the launch over and exits, within a second or so, and its
+	// exit status is the one place a refusal shows. Waited for, so that goes
+	// to the report window rather than nowhere, and so Archicad is not left
+	// holding a finished child it never collected.
+	int status = 0;
+	if (waitpid (child, &status, 0) != child) {
+		return false;
+	}
+	return WIFEXITED (status) && WEXITSTATUS (status) == 0;
+}
+
+#endif
 
 }		// namespace
 
@@ -52,7 +122,7 @@ void StartTheApp (const GS::UniString& study)
 	bool exists = false;
 	if (application.IsEmpty () || IO::fileSystem.Contains (application, &exists) != NoError || !exists) {
 		const GS::UniString path = application.ToDisplayText ();
-		ACAPI_WriteReport ("Loriini: " + path + " is not there. Copy Loriini.exe into the same "
+		ACAPI_WriteReport ("Loriini: " + path + " is not there. Copy " + APP_FILE_NAME + " into the same "
 						   "folder as the add-on.", true);
 		return;
 	}
@@ -94,8 +164,17 @@ void StartTheApp (const GS::UniString& study)
 		ACAPI_WriteReport ("Loriini: Windows refused to start " + path, true);
 	}
 #else
-	(void) study;
-	ACAPI_WriteReport ("Loriini: starting the app is only wired up on Windows.", true);
+	// The path as the file system spells it, for `open`; ToDisplayText is
+	// for people, and only promises to be readable.
+	GS::UniString path;
+	if (application.ToPath (&path) != NoError) {
+		ACAPI_WriteReport ("Loriini: could not work out the path of " + application.ToDisplayText (), true);
+		return;
+	}
+	if (!OpenWithLaunchServices (path, study)) {
+		ACAPI_WriteReport ("Loriini: macOS refused to start " + path + ". If it was downloaded, it may "
+						   "still be quarantined: open it once from the Finder with Control-click > Open.", true);
+	}
 #endif
 }
 

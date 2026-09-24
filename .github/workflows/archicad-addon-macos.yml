@@ -1,0 +1,281 @@
+name: Archicad add-on (macOS)
+
+# The Mac half of archicad-addon.yml: LoriiniAddOn_AC26_Mac.bundle, and
+# Loriini.app beside it.
+#
+# The add-on is built here for the reason the .apx is built on a Windows
+# runner: it needs Graphisoft's kit and a compiler, Xcode here, and a runner
+# has both. The recipe is again Tapir's, whose own Archicad 26 Mac add-on is
+# made this way -- macos-latest, the Mac kit from the same 26.3000 release,
+# CMake generating an Xcode project. Its shipped TapirAddOn_AC26_Mac.bundle
+# says it was built with Xcode 26.6 on macOS 26, so the kit is proven with the
+# Xcode those runners carry.
+#
+# One bundle serves every Mac: it carries an Intel and an Apple silicon half,
+# as the kit's library does. Loriini.app does not -- numpy and ifcopenshell
+# publish one wheel per processor, so the program is built for the runner's,
+# which is Apple silicon.
+#
+# A file of its own rather than two jobs in archicad-addon.yml, which is left
+# as the Windows line has it so that merging that line in never has to
+# reconcile a workflow. When it runs is a cost decision, made as the Windows
+# one's was (D118) but tighter: the repository is private and GitHub bills a
+# Mac minute as ten. So a push that changes the add-on or how the folder is
+# made builds it, and otherwise Run workflow on the Actions tab, with the
+# branch picked. Never for a pull request, whose push has already built the
+# commit.
+
+on:
+  push:
+    paths:
+      - "archicad-addon/**"
+      - ".github/workflows/archicad-addon-macos.yml"
+      # How the folder is made. Loriini.spec and build_app.py are here too:
+      # the Mac recipe reads the PC's collection out of the one and hands
+      # over from the other.
+      - "Loriini.spec"
+      - "Loriini-macOS.spec"
+      - "scripts/build_app.py"
+      - "scripts/build_app_macos.py"
+      - "assets/loriini.icns"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Archicad ${{ matrix.archicad }} / macOS
+    runs-on: macos-latest
+    # Ten times the minute while it runs, so a hang is capped well short of
+    # GitHub's own six hours. A clean build of both architectures is a few
+    # minutes.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - archicad: 26
+            devkit: https://github.com/GRAPHISOFT/archicad-api-devkit/releases/download/26.3000/API.Development.Kit.MAC.26.3000.zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Mac kit is frameworks full of symbolic links and a resource
+      # compiler that has to be executable; the script keeps both, where
+      # Python's zipfile would keep neither.
+      - name: Download the API Development Kit
+        run: python3 archicad-addon/Tools/download_and_unzip.py ${{ matrix.devkit }} archicad-addon/Build/DevKit
+
+      - name: Generate the project
+        run: >
+          cmake -B archicad-addon/Build -G Xcode
+          -DAC_VERSION=${{ matrix.archicad }}
+          -DAC_API_DEVKIT_DIR=archicad-addon/Build/DevKit
+          archicad-addon
+
+      # One configuration, the one handed over: the resources are compiled
+      # into that configuration's bundle (CMakeLists.txt), and a Debug build
+      # would double the minutes for a bundle nobody installs. `-quiet` keeps
+      # xcodebuild to warnings and errors, so the log is readable.
+      - name: Build
+        id: build
+        run: |
+          set -o pipefail
+          cmake --build archicad-addon/Build --config RelWithDebInfo -- -quiet 2>&1 | tee build.log
+
+      # As on Windows: annotations reach the run's summary page, which needs
+      # no rights on the repository to read. clang's errors, and the linker's,
+      # which name a symbol rather than a line.
+      - name: Say what failed
+        if: failure() && steps.build.outcome == 'failure'
+        run: |
+          echo '## Compiler errors' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -oE '[^ ]+\.(cpp|hpp|h|mm):[0-9]+:[0-9]+: (fatal )?error: .*' build.log \
+            | sort -u | head -40 | tee -a "$GITHUB_STEP_SUMMARY" \
+            | while IFS= read -r line; do echo "::error::$line"; done
+          grep -E -A3 '^(ld|clang): error|^Undefined symbols|error: ' build.log \
+            | grep -vE '\.(cpp|hpp|h|mm):[0-9]+:[0-9]+:' | head -40 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-AC${{ matrix.archicad }}-Mac
+          path: build.log
+          if-no-files-found: ignore
+
+      # A bundle that builds is not yet one Archicad opens, and each of these
+      # is a way it would not, found without an Archicad to try it in:
+      #
+      #   both architectures, or Archicad on the other kind of Mac skips it;
+      #   .APX and GSAP, in the Info.plist and in PkgInfo, which are what make
+      #   a folder an add-on rather than any other bundle;
+      #   the MDID, the add-on's identity, without which Archicad refuses it.
+      #   On a Mac it is a file of its own, MDID_32500.rsrd, holding the
+      #   developer id and the add-on's own id as four bytes each, most
+      #   significant first -- read out of Tapir's shipped bundle -- so it is
+      #   compared exactly rather than searched for as on Windows.
+      - name: Check the bundle is an add-on Archicad will open
+        run: |
+          set -euo pipefail
+          name="LoriiniAddOn_AC${{ matrix.archicad }}_Mac"
+          bundle="archicad-addon/Build/RelWithDebInfo/$name.bundle"
+          contents="$bundle/Contents"
+
+          archs=$(lipo -archs "$contents/MacOS/$name")
+          echo "Architectures: $archs"
+          for arch in x86_64 arm64; do
+            case " $archs " in
+              *" $arch "*) ;;
+              *) echo "::error::The add-on has no $arch half, so Archicad on that kind of Mac will not load it."; exit 1 ;;
+            esac
+          done
+
+          kind=$(plutil -extract CFBundlePackageType raw "$contents/Info.plist")
+          signature=$(plutil -extract CFBundleSignature raw "$contents/Info.plist")
+          marker=$(cat "$contents/PkgInfo")
+          echo "Info.plist: $kind $signature; PkgInfo: $marker"
+          if [ "$kind$signature" != ".APXGSAP" ] || [ "$marker" != ".APXGSAP" ]; then
+            echo "::error::The bundle is not marked as an Archicad add-on (.APX, GSAP)."
+            exit 1
+          fi
+
+          ids=$(sed -n 's/^[[:space:]]*\([0-9]\{6,\}\)[[:space:]]*$/\1/p' \
+                archicad-addon/RFIX/LoriiniAddOnFix.grc | head -2 | tr '\n' ' ')
+          read -r developer addon <<< "$ids"
+          expected=$(printf '%08x%08x' "$developer" "$addon")
+          mdid="$contents/Resources/English.lproj/MDID_32500.rsrd"
+          actual=$(od -An -v -tx1 "$mdid" | tr -d ' \n')
+          echo "MDID: expected $expected, found $actual"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::The bundle's MDID is not developer $developer, add-on $addon. Archicad will refuse it as not an add-on."
+            exit 1
+          fi
+
+      # Ad hoc, which is what there is without a Developer ID, and what Apple
+      # silicon needs of every binary it runs. Signed as a whole bundle, so the
+      # resources are sealed in with the code, then checked the way macOS
+      # checks it.
+      - name: Sign the bundle
+        run: |
+          set -euo pipefail
+          bundle="archicad-addon/Build/RelWithDebInfo/LoriiniAddOn_AC${{ matrix.archicad }}_Mac.bundle"
+          codesign --force --deep --sign - "$bundle"
+          codesign --verify --deep --strict --verbose=2 "$bundle"
+
+      # Zipped by ditto, as Tapir ships its bundle: an artifact keeps files
+      # but not the folders' shape or permissions, and a bundle is a folder.
+      - name: Zip the bundle
+        run: >
+          ditto -c -k --keepParent
+          archicad-addon/Build/RelWithDebInfo/LoriiniAddOn_AC${{ matrix.archicad }}_Mac.bundle
+          LoriiniAddOn_AC${{ matrix.archicad }}_Mac.zip
+
+      - name: Upload the add-on
+        uses: actions/upload-artifact@v4
+        with:
+          name: LoriiniAddOn_AC${{ matrix.archicad }}_Mac
+          path: LoriiniAddOn_AC${{ matrix.archicad }}_Mac.zip
+          if-no-files-found: error
+
+  # The folder a Mac user downloads: the bundle above and Loriini.app beside
+  # it, from the same commit, with the install note and the licence -- the
+  # Loriini_AC26_Mac artifact. scripts/build_app_macos.py makes it here as it
+  # does on a Mac with a checkout.
+  package:
+    name: Loriini for macOS
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # The Python ci-macos.yml tests on.
+      - name: Install the project
+        run: uv sync --python 3.12
+
+      # Then the program's own dependencies again, at the versions uv.lock
+      # holds, as the wheels built for macOS 11. On a runner newer than that
+      # uv chooses numpy's macOS 14 build, and the program would not start on
+      # the Macs from Big Sur to Ventura that Archicad 26 is used on.
+      # MACOSX_DEPLOYMENT_TARGET is the oldest macOS a wheel may need, and uv
+      # reads it only when told the platform. Only the program's: PyInstaller
+      # and the rest of the tools stay as they were, and some of them -- rhino3dm,
+      # scipy -- have no macOS 11 wheel to install.
+      - name: Make the program's wheels the macOS 11 ones
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+        run: |
+          uv export --no-dev --no-hashes --no-emit-project --format requirements-txt > runtime.txt
+          uv pip install --reinstall --python-platform aarch64-apple-darwin -r runtime.txt
+
+      - name: Take the add-on built above
+        uses: actions/download-artifact@v4
+        with:
+          name: LoriiniAddOn_AC26_Mac
+          path: addon
+
+      # --no-sync, or uv run would first put the environment back in step
+      # with this Mac rather than with macOS 11, and numpy's macOS 14 wheel
+      # with it.
+      - name: Build the program and gather the folder
+        run: uv run --no-sync python scripts/build_app_macos.py --addon addon/LoriiniAddOn_AC26_Mac.zip
+
+      # As on Windows: started once the way the window starts a study, with
+      # SUN_STUDY_RUN_CLI set so it runs a command and opens no window, and it
+      # must list the rulesets it can only find inside itself.
+      - name: Check the program starts
+        timeout-minutes: 5
+        env:
+          SUN_STUDY_RUN_CLI: "1"
+        run: |
+          set -u
+          if ./dist/Loriini.app/Contents/MacOS/Loriini rulesets > rulesets.txt 2> errors.txt \
+             && grep -q "nsw_adg@" rulesets.txt; then
+            cat rulesets.txt
+          else
+            cat rulesets.txt errors.txt
+            echo "::error::The packaged program did not start and list its rulesets."
+            exit 1
+          fi
+
+      # The signature is what lets Apple silicon run it at all, and the macOS
+      # it claims is read off its binaries by the build script -- so 11.0
+      # here means no wheel in it needs anything newer.
+      - name: Check the program is signed and runs on macOS 11
+        run: |
+          set -euo pipefail
+          codesign --verify --deep --strict --verbose=2 dist/Loriini.app
+          oldest=$(plutil -extract LSMinimumSystemVersion raw dist/Loriini.app/Contents/Info.plist)
+          echo "Loriini.app needs macOS $oldest"
+          if [ "$oldest" != "11.0" ]; then
+            echo "::error::Loriini.app needs macOS $oldest, so a wheel in it is newer than the macOS 11 ones this job installs."
+            exit 1
+          fi
+
+      # One zip, by ditto, for the reason the add-on is zipped: the program is
+      # a folder full of links that an artifact would flatten, and a program
+      # that has lost its execute bit does not open. So the download is a zip
+      # holding Loriini_AC26_Mac.zip, which opens to the folder itself.
+      - name: Zip the folder
+        run: |
+          set -euo pipefail
+          ditto dist Loriini_AC26_Mac
+          ditto -c -k --keepParent Loriini_AC26_Mac Loriini_AC26_Mac.zip
+
+      - name: Upload the folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loriini_AC26_Mac
+          path: Loriini_AC26_Mac.zip
+          if-no-files-found: error

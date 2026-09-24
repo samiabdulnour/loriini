@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 namespace Loriini {
@@ -57,8 +58,8 @@ public:
 
 	bool Save (const GS::UniString& path) const
 	{
-		FILE* file = nullptr;
-		if (fopen_s (&file, path.ToCStr ().Get (), "wb") != 0 || file == nullptr) {
+		FILE* file = Open (path);
+		if (file == nullptr) {
 			return false;
 		}
 		const size_t written = buffer.empty ()
@@ -72,6 +73,22 @@ public:
 
 private:
 	std::vector<char> buffer;
+
+	// The file, opened for writing by its name as the platform spells one.
+	//
+	// Windows takes a narrow name in the system code page, which is what
+	// `ToCStr` gives by default. A Mac spells every path in UTF-8, and has no
+	// `fopen_s` at all: it is from C11's optional Annex K, which Microsoft's
+	// library carries and Apple's does not.
+	static FILE* Open (const GS::UniString& path)
+	{
+#if defined (WINDOWS)
+		FILE* file = nullptr;
+		return fopen_s (&file, path.ToCStr ().Get (), "wb") == 0 ? file : nullptr;
+#else
+		return std::fopen (path.ToCStr (CC_UTF8).Get (), "wb");
+#endif
+	}
 };
 
 

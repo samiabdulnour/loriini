@@ -266,6 +266,12 @@ def add_addon(dist: Path, named: Path | None) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if sys.platform == "darwin":
+        # A Mac makes Loriini.app beside the Mac add-on, which is a different
+        # build from this one; its script says how, and takes the same flags.
+        import build_app_macos
+
+        return build_app_macos.main(argv)
     parser = argparse.ArgumentParser(description="Build Loriini.exe and gather the add-on.")
     parser.add_argument("--addon", type=Path, help="the add-on .apx to put beside the program")
     parser.add_argument(

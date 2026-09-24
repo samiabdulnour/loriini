@@ -82,7 +82,7 @@ from tkinter import filedialog, ttk
 from tkinter import font as tkfont
 from typing import ClassVar, Literal
 
-from sun_study import PRODUCT
+from sun_study import ADDON_FILE, PRODUCT
 from sun_study.app import icons, preferences, probe, theme
 from sun_study.app.runner import Run
 from sun_study.archicad import naming
@@ -112,6 +112,10 @@ STUDY_FLAG = "--study"
 #: sun for the same instants the run will use, and two spellings of
 #: "Australia/Sydney" is two answers to what noon means.
 TIMEZONE = "Australia/Sydney"
+
+#: Where a site run keeps what it fetched when no folder is given, as the
+#: Run folder's hint says it: spelt with this machine's own separator.
+SITE_RUNS_FOLDER = Path("Documents") / "Loriini" / "site-analysis"
 
 #: Short month names, for the date on a sheet.
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
@@ -1434,7 +1438,7 @@ class Dock(ttk.Frame):
             text="Sheets",
             angle=90,
             fill=theme.HINT,
-            font=(theme.FACE, 8),
+            font=(theme.FACE, theme.points(8)),
         )
         spine.pack(side="top")
 
@@ -1935,7 +1939,7 @@ def draw_sheet(
         text=sheet.number,
         anchor="sw",
         fill=theme.BLUE_DEEP,
-        font=(theme.FACE, 9, "bold"),
+        font=(theme.FACE, theme.points(9), "bold"),
     )
 
 
@@ -2368,7 +2372,8 @@ def _draw_drawing(
 
 def _face(size: int, bold: bool) -> tuple[str, int] | tuple[str, int, str]:
     """The window's typeface at that size, as Tk takes a font on a canvas."""
-    return (theme.FACE, size, "bold") if bold else (theme.FACE, size)
+    scaled = theme.points(size)
+    return (theme.FACE, scaled, "bold") if bold else (theme.FACE, scaled)
 
 
 #: How wide a word is, in pixels, by size and weight. Kept because thirty
@@ -2382,7 +2387,10 @@ def _wide(widget: tk.Misc, word: str, size: int, bold: bool) -> int:
     key = (size, bold, word)
     if key not in _WIDTHS:
         face = tkfont.Font(
-            root=widget, family=theme.FACE, size=size, weight="bold" if bold else "normal"
+            root=widget,
+            family=theme.FACE,
+            size=theme.points(size),
+            weight="bold" if bold else "normal",
         )
         _WIDTHS[key] = int(face.measure(word))
     return _WIDTHS[key]
@@ -4014,7 +4022,7 @@ class Window:
             frame,
             row,
             "Run folder",
-            "Where what was fetched is saved. Blank is Documents\\Loriini\\site-analysis.",
+            f"Where what was fetched is saved. Blank is {SITE_RUNS_FOLDER}.",
             "Every run writes the data it fetched as JSON here, and the aerial "
             "photo under the sheets as JPEG tiles with world files. A saved "
             "run can be redrawn without the internet: "
@@ -5044,7 +5052,7 @@ class Window:
                 text=(
                     "Archicad is running but the Loriini add-on is not installed, "
                     "or is too old to carry Tapir's commands, and nothing here works "
-                    "without it. Install the current LoriiniAddOn_AC26_Win.apx, "
+                    f"without it. Install the current {ADDON_FILE}, "
                     "restart Archicad, then press Refresh."
                 ),
                 foreground="#a33",
@@ -6449,6 +6457,11 @@ class Window:
             self.note.config(text=line)
 
 
+#: The artwork a Mac window started from a checkout wears in the Dock. A
+#: PNG, because a Mac does nothing with an .ico.
+MAC_DOCK_ICON = "loriini-icon-256.png"
+
+
 def icon_path() -> Path | None:
     """Where the application icon is, packaged or not.
 
@@ -6478,7 +6491,12 @@ def wear_the_icon(window: tk.Tk) -> None:
 
     ``default=`` rather than a plain call, so the message boxes and dialogs
     raised later inherit it instead of each needing to be found and dressed.
+
+    A Mac is the other way round, and ``wear_the_mac_icon`` says how.
     """
+    if theme.MACOS:
+        wear_the_mac_icon(window)
+        return
     found = icon_path()
     if found is None:
         return
@@ -6488,6 +6506,28 @@ def wear_the_icon(window: tk.Tk) -> None:
         # .ico is a Windows format and ``default=`` is a Windows option. This
         # is a Windows tool, but a developer on anything else should get a
         # plain window rather than a crash on the way to one.
+        pass
+
+
+def wear_the_mac_icon(window: tk.Tk) -> None:
+    """The Dock's icon, for the one Mac window that would not have it.
+
+    A Mac reads an application's icon out of its bundle: Loriini.app carries
+    ``loriini.icns`` and the Dock shows it without Tk being asked anything, so
+    the packaged program is left alone -- dressing it again would swap the
+    bundle's full set of sizes for one smaller picture. A window started from
+    a checkout is Python's, and wears Python's rocket. ``iconphoto`` is how Tk
+    changes the Dock's picture, so that is the one place it is used.
+    """
+    if getattr(sys, "frozen", False):
+        return
+    found = Path(__file__).resolve().parents[3] / "assets" / MAC_DOCK_ICON
+    if not found.is_file():
+        return
+    try:
+        # Tk copies the picture as it is set, so it need not be kept.
+        window.iconphoto(True, tk.PhotoImage(master=window, file=str(found)))
+    except tk.TclError:
         pass
 
 

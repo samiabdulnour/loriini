@@ -10,10 +10,11 @@ day, and retyping them is both tedious and a way to get one of them subtly
 wrong.
 
 So they are written, on request, to one small JSON file beside the user's own
-settings -- ``%APPDATA%`` then ``Loriini``, ``settings.json`` -- and read back
-when the window opens. On request rather than on every change, because a
-saved default nobody chose to save is worse than no saved default at all: the
-next run would quietly use a setting typed once for one odd project.
+settings -- ``%APPDATA%`` then ``Loriini``, ``settings.json``; on a Mac,
+``~/Library/Application Support/Loriini`` -- and read back when the window
+opens. On request rather than on every change, because a saved default nobody
+chose to save is worse than no saved default at all: the next run would
+quietly use a setting typed once for one odd project.
 
 Nothing here ever raises when the window opens. A settings file that has been
 hand-edited into nonsense, or sits on a locked profile, or was written by a
@@ -33,6 +34,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -54,12 +56,22 @@ def folder() -> Path:
     """Where this user's settings live.
 
     ``%APPDATA%`` because that is where Windows keeps per-user application
-    settings and it follows a roaming profile between machines. The home
-    directory is the fallback for a developer on anything else, so the module
-    can be exercised off Windows.
+    settings and it follows a roaming profile between machines. A Mac keeps
+    the same thing in ``~/Library/Application Support``, which a migrated or
+    restored account carries across the same way. The home directory is the
+    fallback for a developer on anything else, so the module can be exercised
+    off both.
+
+    ``APPDATA`` is asked first everywhere, a Mac included, although nothing
+    there sets it: it is how the tests point the settings somewhere
+    disposable, and they run on all three.
     """
     roaming = os.environ.get("APPDATA")
-    return Path(roaming) / FOLDER if roaming else Path.home() / f".{FOLDER.casefold()}"
+    if roaming:
+        return Path(roaming) / FOLDER
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / FOLDER
+    return Path.home() / f".{FOLDER.casefold()}"
 
 
 def path() -> Path:

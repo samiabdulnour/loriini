@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+	The add-on bundle's Info.plist, filled in by CMakeLists.txt.
+
+	.APX and GSAP are what make the folder an Archicad add-on rather than any
+	other bundle, and they match the kit's PkgInfo, which the build copies in
+	beside this. The rest is the shape of Tapir's own AC26 Mac bundle, read out
+	of the shipped TapirAddOn_AC26_Mac.bundle.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleExecutable</key>
+	<string>@AC_ADDON_NAME@</string>
+	<key>CFBundleGetInfoString</key>
+	<string>@AC_ADDON_NAME@</string>
+	<key>CFBundleIconFile</key>
+	<string>ArchiCADPlugin</string>
+	<key>CFBundleIdentifier</key>
+	<string>@LORIINI_BUNDLE_IDENTIFIER@</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>@AC_ADDON_NAME@</string>
+	<key>CFBundlePackageType</key>
+	<string>.APX</string>
+	<key>CFBundleSignature</key>
+	<string>GSAP</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@LORIINI_BUNDLE_VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@LORIINI_BUNDLE_VERSION@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>@LORIINI_MINIMUM_MACOS@</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Sami Abdulnour. All rights reserved.</string>
+</dict>
+</plist>
