@@ -33,7 +33,7 @@ from typing import Any
 from sun_study.archicad import naming
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError
 from sun_study.archicad.draw import ensure_layer, move_to_layer
-from sun_study.archicad.ids import stamp_in_order
+from sun_study.archicad.ids import group_by_value, stamp_in_order
 from sun_study.archicad.read import GeoLocation, read_geo_location
 from sun_study.archicad.site_analysis import Frame, _clean_ring, _map_rectangle
 from sun_study.site.arcgis import rings_of
@@ -507,9 +507,9 @@ def _block_meshes(
     floor_index: int,
     floor_level: float,
     datum_m: float = 0.0,
-) -> tuple[int, list[str]]:
-    """One kerbed mesh per block. Returns how many were made and what was refused."""
-    made = 0
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """One kerbed mesh per block. Returns the meshes made and what was refused."""
+    made: list[dict[str, Any]] = []
     problems: list[str] = []
     for i, ring in enumerate(blocks):
         outline = [
@@ -534,7 +534,7 @@ def _block_meshes(
             problems.append(str(error))
             continue
         if isinstance(answer, dict) and answer.get("success", True) and answer.get("guid"):
-            made += 1
+            made.append({"elementId": {"guid": str(answer["guid"])}})
         else:
             problems.append(str(answer))
     return made, problems
@@ -772,13 +772,14 @@ def model_context(
                 notes.append(f"the terrain mesh was refused: {error}")
 
     made_blocks = 0
+    block_meshes: list[dict[str, Any]] = []
     if blocks and bundle.all_lots.get("features"):
         rings, fell_back = _blocks(bundle, frame)
         if fell_back:
             notes.append(f"{fell_back} blocks would not dissolve and are drawn lot by lot.")
         if rings:
             floor_index, floor_level = _datum_storey(connection)
-            made_blocks, refused = _block_meshes(
+            block_meshes, refused = _block_meshes(
                 connection,
                 rings,
                 ground,
@@ -787,6 +788,7 @@ def model_context(
                 floor_level,
                 datum,
             )
+            made_blocks = len(block_meshes)
             if refused:
                 notes.append(f"{len(refused)} block meshes were refused, e.g. {refused[0][:120]}")
     lift = KERB_M if made_blocks else 0.0
@@ -853,6 +855,9 @@ def model_context(
     made = [] if outcome is None else [element for element, _ in outcome.made]
     if outcome is not None:
         notes.extend(outcome.describe())
+    notes.extend(
+        _grouped(connection, [(block_meshes, "street blocks"), (made, "neighbouring buildings")])
+    )
     if say:
         say(f"  {len(made)} neighbours as slabs, {assumed} with assumed storeys")
     return ContextModelReport(
@@ -867,6 +872,28 @@ def model_context(
         terrain_layer=ground_layer.name if ground_layer is not None else "",
         roads_layer=roads_layer.name if roads_layer is not None else "",
     )
+
+
+def _grouped(
+    connection: ArchicadConnection, kinds: Sequence[tuple[Sequence[dict[str, Any]], str]]
+) -> list[str]:
+    """One Archicad Group per kind -- all the blocks, all the neighbours.
+
+    So a click selects the whole street, and the neighbourhood moves, hides
+    or deletes as the one thing it is, while every slab stays a slab of its
+    own with its own storeys in its ID. Grouping never raises: a project that
+    will not group still has its model, and the note says why it is loose.
+    """
+    said: list[str] = []
+    for elements, what in kinds:
+        if len(elements) < 2:
+            continue
+        report = group_by_value(connection, [(element, what) for element in elements])
+        if report.complete:
+            said.append(f"the {len(elements)} {what} are one group.")
+        else:
+            said.append(f"the {what} were not grouped: {report.problem}")
+    return said
 
 
 #: How many slabs go in one request. Each request is one undo step in

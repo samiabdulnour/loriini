@@ -43,6 +43,7 @@ from sun_study.archicad.context_model import (
     _create_slabs,
     _datum_storey,
     _Ground,
+    _grouped,
     _on_the_floor_plan,
     _send_through_the_addon,
     _Slab,
@@ -356,6 +357,12 @@ def model_future(
         else:
             made = len(outcome.made)
             notes.extend(outcome.describe())
+            notes.extend(
+                _grouped(
+                    connection,
+                    [([element for element, _ in outcome.made], "future buildings")],
+                )
+            )
     if say:
         say(f"  {made} future slabs, {len(report.envelopes)} envelopes")
     return FutureModelReport(report, made, layer.name, tuple(notes))

@@ -282,3 +282,44 @@ def test_a_hand_drawn_outline_is_tidied_to_one_archicad_will_take() -> None:
     tidy = _slab_outline(drawn)
 
     assert len(tidy) == 4, tidy
+
+
+# -- one group per kind -----------------------------------------------------------
+
+
+def test_each_kind_of_model_geometry_is_one_group() -> None:
+    """All the street blocks one group, all the neighbours another: a click
+    selects the whole street, and every slab keeps its own ID and storeys."""
+    from sun_study.archicad.context_model import _grouped
+    from tests.unit.test_archicad_adapter import connect
+
+    connection, transport = connect({"CreateGroups": {"groupGuids": [{"groupId": {"guid": "G"}}]}})
+    blocks = [{"elementId": {"guid": f"B{i}"}} for i in range(3)]
+    buildings = [{"elementId": {"guid": f"S{i}"}} for i in range(2)]
+    terrain = [{"elementId": {"guid": "T"}}]
+
+    said = _grouped(
+        connection,
+        [(blocks, "street blocks"), (buildings, "neighbouring buildings"), (terrain, "terrain")],
+    )
+
+    asked = [call["elementGroups"] for call in transport.all_parameters_for("CreateGroups")]
+    assert [[len(group["elements"]) for group in call] for call in asked] == [[3], [2]]
+    assert said == [
+        "the 3 street blocks are one group.",
+        "the 2 neighbouring buildings are one group.",
+    ]
+
+
+def test_a_project_that_will_not_group_keeps_its_model_and_says_why() -> None:
+    from sun_study.archicad.context_model import _grouped
+    from tests.unit.test_archicad_adapter import connect
+
+    connection, _ = connect(
+        {"CreateGroups": {"groupGuids": [{"error": {"code": 1, "message": "not supported"}}]}}
+    )
+    elements = [{"elementId": {"guid": f"S{i}"}} for i in range(2)]
+
+    said = _grouped(connection, [(elements, "future buildings")])
+
+    assert said == ["the future buildings were not grouped: not supported"]
