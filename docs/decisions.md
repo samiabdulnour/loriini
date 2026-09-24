@@ -3937,3 +3937,56 @@ drawings were already two sheets, and the run already took them as two
 flags. A file that says "Bands by hour" lights the last two; "Bands and
 times" lights all three. The communal study has one banded plan, so either
 whole-day tile asks for it.
+
+### D116 — The future context is today's buildings raised; the model is three layers; a missing building is a bug until proven data
+
+Six decisions from one review of the program on 23 September 2026, recorded
+together because they came from the same question -- what does a colleague
+actually get out of a run -- and each changes what the drawings show.
+
+**The future context raises what is there.** D90's envelope -- each lot set
+back by the ADG's separation, stepped, capped by the height and the ratio --
+answered "what could stand on this lot" and drew buildings where there are
+none today, moving every neighbour off the footprint a person recognises.
+The office reads a future context as the street as it is, each building
+built up to its limit, and that is also what a shadow diagram needs: the
+same gaps between the same buildings, each as high as it may go. So each
+existing footprint within reach, on land zoned for flats and under a height
+control, is raised to the whole storeys the LEP control allows; never
+lowered. The control is the LEP's because the register has it; a DCP is not
+open data. The envelope code stays, for the question it does answer -- what
+the *site* could hold.
+
+**The shadow diagram compares an ADG envelope.** A seventh legend row, a
+scenario like the proposal and drawn just under it in a lilac of its own:
+the proposal with room to move, whose visible fringe is what the room would
+cost the neighbours.
+
+**The context model is three layers.** `Site Context.Terrain`, `.Roads`
+and `.Buildings` in the office's site group, not one `Site Context.3D`: each
+is switched on for a different reason -- the terrain for the sun views, the
+roads for a site plan, the buildings for a shadow -- and one layer made
+every view take all three or none.
+
+**A missing building is a bug until proven to be data.** Buildings went
+missing from the model for three technical reasons before OSM's coverage
+was to blame: an Overpass answer cut short and cached for a month, buildings
+drawn as multipolygon relations never asked for, and one refused slab
+rolling back a request of two hundred. All three are closed (see
+`docs/site-analysis.md`, *When buildings are missing*). What remains is
+data: around Kogarah, OSM has 395 buildings in a kilometre square and most
+detached houses are unmapped, and no NSW register publishes footprints.
+
+**The Model tab is what every study sees, and every study sees it.** The
+native route exports no file, but the add-on reads the model Archicad has
+built, which holds only what is shown, so the layer state still decides
+every number. The neighbouring-buildings layers reached the communal study
+alone; the facade and apartments studies were measured without them when
+the combination hid them. They reach all three now.
+
+**The plans sit on a named combination.** The apartments' heat-map and
+hourly plans were made with no base, so each run started from what the last
+left on screen -- the drift ``ensure_layer_combination`` documents, down to
+two layers shown of 155. A **Plan combination** on the Solar analysis tab
+is the base for the apartment and communal plans alike, picked from the
+project's plan-like combinations and never one of the tool's own.

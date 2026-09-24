@@ -7948,10 +7948,10 @@ def site_analysis(
                 source, frame_and_offset(source), future_options
             )
             typer.echo(future_report.describe())
-            if not source.floor_space_ratio.get("features"):
+            if not source.furniture.buildings:
                 typer.secho(
-                    "  no floor-space ratio in the bundle (fetched before it was read, or none "
-                    "at this site); the envelopes are capped by height alone.",
+                    "  no building footprints in the bundle, so there is nothing to raise; "
+                    "the future context is empty.",
                     fg=typer.colors.YELLOW,
                 )
 
