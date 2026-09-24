@@ -3027,54 +3027,58 @@ class Window:
             "both ends are asked for. An element is kept when any part of it "
             "reaches the band, so a wall crossing either end stays whole.",
         )
-        frame, row = self._panel(outer, 1, title="Model export: the layers that leave Archicad"), 0
+        frame, row = self._panel(outer, 1, title="Layers the sun studies see"), 0
         self._caption(
             frame,
             row,
-            "The layer state every solar tool exports from. Set once for the project.",
+            "What every solar study reads the model under: what shows is what is "
+            "measured and what casts shadow. Set once for the project.",
         )
         row += 1
         self.combination, row = self._combo(
             frame,
             row,
             "Layer combination",
-            "The office layer combination the IFC export starts from.",
-            "The translator exports what is shown, so the layer state is an "
-            "input to every number this tool produces. The run sets it from "
-            "this combination, forces on what the study needs over the top, "
-            "and puts every layer back afterwards — so the answer does not "
-            "depend on what happened to be on screen.",
+            "The layer combination every solar study reads the model under.",
+            "Nothing is exported to a file any more, but the layer state still "
+            "decides every number: the add-on reads the 3D model Archicad has "
+            "built, and that model holds only what is shown. The run sets this "
+            "combination, forces on what the study needs over the top, and puts "
+            "every layer back afterwards — so the answer does not depend on "
+            "what happened to be on screen.",
         )
         self.require, row = self._picker(
             frame,
             row,
             "Layers forced visible",
-            "Layers forced into the export whatever the combination says.",
-            "Shared by the facade skin and the communal study, which is why "
-            "it is here rather than in either. The zone layers must be in the "
-            "export or neither drawing can be placed on the building — both "
-            "need a Zone to line the IFC up against, and neither of this "
-            "project's IFC combinations shows them. Left empty, the zone "
-            "layers are added automatically.",
+            "Layers switched on for every solar study, whatever the combination says.",
+            "Shared by all three solar studies, which is why it is here rather "
+            "than in any one. The zone layers must be in the model or the "
+            "drawings cannot be placed on the building — each needs a Zone to "
+            "line the model up against, and an office's usual combinations "
+            "hide them. Left empty, the facade and communal studies add the "
+            "zone layers themselves and the apartments study adds its own.",
         )
         self.context, row = self._picker(
             frame,
             row,
             "Neighbouring buildings",
             "Layers that shade the site without being part of it.",
-            "They have to be in the export or the study measures a building "
-            "with nothing around it, which can only overstate its sunlight. "
-            "Named by layer and not by element name because survey context "
-            "usually arrives nameless — on one project all 232 neighbours are "
-            "unnamed slabs. Listing them here both forces them into the export "
-            "and keeps them out of the facade area, which is about the scheme "
-            "and not the neighbourhood.",
+            "Switched on for every solar study, because a neighbour that is not "
+            "in the model shades nothing, and a building measured with nothing "
+            "around it can only be given more sunlight than it gets. Named by "
+            "layer and not by element name because survey context usually "
+            "arrives nameless — on one project all 232 neighbours are unnamed "
+            "slabs. The site analysis's own model goes on 'Site "
+            "Context.Buildings' and '.Future buildings'; name those here to "
+            "study against it. Never measured: the facade study measures its "
+            "facade layers and the communal study its Zones.",
         )
         self.hide, row = self._picker(
             frame,
             row,
             "Layers hidden on sheets",
-            "Layers switched off on the study drawings and in the export.",
+            "Layers switched off on the study drawings and in the model read.",
             "Grids and dimension layers usually: they are the practice's own "
             "annotation and clutter a sun study without adding to it. What "
             "counts as clutter is a decision about the drawing, so it is named "
@@ -5969,6 +5973,12 @@ class Window:
                 args += ["--hide-layer", name]
             if self.combination.get():
                 args += ["--layer-combination", self.combination.get()]
+            # The neighbours into the model, so they shade the facade. Not as
+            # --context-layer: the facade is measured on its own layers, so
+            # they add nothing to its area, and naming both sides would narrow
+            # the model to them and drop whatever else the scheme casts.
+            for name in self._listed(self.context):
+                args += ["--require-layer", name]
             args += self._band_args()
             args += [
                 "--model-bands",
@@ -6042,6 +6052,12 @@ class Window:
                 args += ["--layer-combination", self.combination.get()]
             for name in self._listed(self.hide):
                 args += ["--hide-layer", name]
+            # What the Model tab says every solar study sees. This study was
+            # the one that got neither: a neighbour the combination hides was
+            # not in its model, and the apartments were measured with nothing
+            # next door -- more sun than they get, and nothing to say so.
+            for name in [*self._listed(self.require), *self._listed(self.context)]:
+                args += ["--require-layer", name]
             for stamp in self._listed(self.instants) if times else []:
                 args += ["--plan-instant", stamp]
             args += self._band_args()

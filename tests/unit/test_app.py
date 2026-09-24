@@ -387,6 +387,33 @@ def test_a_neighbouring_layer_is_exported_and_kept_out_of_the_denominator(
     assert flag(communal.args, "--context-layer") == ["03 | Site.Neighboring Context"]
 
 
+def test_the_neighbours_shade_every_solar_study_not_only_the_communal_one(
+    hidden_window: Any,
+) -> None:
+    """The Model tab says it is what every solar study sees. It reached the
+    communal study alone: with a combination that hides the neighbours, the
+    facade and the apartments were measured with nothing next door."""
+    neighbours = "03 | Site Context.Buildings"
+    hidden_window.context.insert(0, neighbours)
+    hidden_window.require.insert(0, "05 | Dims/Notes.DA")
+    hidden_window.communal.set("06 | Zone.Balcony")
+    for tick in (hidden_window.do_facade, hidden_window.do_plans, hidden_window.do_communal):
+        tick.set(True)
+
+    jobs = hidden_window.jobs()
+    facade = next(job.args for job in jobs if job.label.startswith(window.FACADE_JOB))
+    plans = next(job.args for job in jobs if job.label.startswith(window.PLANS_JOB))
+    communal = next(job.args for job in jobs if job.label.startswith(window.COMMUNAL_JOB))
+
+    for args in (facade, plans, communal):
+        assert neighbours in flag(args, "--require-layer"), args
+    # Only where it keeps them out of what is measured; on the facade it
+    # would narrow the model to the named layers and drop the rest.
+    assert flag(facade, "--context-layer") == []
+    assert flag(communal, "--context-layer") == [neighbours]
+    assert "05 | Dims/Notes.DA" in flag(plans, "--require-layer"), "forced visible, for all three"
+
+
 def test_no_table_is_written_unless_a_folder_is_named(hidden_window: Any) -> None:
     hidden_window.communal.set("06 | Zone.Balcony")
     hidden_window.do_facade.set(False)
