@@ -69,9 +69,12 @@ def folder() -> Path:
     roaming = os.environ.get("APPDATA")
     if roaming:
         return Path(roaming) / FOLDER
+    # An else, not a fall-through: mypy reads the platform, and on a Mac a
+    # line after this branch's return would be code it can never reach.
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / FOLDER
-    return Path.home() / f".{FOLDER.casefold()}"
+    else:
+        return Path.home() / f".{FOLDER.casefold()}"
 
 
 def path() -> Path:

@@ -51,10 +51,14 @@ jobs:
           enable-cache: true
 
       - name: Install the project
+        id: install
         run: uv sync --python 3.12
 
       - name: Type check
         run: uv run mypy
 
+      # Whatever mypy said. A Mac run is the dear one, so it reports both
+      # halves rather than stopping at the first.
       - name: Test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: uv run pytest -v
