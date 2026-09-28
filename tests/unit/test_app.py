@@ -920,6 +920,109 @@ def test_a_model_is_shown_as_geometry_and_not_counted_as_a_sheet(hidden_window: 
     assert paper.find_withtag("edge"), "and it still takes the blue edge under the pointer"
 
 
+def _texts(paper: Any) -> list[str]:
+    """Every text item on a canvas, in the order it was drawn."""
+    return [
+        str(paper.itemcget(item, "text"))
+        for item in paper.find_all()
+        if str(paper.type(item)) == "text"
+    ]
+
+
+#: A whole-day plan, and a layout carrying four hours of a study: the two
+#: shapes of sheet the panel draws, at the day the panel has as a heading.
+WHOLE_DAY_SHEET = window.Sheet(
+    "Communal open space",
+    "communal",
+    "SA.01",
+    "Communal open space",
+    "21 Jun",
+    (window.Drawing("Communal open space", "21 Jun", ""),),
+    scale="1:300",
+)
+FOUR_HOUR_SHEET = window.Sheet(
+    "Shadow diagram",
+    "shadow",
+    "SD.01",
+    "Shadow diagram",
+    "21 Jun",
+    tuple(
+        window.Drawing("Shadow diagram", "21 Jun", f"{hour:02d}:00", 30.0 + hour, 20.0 + hour)
+        for hour in (9, 10, 11, 12)
+    ),
+    cells=4,
+    part=1,
+    parts=2,
+    scale="1:1000",
+)
+A_MODEL = window.Sheet("Site analysis", "site", "", window.CONTEXT_MODEL, "300 m", paper=False)
+
+
+def test_a_sheet_says_only_what_the_panel_does_not_say_beside_it(hidden_window: Any) -> None:
+    """The panel prints the day once, as a heading over the sheets of that
+    day, and the band under it says what the sun is doing while the pointer
+    is on a sheet. So the sheet itself carries its name, its hour and which
+    of a pair it is -- and not the day again, not "the whole day", not the
+    sun's figures, and not its name and day a second time in the title block
+    at a size nobody can read."""
+    paper = tk.Canvas(hidden_window.root)
+    window.draw_sheet(paper, WHOLE_DAY_SHEET, 300, 212)
+    texts = _texts(paper)
+    assert "COMMUNAL OPEN SPACE" in texts
+    assert not any("21 Jun" in text or "whole day" in text for text in texts), texts
+    assert "Communal open space" not in texts, "the block does not say the title again"
+
+    paper = tk.Canvas(hidden_window.root)
+    window.draw_sheet(paper, FOUR_HOUR_SHEET, 300, 212)
+    texts = _texts(paper)
+    assert "09:00-12:00   (1 of 2)" in texts, "the hours, and which of the pair"
+    assert not any("21 Jun" in text or "drawings" in text or "°" in text for text in texts), texts
+    assert texts.count("09:00") == 1, "each cell's own hour, once"
+
+
+def test_the_blue_edge_rims_the_whole_sheet(hidden_window: Any) -> None:
+    """The title block is drawn over the paper's right-hand edge, and it was
+    drawn over the edge item too: lit blue under the pointer, the rim showed
+    on three sides and stopped at the block. The edge is the topmost item
+    now, and hollow, so it lies over everything and hides nothing."""
+    for sheet, draw in ((WHOLE_DAY_SHEET, window.draw_sheet), (A_MODEL, window.draw_model)):
+        paper: Any = tk.Canvas(hidden_window.root)
+        draw(paper, sheet, 300, 212)
+        (edge,) = paper.find_withtag("edge")
+        assert edge == paper.find_all()[-1], f"over everything on {sheet.kind}"
+        assert paper.itemcget(edge, "fill") == "", "and hollow, so that it covers nothing"
+
+
+def test_the_scale_is_set_to_be_read_and_north_is_beside_the_drawings(hidden_window: Any) -> None:
+    """A reader checks the block for the scale, so it is set like the sheet
+    number and not in the block's five-point grey. And the north arrow is in
+    the block: at the top right of the drawing area it sat on the corner
+    cell of a sheet carrying four."""
+    paper: Any = tk.Canvas(hidden_window.root)
+    # A short scale, so the size it is set at is the size it keeps whatever
+    # typeface this machine has: a long one is shrunk to fit the strip.
+    window.draw_sheet(paper, replace(FOUR_HOUR_SHEET, scale="1:50"), 300, 212)
+    block_left = 300 * (1 - 40.0 / window.SHEET_MM_W)
+    items = paper.find_all()
+
+    (scale,) = [
+        i for i in items if str(paper.type(i)) == "text" and paper.itemcget(i, "text") == "1:50"
+    ]
+    face = hidden_window.root.tk.splitlist(paper.itemcget(scale, "font"))
+    assert int(face[1]) >= 8, face
+    assert paper.bbox(scale)[0] >= block_left
+
+    (north,) = [
+        i for i in items if str(paper.type(i)) == "text" and paper.itemcget(i, "text") == "N"
+    ]
+    ring = [i for i in items if str(paper.type(i)) == "oval" and paper.bbox(i)[0] >= block_left]
+    assert paper.bbox(north)[0] >= block_left and len(ring) == 1, "in the block, not on a cell"
+    cells = [
+        i for i in items if str(paper.type(i)) == "rectangle" and paper.bbox(i)[2] < block_left
+    ]
+    assert all(paper.bbox(i)[2] < paper.bbox(ring[0])[0] for i in cells), "clear of every cell"
+
+
 def test_each_site_sheet_follows_its_own_tick(hidden_window: Any) -> None:
     """Three sheets, three ticks, and the command gets --no-summary when the
     summary is unticked -- so the panel must drop it too."""
