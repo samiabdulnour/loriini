@@ -3803,7 +3803,8 @@ class Window:
         self._head(frame, box, SITE_JOB)
         Tooltip(
             box,
-            "Fetches the neighbourhood from NSW open data for the address below "
+            "Fetches the neighbourhood from NSW open data -- and the City of "
+            "Sydney's, inside its area -- for the address below "
             "and makes whichever of the outputs are lit: the Context "
             "Analysis and Site Analysis sheets, the Summary of Controls on a "
             "layout, and the Context Model in 3D. Needs the Loriini add-on "
@@ -3881,10 +3882,13 @@ class Window:
                         "Site",
                         "Site Analysis sheet",
                         "The boundary with its dimensions and corner levels, the fall, "
-                        "contours, neighbours with storeys and zone, trees, poles, "
-                        "hydrants, driveways, kerbside parking, one-way streets, noise "
-                        "sources, sun path and prevailing winds -- the DA 004 sheet, "
-                        "at whichever of 1:200 to 1:750 fits the site.",
+                        "contours -- the City of Sydney's 1 m ones where its area "
+                        "covers the sheet, the state's 2 m ones elsewhere -- neighbours "
+                        "with storeys and zone, trees drawn the size of their canopy "
+                        "(as the council's inventory records it, inside the City of "
+                        "Sydney), poles, hydrants, driveways, kerbside parking, one-way "
+                        "streets, noise sources, sun path and prevailing winds -- the "
+                        "DA 004 sheet, at whichever of 1:200 to 1:750 fits the site.",
                     ),
                     (
                         self.do_site_summary,
@@ -3921,10 +3925,13 @@ class Window:
                         self.do_site_model,
                         "3D context",
                         "Context Model in 3D (terrain, blocks, neighbours)",
-                        "The terrain as one mesh from the contours, every street block "
-                        "as a kerbed mesh with the roads left between, and one slab per "
-                        "neighbouring building as tall as its storeys say -- or as the "
-                        "LEP height control allows, and said to be assumed. Three "
+                        "The terrain as one mesh from the contours -- the City of "
+                        "Sydney's 1 m ones inside its area, the state's 2 m outside, "
+                        "every one kept near the site and fewer towards the edge -- "
+                        "every street block as a kerbed mesh with the roads left "
+                        "between, and one slab per neighbouring building as tall as "
+                        "its storeys say -- or as the LEP height control allows, and "
+                        "said to be assumed. Three "
                         "layers in the site group, one per kind -- 'Site "
                         "Context.Terrain', '.Roads' and '.Buildings' -- so a view can "
                         "show any of them without the others. The site's own buildings "

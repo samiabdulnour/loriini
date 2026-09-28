@@ -4,7 +4,7 @@ Three questions, one box, because they are asked by the same person at the
 same moment and none of them is a setting.
 
 *Whose data is this?* The site analysis draws a neighbourhood nobody in the
-office surveyed. Six public registers answer for it, all but one of them
+office surveyed. Seven public registers answer for it, all but one of them
 under a licence that asks for a credit on anything drawn from it, and a DA
 set is exactly the sort of thing that gets drawn from it. A colleague sending
 a Context Analysis sheet out has to be able to find that credit in the ten
@@ -272,10 +272,11 @@ class About(tk.Toplevel):
 
         self.credit = tk.Text(
             line,
-            # Six lines, which is what the credits come to at this width with
-            # every publisher answering. A field a line short of its own text
-            # is worse than a scrollbar: it looks complete and is not.
-            height=6,
+            # Seven lines, which is what the credits come to at this width
+            # with every publisher answering, the City of Sydney included. A
+            # field a line short of its own text is worse than a scrollbar: it
+            # looks complete and is not.
+            height=7,
             wrap="word",
             relief="solid",
             borderwidth=1,

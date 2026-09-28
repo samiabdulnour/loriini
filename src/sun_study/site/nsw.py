@@ -13,6 +13,11 @@ with the wrong data rather than an error.
 |                             | ``NSW_FOI_Transport_Facilities`` 1               |
 | contours                    | ``NSW_Elevation_and_Depth_Theme`` 2              |
 | address points              | ``NSW_Geocoded_Addressing_Theme`` 1              |
+| local government areas      | ``NSW_Administrative_Boundaries_Theme`` 8        |
+
+The contours here are the state's, at 2 m. A council that publishes its own
+finer ones is read by ``terrain``, which decides whose a sheet or a model
+takes and uses the local government areas to say where a council's stop.
 """
 
 from __future__ import annotations
@@ -22,6 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
+from sun_study.site import sources
 from sun_study.site.arcgis import (
     FeatureCollection,
     empty,
@@ -46,6 +52,7 @@ __all__ = [
     "contours",
     "height_of_building",
     "heritage",
+    "local_government_areas",
     "named_areas",
     "neighbour_addresses",
     "park_points",
@@ -66,6 +73,7 @@ FOI = f"{PORTAL}/NSW_Features_of_Interest_Category/FeatureServer"
 FOI_TRANSPORT = f"{PORTAL}/NSW_FOI_Transport_Facilities/FeatureServer"
 ELEVATION = f"{PORTAL}/NSW_Elevation_and_Depth_Theme/FeatureServer"
 ADDRESSING = f"{PORTAL}/NSW_Geocoded_Addressing_Theme/FeatureServer"
+ADMINISTRATIVE = f"{PORTAL}/NSW_Administrative_Boundaries_Theme/FeatureServer"
 EPI = (
     "https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/Planning/"
     "EPI_Primary_Planning_Layers/MapServer"
@@ -320,13 +328,26 @@ class RailLines:
 class Contour:
     elevation: float
     coords: tuple[Point, ...]
+    source: str = sources.SPATIAL
+    """Who drew it: a slug from ``sources``, so a sheet credits the council
+    for the council's lines and the legend says whose they are."""
 
     def as_dict(self) -> dict[str, Any]:
-        return {"elevation": self.elevation, "coords": [list(p) for p in self.coords]}
+        return {
+            "elevation": self.elevation,
+            "coords": [list(p) for p in self.coords],
+            "source": self.source,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Contour:
-        return cls(float(data["elevation"]), tuple((float(x), float(y)) for x, y in data["coords"]))
+        return cls(
+            float(data["elevation"]),
+            tuple((float(x), float(y)) for x, y in data["coords"]),
+            # A bundle saved before contours said whose they were holds the
+            # state's: nothing else was fetched then.
+            str(data.get("source") or sources.SPATIAL),
+        )
 
 
 @dataclass(frozen=True)
@@ -437,6 +458,7 @@ def named_areas(extent: Extent) -> list[NamedArea]:
 
 
 def contours(extent: Extent) -> list[Contour]:
+    """The state's contours, at 2 m. ``terrain`` says when a council's are used instead."""
     collection = query_by_extent(f"{ELEVATION}/2", extent, "elevation")
     found: list[Contour] = []
     for feature in collection["features"]:
@@ -462,3 +484,10 @@ def neighbour_addresses(extent: Extent) -> list[Neighbour]:
             )
         )
     return found
+
+
+def local_government_areas(extent: Extent) -> FeatureCollection:
+    """The local government areas the extent touches, each whole, with its
+    ``lganame`` -- ``SYDNEY`` for the City of Sydney. What says where a
+    council's own register stops."""
+    return query_by_extent(f"{ADMINISTRATIVE}/8", extent, "lganame,councilname")

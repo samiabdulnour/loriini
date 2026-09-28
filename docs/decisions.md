@@ -4097,3 +4097,109 @@ assumed.
 Artifacts also expire, after 90 days unless the repository says otherwise.
 That is one more reason the folder is cheap to remake and is not kept in the
 repository.
+
+### D119 — The City of Sydney's contours and trees, and a terrain that spends its vertices at the site
+
+Asked on 28 September 2026, after the office's `au-site-analysis` generator
+took them the day before: inside the City of Sydney the contours and the
+trees come from the council, because its contours are better and its trees
+have a size and a place; the window says whose data that is; and whether
+the context model could be made differently, perhaps from the better
+contours.
+
+**The registers.** The council publishes, under CC BY 4.0 on its Data Hub,
+1 m contours from its 2020 aerial survey and an inventory of every street and
+park tree with its height, north-south canopy spread, trunk diameter,
+species and age. Both are taken where they cover the ground and not
+otherwise, each through a registry of one entry (`terrain.COUNCIL_CONTOURS`,
+`trees.COUNCIL_TREES`) in the generator's shape, so the next council to
+publish is a line and a credit. The council is a source of its own in
+`site.sources` -- the window's info box and every credit line name it --
+and a sheet credits it only when its lines or its trees reached that sheet:
+contours and trees now say whose they are, one by one, because a council's
+register stops at its boundary and the same sheet can hold the council's
+trees and OpenStreetMap's. OpenStreetMap is no longer credited for a
+council's trees.
+
+**The sheet's rule is the generator's, with its blind spot closed.** A sheet
+takes the council's contours only where they cover 85% of the map field, so
+one sheet is drawn to one interval. The generator measures "cover" by the box
+of the lines, and at King Street, Newtown -- the boundary between the City
+and Inner West -- the council's lines on one side reach every edge of the
+sheet between them: 100% by their box, 36% of the sheet in fact, and two
+thirds of it drawn with no contours. The rule here also asks the state's
+register of local government areas how much of the sheet is the council's,
+and takes the smaller. The generator should do the same.
+
+**The model's rule is not the sheet's.** A kilometre square crosses a council
+boundary more often than a sheet does, and all-or-nothing would throw the
+council's lines away exactly where the model needs them, at the site. So the
+model takes the council's lines inside the boundary and the state's outside,
+cut at it: at Newtown 47% of the square is the council's. And it asks the
+council's server to generalise the lines to 0.1 m before they are sent,
+because a square kilometre is 440,000 vertices as published -- a vertex every
+quarter of a metre, the staircase of the grid the lines were traced from.
+
+**The terrain had to change for any of this to matter.** The mesh has a budget
+of 12,000 level-line vertices (D85), and the old rule met it by halving
+contours and points everywhere: Kogarah's 2 m contours became 4 m ones, and
+the council's 1 m contours would have become 8 m ones -- worse than the
+state's, the site included. Four ways were weighed:
+
+| | |
+|---|---|
+| raise the budget | the same halving, later; nothing measured says what Archicad takes, and the terrain far from the site does not need it |
+| a regular grid, from the state's 5 m elevation model or from the contours | uniform, so as coarse at the site as at the edge, and the 5 m model is the coarser survey |
+| a TIN, stood as a Morph | the most faithful surface, but a new add-on command (`ACAPI_Body_*`) nobody can run until the next build is loaded, and a Morph is not the Mesh the office edits site terrain as |
+| **spend the budget at the site** | the contours as they are, as a Mesh, through the command already proven live; only which vertices are sent changes |
+
+The last was taken (`site.ground.mesh_lines`). Every contour within 100 m of
+the site's boundary is kept, simplified by 0.1 m; past it the tolerance
+grows with distance, and past 100 m and 250 m fewer contours are kept, plan by
+plan until one fits -- far contours before a larger tolerance, because a
+coarse line among many close ones crosses them. At Surry Hills that is 8,272
+vertices: every 1 m contour to 100 m, every 2 m to 250 m, every 5 m beyond.
+At Newtown every contour fits, and at Campsie every 2 m one. Each line is
+carried to the edge of the square rather than stopping at its last vertex
+inside it.
+
+Two things came up building it that are worth keeping. *Simplified lines
+cross.* Douglas-Peucker moves each line on its own, and where the ground is
+steep two of them can pass through each other; a mesh then has to invent the
+ground between them. The spans that cross are simplified again at half the
+tolerance until they do not -- 23 lines at Surry Hills -- and a plan whose
+mending would break the budget gives way to the next (keeping every 1 m
+contour to the edge crosses 228 lines, and mending them would take 50,000
+vertices). *The published lines cross too.* By millimetres, where the ground
+drops at a wall: every one of the 38 pairs still crossing at Surry Hills
+crosses as published. That is the survey's, and a span stops being mended
+once neither side moves a centimetre. Measuring every vertex's gap to its
+neighbours first, which would have prevented new crossings by construction,
+was tried and took 35 to 100 seconds a square; checking the simplified lines
+and mending only what crosses takes under two.
+
+**Levels are read across the slope,** as the generator now reads them
+(`lib/levels.ts`, ported rule for rule): the corner RLs on the sheet, and in
+the model the ground under every slab, kerb and envelope. The two nearest
+contours are not the two either side -- with 1 m contours that put a corner
+half a metre low -- and past the last contour on a slope the ground carries
+on, one interval at most, where it used to stop between the last two. The
+model's slabs beyond the last contour of a fixture stand two metres higher
+than before for that reason; the tests say so.
+
+**Trees are drawn the size of their canopy,** a wash so the kerb under it
+shows, a dot at the trunk, dashed where nobody recorded a size and the nominal
+6 m stands in, so the sheet never claims what it does not know. The
+council's record is in each tree's element ID -- `SA TREE London Plane
+(Platanus x acerifolia), canopy 10 m, 12 m high, trunk 45 cm` -- so a schedule
+can list the trees near the site. An OSM tree within 4 m of an inventory tree
+is the same tree mapped twice, and OSM's tree rows become trees 8 m apart.
+The model does not stand trees up yet: a tree is a library part, not a slab,
+and which one the office wants is a question for it.
+
+*Not yet run in Archicad.* The mesh is built by the command the Kogarah and
+Bondi runs proved, with the same budget; what is new is which vertices it is
+sent, and that the level lines now meet the square's edge. Whether Archicad
+minds level lines that cross by millimetres was never asked -- the old
+thinning sent them too -- and the first run on a City of Sydney site should
+look at the terrain from below and at a wall.

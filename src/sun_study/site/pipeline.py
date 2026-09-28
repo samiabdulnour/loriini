@@ -20,11 +20,11 @@ import json
 import re
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, TypeVar
 
-from sun_study.site import nsw, osm, sources, transport
+from sun_study.site import nsw, osm, sources, terrain, transport, trees
 from sun_study.site.arcgis import FeatureCollection, empty, rings_of
 from sun_study.site.curate import keyword_category
 from sun_study.site.geo import (
@@ -298,13 +298,23 @@ class SiteBundle:
         The bus stops here are Transport for NSW's or they are absent: this
         sheet asks the register only, and only when a key is in the
         environment, so there is nothing to tell apart.
+
+        The contours and the trees say whose they are, line by line and tree
+        by tree, because a council's register answers inside its own area
+        only: the same sheet is the City of Sydney's contours in Surry Hills
+        and the state's in Campsie, and its trees the council's and
+        OpenStreetMap's at once where the inventory stops at the boundary.
         """
         used = [sources.SPATIAL]
         if self.zoning or self.height_of_building or self.floor_space_ratio:
             used.append(sources.EPLANNING)
         if self.aerial is not None and self.aerial.tiles:
             used.append(sources.IMAGERY)
-        if _anything(self.furniture):
+        used.extend(contour.source for contour in self.contours)
+        used.extend(tree.source for tree in self.furniture.trees)
+        # Everything else in the furniture is OpenStreetMap's; the trees have
+        # said for themselves.
+        if _anything(replace(self.furniture, trees=())):
             used.append(sources.OSM)
         if self.bus_stops:
             used.append(sources.TFNSW)
@@ -674,10 +684,11 @@ def run_site(
     say(f"  site sheet scale 1:{chosen:g}")
     extent = extent_for(centre, map_width_mm, map_height_mm, chosen)
 
-    say("fetching contours, lots, roads, neighbours, street furniture...")
+    say("fetching contours, lots, roads, neighbours, street furniture, trees...")
     soft = _Soft(say)
     try:
-        f_contours = soft.submit("contours", lambda: nsw.contours(extent), [])
+        f_contours = soft.submit("contours", lambda: terrain.sheet_contours(extent, log=say), [])
+        f_trees = soft.submit("council trees", lambda: trees.council_trees(extent, log=say), [])
         f_all_lots = soft.submit("lots", lambda: nsw.all_lots(extent), empty())
         f_roads = soft.submit("roads", lambda: nsw.roads(extent), [])
         f_rail = soft.submit("rail lines", lambda: nsw.rail_lines(extent), nsw.RailLines())
@@ -708,6 +719,13 @@ def run_site(
         contours = soft.take(f_contours)
         neighbours = soft.take(f_neighbours)
         stops = soft.take(f_stops) if f_stops is not None else []
+        # The council's trees where it keeps an inventory, OpenStreetMap's
+        # around them: an OSM tree standing where the council has one is the
+        # same tree mapped twice.
+        furniture = soft.take(f_furniture)
+        mapped = len(furniture.trees)
+        council = soft.take(f_trees)
+        furniture = replace(furniture, trees=tuple(trees.merge_trees(council, furniture.trees)))
         bundle = SiteBundle(
             address=address,
             matched=found.matched,
@@ -724,7 +742,7 @@ def run_site(
             floor_space_ratio=soft.take(f_fsr),
             contours=tuple(contours),
             neighbours=tuple(neighbours),
-            furniture=soft.take(f_furniture),
+            furniture=furniture,
             bus_stops=tuple(stops),
             aerial=soft.take(f_aerial) if f_aerial is not None else None,
         )
@@ -735,8 +753,8 @@ def run_site(
     say(
         f"  contours:{len(bundle.contours)} lots:{len(bundle.all_lots['features'])} "
         f"roads:{len(bundle.roads)} neighbours:{len(bundle.neighbours)} "
-        f"trees:{len(bundle.furniture.trees)} buildings:{len(bundle.furniture.buildings)} "
-        f"bus stops:{len(bundle.bus_stops)}"
+        f"trees:{len(bundle.furniture.trees)} (council {len(council)}, OSM {mapped}) "
+        f"buildings:{len(bundle.furniture.buildings)} bus stops:{len(bundle.bus_stops)}"
     )
     if out_dir is not None:
         say(f"  saved {save(bundle, out_dir / 'data' / 'site.json')}")
@@ -794,6 +812,11 @@ def run_model(
     control, the zoning and the floor-space ratio for the future context,
     and the site itself. Saved as ``data/model.json``.
 
+    The contours are a council's inside its own area and the state's outside
+    it, cut at the boundary (``terrain.model_contours``): a kilometre square
+    crosses a council boundary more often than a sheet does, and the model
+    wants the finer lines wherever there are any.
+
     A ``SiteBundle`` rather than a fourth kind, with the sheet fields left
     empty: the model reads the same five things off it as off a site
     bundle, and one loader serves both.
@@ -817,7 +840,7 @@ def run_model(
 
     soft = _Soft(say)
     try:
-        f_contours = soft.submit("contours", lambda: nsw.contours(extent), [])
+        f_contours = soft.submit("contours", lambda: terrain.model_contours(extent, log=say), [])
         f_hob = soft.submit("height of building", lambda: nsw.height_of_building(extent), empty())
         # The zoning and the ratio are what the future context reads; the
         # sheet fields stay empty.
