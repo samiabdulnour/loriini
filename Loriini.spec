@@ -1,20 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 from pathlib import PurePath
 from PyInstaller.utils.hooks import collect_data_files
 from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('C:/Users/SamiAbdulnour/Documents/Adobe/Photoshop/sun-study/assets/loriini.ico', 'assets')]
+# Every path from the folder this recipe sits in -- the checkout's root --
+# rather than from one machine's copy of it, so the same recipe builds on a
+# colleague's machine and on the Windows runner (.github/workflows/app.yml).
+# SPECPATH is PyInstaller's own: the directory of the spec it is running.
+ROOT = SPECPATH
+
+datas = [(os.path.join(ROOT, 'assets', 'loriini.ico'), 'assets')]
 # The window's icons. PNGs rather than a drawing library: Tk reads them
 # itself, so Pillow stays a development dependency and out of the bundle --
 # it is in `excludes` below, and `scripts/make_icons.py` is what needs it.
 # `sun_study.app.icons` looks for them at exactly this path under _MEIPASS.
-datas += [('C:/Users/SamiAbdulnour/Documents/Adobe/Photoshop/sun-study/assets/icons', 'assets/icons')]
+datas += [(os.path.join(ROOT, 'assets', 'icons'), 'assets/icons')]
 # The licence itself, at the root of the bundle, where `sun_study.licence.file`
 # looks for it. The info box summarises the terms from a constant that is in
 # the executable either way; this is what `Read the full licence` shows, and
 # without it that button is hidden rather than broken.
-datas += [('C:/Users/SamiAbdulnour/Documents/Adobe/Photoshop/sun-study/LICENSE', '.')]
+datas += [(os.path.join(ROOT, 'LICENSE'), '.')]
 binaries = []
 hiddenimports = []
 datas += collect_data_files('tzdata')
@@ -33,7 +40,7 @@ hiddenimports += [m for m in tmp_ret[2] if not m.startswith(('ifcopenshell.expre
 
 
 a = Analysis(
-    ['C:/Users/SamiAbdulnour/Documents/Adobe/Photoshop/sun-study/src/sun_study/app/__main__.py'],
+    [os.path.join(ROOT, 'src', 'sun_study', 'app', '__main__.py')],
     pathex=[],
     binaries=binaries,
     datas=datas,
@@ -66,6 +73,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    version='C:/Users/SamiAbdulnour/Documents/Adobe/Photoshop/sun-study/build/version_info.txt',
-    icon=['C:/Users/SamiAbdulnour/Documents/Adobe/Photoshop/sun-study/assets/loriini.ico'],
+    version=os.path.join(ROOT, 'build', 'version_info.txt'),
+    icon=[os.path.join(ROOT, 'assets', 'loriini.ico')],
 )

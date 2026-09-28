@@ -1,0 +1,95 @@
+name: Loriini app
+
+# The window, built into the one Loriini.exe a colleague double-clicks, on a
+# Windows runner -- so a change can be looked at the day it is made, without
+# anybody's own machine building it first. The recipe is the one a person runs
+# locally, scripts/build_app.py over Loriini.spec, run the same way; the .exe
+# is left on the run's page as an artifact.
+#
+# On a push that touches what goes into the executable, and on demand.
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "assets/**"
+      - "Loriini.spec"
+      - "scripts/build_app.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "LICENSE"
+      - ".github/workflows/app.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Loriini.exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Pinned rather than left to uv, which would take the newest Python it
+      # can find: a build should not change interpreter because a runner image
+      # did, and the newest is not always one ifcopenshell has wheels for yet.
+      - name: Install the project
+        run: uv sync --python 3.12
+
+      - name: Build the executable
+        run: uv run python scripts/build_app.py
+
+      # A build that succeeds is not an executable that starts: a module the
+      # static scan missed only fails when it is imported. So the .exe is run
+      # the way the window runs its own studies -- as its command line, with
+      # the environment runner.child_environment gives the child -- and asked
+      # for the site command's help, which imports the whole command line and
+      # everything the site analysis draws with. Given a limit because a
+      # windowed build that fails puts its traceback in a dialog, and on a
+      # runner there is nobody to close it: without one the job would wait
+      # out GitHub's six hours rather than fail.
+      - name: Check the executable starts
+        timeout-minutes: 5
+        shell: bash
+        env:
+          SUN_STUDY_RUN_CLI: "1"
+          NO_COLOR: "1"
+          TERM: dumb
+          COLUMNS: "160"
+        run: |
+          set -uo pipefail
+          ./dist/Loriini.exe site --help > smoke.txt 2>&1
+          status=$?
+          head -20 smoke.txt
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Loriini.exe exited $status asked for 'site --help'."
+            cat smoke.txt
+            exit 1
+          fi
+
+      - name: Say what was built
+        shell: bash
+        run: |
+          size=$(stat -c %s dist/Loriini.exe)
+          digest=$(sha256sum dist/Loriini.exe | cut -d' ' -f1)
+          {
+            echo "## Loriini.exe"
+            echo ""
+            echo "Built from \`${GITHUB_REF_NAME}\` at \`${GITHUB_SHA::7}\`: $((size / 1000000)) MB,"
+            echo "SHA-256 \`${digest}\`. Download it from **Artifacts** below."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loriini-exe
+          path: dist/Loriini.exe
+          if-no-files-found: error
+          retention-days: 14
