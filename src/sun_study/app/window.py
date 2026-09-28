@@ -1520,9 +1520,9 @@ class Dock(ttk.Frame):
 
         Drawn in millimetres and scaled, so the geometry sits where it will
         sit on the paper and the title block really is the 40 mm the General
-        tab is set to. The sheet number and the drawing title are the two
-        things drawn larger than they will print: a label nobody can read
-        identifies nothing, and a thumbnail is not a print preview.
+        tab is set to. The sheet number, the scale and the drawing title are
+        drawn larger than they will print: a label nobody can read identifies
+        nothing, and a thumbnail is not a print preview.
 
         Paper stays square. Everything you press in this window is rounded
         and the sheets are not, because paper has corners -- and that is the
@@ -1707,25 +1707,22 @@ def _grid(
     ]
 
 
-def _untimed_note(sheet: Sheet) -> tuple[str, str]:
-    """What a sheet with no hour on it is instead: the short line under its
-    title, and the sentence the band says when the pointer is on it."""
+def _untimed_note(sheet: Sheet) -> str:
+    """What a sheet with no hour on it is instead: the sentence the band says
+    when the pointer is on it."""
     if sheet.study == "Site analysis":
         return (
-            "Drawn from the address, not from the sun",
             "Drawn from the address in Site analysis and NSW open data, so it has "
-            "no hour and no sun on it.",
+            "no hour and no sun on it."
         )
     if sheet.kind == COMMUNAL_AREAS:
         return (
-            "The figures, tabled",
             "The measured area of every communal space, tabled on a sheet of its "
-            "own, so it has no hour and no sun on it.",
+            "own, so it has no hour and no sun on it."
         )
     return (
-        "The whole day, banded by hours of sun",
         "The whole assessment window on one plan, banded by hours of sun, so it "
-        "is not at any one hour and the Sheets row does not deal it.",
+        "is not at any one hour and the Sheets row does not deal it."
     )
 
 
@@ -1754,11 +1751,11 @@ def draw_sheet(
 
     # -- the paper itself ------------------------------------------------
     # Drawn, not left to the canvas: the canvas is the palette's grey, so the
-    # sheet can throw a shadow onto it, and the edge is an item so that the
-    # panel can turn it blue under the pointer.
-    paper.create_rectangle(
-        0, 0, width - 1, height - 1, fill=theme.SURFACE, outline=theme.EDGE, tags="edge"
-    )
+    # sheet can throw a shadow onto it. Its edge is an item of its own, the
+    # last one drawn (at the end of this function), so that the panel can
+    # turn it blue under the pointer and nothing on the sheet lies over the
+    # blue.
+    paper.create_rectangle(0, 0, width - 1, height - 1, fill=theme.SURFACE, outline="")
 
     draw_r = SHEET_MM_W - block_mm - 7.0
 
@@ -1792,80 +1789,25 @@ def draw_sheet(
             frame = (frame[0], frame[1], frame[2], frame[3] - x(7.0))
         _draw_drawing(paper, sheet.study, drawing, frame)
 
-    # -- north, which is up --------------------------------------------
-    north_x, north_y = x(draw_r - 14), x(26)
-    ring = x(7)
-    paper.create_oval(
-        north_x - ring,
-        north_y - ring,
-        north_x + ring,
-        north_y + ring,
-        fill=theme.SURFACE,
-        outline=theme.EDGE,
-    )
-    paper.create_polygon(
-        north_x,
-        north_y - x(6),
-        north_x + x(2.6),
-        north_y + x(2.4),
-        north_x,
-        north_y + x(0.6),
-        north_x - x(2.6),
-        north_y + x(2.4),
-        fill=theme.INK,
-        outline="",
-    )
-    words(draw_r - 14, 15, "N", 6, theme.INK, anchor="center")
-
     # -- what this drawing is ------------------------------------------
     #
-    # A site sheet is not at an hour of the day, so it is titled by what it
-    # is; a whole-day plan by its day; everything else by when, because that
-    # is what tells one sheet of a study from the next. A sheet that is one
-    # of a pair says so, as the run names it.
-    # -- what this drawing is ------------------------------------------
-    #
-    # The drawing's name first and largest -- "Communal open space by hour",
-    # "Shadow diagram" -- because that is what a person is looking for
-    # across the panel; the day and the hour under it, and which of a pair
-    # it is; and last, small, what the sun is doing.
-    timed = bool(sheet.time)
-    if timed:
-        when = f"{sheet.day} \u00b7 {sheet.time}"
-    elif sheet.day:
-        when = f"{sheet.day} \u00b7 the whole day"
-    else:
-        when = ""
+    # The drawing's name, large -- "Communal open space by hour", "Shadow
+    # diagram" -- because that is what a person is looking for across the
+    # panel; under it, only what tells this sheet from the next of its
+    # study: the hour, and which of a pair it is. Not the day, which the
+    # panel prints once over the sheets of that day; not what the sun is
+    # doing, which the band under the panel says while the pointer is on
+    # the sheet. Six-point grey under a thumbnail is read by nobody.
+    saying = [sheet.time] if sheet.time else []
     if sheet.parts > 1:
-        when += f"   ({sheet.part} of {sheet.parts})"
+        saying.append(f"({sheet.part} of {sheet.parts})")
     words(10, 181, sheet.kind.upper(), 10, theme.INK, bold=True)
-    if when:
-        words(10, 192, when, 7, theme.BODY)
-    if not timed:
-        words(10, 201, _untimed_note(sheet)[0], 6, theme.HINT)
-    elif sheet.elevation is None:
+    if saying:
+        words(10, 192, "   ".join(saying), 7, theme.BODY)
+    if sheet.time and sheet.elevation is None:
+        # The one line still worth its ink: the sheet has no sun to draw,
+        # and a person should not have to hover to learn why.
         words(10, 201, "Project location not set \u2014 no sun to draw", 6, theme.RED)
-    elif len(sheet.drawings) == 1:
-        cast = (
-            f" \u00b7 shadow {sheet.reach:.1f}x the height"
-            if sheet.reach is not None and sheet.study == "Shadow diagram"
-            else ""
-        )
-        words(
-            10,
-            201,
-            f"Sun {sheet.elevation:.1f}\u00b0 \u00b7 azimuth {sheet.azimuth:.0f}\u00b0{cast}",
-            6,
-            theme.HINT,
-        )
-    else:
-        ups = [d.elevation for d in sheet.drawings if d.elevation is not None]
-        note = f"{len(sheet.drawings)} drawings"
-        if sheet.empty:
-            note += f", {sheet.empty} cell{'' if sheet.empty == 1 else 's'} empty"
-        if ups:
-            note += f" \u00b7 sun {min(ups):.0f}\u00b0 to {max(ups):.0f}\u00b0"
-        words(10, 201, note, 6, theme.HINT)
 
     # -- the title block, at the width General is set to ----------------
     #
@@ -1912,13 +1854,42 @@ def draw_sheet(
 
     foot = stacked(x(5), PRODUCT.upper(), 5, theme.INK, bold=True)
     ruled(foot + 2)
-    foot = stacked(foot + 5, sheet.kind, 5, theme.INK)
-    if timed:
-        foot = stacked(foot + 1, f"{sheet.day} {sheet.time}", 5, theme.HINT)
-    elif sheet.day:
-        foot = stacked(foot + 1, sheet.day, 5, theme.HINT)
+    # Not the drawing's name and its day again under that: the name is the
+    # title beside the block, the day is the panel's heading over the
+    # sheets, and at five points the repeat was a grey smudge.
+
+    # -- north, which is up --------------------------------------------
+    #
+    # In the block, beside the drawings and not over them: at the top right
+    # of the drawing area it sat on the corner cell of a sheet carrying four.
+    north_x, north_y = x(left + block_mm / 2), max(x(38), foot + x(26))
+    ring = x(7)
+    paper.create_oval(
+        north_x - ring,
+        north_y - ring,
+        north_x + ring,
+        north_y + ring,
+        fill=theme.SURFACE,
+        outline=theme.EDGE,
+    )
+    paper.create_polygon(
+        north_x,
+        north_y - x(6),
+        north_x + x(2.6),
+        north_y + x(2.4),
+        north_x,
+        north_y + x(0.6),
+        north_x - x(2.6),
+        north_y + x(2.4),
+        fill=theme.INK,
+        outline="",
+    )
+    paper.create_text(
+        north_x, north_y - x(12), text="N", anchor="center", fill=theme.INK, font=_face(6, False)
+    )
+
     # The notes and revisions, which at this size are rules on paper too.
-    line = max(foot + 6, x(62))
+    line = x(62)
     step = 0
     while line < x(140):
         paper.create_line(inner, line, inner + room - (step % 3) * x(6), line, fill="#E7E6E2")
@@ -1926,8 +1897,9 @@ def draw_sheet(
         step += 1
     ruled(x(146))
     # The scale the run will place the drawings at, not a number from the
-    # schematic: a reader checks the block for exactly this.
-    stacked(x(149), sheet.scale or "no scale", 5, theme.HINT)
+    # schematic: a reader checks the block for exactly this, so it is set to
+    # be read at this size, like the sheet number under it.
+    stacked(x(149), sheet.scale or "no scale", 8, theme.INK, bold=True)
     ruled(x(163))
     paper.create_text(
         inner,
@@ -1937,6 +1909,12 @@ def draw_sheet(
         fill=theme.BLUE_DEEP,
         font=(theme.FACE, 9, "bold"),
     )
+
+    # -- the edge, last ------------------------------------------------
+    # Over everything, and hollow: lit blue under the pointer, it rims the
+    # whole sheet. Drawn first, the title block's own outline lay over its
+    # right-hand side, and the rim stopped at the block.
+    paper.create_rectangle(0, 0, width - 1, height - 1, fill="", outline=theme.EDGE, tags="edge")
 
 
 #: The blocks around the site in the context model, as ``(x0, y0, x1, y1,
@@ -1968,8 +1946,6 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     """
     future = sheet.kind == FUTURE_MODEL
     facade = sheet.kind == FACADE_MODEL
-    # The hover edge, invisible at rest: the item the panel turns blue.
-    paper.create_rectangle(0, 0, width - 1, height - 1, fill="", outline="", tags="edge")
     mid_x, mid_y, k = width * 0.5, height * 0.40, width / 34.0
 
     def at(x: float, y: float, z: float) -> tuple[float, float]:
@@ -2106,6 +2082,9 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     paper.create_text(
         10, height * 0.935, text=line, anchor="w", fill=theme.BODY, font=_face(7, False)
     )
+    # The hover edge, invisible at rest: the item the panel turns blue, drawn
+    # last so that it lies over the model.
+    paper.create_rectangle(0, 0, width - 1, height - 1, fill="", outline="", tags="edge")
 
 
 def _draw_drawing(
@@ -6012,7 +5991,7 @@ class Window:
             )
             return
         if not sheet.time:
-            detail = _untimed_note(sheet)[1]
+            detail = _untimed_note(sheet)
         elif sheet.elevation is None:
             detail = (
                 "No project location, so there is no sun to put on it. Set one in "
