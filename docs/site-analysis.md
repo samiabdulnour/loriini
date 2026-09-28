@@ -24,7 +24,7 @@ be found, switched off or purged as a group.
 | | |
 |---|---|
 | `14 \| Context Analysis` worksheet | LEP zoning wash coloured by the office's categories; schools, hospitals, child care and retail coloured by what they are and labelled by name; heritage items; the rail corridor; cadastre; roads with names on a double-headed arrow (a lane gets a plain label); railway, tram and bus routes; `T`, `L` and `B` roundels for stations and stops; 5 and 10 minute walking catchments; the site on top; a legend of what is on the map |
-| `14 \| Site Analysis` worksheet | the boundary with a circle at each survey corner, `SB` dimensions per edge and `RL` levels per corner from the 1 m contours; the fall arrow, `FALL` and `AREA`; contours with their levels; neighbours as number, storeys and zone; trees, poles, lamps, hydrants; driveways as access triangles; kerbside parking bands; one-way and lane arrows; noise zigzags along main roads and rail; utilities where OSM has them; OSM building footprints; the sun path with winter and summer discs; prevailing wind banners; a legend |
+| `14 \| Site Analysis` worksheet | the boundary with a circle at each survey corner, `SB` dimensions per edge and `RL` levels per corner, read across the slope between the contours; the fall arrow, `FALL` and `AREA`; contours with their levels -- the City of Sydney's 1 m ones where its area covers the sheet, the state's 2 m ones elsewhere, and the legend says which; neighbours as number, storeys and zone; trees the size of their canopy, dashed where nobody recorded one; poles, lamps, hydrants; driveways as access triangles; kerbside parking bands; one-way and lane arrows; noise zigzags along main roads and rail; utilities where OSM has them; OSM building footprints; the sun path with winter and summer discs; prevailing wind banners; a legend |
 | `14 \| Summary of Controls` **layout** | the planning-controls table, drawn straight onto a sheet of its own on the A1 master: address, lots, cadastral area; LEP zone, height, FSR and the GFA it allows, minimum lot size, heritage; council DCP rows ruled up empty; the ADG figures worked for this site area. No worksheet, no view, no layer of its own |
 | `14 \| Context Analysis.*`, `14 \| Site Analysis.*` layers | five per sheet (aerial, fills, lines, labels, sheet), every fill with an element ID naming its legend entry |
 | `14 \| Site Analysis` view folder | a view of each worksheet at its sheet's scale -- 1:3000 for the context sheet, whichever of 1:200 to 1:750 fits the site for the site sheet -- with a layer combination showing that drawing's layers |
@@ -128,8 +128,9 @@ a context sheet.
 | zoning, height, FSR, lot size, heritage | ePlanning `EPI_Primary_Planning_Layers` 2, 5, 1, 4, 0 -- the FSR by extent as well as at the site, for the future context |
 | roads with names, hierarchy and lanes; railways | `NSW_Transport_Theme` 5, 7 |
 | stations, parks, named building complexes, named areas | `NSW_Features_of_Interest_Category` and `NSW_FOI_Transport_Facilities` |
-| contours, neighbour address points | `NSW_Elevation_and_Depth_Theme` 2, `NSW_Geocoded_Addressing_Theme` 1 |
-| bus stops and routes, trees, hydrants, poles, lamps, one-ways, driveways, parking, utilities, building footprints | OpenStreetMap through Overpass, mirrors rotated, answers cached for a month under `%LOCALAPPDATA%\Loriini\cache\osm` |
+| contours (2 m), neighbour address points, local government areas | `NSW_Elevation_and_Depth_Theme` 2, `NSW_Geocoded_Addressing_Theme` 1, `NSW_Administrative_Boundaries_Theme` 8 |
+| contours (1 m) and trees with their size, inside the City of Sydney | the council's Data Hub on ArcGIS Online: `Terrain_Contours` (2020 aerial survey) and `Trees` (height, canopy spread, trunk, species) -- see below |
+| bus stops and routes, trees elsewhere, hydrants, poles, lamps, one-ways, driveways, parking, utilities, building footprints | OpenStreetMap through Overpass, mirrors rotated, answers cached for a month under `%LOCALAPPDATA%\Loriini\cache\osm` |
 | walking catchments | Valhalla's public server, pedestrian costing, 5 and 10 minutes |
 | aerial | NSW SIX imagery export, tiled, with `.jgw` world files on the MGA grid |
 
@@ -152,6 +153,7 @@ for a sheet, ready to copy into a title block.
 |---|---|---|
 | NSW Spatial Services, and the SIX imagery | CC BY 4.0 | `© State of New South Wales (Spatial Services, a business unit of the Department of Customer Service NSW)` |
 | NSW ePlanning (`EPI` layers) | CC BY 4.0 | `© State of New South Wales and Department of Planning, Housing and Infrastructure` |
+| City of Sydney Data Hub (contours, trees) | CC BY 4.0 | `© City of Sydney, CC BY 4.0` -- the council states no wording of its own, so the licence is named, as CC BY asks |
 | OpenStreetMap, via Overpass | ODbL 1.0 | `© OpenStreetMap contributors` |
 | Valhalla, FOSSGIS e.V., on OSM data | MIT engine, ODbL data | `Walking catchments: Valhalla (FOSSGIS e.V.)`, beside OpenStreetMap's own |
 | Transport for NSW Open Data Hub | CC BY 4.0 | `© Transport for NSW` |
@@ -239,13 +241,15 @@ No Overrides.
 shadow diagrams and sun views cast against, in the floor plan, every
 element on the `LORIINI` layer with an `SA ...` element ID:
 
-- **Terrain**: one mesh from the 2 m contours, through the add-on's own
+- **Terrain**: one mesh from the contours -- the City of Sydney's 1 m ones
+  inside its area, the state's 2 m ones outside -- through the add-on's own
   `CreateMesh` (Tapir's `CreateMeshes` answers `APIERR_BADINDEX` for every
   mesh on AC26). Its levels are metres above the storey nearest RL 0, so the
-  ground sits where the contours say, whatever storey is current. Level
-  lines are thinned -- every second contour, every second point, again --
-  until they are under 12,000 vertices, because Archicad triangulates between
-  all of them.
+  ground sits where the contours say, whatever storey is current. The level
+  lines stay under 12,000 vertices, because Archicad triangulates between all
+  of them, and the budget is spent at the site: every contour within 100 m of
+  the site's boundary, true to a tenth of a metre, and fewer and simpler
+  contours towards the edge (below).
 - **Neighbours**: one slab per OSM footprint, `levels x 3.1 m` thick, on the
   ground at its centre. Where OSM has no storeys the LEP height-of-building
   control gives them (`SA NEIGHBOUR 2 STOREY (ASSUMED)`), two storeys where
@@ -268,10 +272,96 @@ dissolve and are drawn lot by lot, one lot was refused as self-crossing.
 The model fetches its own square, `--model-radius` metres each way from the
 site (500 by default: a kilometre across, about 500 footprints and 36,000
 contour vertices at Kogarah), saved as `data/model.json` beside the sheets'
-bundles. The ground level under each slab comes from a grid index of the
-contour vertices -- the site sheet's inverse-distance rule, without its scan
-of every vertex for every footprint. A rerun deletes the last run's slabs
-and mesh by their IDs first, so the model is replaced, not stacked.
+bundles. The ground level under each slab and each kerb corner is read the
+way the site sheet reads its corners -- across the slope, between the two
+contours that bracket the point (below) -- from an index of the contours'
+segments, so a thousand kerb corners read a kilometre of contours in
+seconds. A rerun deletes the last run's slabs and mesh by their IDs first,
+so the model is replaced, not stacked.
+
+## The City of Sydney's registers
+
+Inside its own area the City of Sydney publishes, under CC BY 4.0, two
+registers no statewide layer matches, and the site analysis takes both where
+they cover the ground. They are one entry each in a registry (`terrain`,
+`trees`), the shape the office's generator uses, so the next council that
+publishes its own is a line and a credit.
+
+**Contours.** 1 m contours from the council's 2020 aerial survey -- the
+ground, interpolated under the buildings -- in place of the state's 2 m ones.
+Two rules, because a sheet and a model want different things at a boundary:
+
+- *A sheet* takes the council's only where it covers the map field -- 85% of
+  it -- and the state's everywhere otherwise, so one sheet is drawn to one
+  interval and one legend row says whose. "Covers" is tested twice: the
+  lines reach across the sheet (the generator's test) *and* the council's
+  area holds the sheet, read from the state's register of local government
+  areas. The first alone is fooled by a boundary down the middle: at King
+  Street, Newtown, the council's lines reach every edge of the sheet between
+  them while only 36% of it is the council's, and two thirds of the sheet
+  would have had no contours at all. The generator has the same test and the
+  same blind spot.
+- *A model* takes both, cut at the boundary: the council's lines inside its
+  area, the state's outside. A kilometre square crosses a council boundary
+  more often than not -- 47% of the Newtown square is the City's -- and the
+  sheet's rule would throw the finer lines away exactly where the model
+  needs them, at the site. The model also has the council's server generalise
+  its lines to 0.1 m before sending them: a square kilometre is 440,000
+  vertices as published, a vertex every quarter metre, most of them the
+  staircase of the grid the lines were traced from.
+
+The corner levels are read across the slope rather than from the two nearest
+lines, which with 1 m contours put a corner half a metre low (the generator's
+`lib/levels.ts`, ported rule for rule): twelve directions through the point,
+the first contour each way, and the steepest pair of different levels wins.
+Past the last contour on a slope the slope carries on, one interval at most.
+
+**The terrain mesh.** The old rule halved contours and points everywhere until
+the level lines were under 12,000 vertices: a kilometre of the state's 2 m
+contours became 4 m ones at Kogarah, and the council's 1 m ones would have
+become 8 m ones -- worse than what they replace, the site included. The
+budget is now spent where the site is (`site.ground.mesh_lines`):
+
+| | Surry Hills (council) | Newtown (both) | Campsie (state) |
+|---|---|---|---|
+| contour vertices fetched | 180,600 | 53,800 | 25,100 |
+| level-line vertices | 8,272 | 8,675 | 1,933 |
+| within 100 m of the site | every 1 m contour | every 1 m contour | every 2 m contour |
+| to 250 m, and beyond | every 2 m, every 5 m | every contour | every contour |
+
+Douglas-Peucker with a tolerance of its own at every vertex: 0.1 m within
+100 m of the site's boundary, growing with distance past it, so one contour
+running from the site to the edge is exact at one end and coarse at the
+other. The plans are tried finest first -- far contours go before the
+tolerance grows -- and the first that fits the budget is used. Each line is
+carried to the edge of the model's square rather than stopping at its last
+vertex inside it.
+
+Simplifying lines one at a time can make two of them cross where the ground
+is steep, and a mesh has to invent the ground where its level lines cross. So
+the simplified lines are checked, and the two spans of every crossing
+simplified again at half the tolerance, and again, span by span -- at Surry
+Hills 23 lines, 2,100 vertices between them. What still crosses with neither
+span moving a centimetre crossed as published: the council's contours touch
+and cross by millimetres where the ground drops at a wall, and every one of
+the 38 pairs still crossing at Surry Hills crosses in the published lines
+too. That is the survey's to mend, not the mesh's. Keeping every 1 m contour
+to the edge instead makes 228 lines cross, and mending them would take
+50,000 vertices -- which is why far contours go before the tolerance grows,
+and why a plan whose mending breaks the budget gives way to the next.
+
+**Trees.** Every street and park tree the council keeps -- 278 in a 300 m
+square around a Surry Hills site -- with where it stands, its height, the spread of its
+canopy north to south, the diameter of its trunk and its species. The sheet
+draws each at the size of its canopy on the ground, as a wash so the kerb
+under it shows, with a dot at the trunk; its element ID carries the rest
+(`SA TREE London Plane (Platanus x acerifolia), canopy 10 m, 12 m high,
+trunk 45 cm`), so a schedule can list the trees near the site. OpenStreetMap's
+trees fill in around the inventory -- one standing within 4 m of an inventory
+tree is the same tree mapped twice -- with whatever size their tags record,
+and a nominal 6 m canopy drawn dashed where nobody recorded one, so the sheet
+never claims a size it does not have. Outside the City of Sydney that is
+most trees: across inner Sydney 37 of 24,638 OSM trees carry a crown size.
 
 ## The future context
 

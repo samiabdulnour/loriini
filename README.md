@@ -157,7 +157,8 @@ The other end of a DA: the sheets an office draws before there is a building.
 Give it a NSW street address and it draws the **context analysis**, the **site
 analysis** into worksheets and the **summary of controls** onto a layout of
 the open project, from open data -- NSW cadastre, ePlanning, topography and elevation,
-Transport for NSW, OpenStreetMap and Valhalla -- as native fills in the
+Transport for NSW, OpenStreetMap and Valhalla, and inside the City of Sydney the
+council's own 1 m contours and tree inventory -- as native fills in the
 legend's own colours, polylines and texts, at true ground scale in the
 project's own frame, with a view of each at its sheet's scale.
 
@@ -172,7 +173,8 @@ origin for a project whose location is not set yet. Needs the Loriini add-on:
 a worksheet can only be drawn into in the session that made it through the
 add-on's own command.
 
-`--model` adds the context itself: a terrain mesh from the contours and one
+`--model` adds the context itself: a terrain mesh from the contours -- every
+one of them near the site, fewer and simpler towards the edge -- and one
 slab per building footprint, storeys from OpenStreetMap or the LEP height
 control, half a kilometre each way (`--model-radius`), on the `LORIINI`
 layer, and `--set-location` writes the site's coordinates into Project

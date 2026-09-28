@@ -7360,8 +7360,9 @@ def site_analysis(
     """Draw the context analysis, site analysis and development summary for
     an address into worksheets of the open project.
 
-    Fetched from NSW open data -- cadastre, ePlanning, topography, Transport
-    for NSW, OpenStreetMap and Valhalla -- and drawn as native fills, lines
+    Fetched from open data -- the NSW cadastre, ePlanning, topography,
+    the City of Sydney's contours and trees inside its area, Transport for
+    NSW, OpenStreetMap and Valhalla -- and drawn as native fills, lines
     and texts at true ground scale in the project's own frame, with a view of
     each sheet at its scale. Needs the Loriini add-on beside Tapir: a
     worksheet can only be drawn into in the session that made it through the

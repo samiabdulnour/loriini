@@ -26,7 +26,7 @@ from sun_study.archicad.context_model import (
     _clear_previous,
     _contours,
     _datum_storey,
-    _Ground,
+    _ground_for,
     _on_the_floor_plan,
     _slabs_through_the_addon,
     project_datum,
@@ -217,7 +217,7 @@ def model_future(
     if datum:
         notes.append(f"placed against a datum of {datum:,.2f} m.")
     contours = _contours(bundle, frame)
-    ground = _Ground(contours) if contours else None
+    ground = _ground_for(bundle, contours) if contours else None
     if ground is None:
         notes.append("no contours in the bundle; the envelopes stand at level zero.")
 

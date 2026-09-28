@@ -76,7 +76,7 @@ from sun_study.archicad.views import (
     ensure_layer_combination,
     views_for_sources,
 )
-from sun_study.site import curate, sources
+from sun_study.site import curate, sources, terrain
 from sun_study.site.arcgis import rings_of
 from sun_study.site.envelope import ADG_SEPARATION, Envelope
 from sun_study.site.geo import (
@@ -91,6 +91,7 @@ from sun_study.site.geo import (
     ring_area,
     ring_centroid,
 )
+from sun_study.site.ground import Ground
 from sun_study.site.pipeline import (
     MAP_HEIGHT_MM,
     MAP_WIDTH_MM,
@@ -98,6 +99,7 @@ from sun_study.site.pipeline import (
     SiteBundle,
     SummaryBundle,
 )
+from sun_study.site.trees import ESTIMATED, NOMINAL, NOMINAL_CANOPY_M, Tree
 
 __all__ = [
     "CONTEXT_WORD",
@@ -169,6 +171,7 @@ CONTOUR_BROWN = "#a07c3f"
 NOISE_BLUE = "#3b4fd8"
 TREE_GREEN = "#7dbb57"
 TREE_EDGE = "#4e8c33"
+TRUNK_GREEN = "#2f5e20"
 HYDRANT_BLUE = "#1f78d1"
 LAMP_YELLOW = "#f0c020"
 POLE_GREY = "#333333"
@@ -545,6 +548,8 @@ class Fill:
     """A diagonal hatch with a clear background: the heritage items."""
     weight_mm: float | None = None
     """The contour's pen weight."""
+    dashed: bool = False
+    """The contour dashed: a size the sheet draws without having it recorded."""
 
 
 @dataclass
@@ -626,6 +631,7 @@ class Drawing:
         wash: bool = False,
         hatch: bool = False,
         weight_mm: float | None = None,
+        dashed: bool = False,
     ) -> None:
         # An ID on every fill, so a schedule or a Find & Select can pick the
         # railway, the heritage items or the wash out of six thousand fills:
@@ -651,6 +657,7 @@ class Drawing:
                     wash,
                     hatch,
                     weight_mm,
+                    dashed,
                 )
             )
 
@@ -728,6 +735,8 @@ class Drawing:
         dashed: bool = False,
         segments: int = 24,
         weight_mm: float | None = None,
+        wash: bool = False,
+        element_id: str = "",
     ) -> None:
         ring = [
             (
@@ -737,7 +746,16 @@ class Drawing:
             for i in range(segments)
         ]
         if fill is not None:
-            self.fill(part, [ring], fill, contour=colour, weight_mm=weight_mm)
+            self.fill(
+                part,
+                [ring],
+                fill,
+                contour=colour,
+                weight_mm=weight_mm,
+                wash=wash,
+                dashed=dashed,
+                element_id=element_id,
+            )
         else:
             self.line(part, ring, colour=colour, dashed=dashed, closed=True, weight_mm=weight_mm)
 
@@ -973,8 +991,9 @@ def _legend(
     """Swatches and labels down the right of the map field.
 
     ``rows`` are ``(kind, colour, contour, label)`` with kind ``fill``,
-    ``line``, ``dashed`` or ``text``; a text swatch shows the label's own
-    lettering, the way ``SB 30.48`` is explained on the site sheet.
+    ``dashed fill``, ``wash``, ``dashed wash``, ``line``, ``dashed`` or ``text``;
+    a text swatch shows the label's own lettering, the way ``SB 30.48`` is
+    explained on the site sheet.
     """
     x, top = origin
     swatch_w, swatch_h, step = drawing.mm(16), drawing.mm(6.5), drawing.mm(10)
@@ -983,12 +1002,14 @@ def _legend(
     )
     for row, (kind, colour, contour, label) in enumerate(rows):
         y = top - step * (row + 1)
-        if kind == "fill":
+        if kind in ("fill", "dashed fill", "wash", "dashed wash"):
             drawing.fill(
                 "Legend",
                 [[(x, y), (x + swatch_w, y), (x + swatch_w, y + swatch_h), (x, y + swatch_h)]],
                 colour,
                 contour=contour or colour,
+                wash="wash" in kind,
+                dashed=kind.startswith("dashed"),
             )
         elif kind in ("line", "dashed"):
             drawing.line(
@@ -1411,19 +1432,26 @@ def _significant_corners(ring: Sequence[Point], threshold_deg: float = 12.0) -> 
     return keep if len(keep) >= 3 else list(range(n))
 
 
-def _level_at(point: Point, contours: Sequence[tuple[float, list[Point]]]) -> float | None:
-    """The ground level from the two nearest distinct contours, inverse-distance weighted."""
-    nearest: dict[float, float] = {}
-    for elevation, points in contours:
-        d = min(math.dist(point, p) for p in points[::2] or points)
-        nearest[elevation] = min(d, nearest.get(elevation, math.inf))
-    if not nearest:
-        return None
-    ranked = sorted(nearest.items(), key=lambda item: item[1])
-    if len(ranked) == 1 or ranked[0][1] < 1.0:
-        return ranked[0][0]
-    (e1, d1), (e2, d2) = ranked[0], ranked[1]
-    return (e1 / d1 + e2 / d2) / (1 / d1 + 1 / d2)
+def _tree_id(tree: Tree) -> str:
+    """What the tree is, as a schedule of the sheet's trees would read it:
+    ``SA TREE Brush Box (Lophostemon confertus), canopy 4 m, 10 m high, trunk
+    18 cm``. The sheet draws the canopy; the rest is here or nowhere."""
+    name = (
+        f"{tree.common} ({tree.species})"
+        if tree.common and tree.species
+        else tree.common or tree.species or ""
+    )
+    parts = [f"SA TREE {name}".rstrip()]
+    if tree.canopy_from == NOMINAL:
+        parts.append(f"canopy not recorded, {tree.canopy_m:g} m shown")
+    else:
+        how = " estimated" if tree.canopy_from == ESTIMATED else ""
+        parts.append(f"canopy {round(tree.canopy_m, 1):g} m{how}")
+    if tree.height_m:
+        parts.append(f"{round(tree.height_m, 1):g} m high")
+    if tree.dbh_cm:
+        parts.append(f"trunk {round(tree.dbh_cm):g} cm")
+    return ", ".join(parts)
 
 
 def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope] = ()) -> Drawing:
@@ -1597,8 +1625,34 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
             contour="#c9bb00",
         )
 
-    for lon, lat in bundle.furniture.trees:
-        drawing.circle("Trees", frame.project(lon, lat), mm(3), colour=TREE_EDGE, fill=TREE_GREEN)
+    # Trees at the size of their canopy, on the ground. A size somebody
+    # recorded -- the council's inventory, or a mapper's measurement -- has a
+    # solid edge; the nominal canopy of a tree nobody measured is dashed, so the
+    # sheet never claims a size it does not have. A wash, so the kerb and the
+    # parking under a canopy still show; never smaller than a dot a reader can
+    # find, and never so big that a register's typing error covers the sheet.
+    for tree in bundle.furniture.trees:
+        at = frame.project(tree.lon, tree.lat)
+        drawing.circle(
+            "Trees",
+            at,
+            min(mm(45), max(mm(1.6), tree.canopy_m / 2.0)),
+            colour=TREE_EDGE,
+            fill=TREE_GREEN,
+            wash=True,
+            dashed=tree.canopy_from == NOMINAL,
+            weight_mm=0.25,
+            element_id=_tree_id(tree),
+        )
+        drawing.circle(
+            "Trees",
+            at,
+            mm(0.55),
+            colour=TRUNK_GREEN,
+            fill=TRUNK_GREEN,
+            segments=12,
+            element_id="SA TREE TRUNK",
+        )
     for lon, lat in bundle.furniture.hydrants:
         drawing.circle(
             "Services", frame.project(lon, lat), mm(1.4), colour=HYDRANT_BLUE, fill=HYDRANT_BLUE
@@ -1728,6 +1782,9 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
         for ring in rings_of(feature.get("geometry")):
             drawing.line("Site lots", frame.ring(ring), colour=SITE_RED, closed=True)
 
+    # Levels across the slope, between the contours that bracket each corner.
+    described = terrain.described(bundle.contours)
+    ground = Ground(contours, interval_m=described[0]) if described else None
     corner_levels: list[tuple[int, float]] = []
     if site:
         corners = _significant_corners(site)
@@ -1761,7 +1818,7 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
             if spot:
                 drawing.text("Dimensions", label, spot, height_mm=STREET_MM, angle_rad=angle)
         for i in corners:
-            level = _level_at(site[i], contours)
+            level = ground.at(site[i]) if ground is not None else None
             if level is None:
                 continue
             corner_levels.append((i, level))
@@ -1906,8 +1963,10 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
         ("text", "SB 30.48", None, "BOUNDARY DIMENSION (m)"),
         ("text", "RL 24.5", None, "SURFACE LEVEL (AHD)"),
     ]
-    if bundle.contours:
-        rows.append(("line", CONTOUR_BROWN, None, "CONTOURS (m AHD)"))
+    if described:
+        # The interval, and whose: the City of Sydney's 1 m or the state's 2 m.
+        interval, who, _ = described
+        rows.append(("line", CONTOUR_BROWN, None, f"CONTOURS AT {interval:g} m AHD, {who}"))
     rows.append(("text", "12 / R3", None, "NEIGHBOUR: NUMBER, STOREYS, ZONE"))
     if bundle.furniture.parking_lanes:
         rows.append(("fill", PARKING_PLUM, "#7a3c50", "STREET PARKING ZONE"))
@@ -1915,8 +1974,17 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
         rows.append(("fill", DRIVEWAY_YELLOW, "#c9bb00", "VEHICULAR ACCESS"))
     if any(r.lanes for r in bundle.roads) or bundle.furniture.oneway_roads:
         rows.append(("line", ROAD_GREY, None, "TRAFFIC DIRECTION AND LANES"))
-    if bundle.furniture.trees:
-        rows.append(("fill", TREE_GREEN, TREE_EDGE, "EXISTING TREES"))
+    if any(tree.canopy_from != NOMINAL for tree in bundle.furniture.trees):
+        rows.append(("wash", TREE_GREEN, TREE_EDGE, "TREE, CANOPY TO SCALE"))
+    if any(tree.canopy_from == NOMINAL for tree in bundle.furniture.trees):
+        rows.append(
+            (
+                "dashed wash",
+                TREE_GREEN,
+                TREE_EDGE,
+                f"TREE, SIZE NOT RECORDED ({NOMINAL_CANOPY_M:g} m SHOWN)",
+            )
+        )
     if bundle.furniture.power_poles:
         rows.append(("line", POLE_GREY, None, "POWER POLE"))
     if bundle.furniture.street_lamps:
@@ -2596,6 +2664,8 @@ def _flush(
         contour_pen = attributes.pen(fill.contour or fill.colour)
         if contour_pen is not None:
             data["contourPen"] = contour_pen
+        if fill.dashed and attributes.dashed is not None:
+            data["lineTypeIndex"] = attributes.dashed
         if fill.weight_mm is not None:
             data["penWeight"] = fill.weight_mm
         if fill.element_id:

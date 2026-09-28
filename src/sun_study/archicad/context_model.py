@@ -8,9 +8,11 @@ What the site sheet draws flat, this makes solid, from the same bundle:
   the location becomes exactly right and every later run and every sun
   study agrees with it. The survey point is written as the same point on the
   MGA2020 grid, so an IFC export carries a real georeference too.
-* **The terrain**, one Mesh from the NSW 1 m contours, its outline the sheet's
-  extent at the ground level under each corner and every contour a level
-  line inside it.
+* **The terrain**, one Mesh from the contours -- the City of Sydney's 1 m ones
+  inside its area, the state's 2 m ones outside -- its outline the model's
+  square at the ground level under each corner, and the contours level lines
+  inside it: every one of them near the site, fewer and simpler towards the
+  edge (``site.ground.mesh_lines``).
 * **The neighbours**, one slab per building footprint OpenStreetMap records,
   standing on the ground under it, as tall as its storeys say -- or, where
   OSM records none, as tall as the LEP's height-of-building control allows,
@@ -24,9 +26,9 @@ it is, so the filing can be done by a Find & Select.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any
 
 from sun_study.archicad import naming
@@ -48,7 +50,9 @@ from sun_study.site.geo import (
     ring_area,
     ring_centroid,
 )
+from sun_study.site.ground import MESH_POINTS, Ground, MeshLines, mesh_lines
 from sun_study.site.pipeline import SiteBundle
+from sun_study.site.terrain import described as whose_contours
 
 __all__ = [
     "STOREY_M",
@@ -98,11 +102,19 @@ class ContextModelReport:
     """Footprints inside the site, left out."""
     layer: str
     notes: tuple[str, ...] = ()
+    mesh: MeshLines | None = None
+    """How the contours became the mesh's level lines."""
+    contour_source: str = ""
+    """Whose contours: ``CITY OF SYDNEY 2020 SURVEY / NSW SPATIAL SERVICES``."""
 
     def describe(self) -> str:
+        made = f"one mesh from {self.contours} contours"
+        if self.contour_source:
+            made += f" ({self.contour_source})"
+        if self.mesh is not None:
+            made += f" -- {self.mesh.describe()}"
         lines = [
-            "  terrain: "
-            + (f"one mesh from {self.contours} contours" if self.terrain else "not made"),
+            "  terrain: " + (made if self.terrain else "not made"),
             f"  blocks: {self.blocks} meshes {KERB_M * 1000:.0f} mm above the ground; "
             "the roads are the terrain between them",
             f"  neighbours: {self.buildings} slabs on {self.layer!r}, {self.assumed} with assumed "
@@ -171,44 +183,40 @@ def _contours(bundle: SiteBundle, frame: Frame) -> list[tuple[float, list[Point]
 
 
 class _Ground:
-    """The ground level anywhere, from the contours, in constant time.
+    """The ground level anywhere, from the contours: ``site.ground.Ground``,
+    the site sheet's own reading across the slope, answering zero where there
+    are no contours at all -- the level the model stood on before it had any.
 
-    Every contour vertex goes into a cell of ``cell_m``; a query looks at
-    the cells around the point, takes the nearest vertex of each of the two
-    nearest distinct levels, and weights them by inverse distance -- the
-    site sheet's own rule, without its scan of every point of every
-    contour, which for a thousand footprints against a kilometre of contours
-    was a billion distances.
+    The interval is read off the lines when not given: the finest of whoever
+    drew them, which bounds how far a slope is carried past its last contour.
     """
 
-    def __init__(self, contours: Sequence[tuple[float, list[Point]]], cell_m: float = 40.0) -> None:
-        self.cell = cell_m
-        self.cells: dict[tuple[int, int], list[tuple[float, float, float]]] = {}
-        for elevation, points in contours:
-            for x, y in points:
-                key = (int(x // cell_m), int(y // cell_m))
-                self.cells.setdefault(key, []).append((x, y, elevation))
-        self.empty = not self.cells
+    def __init__(
+        self,
+        contours: Sequence[tuple[float, Sequence[Point]]],
+        interval_m: float | None = None,
+    ) -> None:
+        self.ground = Ground(contours, interval_m=interval_m or _interval(contours))
+        self.empty = self.ground.empty
 
     def at(self, point: Point) -> float:
-        if self.empty:
-            return 0.0
-        cx, cy = int(point[0] // self.cell), int(point[1] // self.cell)
-        for reach in (1, 3, 8, 25):
-            nearest: dict[float, float] = {}
-            for i in range(cx - reach, cx + reach + 1):
-                for j in range(cy - reach, cy + reach + 1):
-                    for x, y, elevation in self.cells.get((i, j), ()):
-                        d = math.hypot(x - point[0], y - point[1])
-                        if d < nearest.get(elevation, math.inf):
-                            nearest[elevation] = d
-            if nearest:
-                ranked = sorted(nearest.items(), key=lambda item: item[1])
-                if len(ranked) == 1 or ranked[0][1] < 1.0:
-                    return ranked[0][0]
-                (e1, d1), (e2, d2) = ranked[0], ranked[1]
-                return (e1 / d1 + e2 / d2) / (1 / d1 + 1 / d2)
-        return 0.0
+        level = self.ground.at(point)
+        return 0.0 if level is None else level
+
+
+def _ground_for(bundle: SiteBundle, contours: Sequence[tuple[float, Sequence[Point]]]) -> _Ground:
+    """The ground under the model, read at the interval of whoever drew the
+    bundle's contours: 1 m for the City of Sydney's, 2 m for the state's."""
+    described = whose_contours(bundle.contours)
+    return _Ground(contours, described[0] if described else None)
+
+
+def _interval(contours: Sequence[tuple[float, Sequence[Point]]]) -> float:
+    """The contour interval the levels show: the smallest step between two of
+    them, and the state's 2 m when there are too few to tell."""
+    levels = sorted({round(level, 3) for level, _ in contours})
+    steps = [b - a for a, b in pairwise(levels) if b - a > 1e-6]
+    return min(steps) if steps else 2.0
 
 
 def storeys_of(
@@ -321,31 +329,6 @@ def _on_the_floor_plan(connection: ArchicadConnection) -> None:
             "mesh cannot be created anywhere else. Click a storey in the Project Map "
             "and run again."
         )
-
-
-#: How many level-line vertices a terrain mesh is allowed. Archicad triangulates
-#: between every one of them, and a kilometre of 1 m contours is far more than
-#: a context model needs to read as ground.
-MESH_POINTS = 12_000
-
-
-def _thinned(
-    contours: Sequence[tuple[float, list[Point]]], limit: int = MESH_POINTS
-) -> list[tuple[float, list[Point]]]:
-    """The contours, fewer where there are too many: every second contour and
-    every second point, again and again, until the mesh can take them."""
-    kept = [(elevation, list(points)) for elevation, points in contours]
-    step = 1.0
-    while sum(len(points) for _, points in kept) > limit and kept:
-        step *= 2.0
-        kept = [
-            (elevation, points[::2] if len(points) > 4 else points)
-            for elevation, points in kept
-            if abs(elevation / step - round(elevation / step)) < 1e-9
-        ]
-        if not kept:
-            break
-    return kept
 
 
 # -- the boundary drawn in the file --------------------------------------------------
@@ -625,6 +608,26 @@ def _skirt_depth(lowest: float, mesh_level: float = 0.0) -> float:
     return mesh_level - lowest
 
 
+def level_lines(
+    bundle: SiteBundle,
+    frame: Frame,
+    contours: Sequence[tuple[float, list[Point]]],
+    *,
+    budget: int = MESH_POINTS,
+) -> MeshLines:
+    """The contours as the terrain mesh's level lines: cut to the model's
+    square, every one kept and barely simplified near the site, fewer and
+    simpler towards the edge, in no more than ``budget`` vertices."""
+    described = whose_contours(bundle.contours)
+    return mesh_lines(
+        contours,
+        focus=[frame.ring(ring) for ring in bundle.site_rings],
+        within=_map_rectangle(bundle, frame),
+        budget=budget,
+        interval_m=described[0] if described else _interval(contours),
+    )
+
+
 def _terrain(
     connection: ArchicadConnection,
     bundle: SiteBundle,
@@ -632,29 +635,24 @@ def _terrain(
     contours: Sequence[tuple[float, list[Point]]],
     layer_index: int,
     datum_m: float = 0.0,
-) -> list[dict[str, Any]]:
-    """One Mesh: the extent at ground level, with every contour as a level line."""
+    ground: _Ground | None = None,
+) -> tuple[list[dict[str, Any]], MeshLines]:
+    """One Mesh: the model's square at ground level, with the contours as its
+    level lines. Returns what was made and how the lines were chosen."""
     # A mesh's levels are relative to its home storey, and the Mesh tool's
     # default storey was 39 on the Kogarah study, which put the terrain a
     # hundred metres in the air. Home it on the storey nearest level zero
     # and give every point its height above that.
     floor_index, floor_level = _datum_storey(connection)
-    ground = _Ground(contours)
+    ground = ground or _ground_for(bundle, contours)
     corners = _map_rectangle(bundle, frame)
     outline = [{"x": x, "y": y, "z": ground.at((x, y)) - floor_level - datum_m} for x, y in corners]
-    sublines: list[dict[str, Any]] = []
-    for elevation, points in _thinned(contours):
-        run: list[dict[str, float]] = []
-        for x, y in points:
-            if point_in_ring(x, y, corners):
-                run.append({"x": x, "y": y, "z": elevation - floor_level - datum_m})
-            elif len(run) >= 2:
-                sublines.append({"coordinates": run})
-                run = []
-            else:
-                run = []
-        if len(run) >= 2:
-            sublines.append({"coordinates": run})
+    lines = level_lines(bundle, frame, contours)
+    sublines: list[dict[str, Any]] = [
+        {"coordinates": [{"x": x, "y": y, "z": level - floor_level - datum_m} for x, y in points]}
+        for level, points in lines.lines
+        if len(points) >= 2
+    ]
     lowest = min([p["z"] for p in outline] + [s["coordinates"][0]["z"] for s in sublines])
     # The add-on's command first: Tapir's CreateMeshes answers APIERR_BADINDEX
     # for every mesh on Archicad 26 (measured), so it is only the fallback
@@ -674,7 +672,7 @@ def _terrain(
         )
         guid = str(answer.get("guid", "")) if isinstance(answer, dict) else ""
         if guid:
-            return [{"elementId": {"guid": guid}}]
+            return [{"elementId": {"guid": guid}}], lines
         raise ArchicadError(f"CreateMesh answered {answer!r}")
     except ArchicadError as error:
         if "not have the registered" not in str(error):
@@ -698,7 +696,7 @@ def _terrain(
     made = _elements(response, "CreateMeshes")
     move_to_layer(connection, made, layer_index)
     stamp_in_order(connection, made, ["SA TERRAIN"])
-    return made
+    return made, lines
 
 
 def _elements(response: Any, command: str) -> list[dict[str, Any]]:
@@ -733,7 +731,7 @@ def model_context(
     _on_the_floor_plan(connection)
     layer = ensure_layer(connection, layer_name())
     contours = _contours(bundle, frame)
-    ground = _Ground(contours)
+    ground = _ground_for(bundle, contours)
     datum = project_datum(connection) if datum_m is None else datum_m
     heights = _Heights(bundle)
     notes: list[str] = []
@@ -744,12 +742,15 @@ def model_context(
         notes.append(f"{removed} slabs and meshes from the last run removed first.")
 
     made_terrain = False
+    lines: MeshLines | None = None
     if terrain:
         if not contours:
             notes.append("no contours in the bundle; the terrain is not made.")
         else:
             try:
-                _terrain(connection, bundle, frame, contours, layer.index, datum)
+                _, lines = _terrain(
+                    connection, bundle, frame, contours, layer.index, datum, ground=ground
+                )
                 made_terrain = True
             except ArchicadError as error:
                 notes.append(f"the terrain mesh was refused: {error}")
@@ -827,6 +828,7 @@ def model_context(
             stamp_in_order(connection, made, identifiers[: len(made)])
     if say:
         say(f"  {len(made)} neighbours as slabs, {assumed} with assumed storeys")
+    described = whose_contours(bundle.contours)
     return ContextModelReport(
         terrain=made_terrain,
         contours=len(contours),
@@ -836,6 +838,8 @@ def model_context(
         on_site=on_site,
         layer=layer.name,
         notes=tuple(notes),
+        mesh=lines,
+        contour_source=described[1] if described else "",
     )
 
 
@@ -884,4 +888,4 @@ def ground_at_site(bundle: SiteBundle, frame: Frame) -> float | None:
     if not contours:
         return None
     centre = frame.project(*mercator_to_lonlat(*bundle.centre))
-    return _Ground(contours).at(centre)
+    return _ground_for(bundle, contours).at(centre)
