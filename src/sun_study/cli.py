@@ -8079,6 +8079,22 @@ def site_analysis(
                 )
 
 
+@app.command("mcp")
+def agent_server() -> None:
+    """Serve the studies to an AI agent, over MCP on stdin and stdout.
+
+    For Claude Desktop, Claude Code or any other client of the Model Context
+    Protocol: pointed at ``Loriini.exe mcp`` (``sun-study mcp`` from a
+    checkout), it can list the running Archicads, read the open project's
+    layers and names, and run the site analysis, the shadow diagrams and the
+    sun views into the project, or any command this program has. docs/agent.md
+    has the client settings. Prints nothing itself: stdout is the protocol.
+    """
+    from sun_study.agent import serve
+
+    serve()
+
+
 def main() -> None:
     """Entry point. Makes output degrade rather than abort.
 

@@ -4203,3 +4203,66 @@ sent, and that the level lines now meet the square's edge. Whether Archicad
 minds level lines that cross by millimetres was never asked -- the old
 thinning sent them too -- and the first run on a City of Sydney site should
 look at the terrain from below and at a wall.
+
+### D120 — An agent drives Loriini over MCP on stdio, spoken here, and the studies stay in a child process
+
+Asked on 28 September 2026 (roadmap R2): could an AI agent operate Loriini
+for more users, to save time and speed the workflow?
+
+**The shape is a tool server, not an assistant in the window.** A server the
+person's own agent client connects to -- Claude Desktop, Claude Code, any
+client of the Model Context Protocol -- exposes the studies as tools. It is
+the cheapest shape to build, because the command line is already the API;
+it puts no model key of ours into the product, so nothing is billed to us
+and nothing of the person's project goes anywhere we chose; and the
+person's own subscription pays for the tokens. An assistant inside the
+window would need a key per user and would make us answerable for what a
+model does in a project. It can be built later on the same tool
+definitions, if it is wanted.
+
+**The protocol is written here, not taken from the official package.** The
+``mcp`` package on PyPI, at 2.2, brings twenty-eight packages with it -- a
+web server, an SSE framework, a JWT library and its cryptography, telemetry
+-- for two transports Loriini does not use, into a one-file executable that
+is already 58 MB; and it renamed its main class this year. What a tool
+server on stdio needs is five methods (``initialize``, ``ping``,
+``tools/list``, ``tools/call``, ``logging/setLevel``) and three
+notifications (progress, log, cancelled), stable across every published
+version of the protocol. ``agent/protocol.py`` is that, in three hundred
+lines, with pydantic -- already a dependency -- giving each tool its schema
+and its validation. The same reasoning as the ``.xlsx`` writer (D106).
+What it gives up is the package's other halves (resources, prompts,
+sampling, elicitation), none of which the agent needs today; the first
+worth adding is elicitation, so that a study could confirm its port and
+project with the person before it runs.
+
+**The studies run in a child process, as the window runs them.** Through
+``app.runner``: the same command line anybody would type, one tested path,
+and no second implementation of what a run means. Two more reasons that
+are the server's own. Stdout is the protocol, and a study prints; a study
+in-process would have to be silenced line by line, where a child's lines
+come back through a pipe and go to the client as log and progress
+messages. And a client can cancel a call; the runner's stop file asks the
+study to stop and lets its ``finally`` blocks put the project's layers
+back, where a thread could only be abandoned.
+
+**Tool calls run on their own thread.** A ping during a six-minute study
+is answered from the reading thread; a client that hears nothing for a
+minute gives the server up for dead. The client leaving -- its stream
+ending -- stops what is running and waits for it, so a study is never
+left holding a project with nobody to stop it.
+
+**Breadth first, typed tools where a study is asked for often.** The three
+studies the office runs most have tools whose arguments are the questions
+the window's pages ask, spelled onto the command line as ``Window.jobs``
+spells them. Everything else is ``run_loriini``, any command line, with
+``loriini_help`` to read the options: the agent-design rule of starting
+with breadth and promoting an action to a typed tool where it needs
+gating, rendering or a schema.
+
+**Not yet tried from a client on a workstation.** The server has been
+driven by a scripted client on its stdin and stdout and by the tests, which
+run a fake command line through the real runner. The windowed executable
+may hand Python no wrapped standard streams; ``serve`` opens the
+descriptors directly then, which is untested until Claude Desktop starts
+``Loriini.exe mcp`` on Windows.

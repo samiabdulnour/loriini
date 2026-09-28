@@ -91,6 +91,17 @@ three tools (site, shadow, sun views), tried from Claude Desktop on a
 workstation. Read the API reference for models and MCP at that point rather
 than from memory.
 
+**Done so far (28 September).** The server exists: `Loriini.exe mcp`
+(`sun_study.agent`), with seven tools -- the running Archicads, the
+project's options, the command help, any command line, and the site
+analysis, shadow diagrams and sun views as typed tools -- each running the
+same command line the window runs, streaming its lines and stoppable from
+the client. Driven by a scripted client and by tests against a fake
+command line; not yet from Claude Desktop on a workstation, which is the
+next step. [`agent.md`](agent.md) is how to connect; D120 is how it is
+built and why the protocol is written here rather than taken from the
+`mcp` package.
+
 ## R3 — GFA and a yield mix from the massing slabs
 
 **Asked.** Massing is done with slabs. Could Loriini simply produce the

@@ -18,7 +18,11 @@ def main() -> None:
     # while the build is inside its term; see ``sun_study.licence``.
     from sun_study import licence
 
-    if os.environ.get("SUN_STUDY_RUN_CLI") == "1" and getattr(sys, "frozen", False):
+    # An MCP client starts the executable with ``mcp`` as its one argument;
+    # that is the command line too, without the marker, so that a client's
+    # settings need no environment variable to make it so.
+    asked_for_cli = os.environ.get("SUN_STUDY_RUN_CLI") == "1" or sys.argv[1:2] == ["mcp"]
+    if asked_for_cli and getattr(sys, "frozen", False):
         from sun_study.cli import app
 
         # The child of a window run. ``cli.main`` is not what starts it, so

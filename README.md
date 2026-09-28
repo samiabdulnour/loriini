@@ -272,7 +272,9 @@ See [`docs/validation.md`](docs/validation.md) for measured residuals,
 [`docs/decisions.md`](docs/decisions.md) for the domain assumptions that change the
 headline compliance percentage, and [`docs/archicad.md`](docs/archicad.md) for what was
 verified about the Archicad protocol and what was not. [`docs/roadmap.md`](docs/roadmap.md)
-is what the office has asked for next, numbered, with where each one stands.
+is what the office has asked for next, numbered, with where each one stands, and
+[`docs/agent.md`](docs/agent.md) is how an agent such as Claude Desktop drives Loriini
+through `Loriini.exe mcp`.
 
 ## The fixture
 

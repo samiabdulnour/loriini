@@ -1,0 +1,605 @@
+"""The tools an agent gets: what Loriini can tell it, and what it can run.
+
+Two kinds. The listings -- which Archicads are running, what the open
+project offers -- read the project the way the window's Refresh does
+(``app.probe``), so the agent learns the layer and zone names before it
+names them in a study. The studies run the command line in a child process
+through ``app.runner``, exactly as the window runs them, and hand back the
+run's last lines with its exit code; each line also goes to the client as
+it is printed, so the agent and its person watch the study go.
+
+The three studies the office runs most have tools of their own, whose
+arguments are the questions a person is asked on the window's pages, spelled
+onto the command line the way ``Window.jobs`` spells them. Everything else
+the command line offers is reached through ``run_loriini``, with
+``loriini_help`` to read a command's options first -- breadth first, and a
+typed tool where a study is asked for often enough to deserve one.
+"""
+
+from __future__ import annotations
+
+import sys
+import threading
+from collections.abc import Mapping, Sequence
+from dataclasses import asdict
+from typing import Any, BinaryIO, Literal, TypeVar
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from sun_study import PRODUCT, __version__
+from sun_study.agent.protocol import Call, InvalidArgumentsError, Server, Tool, ToolResult
+from sun_study.app import probe
+from sun_study.app.runner import Run
+from sun_study.archicad.connection import DEFAULT_PORT, DEFAULT_TIMEOUT_SECONDS, PORT_RANGE
+from sun_study.rules.days import ASSESSMENT_DAYS, day_name, parse_day
+
+__all__ = ["TOOLS", "build", "run_command", "serve"]
+
+#: The time zone every study is run in, as the window sends it: the office
+#: is in Sydney, and so is every site the NSW rulesets apply to.
+TIMEZONE = "Australia/Sydney"
+
+#: How much of a run's output goes back in the answer. The whole run is
+#: streamed as it happens; the answer is what a person reads afterwards, and
+#: the last lines are where a run says what it made or why it stopped.
+TAIL_LINES = 120
+
+#: What the client shows the agent when it connects: what this is, and the
+#: order to do things in.
+INSTRUCTIONS = (
+    f"{PRODUCT} draws sun, shadow and site studies into the Archicad project open on this "
+    "machine, for a development application in New South Wales. Start with "
+    "archicad_instances to find the port of the project, then project_options to read its "
+    "layers, zone names, layer combinations, master layouts and pen sets: the studies take "
+    "those names exactly as the project spells them. A study writes layouts, views and "
+    "elements into the project on its own layers and takes minutes; its lines arrive as log "
+    "messages while it runs, and the answer is the run's last lines with its exit code. Run "
+    "one study at a time. loriini_help gives every option of a command, and run_loriini "
+    "runs any command line the help describes, for what the named tools do not cover. A run "
+    "changes the person's project: run into it only what they asked for."
+)
+
+T = TypeVar("T", bound="Arguments")
+
+
+# -- what each tool takes ----------------------------------------------------------
+
+
+class Arguments(BaseModel):
+    """Every tool's arguments: named fields, and nothing the tool did not ask
+    for, so a misspelled option is refused rather than silently ignored."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class NoArguments(Arguments):
+    pass
+
+
+class ProjectArguments(Arguments):
+    port: int = Field(
+        default=DEFAULT_PORT,
+        description=(
+            f"Archicad's JSON API port: {DEFAULT_PORT} for the first Archicad started on the "
+            "machine, one more for each after it. archicad_instances lists them."
+        ),
+    )
+
+
+class HelpArguments(Arguments):
+    command: str = Field(
+        default="",
+        description=(
+            "A command name -- site, shadows, sun-views, massing, archicad-run, archicad-info "
+            "-- for that command's options; blank for the list of commands."
+        ),
+    )
+
+
+class RunArguments(Arguments):
+    args: list[str] = Field(
+        min_length=1,
+        description=(
+            "The command line after the program's name, one item each: the command, then "
+            "its options and values as loriini_help shows them, e.g. "
+            '["archicad-info", "--port", "19723"].'
+        ),
+    )
+
+
+class StudyArguments(ProjectArguments):
+    timeout_seconds: float = Field(
+        default=DEFAULT_TIMEOUT_SECONDS,
+        gt=0,
+        description="How long to wait for any one Archicad command before giving up.",
+    )
+    layer_prefix: str | None = Field(
+        default=None,
+        description=(
+            "The number the study's layers, views and layouts are filed under, e.g. '14', "
+            "instead of the tool's own."
+        ),
+    )
+    master_layout: str | None = Field(
+        default=None,
+        description="The master layout the sheets are made from, instead of the project's.",
+    )
+
+
+class SheetedArguments(StudyArguments):
+    sheets: Literal["one", "two", "each"] | None = Field(
+        default=None,
+        description=(
+            "How the drawings are dealt onto layouts: all on one, a morning and an "
+            "afternoon sheet, or one layout each. The command's own way otherwise."
+        ),
+    )
+    year: int | None = Field(
+        default=None,
+        ge=1900,
+        le=2200,
+        description="The year the sun is computed for; 2024 otherwise.",
+    )
+
+
+class SiteArguments(StudyArguments):
+    address: str = Field(
+        min_length=3,
+        description="The site, e.g. '26-30 Campsie St, Campsie NSW 2194'. New South Wales only.",
+    )
+    context: bool = Field(default=True, description="Draw the Context Analysis sheet.")
+    site: bool = Field(default=True, description="Draw the Site Analysis sheet.")
+    summary: bool = Field(default=True, description="Draw the Summary of Controls layout.")
+    model: bool = Field(
+        default=False,
+        description="Also make the 3D context model: terrain, street blocks, neighbours.",
+    )
+    model_radius_m: float | None = Field(
+        default=None,
+        gt=0,
+        description="How far around the site the context model reaches, in metres.",
+    )
+    future: bool = Field(
+        default=False,
+        description=(
+            "Also make the future context: the neighbours raised to what the controls allow."
+        ),
+    )
+    future_reach_m: float | None = Field(
+        default=None, gt=0, description="How far the future context reaches, in metres."
+    )
+    set_location: bool = Field(
+        default=True,
+        description=(
+            "Set the project location from the address, which is the default; false keeps "
+            "the project's own."
+        ),
+    )
+    scale: int | None = Field(
+        default=None, gt=0, description="The context sheet's scale, e.g. 3000 for 1:3000."
+    )
+    anchor: Literal["location", "site"] | None = Field(
+        default=None,
+        description=(
+            "Where the drawings are anchored: at the project location, or with the site at "
+            "the project origin."
+        ),
+    )
+    context_prefix: str | None = Field(
+        default=None,
+        description="The number the context analysis is filed under, when not the site's.",
+    )
+    out: str | None = Field(
+        default=None, description="A folder to save the fetched data and the aerial photo into."
+    )
+
+
+class ShadowArguments(SheetedArguments):
+    dates: list[str] = Field(
+        default_factory=lambda: ["winter"],
+        min_length=1,
+        description=(
+            "The days to draw: winter, equinox, summer, or MM-DD; several for a sheet each."
+        ),
+    )
+    hours: list[int] | None = Field(
+        default=None,
+        description="Whole hours of the day to draw, e.g. [9, 12, 15]; 9 to 15 otherwise.",
+    )
+    sources: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "The shadow that already stands, one legend row each: the row's short name to "
+            "the layers that hold it, e.g. {'EXISTING': ['03 | Site Context.Buildings']}. "
+            "Rows accumulate: each is charged only for ground the earlier ones left lit."
+        ),
+    )
+    scenarios: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Each proposal, drawn against every source and against no other scenario: the "
+            "row's short name to its layers, e.g. {'PROPOSED': ['20 | Massing']}."
+        ),
+    )
+    terrain_layers: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The ground the shadows land on: the layers, or element ID prefixes, of the "
+            "terrain mesh. The terrain receives shadow and casts none."
+        ),
+    )
+    terrain_floor_m: float | None = Field(
+        default=None, description="The level below which nothing counts as terrain, in metres."
+    )
+    storey: int | None = Field(
+        default=None, ge=0, description="The index of the storey the fills are placed on."
+    )
+    all_hours: bool = Field(
+        default=False,
+        description=(
+            "Also draw the proposal's own shadow at every hour on one plan, as outlines "
+            "labelled by hour."
+        ),
+    )
+    subset: str | None = Field(
+        default=None, description="The Layout Book subset the sheets are filed in."
+    )
+
+
+class SunViewArguments(SheetedArguments):
+    day: str | None = Field(
+        default=None,
+        description="The day: winter, equinox, summer, or MM-DD; the ruleset's own day otherwise.",
+    )
+    hours: list[int] | None = Field(
+        default=None,
+        description=(
+            "Whole hours to make a view at, e.g. [9, 12, 15]; the ruleset's window otherwise."
+        ),
+    )
+    pen_set: str | None = Field(default=None, description="The pen set the views print in.")
+    override: str | None = Field(
+        default=None, description="The graphic override combination the views are pinned to."
+    )
+    base_combination: str | None = Field(
+        default=None, description="The layer combination the views start from."
+    )
+    scale: int | None = Field(
+        default=None, gt=0, description="The scale the documents are placed at, e.g. 500 for 1:500."
+    )
+    title_block_mm: float | None = Field(
+        default=None,
+        gt=0,
+        description="The width of the master's title block, kept clear of drawings.",
+    )
+
+
+def _validated(model: type[T], arguments: Mapping[str, Any]) -> T:
+    try:
+        return model.model_validate(dict(arguments))
+    except ValidationError as wrong:
+        said = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc']) or 'arguments'}: {error['msg']}"
+            for error in wrong.errors()
+        )
+        raise InvalidArgumentsError(said) from wrong
+
+
+# -- the command lines ---------------------------------------------------------------
+
+
+def _common(arguments: StudyArguments) -> list[str]:
+    """What every study is sent, as the window sends it."""
+    return ["--port", str(arguments.port), "--timeout", f"{arguments.timeout_seconds:g}"]
+
+
+def _option(flag: str, value: object) -> list[str]:
+    """One option and its value, or nothing for a value nobody gave: the
+    command's own default is the honest reading of a field left empty."""
+    if value is None or value == "":
+        return []
+    if isinstance(value, float):
+        return [flag, f"{value:g}"]
+    return [flag, str(value)]
+
+
+def _mmdd(day: str) -> str:
+    try:
+        return parse_day(day)
+    except ValueError as wrong:
+        raise InvalidArgumentsError(
+            f"not a day: {day!r} (winter, equinox, summer, or MM-DD)"
+        ) from wrong
+
+
+def _date_args(day: str | None) -> list[str]:
+    """``--date`` for a day, or nothing for the ruleset's own, as the window
+    does: the command's names stay the ones it has always made on midwinter."""
+    if not day:
+        return []
+    mmdd = _mmdd(day)
+    return [] if mmdd == ASSESSMENT_DAYS["winter"][0] else ["--date", day_name(mmdd)]
+
+
+def _rows(flag: str, rows: Mapping[str, Sequence[str]]) -> list[str]:
+    """Legend rows as ``NAME=layer,layer``, one flag each."""
+    argv: list[str] = []
+    for name, layers in rows.items():
+        if not name.strip() or "=" in name or "," in name:
+            raise InvalidArgumentsError(f"a legend row's name is a short word, not {name!r}")
+        if not layers:
+            raise InvalidArgumentsError(f"row {name!r} names no layers")
+        argv += [flag, f"{name}={','.join(layers)}"]
+    return argv
+
+
+def site_argv(arguments: SiteArguments) -> list[str]:
+    a = arguments
+    argv = ["site", a.address, *_common(a)]
+    argv += _option("--layer-prefix", a.layer_prefix) + _option(
+        "--context-prefix", a.context_prefix
+    )
+    argv += ["--context" if a.context else "--no-context"]
+    argv += ["--site" if a.site else "--no-site"]
+    argv += ["--summary" if a.summary else "--no-summary"]
+    if a.model:
+        argv += ["--model"]
+    if a.model or a.future:
+        argv += _option("--model-radius", a.model_radius_m)
+    if a.future:
+        argv += ["--future", *_option("--future-reach", a.future_reach_m)]
+    if not a.set_location:
+        argv += ["--keep-location"]
+    argv += _option("--scale", a.scale) + _option("--anchor", a.anchor) + _option("--out", a.out)
+    argv += _option("--master-layout", a.master_layout)
+    return argv
+
+
+def shadow_argv(arguments: ShadowArguments) -> list[str]:
+    a = arguments
+    argv = [
+        "shadows",
+        "--timezone",
+        TIMEZONE,
+        *_common(a),
+        *_option("--layer-prefix", a.layer_prefix),
+    ]
+    argv += _rows("--shadow-source", a.sources) + _rows("--shadow-scenario", a.scenarios)
+    for layer in a.terrain_layers:
+        argv += ["--shadow-terrain", layer]
+    # The native model and never an IFC, as every study of the window's.
+    argv += ["--export", "native"]
+    if a.all_hours:
+        argv += ["--shadow-all-hours"]
+    argv += _option("--shadow-terrain-floor", a.terrain_floor_m)
+    argv += ["--shadow-date", ",".join(_mmdd(day) for day in a.dates)]
+    if a.hours:
+        argv += ["--shadow-hour", ",".join(str(hour) for hour in a.hours)]
+    argv += _option("--shadow-storey", a.storey) + _option("--master-layout", a.master_layout)
+    argv += _option("--shadow-subset", a.subset) + _option("--year", a.year)
+    argv += _option("--sheets", a.sheets)
+    return argv
+
+
+def sun_views_argv(arguments: SunViewArguments) -> list[str]:
+    a = arguments
+    argv = [
+        "sun-views",
+        "--timezone",
+        TIMEZONE,
+        *_common(a),
+        *_option("--layer-prefix", a.layer_prefix),
+    ]
+    argv += _option("--pen-set", a.pen_set) + _option("--override", a.override)
+    argv += _option("--base-combination", a.base_combination) + _option("--scale", a.scale)
+    argv += _option("--title-block-mm", a.title_block_mm)
+    if a.hours:
+        argv += ["--hour", ",".join(str(hour) for hour in a.hours)]
+    argv += _option("--master-layout", a.master_layout) + _option("--year", a.year)
+    argv += _date_args(a.day) + _option("--sheets", a.sheets)
+    return argv
+
+
+# -- running one --------------------------------------------------------------------
+
+
+def run_command(argv: Sequence[str], call: Call) -> ToolResult:
+    """The command line, run as the window runs it, its lines streamed as they
+    come and its last ones returned with its exit code."""
+    lines: list[str] = []
+    finished = threading.Event()
+    exit_codes: list[int] = []
+
+    def on_line(line: str) -> None:
+        lines.append(line)
+        call.say(line)
+
+    def on_done(code: int) -> None:
+        exit_codes.append(code)
+        finished.set()
+
+    run = Run(argv, on_line=on_line, on_done=on_done)
+    call.when_stopped(run.stop)
+    run.start()
+    finished.wait()
+    code = exit_codes[0]
+    shown = lines[-TAIL_LINES:]
+    head = [f"sun-study {' '.join(argv)}", f"exit code {code}, {len(lines)} lines"]
+    if len(lines) > len(shown):
+        head.append(
+            f"(the first {len(lines) - len(shown)} lines were streamed and are not repeated)"
+        )
+    return ToolResult(
+        text="\n".join([*head, "", *shown]),
+        structured={"exit_code": code, "lines": len(lines), "stopped": call.stopped},
+        is_error=code != 0,
+    )
+
+
+# -- the tools ------------------------------------------------------------------------
+
+
+def archicad_instances(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    _validated(NoArguments, arguments)
+    found = probe.running()
+    rows = [{"port": one.port, "project": one.project} for one in found]
+    if not found:
+        return ToolResult(
+            f"No Archicad is answering on any port ({PORT_RANGE.start} to {PORT_RANGE.stop - 1}). "
+            "Check that it is running with a project open, and that the JSON interface is on "
+            "in Options > Work Environment > Model Compare and JSON Interface.",
+            structured={"instances": rows},
+        )
+    text = "\n".join(f"port {one.port}: {one.project or '(no project open)'}" for one in found)
+    return ToolResult(text, structured={"instances": rows})
+
+
+def project_options(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    a = _validated(ProjectArguments, arguments)
+    found = probe.options(a.port)
+    if not found.reachable:
+        return ToolResult(
+            f"Nothing answered on port {a.port}: " + ("; ".join(found.problems) or "no project"),
+            is_error=True,
+        )
+    lines = [f"project: {found.project}"]
+    if found.tapir_missing:
+        lines.append("the Loriini add-on is not installed in this Archicad: no study can run")
+    elif found.tapir:
+        lines.append(f"add-on: {found.tapir}")
+    if found.latitude is not None and found.longitude is not None:
+        lines.append(f"location: {found.latitude:.5f}, {found.longitude:.5f}")
+    else:
+        lines.append("location: not set (Options > Project Preferences > Project Location)")
+
+    def listed(title: str, names: Sequence[str]) -> None:
+        if names:
+            lines.append(f"{title} ({len(names)}): " + "; ".join(names))
+
+    listed("layers", found.layers)
+    listed("layers carrying zones", found.zone_layers)
+    if found.zone_kinds:
+        lines.append(
+            "zones by name: "
+            + "; ".join(f"{kind.described()} on {kind.layer}" for kind in found.zone_kinds)
+        )
+    listed("layer combinations", found.combinations)
+    listed("master layouts", found.masters)
+    listed("layout subsets", found.subsets)
+    listed("pen sets", found.pen_sets)
+    listed("graphic overrides", found.overrides)
+    listed("storeys, bottom to top", found.storey_names)
+    for problem in found.problems:
+        lines.append(f"could not read: {problem}")
+    return ToolResult("\n".join(lines), structured=asdict(found))
+
+
+def loriini_help(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    a = _validated(HelpArguments, arguments)
+    return run_command([a.command, "--help"] if a.command else ["--help"], call)
+
+
+def run_loriini(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    a = _validated(RunArguments, arguments)
+    if a.args[0] == "mcp":
+        raise InvalidArgumentsError("run_loriini cannot start another agent server")
+    return run_command(a.args, call)
+
+
+def site_analysis(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    return run_command(site_argv(_validated(SiteArguments, arguments)), call)
+
+
+def shadow_diagrams(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    return run_command(shadow_argv(_validated(ShadowArguments, arguments)), call)
+
+
+def sun_views(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    return run_command(sun_views_argv(_validated(SunViewArguments, arguments)), call)
+
+
+TOOLS: tuple[Tool, ...] = (
+    Tool(
+        "archicad_instances",
+        "Every Archicad running on this machine, with the project each has open and the "
+        "port to reach it on. Run this first.",
+        NoArguments.model_json_schema(),
+        archicad_instances,
+        title="Running Archicads",
+        read_only=True,
+    ),
+    Tool(
+        "project_options",
+        "What the open project offers, read from it: its layers, the layers that carry "
+        "zones and what the zones are called, layer combinations, master layouts, layout "
+        "subsets, pen sets, graphic overrides, storeys and location. The studies take "
+        "these names exactly as spelled here.",
+        ProjectArguments.model_json_schema(),
+        project_options,
+        title="The project's options",
+        read_only=True,
+    ),
+    Tool(
+        "loriini_help",
+        "The command line's own help: the list of commands, or every option of one command "
+        "with what it means. Read it before run_loriini.",
+        HelpArguments.model_json_schema(),
+        loriini_help,
+        title="Command help",
+        read_only=True,
+    ),
+    Tool(
+        "run_loriini",
+        "Run any Loriini command line, for what the named tools do not cover: the solar "
+        "analysis (archicad-run, massing), the reports, the checks. It runs into the open "
+        "project and takes minutes; its lines are streamed and the last ones returned.",
+        RunArguments.model_json_schema(),
+        run_loriini,
+        title="Run a command",
+    ),
+    Tool(
+        "site_analysis",
+        "The site tools for an address: the Context Analysis and Site Analysis sheets and the "
+        "Summary of Controls from NSW open data (and the City of Sydney's inside its area), "
+        "drawn into the open project; optionally the 3D context model and the future "
+        "context. Sets the project location from the address unless told to keep it.",
+        SiteArguments.model_json_schema(),
+        site_analysis,
+        title="Site analysis",
+    ),
+    Tool(
+        "shadow_diagrams",
+        "Shadow diagrams for the days and hours asked, cast by the layers named as the "
+        "existing shadow and the proposal onto the terrain, drawn as fills on layouts in "
+        "the legend's colours. The layer names come from project_options.",
+        ShadowArguments.model_json_schema(),
+        shadow_diagrams,
+        title="Shadow diagrams",
+    ),
+    Tool(
+        "sun_views",
+        "The sun's-eye views: a view of the model from the sun at each hour of the day, "
+        "each as a 3D Document, placed on layouts.",
+        SunViewArguments.model_json_schema(),
+        sun_views,
+        title="Sun views",
+    ),
+)
+
+
+def build() -> Server:
+    return Server(name=PRODUCT, version=__version__, tools=TOOLS, instructions=INSTRUCTIONS)
+
+
+def serve() -> None:
+    """Serve the client that started this process, on its stdin and stdout.
+
+    The windowed executable has no console, so its standard streams are
+    whatever the process that started it gave it -- pipes, from an MCP
+    client -- and Python may not have wrapped them. The descriptors are
+    opened directly then, in binary, which is how the protocol wants them:
+    one UTF-8 line per message, no newline translation.
+    """
+    inp: BinaryIO = sys.stdin.buffer if sys.stdin is not None else open(0, "rb", closefd=False)
+    out: BinaryIO = sys.stdout.buffer if sys.stdout is not None else open(1, "wb", closefd=False)
+    build().serve(inp, out)
