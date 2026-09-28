@@ -27,6 +27,42 @@ white and this keeps that standard rather than drifting paler for looks.
 open the window. Every step is guarded and the worst case is the plain ttk
 default, which is ugly and entirely usable -- the same rule ``preferences`` and
 ``icons`` follow.
+
+The principles
+--------------
+Settled 21 September 2026 (D109), after a review of the window as built. The
+brief in Sami's words: *airy; Archicad's light grey and light blue; Apple kind
+of style; thin contour.* Everything below is one of these, and a change that
+is none of them is a change to argue about first.
+
+1. **Three surfaces, and nothing else is a colour.** The ground is light grey:
+   ``CHROME`` for the window's surround and the dock, ``PAGE`` -- a shade
+   lighter -- for the page a section is laid out on. Anything you edit or
+   anything the run makes is a white card on that ground. Blue tint means
+   chosen or switched on. Ochre is the sun and red is a warning, and neither
+   is ever decoration.
+2. **Thin contours, everywhere a region ends.** A card has a one-pixel edge in
+   ``LINE``; a field has one in ``EDGE`` because you can type in it. A
+   one-pixel rule in ``LINE`` parts the page from the dock, the body from the
+   info band, and the band from the run bar. Nothing is ever framed twice, and
+   nothing heavier than a pixel is drawn.
+3. **One radius scale.** Four pixels on a control, six on a card -- and a tab
+   is a card, as is the page it sits a gap above. Zero on paper and on
+   anything drawn: a sheet has corners, and so does a model.
+4. **Air.** Cards sit sixteen pixels in from the page and eight apart; rows
+   step six pixels; the run bar keeps its two kinds of button a clear gap
+   apart. Empty page is page, not an unfinished panel.
+5. **Every control lives in a card**, under a header that says what the card
+   is for. A study's card is headed by its own tick; a settings card by a
+   title. No row floats on the page by itself.
+6. **One mark per state, on its own axis.** Open is the white tab under a
+   blue cap; queued is the blue name with its dot; on is the tinted tile or
+   the tinted header. No focus ring is drawn on a tab or a tile, because it
+   read as a second mark. The count on a card's header is what its tick is
+   worth, and the dock draws the same.
+7. **Type is Segoe UI, at the body size the operating system uses.** Titles
+   are bold, hints are ``HINT`` grey and clear 4.5:1, group captions are small
+   capitals. Nothing on a thumbnail carries anything a person must read.
 """
 
 from __future__ import annotations
@@ -34,6 +70,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import ttk
+from typing import Any
 
 # -- the palette, the same one the icons are drawn from --------------------
 
@@ -47,6 +84,11 @@ CHROME = "#F0F0F0"
 #: Where the settings are. White, because the icons are drawn on white and a
 #: sheet of paper on grey is not a sheet of paper. Archicad's panels agree.
 SURFACE = "#FFFFFF"
+
+#: The page a section is laid out on: a shade lighter than the surround, so
+#: the white cards on it read as cards and the empty page reads as page. The
+#: open tab's face is drawn in it, which is what joins the tab to the page.
+PAGE = "#F5F5F5"
 
 #: A control nobody has chosen, and the trough of the progress bar.
 MUTED = "#E4E4E4"
@@ -74,6 +116,99 @@ PAD = 8
 #: Type. Segoe UI because this is a Windows tool and it is the face the rest of
 #: the operating system is set in; the log stays monospaced because it prints
 #: layer names and numbers that have to line up.
+#: How many pixels of a face are corner rather than stretch. The faces are
+#: 16 px with a 4 px radius, so 5 leaves the middle 6 to be pulled about.
+FACE_SLICE = 5
+
+#: How tall a panel's header is. ``scripts/make_icons.py`` holds the same
+#: number, and has to: the header's tint and the rule under it are drawn into
+#: the top slice of the panel's face, so the window must place the header at
+#: exactly the height the picture was drawn for. A test holds the two together.
+PANEL_HEAD = 32
+
+#: The tint behind a study's header, on and off. Drawn into the panel faces
+#: and worn by the tick that sits on them, so they have to match to the digit.
+HEAD_ON = BLUE_TINT
+HEAD_OFF = "#F1F1F0"
+
+#: Every button style this theme defines, and which face it wears.
+#:
+#: Declared, and not worked out at the point of use, because of the trap: ttk
+#: hands a derived style its parent's *layout*, so changing ``TButton`` changes
+#: every ``*.TButton`` that has not been given one of its own. That is how a
+#: rounded button face ended up behind all six tabs the first time this was
+#: written. Listing them is the decision; the test that reads this dictionary
+#: back against the module is what stops the next style being added without
+#: one, which is the part that makes it stop being a trap.
+#:
+#: ``"flat"`` means the style is painted by its own ``background`` and keeps
+#: clam's drawn border. Everything else names an element made in ``_rounded``.
+WEARS: dict[str, str] = {
+    "TButton": "button",
+    "Chrome.TButton": "button",
+    "Run.TButton": "run",
+    "Add.TButton": "add",
+    "Tile.TButton": "tile",
+    "TileOn.TButton": "tileon",
+    # A tab wears a tab, not a button: chrome at rest, a rounded tint under
+    # the pointer, and the page's own white under a blue cap when it is open.
+    "Tab.TButton": "tab",
+    "TabQueued.TButton": "tab",
+    "TabOpen.TButton": "tabopen",
+    "TabOpenQueued.TButton": "tabopen",
+    # The cross on a chip is inside a rounded box already, and a second one
+    # around a 13 px glyph is a box around a box.
+    "ChipDrop.TButton": "flat",
+    # The chevron that folds the sheets panel away: a mark, not a button face.
+    "Fold.TButton": "flat",
+}
+
+#: What each faced style stands on, which is the colour its corners take.
+#:
+#: The third trap. A face is a rounded shape in a square widget, and what
+#: shows through the four corners is the *style's* background, not whatever
+#: the widget has been put on. So a button that lives on the grey run bar is
+#: a different style from the same button on the white page, and the only
+#: difference between them is this.
+STANDS_ON: dict[str, str] = {
+    "TButton": SURFACE,
+    "Chrome.TButton": CHROME,
+    "Run.TButton": CHROME,
+    "Add.TButton": SURFACE,
+    "Tile.TButton": SURFACE,
+    "TileOn.TButton": SURFACE,
+    "Tab.TButton": CHROME,
+    "TabQueued.TButton": CHROME,
+    "TabOpen.TButton": CHROME,
+    "TabOpenQueued.TButton": CHROME,
+    "TEntry": SURFACE,
+    "TCombobox": SURFACE,
+    "Chrome.TCombobox": CHROME,
+    "Chip.TFrame": SURFACE,
+    # A card stands on the page, not on white: its rounded corners would
+    # otherwise show four white nicks on the grey.
+    "Box.TFrame": PAGE,
+    "BoxOff.TFrame": PAGE,
+    # The page itself is a card on the chrome.
+    "PageCard.TFrame": CHROME,
+    # The progress bar is a pill, and a pill is nearly all corner. It used to
+    # carry ``background=BLUE`` from the days clam drew it, and the first
+    # rounded build showed the trough outlined in blue: not a border, but this
+    # trap, bleeding through every antialiased pixel of the pill's edge.
+    "Horizontal.TProgressbar": CHROME,
+}
+
+#: What sits *inside* a faced frame stands on the face's fill, not on the
+#: colour the frame's corners show. A card's style background is the page,
+#: for its corners; the fields on the card are on its white. The window's
+#: stands-on test reads this before it reads a parent's style.
+INSIDE: dict[str, str] = {
+    "Box.TFrame": SURFACE,
+    "BoxOff.TFrame": SURFACE,
+    "PageCard.TFrame": PAGE,
+}
+
+
 FACE = "Segoe UI"
 MONO = "Consolas"
 
@@ -137,6 +272,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure("TFrame", background=SURFACE)
     style.configure("TLabel", background=SURFACE, foreground=BODY)
     style.configure("TSeparator", background=LINE)
+    #: The page under the cards, and the one-pixel rule between regions.
+    style.configure("Page.TFrame", background=PAGE)
+    style.configure("Rule.TFrame", background=LINE)
 
     #: The line under a control, on the content surface.
     style.configure("Hint.TLabel", background=SURFACE, foreground=HINT)
@@ -184,7 +322,7 @@ def apply(root: tk.Misc) -> ttk.Style:
             darkcolor=SURFACE,
             insertcolor=INK,
             arrowcolor=BODY,
-            padding=(5, 4),
+            padding=(5, 2),
         )
         style.map(
             kind,
@@ -223,40 +361,59 @@ def apply(root: tk.Misc) -> ttk.Style:
     )
 
     # -- buttons ----------------------------------------------------------
+    #
+    # These five wear a rounded face (``_rounded`` below), and an image
+    # element ignores background, bordercolor and relief entirely. So none
+    # of them is set here: the fill, the edge and the pressed and hover
+    # states are all in the picture. What is left is what a picture cannot
+    # draw -- the words on it, and the room around them.
+    # Compact, at the height of a field: Archicad's own dialogs set a button
+    # no taller than the list beside it, and so does this.
     style.configure(
         "TButton",
-        background="#F4F3EF",
         foreground=INK,
-        bordercolor=LINE,
-        lightcolor="#F4F3EF",
-        darkcolor="#F4F3EF",
-        padding=(12, 5),
+        padding=(10, 0),
         font=body,
     )
     style.map(
         "TButton",
-        background=[("pressed", MUTED), ("active", "#FBFAF7")],
-        bordercolor=[("active", BLUE_EDGE)],
         foreground=[("disabled", HINT)],
     )
+
+    #: The same button, standing on the chrome: the project strip and the run
+    #: bar. Its only difference from ``TButton`` is the colour its corners
+    #: take, which ``STANDS_ON`` sets -- see the third trap in ``_rounded``.
+    style.configure("Chrome.TButton", foreground=INK, padding=(10, 0), font=body)
+    style.map("Chrome.TButton", foreground=[("disabled", HINT)])
+    style.configure("Chrome.TCombobox", foreground=INK)
+
+    #: The chevron that folds the sheets panel to its edge and back. A mark
+    #: on the chrome rather than a button face: it is the smallest control in
+    #: the window and the one used least.
+    style.configure(
+        "Fold.TButton",
+        background=CHROME,
+        foreground=HINT,
+        bordercolor=CHROME,
+        lightcolor=CHROME,
+        darkcolor=CHROME,
+        relief="flat",
+        padding=(5, 0),
+        font=strong,
+    )
+    style.map("Fold.TButton", foreground=[("active", BLUE_DEEP)], background=[("active", CHROME)])
 
     #: Run. The one emphasised control in the window, tinted rather than
     #: filled: a solid blue button next to three grey ones reads as a warning.
     style.configure(
         "Run.TButton",
-        background=BLUE_TINT,
         foreground=BLUE_DEEP,
-        bordercolor=BLUE,
-        lightcolor=BLUE_TINT,
-        darkcolor=BLUE_TINT,
-        padding=(14, 6),
+        padding=(12, 0),
         font=strong,
     )
     style.map(
         "Run.TButton",
-        background=[("pressed", BLUE_EDGE), ("active", "#DCE8FA"), ("disabled", MUTED)],
         foreground=[("disabled", HINT)],
-        bordercolor=[("disabled", LINE)],
     )
 
     #: A tab in the strip: one drawing at 32 px with the section's name under
@@ -272,35 +429,21 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: the tab and its page read as one sheet; a blue rule over the tab closes
     #: it. *Queued* is the blue label and the dot after the name. A tab can be
     #: both at once, and then it says both.
-    tab_pad = (10, 7, 10, 7)
-    for name, ground, text, face in (
-        ("Tab.TButton", CHROME, BODY, body),
-        ("TabOpen.TButton", SURFACE, INK, strong),
-        ("TabQueued.TButton", CHROME, BLUE_DEEP, body),
-        ("TabOpenQueued.TButton", SURFACE, BLUE_DEEP, strong),
+    # Three more pixels at the top than at the sides: that is where the open
+    # tab's blue cap is drawn, and every tab keeps the room so that opening
+    # one does not move its drawing down.
+    tab_pad = (10, 10, 10, 7)
+    for name, text, face in (
+        ("Tab.TButton", BODY, body),
+        ("TabOpen.TButton", INK, strong),
+        ("TabQueued.TButton", BLUE_DEEP, body),
+        ("TabOpenQueued.TButton", BLUE_DEEP, strong),
     ):
-        #: An open tab does not light up under the pointer: you are already
-        #: there, and a hover that moves it makes the sheet look detached.
-        hover = ground if ground == SURFACE else BLUE_TINT
-        style.configure(
-            name,
-            background=ground,
-            foreground=text,
-            bordercolor=ground,
-            lightcolor=ground,
-            darkcolor=ground,
-            padding=tab_pad,
-            anchor="center",
-            font=face,
-            relief="flat",
-        )
-        style.map(
-            name,
-            background=[("pressed", BLUE_EDGE), ("active", hover)],
-            bordercolor=[("active", hover)],
-            lightcolor=[("active", hover)],
-            darkcolor=[("active", hover)],
-        )
+        # No background and no border here. The tab wears a face (``_rounded``
+        # below): chrome at rest, a rounded tint under the pointer, white
+        # under a blue cap when open. An open tab has one picture and so does
+        # not light up under the pointer -- you are already there.
+        style.configure(name, foreground=text, padding=tab_pad, anchor="center", font=face)
 
     #: The word over a group of tabs -- the only text in the strip that is not
     #: the name of a page. It says which of the two kinds the tabs under it
@@ -315,17 +458,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: A tile in a choice row: icon only, no text, and square.
     style.configure(
         "Tile.TButton",
-        background=SURFACE,
-        bordercolor=LINE,
-        lightcolor=SURFACE,
-        darkcolor=SURFACE,
-        padding=2,
-        relief="solid",
-    )
-    style.map(
-        "Tile.TButton",
-        background=[("pressed", BLUE_EDGE), ("active", BLUE_TINT)],
-        bordercolor=[("active", BLUE_EDGE)],
+        padding=(4, 1),
     )
     #: The chosen tile. Filled blue, and the drawing inside it is the white
     #: one -- the same move the printer driver makes.
@@ -335,20 +468,109 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: that has to stay readable, so they take the named-card treatment.
     style.configure(
         "TileOn.TButton",
-        background=BLUE_TINT,
-        bordercolor=BLUE,
-        lightcolor=BLUE_TINT,
-        darkcolor=BLUE_TINT,
-        padding=2,
-        relief="solid",
-    )
-    style.map(
-        "TileOn.TButton",
-        background=[("active", "#DCE8FA"), ("pressed", BLUE_EDGE)],
-        bordercolor=[("active", BLUE)],
+        padding=(4, 1),
     )
 
-    # -- the rest ---------------------------------------------------------
+    # -- chips: a chosen name, and the button that drops it ----------------
+    #
+    # What a list of layers looks like now that it is not a comma-joined
+    # string in a text box. The cross is a real button with its own focus, so
+    # a name can be dropped from the keyboard as well as the pointer.
+    style.configure(
+        "Chip.TFrame",
+        background=BLUE_TINT,
+        bordercolor=BLUE_EDGE,
+        lightcolor=BLUE_TINT,
+        darkcolor=BLUE_TINT,
+        relief="solid",
+        borderwidth=1,
+    )
+    style.configure("Chip.TLabel", background=BLUE_TINT, foreground=BLUE_DEEP, padding=(7, 2, 3, 2))
+    style.configure(
+        "ChipDrop.TButton",
+        background=BLUE_TINT,
+        foreground=BLUE_DEEP,
+        bordercolor=BLUE_TINT,
+        lightcolor=BLUE_TINT,
+        darkcolor=BLUE_TINT,
+        relief="flat",
+        padding=(0, 0),
+        font=body,
+    )
+    style.map(
+        "ChipDrop.TButton",
+        background=[("active", BLUE_EDGE), ("pressed", BLUE_EDGE)],
+        foreground=[("active", BLUE_DEEP)],
+    )
+    #: The button that opens the project's own list. Dashed, because it is an
+    #: invitation rather than a value -- the chips beside it are the values.
+    style.configure(
+        "Add.TButton",
+        foreground=BODY,
+        padding=(7, 1),
+        font=body,
+    )
+    style.map(
+        "Add.TButton",
+        foreground=[("active", BLUE_DEEP)],
+    )
+
+    # -- the info band -----------------------------------------------------
+    style.configure("Info.TFrame", background=CHROME)
+    style.configure("Info.TLabel", background=CHROME, foreground=INK)
+    style.configure("InfoTitle.TLabel", background=CHROME, foreground=INK, font=strong)
+    style.configure("InfoIdle.TLabel", background=CHROME, foreground=HINT, font=strong)
+    style.configure("InfoState.TLabel", background=CHROME, foreground=BLUE_DEEP)
+    style.configure("InfoHint.TLabel", background=CHROME, foreground=HINT)
+
+    # -- the sheets dock ---------------------------------------------------
+    #
+    # Its own grey, so the white sheets sit on it the way pages sit in
+    # InDesign's panel rather than reading as part of the page beside it.
+    style.configure("Dock.TFrame", background=CHROME)
+    style.configure("DockTitle.TLabel", background=CHROME, foreground=INK, font=strong)
+    style.configure("DockCount.TLabel", background=CHROME, foreground=BLUE_DEEP)
+    style.configure("DockHint.TLabel", background=CHROME, foreground=HINT, font=small)
+    style.configure("DockStudy.TLabel", background=CHROME, foreground=INK, font=strong)
+    style.configure("DockDay.TLabel", background=CHROME, foreground=HINT, font=small)
+
+    #: A study's block on a settings page: its tick, its name, and what it
+    #: will make, on a tinted bar with a rule under it. Not a box with a
+    #: border, because ttk draws borders square and six of them down a page
+    #: reads as six boxes; a bar and a rule group the same rows for less.
+    #: A study's tick, which is also the header of its block: the name in the
+    #: heading face on a tinted bar across the page. Switched off, the bar
+    #: goes grey -- a study nobody has turned on should not look like a live
+    #: form with a cleared box somewhere above it.
+    style.configure(
+        "Study.TCheckbutton",
+        background=BLUE_TINT,
+        foreground=INK,
+        font=heading,
+        padding=(7, 6),
+    )
+    style.map("Study.TCheckbutton", background=[("active", BLUE_TINT)])
+    style.configure(
+        "StudyOff.TCheckbutton",
+        background=HEAD_OFF,
+        foreground=BODY,
+        font=heading,
+        padding=(7, 6),
+    )
+    style.map("StudyOff.TCheckbutton", background=[("active", HEAD_OFF)])
+
+    #: A study's box: a rounded border with the header's tint drawn into its
+    #: top slice (``_rounded``). Off, the border and the header go grey.
+    style.configure("Box.TFrame", background=SURFACE)
+    style.configure("BoxOff.TFrame", background=SURFACE)
+    #: The title of a box that is not a study and so has no tick to head it.
+    #: A settings card's title, on the grey band: it is not switched on, so
+    #: it does not wear the tint. Set the way Archicad heads a section.
+    style.configure("BoxTitle.TLabel", background=HEAD_OFF, foreground=INK, font=strong)
+    #: What the box will make, at the right of its header.
+    style.configure("PanelSays.TLabel", background=HEAD_ON, foreground=BLUE_DEEP)
+    style.configure("PanelSaysOff.TLabel", background=HEAD_OFF, foreground=HINT)
+
     _own_tick(style)
 
     style.configure(
@@ -370,8 +592,259 @@ def apply(root: tk.Misc) -> ttk.Style:
         darkcolor=MUTED,
     )
     style.map("Vertical.TScrollbar", background=[("active", "#CFCCC2")])
+    #: The same bar in the sheets panel, whose gutter is the panel's grey.
+    style.configure("Dock.Vertical.TScrollbar", troughcolor=CHROME, bordercolor=CHROME)
+
+    # Last, and it has to be. It sets the background of everything that wears
+    # a face to the colour that thing stands on, and any ``configure`` after
+    # it that names a background undoes that -- which is how the progress bar
+    # kept its blue the first time, and showed it through the pill's corners.
+    _rounded(style)
 
     return style
+
+
+def _rounded(style: ttk.Style) -> None:
+    """Round the corners, by wearing a picture instead of clam's drawn border.
+
+    No amount of ``style.configure`` will round a corner: clam's border is a
+    compiled-in element and its shape is square. The way round it is the way
+    the checkbutton's tick already goes -- ``style.element_create(..., "image",
+    ...)`` -- with one addition. An image element given a ``border`` is a
+    NINE-SLICE: Tk holds the four corners at their drawn size and fills what
+    is between them from the middle of the picture, so one face with a 4 px
+    radius dresses a button of any width and the corner never distorts.
+
+    The faces are drawn by ``scripts/make_icons.py`` and committed beside the
+    icons, for the same reason those are: Tk reads PNG by itself, and Pillow
+    is a development dependency that never goes in the bundle.
+
+    Four traps, each of which is silent, and each of which has a test in
+    ``tests/unit/test_theme.py`` so that it stays caught.
+
+    **A style inherits its parent's layout.** Changing ``TButton`` changes
+    every ``*.TButton`` that has not been given a layout of its own. So what
+    each one wears is declared, in ``WEARS``, and nothing is left to inherit.
+
+    **An image element ignores ``background`` for its own drawing.** Anything
+    wearing a face says what state it is in with a different picture, never
+    a different colour: the chosen tile, the pressed button and the hovered
+    tab are faces rather than fills.
+
+    **But the corners it leaves clear are filled with that same background.**
+    The face is a rounded shape in a square widget, and what shows through
+    the four corners is the *style's* background -- not whatever the widget
+    happens to be standing on. A button styled for the white page and placed
+    on the grey run bar therefore has four white nicks in its corners, which
+    at a 4 px radius is a fault nobody can name and everybody can see. So
+    what each faced style stands on is declared too, in ``STANDS_ON``, and a
+    test walks the real window comparing every faced widget with its parent.
+
+    **And the middle of a nine-slice is tiled, not stretched.** Tk stamps the
+    centre of the picture across the widget as many times as it takes. Drawn
+    at 16 px a face has a 6 px middle, so a 700 px field is six hundred image
+    blits and a settings box is thirteen thousand: the window's first
+    ``update_idletasks`` took twenty-six seconds, and nothing about that shows
+    in a picture of the face. So the faces are drawn about as big as the
+    biggest thing that wears them (see ``make_icons.py``), and the middle is
+    stamped once or twice. A widget smaller than its face shows less middle.
+
+    Leaves the theme alone on any failure. Square corners are worth a great
+    deal less than a window that opens.
+    """
+    from sun_study.app import icons
+
+    def worn(*names: str) -> list[tk.PhotoImage] | None:
+        """Those faces, or nothing if any of them will not load."""
+        found = [icons.face(name) for name in names]
+        return None if any(face is None for face in found) else found  # type: ignore[return-value]
+
+    def inside(*children: Any) -> Any:
+        """One level of a ttk layout. Typed ``Any`` because the stubs spell a
+        layout as a recursive alias that a helper building one a level at a
+        time cannot be made to satisfy, and the interpreter checks it anyway."""
+        return {"sticky": "nswe", "children": list(children)}
+
+    #: A button's innards, which are the same whatever it wears.
+    label: Any = (
+        "Button.focus",
+        inside(("Button.padding", inside(("Button.label", {"sticky": "nswe"})))),
+    )
+    #: What clam draws a button with, for the styles that stay flat.
+    flat: Any = [("Button.border", {"sticky": "nswe", "border": "1", "children": [label]})]
+
+    def element(
+        name: str,
+        faces: list[tk.PhotoImage],
+        states: tuple[str, ...],
+        border: int | tuple[int, int, int, int],
+        sticky: str = "nsew",
+        *,
+        wide: int = 0,
+        tall: int = 0,
+    ) -> None:
+        """One nine-slice element out of a default face and its states.
+
+        The minimum size is said outright, as the corners and a pixel of
+        middle. Left unsaid, an image element asks for the whole picture --
+        and the pictures are drawn big on purpose (the fourth trap), so every
+        button would want to be 192 px wide and the last tab would be pushed
+        off the end of the strip.
+
+        ``wide`` and ``tall`` are for the two things that are never stretched
+        one way: a bar is exactly as tall as its picture and a scrollbar thumb
+        exactly as wide. Their border on that side is nought, so the sum of
+        the corners would make a bar one pixel high.
+        """
+        left, top, right, bottom = (border,) * 4 if isinstance(border, int) else border
+        try:
+            style.element_create(
+                name,
+                "image",
+                faces[0],
+                *[(state, face) for state, face in zip(states, faces[1:], strict=True)],
+                border=border,
+                sticky=sticky,
+                width=wide or left + right + 1,
+                height=tall or top + bottom + 1,
+            )
+        except tk.TclError:
+            # Already there: `apply` has been called twice on this
+            # interpreter, which is allowed and means the element exists.
+            pass
+
+    plain = worn("face_up", "face_hover", "face_down", "face_off")
+    running = worn("face_run", "face_run_hover", "face_run_down", "face_off")
+    fields = worn("field", "field_focus", "field_off")
+    if plain is None or running is None or fields is None:
+        return
+    adding = worn("add", "add_hover", "add_down")
+    tiles = worn("face_up", "face_hover", "face_run")
+    chip = worn("chip")
+    tabs = worn("tab_rest", "tab_hover", "tab_open")
+    bars = worn("bar_trough", "bar_fill")
+    thumbs = worn("thumb", "thumb_hover")
+    panels = worn("panel_on", "panel_off")
+
+    # The lifted faces are a pixel taller than they are wide: the last row is
+    # the shadow, and it belongs to the bottom slice.
+    lifted = (FACE_SLICE, FACE_SLICE, FACE_SLICE, FACE_SLICE + 1)
+    element("Loriini.button", plain, ("active", "pressed", "disabled"), lifted)
+    element("Loriini.run", running, ("active", "pressed", "disabled"), lifted)
+    element("Loriini.field", fields, ("focus", "disabled"), FACE_SLICE)
+    if adding is not None:
+        element("Loriini.add", adding, ("active", "pressed"), FACE_SLICE)
+    if tiles is not None:
+        element("Loriini.tile", tiles[:2], ("active",), lifted)
+        # The chosen tile is a different *picture*, not a different
+        # background. Two faces, never one face and a colour.
+        element("Loriini.tileon", [tiles[2]], (), lifted)
+    if tabs is not None:
+        # A tab is a rounded card on the chrome, all four corners: it sits a
+        # gap above the page rather than joining it.
+        element("Loriini.tab", tabs[:2], ("active",), FACE_SLICE)
+        element("Loriini.tabopen", [tabs[2]], (), FACE_SLICE)
+
+    #: Which faces actually loaded. A style whose face is missing is left on
+    #: clam's border rather than left with no layout at all.
+    ready = {
+        "button": True,
+        "run": True,
+        "add": adding is not None,
+        "tile": tiles is not None,
+        "tileon": tiles is not None,
+        "tab": tabs is not None,
+        "tabopen": tabs is not None,
+    }
+    #: The same innards without the focus ring. A tab or a tile is pressed
+    #: with the mouse and shows its state in its face; the dotted rectangle
+    #: Tk draws round a focused button read as a second selection mark.
+    quiet: Any = ("Button.padding", inside(("Button.label", {"sticky": "nswe"})))
+    for name, worn_as in WEARS.items():
+        if worn_as == "flat" or not ready.get(worn_as, False):
+            style.layout(name, flat)
+        elif worn_as in {"tab", "tabopen", "tile", "tileon"}:
+            style.layout(name, [(f"Loriini.{worn_as}", inside(quiet))])
+        else:
+            style.layout(name, [(f"Loriini.{worn_as}", inside(label))])
+
+    if chip is not None:
+        element("Loriini.chip", chip, (), FACE_SLICE)
+        style.layout("Chip.TFrame", [("Loriini.chip", {"sticky": "nswe"})])
+
+    if panels is not None:
+        # The header's tint and the rule under it are in the top slice, so
+        # that slice is exactly as tall as the header plus its rule.
+        box = (7, PANEL_HEAD + 1, 7, 7)
+        element("Loriini.box", [panels[0]], (), box)
+        element("Loriini.boxoff", [panels[1]], (), box)
+        style.layout("Box.TFrame", [("Loriini.box", {"sticky": "nswe"})])
+        style.layout("BoxOff.TFrame", [("Loriini.boxoff", {"sticky": "nswe"})])
+
+    page = worn("page")
+    if page is not None:
+        # The page: the lighter grey with one thin edge, a card on the chrome
+        # under the strip. Its inside is what the sections stand on.
+        element("Loriini.page", page, (), 7)
+        style.layout("PageCard.TFrame", [("Loriini.page", {"sticky": "nswe"})])
+
+    for kind in ("TEntry", "TCombobox"):
+        part = kind.split("T", 1)[1]
+        # The arrow goes *inside* the field element, not beside it. Clam has
+        # it as a sibling, which was fine while the field was a square box
+        # drawn to the same height; against a rounded face it reads as a
+        # second little button parked next to the field.
+        children: list[tuple[str, dict[str, object]]] = []
+        if kind == "TCombobox":
+            children.append((f"{part}.downarrow", {"side": "right", "sticky": "ns"}))
+        children.append((f"{part}.padding", inside((f"{part}.textarea", {"sticky": "nswe"}))))
+        style.layout(kind, [("Loriini.field", inside(*children))])
+
+    if bars is not None:
+        # A pill: the one control whose ends mean nothing. Neither picture is
+        # ever stretched upward -- the bar is exactly as tall as they are --
+        # so the round ends stay round.
+        element("Loriini.trough", [bars[0]], (), (5, 0, 5, 0), sticky="ew", tall=10)
+        element("Loriini.pbar", [bars[1]], (), (5, 0, 5, 0), sticky="nsew", tall=10)
+        style.layout(
+            "Horizontal.TProgressbar",
+            [
+                (
+                    "Loriini.trough",
+                    {
+                        "sticky": "ew",
+                        "children": [("Loriini.pbar", {"side": "left", "sticky": "ns"})],
+                    },
+                )
+            ],
+        )
+
+    if thumbs is not None:
+        # No arrows. Nobody has pressed one since wheels were put on mice,
+        # and without them the bar is a slim pill in a quiet gutter -- which
+        # is how every panel in Archicad and InDesign scrolls now.
+        element("Loriini.thumb", thumbs, ("active",), (0, 5, 0, 5), wide=12)
+        style.layout(
+            "Vertical.TScrollbar",
+            [
+                (
+                    "Vertical.Scrollbar.trough",
+                    {"sticky": "ns", "children": [("Loriini.thumb", {"sticky": "nswe"})]},
+                )
+            ],
+        )
+
+    # The third trap, closed: every faced style is told what it stands on, so
+    # the corners its face leaves clear are that colour and not white.
+    for name, ground in STANDS_ON.items():
+        if name == "Horizontal.TProgressbar" and bars is None:
+            # Still clam's own bar, which is drawn *in* its background colour:
+            # the chrome here would be a bar nobody can see filling.
+            continue
+        if tabs is None and name.startswith("TabOpen"):
+            # Still painted by its background, which is what makes it white.
+            ground = SURFACE
+        style.configure(name, background=ground)
 
 
 def _own_tick(style: ttk.Style) -> None:

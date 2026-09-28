@@ -297,12 +297,15 @@ sun-study shadows --port 19723   --shadow-from-views <folder the Publisher Set w
 Publish the set first; the run reads what Publisher wrote and does not export.
 About twenty minutes to publish, seven to run.
 
-The same study is on the **Shadow diagram** tab of `Loriini.exe`. Point
-*Published views* at the folder and the three lists below it are ticked from
-the IFCs actually in it, rather than typed. There is deliberately no layer
-route on that page: a layer combination cannot reproduce a view that differs
-by renovation filter, which is the ordinary case here, and offering both would
-offer a way to be quietly wrong.
+The **Shadow diagram** tab of `Loriini.exe` takes the other route: one layer
+picker per legend row -- Existing, Future, Existing on site, TOD, SEARs,
+Proposed -- and one for the ground, all ticked out of the open project. It
+exports the add-on's own model (`--export native`), so nothing is published
+first, and draws each row as a solid fill in the legend's own colour with no
+contour, through `Loriini.CreateFills`; no Fill Favorite is needed. What it
+cannot reproduce is a view that differs by renovation filter: a massing
+separated that way has to go on its own layer, or run from the command line
+with `--shadow-from-views` as above ([D113](decisions.md)).
 
 `--shadow-source` is something that will be there and accumulates.
 `--shadow-scenario` is something that might be, cast against every source and
@@ -411,6 +414,22 @@ are stacked under a heading each. The command-line defaults are what
 each tool did before: `two` for the shadow diagrams and the sun views,
 `each` for the apartment plans, `one` for the communal plans.
 
+## COS schedules
+
+`massing --zone-table cos.xlsx` -- **Communal table** in the window's
+Communal tab -- writes the schedule each communal open space carries on
+its drawing: one table per Zone, headed `L2 COS SOLAR ANALYSIS`, with the
+sunlit area and its percentage at every hour of the window, then the
+Zone's own area and, with `--zone-hours`, the area reaching that minimum.
+
+A run over several levels reports their *sum* everywhere else -- the
+console, `--zone-csv`, the table on each storey's sheet. This is the one
+output that splits them back out, by the Zone each sample was cut from,
+and the tables add back up to the sum exactly.
+
+On a day other than midwinter the day goes into the file name, so the
+window's one-job-per-day runs leave one workbook each.
+
 ## The day
 
 Every solar tool runs on the ruleset's day, 21 June, unless told
@@ -451,3 +470,58 @@ gridded on the floor rather than the ceiling, and `archicad-info --properties`.
 
 **Not solvable by convention:** the tool measures geometric direct sunlight. It is not a
 daylight, illuminance or energy model, and it does not replace a consultant.
+
+## The sheets panel
+
+The panel down the right of `Loriini.exe` is every layout the ticked studies
+will make, dealt the way the **Sheets** row in General deals them -- by the
+same `sheet_chunks` the run calls, so seven shadow hours are one thumbnail,
+two, or seven as the row says, and the count on the strip is the count of
+layouts. A sheet carrying several drawings shows them on the grid the run
+will use, with the hour under each and a cell the run leaves empty drawn
+empty. Each study is drawn from the fields it really reads: the shadow
+diagrams from their own **Days** and **Hours**, the sun views from theirs,
+the communal study's hourly set from every whole hour of its window. Point
+at a sheet for the sun at every drawing on it. The title block carries the
+scale each command places its drawings at, or "to fit" for the site sheet.
+The site study's context model and future model are not sheets, so they
+are drawn as the geometry -- ground, blocks, site, and the envelopes the
+controls allow -- with no paper under them, and are not counted as sheets.
+The facade study is the same: it colours the model in bands and makes no
+layout, so the panel shows the banded building, one per day.
+
+The hours are rows of buttons rather than boxes to type in: press the hours
+a study draws, press the first and last hour of the communal window. A
+settings file saved from the typed hours still loads, lights the buttons it
+names, and is sent as saved.
+
+The days are a box of their own, **Days studied**, on each page that runs
+on a day: Solar analysis, Shadow diagram and Sun views each have one, with
+the same three buttons -- midwinter, the equinox, midsummer -- and a
+custom-day field for any other date, several with commas between. Each box
+is read only by its own page, so the sun views can be lit for the equinox
+while the apartments are assessed at midwinter alone. The year is asked
+once, in the Solar analysis box, and every sun tool reads it.
+
+The **Plans** row in Solar analysis says what the apartment plans show,
+any of three: *Sun at each time*, a plan per instant showing where the sun
+actually falls; *Floor heat map*, each apartment's floor gridded and banded
+by its hours of sun over the day; and *Apartment total*, each flat filled
+whole in the band of its hours with the figure written in. On the command
+line that is `--plan-instant`, `--plan-bands` and `--draw` for
+`archicad-run`. The communal plan has one banded kind, so either whole-day
+tile sends `--zone-bands` to `massing`, and *Sun at each time* sends
+`--zone-hourly`; `--no-zone-bands` with `--zone-hourly` draws the hourly
+plans alone and still writes the areas sheet and the CSV.
+
+## Presets
+
+**Save preset…** writes every section -- the ticks, the fields, the open
+section -- to a file you name; **Load preset…** reads one back, changing
+only what the file names. It is the same JSON that **Save as default** keeps
+in `%APPDATA%\Loriini\settings.json`, so one can be copied over the other:
+a job's preset sent to the next desk, or a colleague's defaults saved out
+as a preset. The open project has the last word after a load, exactly as it
+does over the saved defaults -- a layer the project does not carry is
+dropped and the log says so. A file that is not a preset is reported in the
+log with the reason, not raised.

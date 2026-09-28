@@ -19,7 +19,9 @@ from sun_study.archicad.connection import (
 )
 from sun_study.archicad.layers import read_layers
 from sun_study.archicad.layout import _walk, master_layouts
+from sun_study.archicad.read import read_geo_location
 from sun_study.archicad.series import ensure_model_database
+from sun_study.archicad.sun_eyes import overrides_in_views
 
 #: Floor area, in square metres, at or above which a zone is a dwelling
 #: rather than something a dwelling contains. The ADG's smallest apartment is
@@ -57,6 +59,11 @@ class ZoneKind:
     count: int
     area_m2: float
     """The median of that name's zones, which is what says what they are."""
+    category: str = ""
+    """The Zone Category most of that name's zones carry -- ``Apartment``,
+    ``Balcony`` -- in the office's own words. Shown beside the name because a
+    name is often a code (``G08``, ``BY``) that means nothing to somebody who
+    did not model the project, and the category is what they would say."""
 
     @property
     def dwelling(self) -> bool:
@@ -67,8 +74,11 @@ class ZoneKind:
         return OPEN_SPACE_AREA_M2 <= self.area_m2 < DWELLING_AREA_M2
 
     def described(self) -> str:
-        """For the line under the field, so a guess can be checked."""
-        return f"{self.label} ({self.count} x {self.area_m2:.0f} m2)"
+        """For the line under the field and the chooser, so a guess can be
+        checked: the name, what the office calls that kind of zone, how many
+        and how big."""
+        kind = f" — {self.category}" if self.category else ""
+        return f"{self.label}{kind} ({self.count} x {self.area_m2:.0f} m2)"
 
 
 @dataclass(frozen=True)
@@ -88,7 +98,24 @@ class ProjectOptions:
     subsets: tuple[str, ...] = ()
     """Layout Book subsets, where the sheets can be filed."""
 
+    pen_sets: tuple[str, ...] = ()
+    """The project's pen tables, for the sun views to print in the office's."""
+
+    overrides: tuple[str, ...] = ()
+    """Graphic override combinations, for the sun views' glazing override.
+
+    Read through the Loriini add-on, since Tapir can pin a view to one by name
+    and cannot list them. Empty on an older add-on, and the field then takes a
+    typed name as before.
+    """
+
     storeys: tuple[int, ...] = ()
+
+    storey_indices: tuple[tuple[str, int], ...] = ()
+    """Each named storey with its index, bottom to top, so a storey picked by
+    name on the window can be sent to a command that takes the index -- the
+    shadow fills are placed by index, because that is how Archicad places
+    them. Same order and same storeys as ``storey_names``."""
 
     storey_names: tuple[str, ...] = ()
     """Every storey's name, bottom to top, as Archicad spells it.
@@ -107,6 +134,21 @@ class ProjectOptions:
     the window takes as "leave the default alone" rather than as zero -- a cut
     at zero would drop the entire project.
     """
+
+    latitude: float | None = None
+    longitude: float | None = None
+    """Where the project sits, so the window can work out the sun for itself.
+
+    Read for the sheets panel, which draws each shadow at the bearing and
+    length the study will actually use. ``core.solar`` works that out from a
+    latitude and an instant, takes milliseconds over it and never touches
+    Archicad, so the panel can redraw on every keystroke -- but only once
+    somebody has set the project location. ``None`` means nobody has, and the
+    panel says so on the sheet rather than drawing a shadow it has guessed.
+    """
+
+    north_radians: float = 0.0
+    """Which way the project's north points, off the same read."""
 
     tapir: str = ""
     """The add-on's version, when it answered."""
@@ -156,15 +198,23 @@ def _zones_by_layer(connection: ArchicadConnection) -> tuple[tuple[str, ...], tu
     every zone twice, on a project with 1341 of them, is the sort of thing a
     person notices while waiting for a window to fill in.
     """
+    from collections import Counter
     from statistics import median
 
-    from sun_study.archicad.read import layer_names
+    from sun_study.archicad.read import layer_names, zone_categories
     from sun_study.archicad.read import zones as read_zones
     from sun_study.archicad.rooms import polygon_area
 
     names = layer_names(connection)
+    # Softly: a category name is a courtesy on the list, and an add-on that
+    # cannot say them is no reason to offer no zones at all.
+    try:
+        category_names = zone_categories(connection)
+    except (ArchicadError, KeyError, ValueError, TypeError):
+        category_names = {}
     carried: set[str] = set()
     areas: dict[tuple[str, str], list[float]] = {}
+    categories: dict[tuple[str, str], Counter[str]] = {}
     for zone in read_zones(connection):
         # Not ``zone.layer_index or -1``: layer index 0 is a real Archicad
         # layer, and every zone on it would silently vanish from the list.
@@ -175,14 +225,27 @@ def _zones_by_layer(connection: ArchicadConnection) -> tuple[tuple[str, ...], tu
             continue
         carried.add(layer)
         area = polygon_area(zone.outline) if zone.outline else 0.0
+        category = category_names.get((zone.category_guid or "").upper(), "")
         for label in {zone.name.strip(), zone.number.strip()}:
             if label:
                 areas.setdefault((layer, label), []).append(area)
+                if category:
+                    categories.setdefault((layer, label), Counter())[category] += 1
 
     kinds = tuple(
         sorted(
             (
-                ZoneKind(layer=layer, label=label, count=len(found), area_m2=median(found))
+                ZoneKind(
+                    layer=layer,
+                    label=label,
+                    count=len(found),
+                    area_m2=median(found),
+                    category=(
+                        categories[(layer, label)].most_common(1)[0][0]
+                        if (layer, label) in categories
+                        else ""
+                    ),
+                )
                 for (layer, label), found in areas.items()
             ),
             # Biggest first, on each layer: the dwellings are what somebody is
@@ -224,8 +287,9 @@ def options(port: int) -> ProjectOptions:
         return ProjectOptions(
             tapir_missing=True,
             problems=(
-                "Archicad is running but the Tapir add-on is not installed. "
-                "The study cannot read or draw anything without it.",
+                "Archicad is running but the Loriini add-on is not installed, or "
+                "is too old to carry Tapir's commands. The study cannot read or "
+                "draw anything without it.",
             ),
         )
     except ArchicadError as error:
@@ -239,6 +303,19 @@ def options(port: int) -> ProjectOptions:
         lambda: connection.run_tapir("GetAttributesByType", {"attributeType": "LayerCombination"}),
     )
     masters = attempt("master layouts", lambda: master_layouts(connection)) or []
+    pens = attempt(
+        "pen sets",
+        lambda: connection.run_tapir("GetAttributesByType", {"attributeType": "PenTable"}),
+    )
+    # Not through `attempt`: an add-on older than this command is not a
+    # problem with the project, and the field simply stays typed.
+    try:
+        overrides = connection.run_loriini("GetGraphicOverrideCombinations", {})
+    except ArchicadError:
+        # An add-on without the command: the names the saved views use, which
+        # misses only an override no view has.
+        used = attempt("graphic overrides", lambda: overrides_in_views(connection)) or ()
+        overrides = {"combinations": [{"name": name} for name in used]}
     book = attempt(
         "layout book",
         lambda: connection.run_tapir("GetNavigatorItemTree", {"navigatorMapId": "LayoutBook"}),
@@ -246,10 +323,18 @@ def options(port: int) -> ProjectOptions:
     zoned = attempt("zones", lambda: _zones_by_layer(connection)) or ((), ())
     zones, kinds = zoned
     storeys = attempt("storeys", lambda: connection.run_tapir("GetStories", {}))
+    # One more small read, for the sheets panel. A project whose location has
+    # never been set answers with an error rather than a guess, and `attempt`
+    # turns that into a line in `problems` -- which is right: the panel can
+    # still draw every sheet, it simply cannot put a shadow on one.
+    where = attempt("project location", lambda: read_geo_location(connection))
 
     return ProjectOptions(
         project=project,
         tapir=version,
+        latitude=None if where is None else where.latitude_deg,
+        longitude=None if where is None else where.longitude_deg,
+        north_radians=0.0 if where is None else where.north_radians,
         layers=tuple(sorted(state.name for state in layers if state.name.strip())),
         zone_layers=tuple(zones),
         zone_kinds=tuple(kinds),
@@ -261,6 +346,20 @@ def options(port: int) -> ProjectOptions:
             )
         ),
         masters=tuple(item.name for item in masters),
+        pen_sets=tuple(
+            sorted(
+                str(entry.get("name", ""))
+                for entry in ((pens or {}).get("attributes") or [])
+                if str(entry.get("name", "")).strip()
+            )
+        ),
+        overrides=tuple(
+            sorted(
+                str(entry.get("name", ""))
+                for entry in ((overrides or {}).get("combinations") or [])
+                if isinstance(entry, dict) and str(entry.get("name", "")).strip()
+            )
+        ),
         subsets=tuple(
             sorted(
                 {
@@ -277,23 +376,26 @@ def options(port: int) -> ProjectOptions:
                 if isinstance(row, dict) and isinstance(row.get("index"), int)
             )
         ),
+        storey_indices=_storey_indices((storeys or {}).get("stories") or []),
         storey_names=_storey_names((storeys or {}).get("stories") or []),
         top_storey_m=_highest_storey((storeys or {}).get("stories") or []),
         problems=tuple(problems),
     )
 
 
-def _storey_names(rows: object) -> tuple[str, ...]:
-    """Storey names in the order a person reads them: lowest first.
+def _storey_indices(rows: object) -> tuple[tuple[str, int], ...]:
+    """Each named storey and its index, in the order a person reads them:
+    lowest first.
 
     By level rather than by index. The two usually agree, and where they do
     not it is the level that matches the storey settings dialog somebody is
     looking at while they choose.
 
     A storey with no name is skipped rather than given a made-up one: the
-    command line takes a name, and a blank cannot be typed or matched.
+    command line takes a name, and a blank cannot be typed or matched. One
+    with no index is skipped too, since the index is what this is for.
     """
-    named: list[tuple[float, str]] = []
+    named: list[tuple[float, str, int]] = []
     if not isinstance(rows, list):
         return ()
     for row in rows:
@@ -301,9 +403,15 @@ def _storey_names(rows: object) -> tuple[str, ...]:
             continue
         name = str(row.get("name", "")).strip()
         level = row.get("level")
-        if name and isinstance(level, (int, float)):
-            named.append((float(level), name))
-    return tuple(name for _, name in sorted(named))
+        index = row.get("index")
+        if name and isinstance(level, (int, float)) and isinstance(index, int):
+            named.append((float(level), name, index))
+    return tuple((name, index) for _, name, index in sorted(named))
+
+
+def _storey_names(rows: object) -> tuple[str, ...]:
+    """The names alone, in the same order, for the pickers that take one."""
+    return tuple(name for name, _index in _storey_indices(rows))
 
 
 def _highest_storey(rows: object) -> float | None:

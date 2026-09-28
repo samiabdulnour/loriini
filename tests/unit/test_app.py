@@ -16,7 +16,7 @@ import sys
 from dataclasses import replace
 from itertools import pairwise
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -81,6 +81,7 @@ def hidden_window(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
             combinations=("01 | Plans - DA", "12 | IFC ARCH. EXPORT"),
             masters=("A4", "DA A1 - VERTICAL COVER/NO SCALE", "DA A1 - VERTICAL - No Scale"),
             subsets=("ADG DIAGRAMS", "PLANS", "SHADOW DIAGRAMS"),
+            overrides=("Clean", "Sun Eye Views", "Zone Colours"),
         ),
     )
     try:
@@ -119,6 +120,7 @@ def test_the_facade_run_forces_the_zone_layers_into_the_export(hidden_window: An
     """Without an IfcSpace there is nothing to fit the skin onto the building
     against, and no IFC combination shows the zone layers -- the failure this
     produces is 'the skin cannot be placed', several minutes in."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     (facade,) = hidden_window.jobs()
     assert facade.args[0] == "massing"
     assert flag(facade.args, "--require-layer") == ["06 | Zone.Balcony", "06 | Zone.Units"]
@@ -129,6 +131,7 @@ def test_an_annotation_layer_that_happens_to_hold_a_zone_is_not_exported(
 ) -> None:
     """``05 | Dims/Notes.DA`` carries 37 Zones on the reference project. They
     are somebody's schedule, not the building."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     (facade,) = hidden_window.jobs()
     assert "05 | Dims/Notes.DA" not in flag(facade.args, "--require-layer")
 
@@ -136,6 +139,7 @@ def test_an_annotation_layer_that_happens_to_hold_a_zone_is_not_exported(
 def test_the_floors_tick_is_what_puts_the_decks_in(hidden_window: Any) -> None:
     """Horizontal faces take more sun than any wall, so a study without them
     shows the least-lit half of the building."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     (with_floors,) = hidden_window.jobs()
     assert "--model-flat" in with_floors.args
 
@@ -161,12 +165,14 @@ def test_the_plans_run_files_its_sheets_where_the_practice_keeps_them(
 def test_the_chosen_archicad_is_the_one_the_study_runs_against(hidden_window: Any) -> None:
     """Two projects open is ordinary, and each instance gets its own port, so
     the default is right only for whichever started first."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.instance.current(1)
     (facade,) = hidden_window.jobs()
     assert flag(facade.args, "--port") == ["19724"]
 
 
 def test_both_ticked_runs_both_in_order(hidden_window: Any) -> None:
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     assert [job.args[0] for job in hidden_window.jobs()] == ["massing", "archicad-run"]
 
@@ -261,18 +267,87 @@ def test_the_apartment_study_keeps_the_adg_window(hidden_window: Any) -> None:
     assert "--window-end" not in plans.args
 
 
-def test_the_hourly_plans_are_on_by_default_and_can_be_turned_off(
+def test_the_plans_row_says_which_kind_of_plan_each_study_draws(
     hidden_window: Any,
 ) -> None:
+    """Bands are the whole day striped by hours of sun; times are the sun
+    where it actually falls at each instant. Both by default, and either
+    alone on request -- for the apartments and the communal space alike,
+    each through its own command's flags."""
     hidden_window.do_facade.set(False)
     hidden_window.communal.set("06 | Zone.Balcony")
     hidden_window.do_communal.set(True)
-    (communal,) = hidden_window.jobs()
-    assert "--zone-hourly" in communal.args
+    hidden_window.do_plans.set(True)
+    hidden_window.apartments.set("06 | Zone.Units")
 
-    hidden_window.do_hourly.set(False)
-    (communal,) = hidden_window.jobs()
-    assert "--zone-hourly" not in communal.args
+    plans, communal = hidden_window.jobs()
+    assert "--draw" in plans.args and flag(plans.args, "--plan-instant")
+    assert "--plan-bands" in plans.args
+    assert "--zone-hourly" in communal.args and "--no-zone-bands" not in communal.args
+
+    hidden_window.plan_kinds.set("Bands by hour")
+    plans, communal = hidden_window.jobs()
+    assert "--draw" in plans.args and not flag(plans.args, "--plan-instant")
+    assert "--plan-bands" in plans.args, "the heat map is a whole-day plan too"
+    assert "--zone-hourly" not in communal.args and "--no-zone-bands" not in communal.args
+    assert window.APARTMENT_HEAT_MAP in {sheet.kind for sheet in hidden_window.planned()}
+
+    hidden_window.plan_kinds.set("Sun at each time")
+    plans, communal = hidden_window.jobs()
+    assert "--no-draw" in plans.args and "--sheet" in plans.args
+    assert "--plan-bands" not in plans.args
+    assert flag(plans.args, "--plan-instant") == ["09:00", "12:00", "15:00"]
+    assert "--zone-hourly" in communal.args and "--no-zone-bands" in communal.args
+
+    kinds = {sheet.kind for sheet in hidden_window.planned()}
+    assert "Apartments" in kinds and window.COMMUNAL_HOURLY in kinds
+    assert "Apartments, ADG total" not in kinds and "Communal open space" not in kinds
+    assert window.APARTMENT_HEAT_MAP not in kinds
+
+
+def test_the_plans_row_lights_any_of_three(hidden_window: Any) -> None:
+    """The times, the floor heat map and the apartment total are three
+    switches, not one pick. All start lit, each turns off by itself, the
+    last one lit stays lit, and a file saved when "Bands by hour" was the
+    heat map and the total together restores as both."""
+    row = hidden_window.plan_kinds
+    assert row.get() == "Sun at each time, Floor heat map, Apartment total"
+    assert hidden_window._plan_kinds() == (True, True, True)
+    row._pick("Floor heat map")
+    assert row.get() == "Sun at each time, Apartment total"
+    assert hidden_window._plan_kinds() == (True, False, True)
+    row._pick("Apartment total")
+    row._pick("Sun at each time")
+    assert row.get() == "Sun at each time", "the last one lit stays lit"
+    assert hidden_window._plan_kinds() == (True, False, False)
+    hidden_window.apply({"plan_kinds": "Bands by hour"})
+    assert row.get() == "Floor heat map, Apartment total"
+    assert hidden_window._plan_kinds() == (False, True, True)
+    hidden_window.apply({"plan_kinds": "Bands and times"})
+    assert row.get() == "Sun at each time, Floor heat map, Apartment total"
+
+
+def test_each_plan_tile_is_its_own_flag_to_the_run(hidden_window: Any) -> None:
+    """Three plans, three flags: the times are ``--plan-instant``, the heat
+    map is ``--plan-bands`` and the apartment total is ``--draw`` -- so a
+    council that wants the totals without the heat map gets exactly that,
+    and the panel deals only the sheets those flags will make."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_plans.set(True)
+    hidden_window.apartments.set("06 | Zone.Units")
+
+    hidden_window.plan_kinds.set("Apartment total")
+    (plans,) = hidden_window.jobs()
+    assert "--draw" in plans.args and "--plan-bands" not in plans.args
+    assert not flag(plans.args, "--plan-instant")
+    kinds = {sheet.kind for sheet in hidden_window.planned()}
+    assert kinds == {"Apartments, ADG total"}
+
+    hidden_window.plan_kinds.set("Floor heat map")
+    (plans,) = hidden_window.jobs()
+    assert "--no-draw" in plans.args and "--plan-bands" in plans.args
+    assert {sheet.kind for sheet in hidden_window.planned()} == {window.APARTMENT_HEAT_MAP}
 
 
 def test_the_communal_study_sends_the_settings_that_change_the_answer(
@@ -312,19 +387,106 @@ def test_a_neighbouring_layer_is_exported_and_kept_out_of_the_denominator(
     assert flag(communal.args, "--context-layer") == ["03 | Site.Neighboring Context"]
 
 
-def test_no_csv_is_written_unless_somewhere_is_named(hidden_window: Any) -> None:
-    hidden_window.do_facade.set(False)
+def test_the_neighbours_shade_every_solar_study_not_only_the_communal_one(
+    hidden_window: Any,
+) -> None:
+    """The Model tab says it is what every solar study sees. It reached the
+    communal study alone: with a combination that hides the neighbours, the
+    facade and the apartments were measured with nothing next door."""
+    neighbours = "03 | Site Context.Buildings"
+    hidden_window.context.insert(0, neighbours)
+    hidden_window.require.insert(0, "05 | Dims/Notes.DA")
     hidden_window.communal.set("06 | Zone.Balcony")
-    hidden_window.do_communal.set(True)
-    (communal,) = hidden_window.jobs()
-    assert "--zone-csv" not in communal.args
+    for tick in (hidden_window.do_facade, hidden_window.do_plans, hidden_window.do_communal):
+        tick.set(True)
 
-    hidden_window.communal_csv.insert(0, r"C:reas.csv")
-    (communal,) = hidden_window.jobs()
-    assert flag(communal.args, "--zone-csv") == [r"C:reas.csv"]
+    jobs = hidden_window.jobs()
+    facade = next(job.args for job in jobs if job.label.startswith(window.FACADE_JOB))
+    plans = next(job.args for job in jobs if job.label.startswith(window.PLANS_JOB))
+    communal = next(job.args for job in jobs if job.label.startswith(window.COMMUNAL_JOB))
+
+    for args in (facade, plans, communal):
+        assert neighbours in flag(args, "--require-layer"), args
+    # Only where it keeps them out of what is measured; on the facade it
+    # would narrow the model to the named layers and drop the rest.
+    assert flag(facade, "--context-layer") == []
+    assert flag(communal, "--context-layer") == [neighbours]
+    assert "05 | Dims/Notes.DA" in flag(plans, "--require-layer"), "forced visible, for all three"
+
+
+def test_the_plans_are_drawn_over_the_offices_own_plan_combination(hidden_window: Any) -> None:
+    """The plan a reader expects under the sunlight, not the model the study
+    reads. Offered from the project, a plan-like one picked, and passed to
+    both plan studies under the names their commands use."""
+    assert hidden_window.plan_combination.get() == "01 | Plans - DA"
+    assert "" in hidden_window.plan_combination.cget("values"), "blank: the model's"
+
+    hidden_window.communal.set("06 | Zone.Balcony")
+    hidden_window.do_plans.set(True)
+    hidden_window.do_communal.set(True)
+    jobs = hidden_window.jobs()
+    plans = next(job.args for job in jobs if job.label.startswith(window.PLANS_JOB))
+    communal = next(job.args for job in jobs if job.label.startswith(window.COMMUNAL_JOB))
+
+    assert flag(plans, "--plan-combination") == ["01 | Plans - DA"]
+    assert flag(communal, "--zone-view-combination") == ["01 | Plans - DA"]
+
+    hidden_window.plan_combination.set("")
+    plans = next(job.args for job in hidden_window.jobs() if job.label.startswith(window.PLANS_JOB))
+    assert "--plan-combination" not in plans, "blank sends nothing; the command falls back"
+
+
+def test_the_tools_own_combination_is_never_offered_as_the_plan(hidden_window: Any) -> None:
+    """It regenerates those every run: a base that is its own output is the
+    drift a base exists to stop."""
+    hidden_window.options = replace(
+        hidden_window.options,
+        combinations=("14 | Sun Study Plan", "12 | IFC ARCH. EXPORT", "02 | GA Plans"),
+    )
+    hidden_window.plan_combination.set("")
+    hidden_window._offer()
+
+    offered = hidden_window.plan_combination.cget("values")
+    assert "14 | Sun Study Plan" not in offered
+    assert hidden_window.plan_combination.get() == "02 | GA Plans"
+
+
+def test_no_table_is_written_unless_a_folder_is_named(hidden_window: Any) -> None:
+    hidden_window.communal.set("06 | Zone.Balcony")
+    hidden_window.do_facade.set(False)
+    hidden_window.do_plans.set(True)
+    hidden_window.do_communal.set(True)
+    plans, communal = hidden_window.jobs()
+    assert "--csv" not in plans.args
+    assert "--zone-csv" not in communal.args and "--zone-table" not in communal.args
+
+
+def test_one_tables_folder_takes_every_table(hidden_window: Any, tmp_path: Path) -> None:
+    """One option, not one per table: the apartments and the communal open
+    space all land in the folder named, under names the window chooses."""
+    hidden_window.communal.set("06 | Zone.Balcony")
+    hidden_window.tables.insert(0, str(tmp_path))
+    hidden_window.do_facade.set(False)
+    hidden_window.do_plans.set(True)
+    hidden_window.do_communal.set(True)
+
+    plans, communal = hidden_window.jobs()
+
+    assert flag(plans.args, "--csv") == [str(tmp_path / window.APARTMENTS_TABLE)]
+    assert flag(communal.args, "--zone-csv") == [str(tmp_path / window.COS_AREAS_TABLE)]
+    assert flag(communal.args, "--zone-table") == [str(tmp_path / window.COS_SCHEDULE_TABLE)]
+    assert hidden_window.settings()["tables_folder"] == str(tmp_path)
+
+
+def test_the_tables_folder_can_be_browsed_for(hidden_window: Any) -> None:
+    """A Browse button beside the box, as every folder in the window has."""
+    holder = hidden_window.tables.master
+    buttons = [child for child in holder.winfo_children() if isinstance(child, tk.ttk.Button)]
+    assert buttons, "no Browse beside the tables folder"
 
 
 def test_all_three_studies_run_in_order(hidden_window: Any) -> None:
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     hidden_window.do_communal.set(True)
     assert [job.args[0] for job in hidden_window.jobs()] == [
@@ -339,6 +501,19 @@ def test_nothing_ticked_asks_for_nothing(hidden_window: Any) -> None:
     hidden_window.do_plans.set(False)
     hidden_window.do_communal.set(False)
     assert hidden_window.jobs() == []
+
+
+def test_the_basic_preset_queues_no_study(hidden_window: Any) -> None:
+    """What the window opens with, and what Forget goes back to. A study
+    ticked before anybody chose it runs because it went unnoticed -- and the
+    facade study, which used to be the one, is the longest of them."""
+    assert hidden_window.jobs() == [], "a study is queued on a window nobody has touched"
+
+    hidden_window.do_facade.set(True)
+    hidden_window._forget()
+
+    assert not hidden_window.do_facade.get()
+    assert hidden_window.jobs() == [], "Forget left a study queued"
 
 
 def test_every_control_explains_itself(hidden_window: Any) -> None:
@@ -361,22 +536,595 @@ def test_every_control_explains_itself(hidden_window: Any) -> None:
     assert not bare, f"controls with no explanation: {bare}"
 
 
-def test_the_hover_text_appears_and_goes_away(hidden_window: Any) -> None:
-    """Without the delay, dragging across the form flashes six of these and
-    reads as a fault rather than as help."""
+def test_the_explanation_lands_in_the_band_and_not_in_a_window(hidden_window: Any) -> None:
+    """There are no popups any more.
+
+    A Toplevel tooltip covered the thing you were pointing at, went away while
+    you were still reading it, and could not be reached from the keyboard at
+    all -- which for a window whose settings fail quietly is not a polish
+    complaint. The sentence goes to one band at the foot instead, and the band
+    is never empty.
+    """
     from sun_study.app.window import Tooltip
 
-    tip = Tooltip(hidden_window.apartments, "which layer the apartments are on")
-    # Captured rather than asserted in sequence: three asserts on one attribute
-    # read to mypy as a contradiction, since it cannot see that _show and _hide
-    # change it.
-    before = tip.visible
-    tip._show()
-    shown = tip.visible
-    tip._hide()
-    after = tip.visible
+    hidden_window.info.resting("general", "Solar analysis", "Hours of direct sun.")
+    tip = Tooltip(
+        hidden_window.apartments,
+        "which layer the apartments are on",
+        title="Apartment zones",
+        short="The zone layer the flats are drawn on.",
+    )
 
-    assert (before, shown, after) == (False, True, False)
+    tip._show()
+    said = (
+        hidden_window.info.title.cget("text"),
+        hidden_window.info.detail.cget("text"),
+    )
+    tip._hide()
+    after = hidden_window.info.title.cget("text")
+
+    assert said == ("Apartment zones", "which layer the apartments are on")
+    assert after == "Solar analysis", "and it goes back to saying what the tab is for"
+    assert not [
+        child for child in hidden_window.root.winfo_children() if isinstance(child, tk.Toplevel)
+    ], "no window was opened to say it"
+
+
+def test_a_chip_row_is_still_the_entry_the_settings_file_expects(hidden_window: Any) -> None:
+    """The layer pickers are chips now. The settings file round-trips through
+    ``get``, ``delete`` and ``insert``, so a file written by the window that
+    had text boxes still has to restore into this one."""
+    box = hidden_window.subject
+
+    box.delete(0, "end")
+    box.insert(0, "01 | Wall.External, 03 | Floor.Slab")
+    assert box.get() == "01 | Wall.External, 03 | Floor.Slab"
+
+    box.drop("03 | Floor.Slab")
+    assert box.get() == "01 | Wall.External", "and a chip can be dropped on its own"
+
+    box.delete(0, "end")
+    assert box.get() == ""
+
+
+def only_shadows(hidden_window: Any, *, dates: str, hours: str) -> None:
+    """One study ticked, on its own days and hours, so a count means something."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+    # The dates go in as typed days with every button off, which is how a
+    # settings file from the old row of four dates restores.
+    for lit in hidden_window.shadow_day_ticks.values():
+        lit.set(False)
+    hidden_window.shadow_custom_day.delete(0, "end")
+    hidden_window.shadow_custom_day.insert(0, dates)
+    hidden_window.shadow_hours.delete(0, "end")
+    hidden_window.shadow_hours.insert(0, hours)
+
+
+def test_the_panel_holds_one_sheet_per_hour_per_day(hidden_window: Any) -> None:
+    """What the panel draws is what Run will make, worked out from the ticks
+    and the fields rather than from anything Archicad is asked."""
+    only_shadows(hidden_window, dates="06-21, 12-21", hours="09:00, 12:00, 15:00")
+    hidden_window.sheets.set("A layout per drawing")
+
+    sheets = hidden_window.planned()
+
+    assert len(sheets) == 6, "two days at three hours"
+    assert [sheet.number for sheet in sheets[:3]] == ["SD.01", "SD.02", "SD.03"]
+    assert {sheet.study for sheet in sheets} == {"Shadow diagram"}
+    assert [sheet.day for sheet in sheets] == ["21 Jun"] * 3 + ["21 Dec"] * 3
+
+
+def test_the_panel_deals_the_sheets_the_way_the_run_will(hidden_window: Any) -> None:
+    """The Sheets row in General is what the run deals its drawings by, so the
+    panel deals by it too -- through the same ``sheet_chunks`` -- and cannot
+    show seven sheets where the run makes two. The short second sheet of a
+    pair keeps the first one's grid with a cell empty, as the run leaves it."""
+    from sun_study.archicad.sheeting import sheet_chunks
+
+    only_shadows(hidden_window, dates="06-21, 12-21", hours="9,10,11,12,13,14,15")
+
+    hidden_window.sheets.set("A layout per drawing")
+    each = hidden_window.planned()
+    assert len(each) == 14 and all(len(sheet.drawings) == 1 for sheet in each)
+    assert each[0].time == "09:00", "a typed 9 is the 09:00 the sheet is named for"
+
+    hidden_window.sheets.set("Two layouts, half each")
+    two = hidden_window.planned()
+    dealt = [stop - start for start, stop in sheet_chunks(7, "two")]
+    assert [len(sheet.drawings) for sheet in two] == dealt * 2 == [4, 3, 4, 3]
+    assert {sheet.cells for sheet in two} == {4}, "the short sheet keeps the full one's grid"
+    assert [sheet.empty for sheet in two] == [0, 1, 0, 1]
+    assert [(sheet.part, sheet.parts) for sheet in two[:2]] == [(1, 2), (2, 2)]
+    assert [sheet.number for sheet in two] == ["SD.01", "SD.02", "SD.03", "SD.04"]
+    assert (two[0].time, two[1].time) == ("09:00-12:00", "13:00-15:00")
+    assert flag(hidden_window.jobs()[0].args, "--sheets") == ["two"], "and the run is told so"
+
+    hidden_window.sheets.set("One layout, all drawings")
+    one = hidden_window.planned()
+    assert [len(sheet.drawings) for sheet in one] == [7, 7]
+    assert [sheet.parts for sheet in one] == [1, 1], "not one of anything"
+
+
+def test_a_blank_sheets_row_shows_each_tools_own_default(hidden_window: Any) -> None:
+    """A blank row sends no ``--sheets``, and each tool then falls back to
+    what it did before there was a choice -- two for the shadows, a sheet
+    each for the apartment plans. The panel has to fall back the same way,
+    or it shows a choice the run was never sent."""
+    only_shadows(hidden_window, dates="06-21", hours="9,10,11,12,13,14,15")
+    hidden_window.do_plans.set(True)
+    hidden_window.instants.delete(0, "end")
+    hidden_window.instants.insert(0, "09:00, 12:00, 15:00")
+    hidden_window.sheets.set("")
+
+    sheets = hidden_window.planned()
+
+    shadows = [sheet for sheet in sheets if sheet.study == "Shadow diagram"]
+    plans = [sheet for sheet in sheets if sheet.kind == "Apartments"]
+    assert [len(sheet.drawings) for sheet in shadows] == [4, 3]
+    assert [len(sheet.drawings) for sheet in plans] == [1, 1, 1]
+    assert not any("--sheets" in job.args for job in hidden_window.jobs())
+
+
+def test_the_shadow_sheets_follow_their_own_days_row(hidden_window: Any) -> None:
+    """The shadow study is one job with its own box of days, not one run per
+    lit day like the solar tools, so the Solar analysis page's days are not
+    what it draws -- and the panel must not say they are."""
+    only_shadows(hidden_window, dates="06-21", hours="12")
+    for ticked in hidden_window.days.values():
+        ticked.set(True)
+
+    sheets = hidden_window.planned()
+
+    assert [sheet.day for sheet in sheets] == ["21 Jun"]
+    assert flag(hidden_window.jobs()[0].args, "--shadow-date") == ["06-21"]
+
+
+def test_the_hourly_communal_plans_are_as_many_as_the_window_has_hours(
+    hidden_window: Any,
+) -> None:
+    """Eight to three is eight plans and nine to three is seven, because the
+    run draws every whole hour it measured -- and they are dealt onto sheets
+    by the Sheets row, while the banded plan, the threshold plan and the
+    areas table are one sheet each whatever it says."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_communal.set(True)
+    for ticked in hidden_window.days.values():
+        ticked.set(False)
+    hidden_window.days["winter"].set(True)
+    hidden_window.communal_window.delete(0, "end")
+    hidden_window.communal_window.insert(0, "08:00-15:00")
+    hidden_window.communal_hours.delete(0, "end")
+    hidden_window.communal_hours.insert(0, "2")
+    hidden_window.sheets.set("One layout, all drawings")
+
+    sheets = hidden_window.planned()
+
+    hourly = [sheet for sheet in sheets if sheet.kind == window.COMMUNAL_HOURLY]
+    assert [len(sheet.drawings) for sheet in hourly] == [8]
+    assert hourly[0].time == "08:00-15:00"
+    assert [sheet.kind for sheet in sheets if sheet is not hourly[0]] == [
+        "Communal open space",
+        "Communal open space, 2 h or more",
+        window.COMMUNAL_AREAS,
+    ]
+    assert all(not sheet.time for sheet in sheets if sheet is not hourly[0]), "whole-day sheets"
+
+    hidden_window.plan_kinds.set("Bands by hour")
+    assert not [s for s in hidden_window.planned() if s.kind == window.COMMUNAL_HOURLY]
+
+
+def test_the_sun_views_follow_their_own_hours(hidden_window: Any) -> None:
+    """Their Hours row, or the ruleset's nine to three when it is blank --
+    which is what the command does with a blank ``--hour``."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_sun_eyes.set(True)
+    for ticked in hidden_window.days.values():
+        ticked.set(False)
+    hidden_window.days["winter"].set(True)
+    hidden_window.sheets.set("A layout per drawing")
+
+    hidden_window.eye_hours.delete(0, "end")
+    assert [sheet.time for sheet in hidden_window.planned()] == [
+        f"{hour:02d}:00" for hour in range(9, 16)
+    ]
+
+    hidden_window.eye_hours.insert(0, "9, 3pm")
+    assert [sheet.time for sheet in hidden_window.planned()] == ["09:00", "15:00"]
+
+
+def test_the_hours_are_pressed_not_typed_and_still_read_as_the_run_reads_them(
+    hidden_window: Any,
+) -> None:
+    """The rows of hours and days are buttons, and the field's text is what
+    they mean, in the spelling each command takes: whole hours for the
+    shadows, times of day for the plans, a range for the communal window,
+    dates for the shadow days."""
+    hours = hidden_window.shadow_hours
+    hours.delete(0, "end")
+    hours._toggle("9")
+    hours._toggle("12")
+    hours._toggle("15")
+    assert hours.get() == "9, 12, 15"
+    hours._toggle("12")
+    assert hours.get() == "9, 15", "pressed again is off"
+
+    times = hidden_window.instants
+    times.delete(0, "end")
+    times._toggle("12:00")
+    assert times.get() == "12:00"
+
+    window_row = hidden_window.communal_window
+    window_row.delete(0, "end")
+    window_row._toggle("08:00")
+    window_row._toggle("15:00")
+    assert window_row.get() == "08:00-15:00", "a span is its two ends"
+    assert window_row._lit() == {f"{hour:02d}:00" for hour in range(8, 16)}, "lit between"
+
+    # The shadow days are the same three buttons the other sun studies
+    # press, with the diagram's own answer, sent as the dates the command
+    # takes.
+    hidden_window.shadow_day_ticks["summer"].set(True)
+    assert hidden_window._shadow_days() == ["06-21", "12-21"]
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+    hidden_window.sheets.set("One layout, all drawings")
+    assert [sheet.day for sheet in hidden_window.planned()] == ["21 Jun", "21 Dec"]
+    assert [sheet.time for sheet in hidden_window.planned()] == ["09:00-15:00"] * 2
+    assert flag(hidden_window.jobs()[0].args, "--shadow-date") == ["06-21,12-21"]
+
+
+def test_a_saved_field_lights_the_buttons_it_names_and_keeps_its_own_spelling(
+    hidden_window: Any,
+) -> None:
+    """A settings file from the typed days -- ``9,10,11`` or ``9, 3pm`` --
+    lights the right buttons and is sent exactly as it was saved. A value no
+    button stands for lights nothing and is still sent, so a half hour saved
+    on purpose is not rounded to the nearest button."""
+    hours = hidden_window.shadow_hours
+    hours.delete(0, "end")
+    hours.insert(0, "9, 3pm")
+    assert hours.get() == "9, 3pm"
+    assert hours._lit() == {"9", "15"}
+
+    hours.insert(0, "9:30, 12")
+    assert hours.get() == "9:30, 12"
+    assert hours._lit() == {"12"}, "the half hour lights nothing and is still sent"
+
+    window_row = hidden_window.communal_window
+    window_row.insert(0, "8am to 3pm")
+    assert window_row.get() == "8am to 3pm"
+    assert window_row._lit() == {f"{hour:02d}:00" for hour in range(8, 16)}
+
+    # A file from the old row of four dates restores into the shadow box's
+    # own custom-day field, which reads a comma list, by name or by date.
+    hidden_window.apply({"shadow_dates": "winter, 12-21"})
+    assert hidden_window.shadow_custom_day.get() == "winter, 12-21"
+    assert hidden_window._shadow_days() == ["06-21", "12-21"], "a name is its date, once"
+
+
+def test_every_sheet_says_the_scale_the_run_places_it_at(hidden_window: Any) -> None:
+    """The block used to say 1:1000 on every sheet. It now says what each
+    command sends: the sun views' own Scale row, the context sheet's, the
+    shadow diagrams' 1:1000, the plans' 1:200 -- and, honestly, that the
+    site sheet is fitted and the summary has no scale at all."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(True)
+    hidden_window.site_address.insert(0, "1 Example Street")
+    hidden_window.eye_scale.delete(0, "end")
+    hidden_window.eye_scale.insert(0, "250")
+
+    scales = {sheet.kind: sheet.scale for sheet in hidden_window.planned()}
+
+    assert scales["Sun view"] == "1:250"
+    assert scales["Context Analysis"] == "1:3000"
+    assert scales["Site Analysis"] == "to fit"
+    assert scales["Summary of Controls"] == ""
+    assert scales["Shadow diagram"] == "1:1000"
+    assert scales["Apartments"] == "1:200"
+    assert scales["Communal open space"] == "1:300"
+    assert scales[window.FACADE_MODEL] == "", "a model has no scale, being not a sheet"
+
+
+def test_the_facade_study_is_a_model_and_not_a_sheet(hidden_window: Any) -> None:
+    """The window never asks for the model-views sheet, so what the facade
+    study makes is the coloured skin in 3D and nothing on paper. The panel
+    said one sheet; it now shows the geometry, one per day."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_facade.set(True)
+    for ticked in hidden_window.days.values():
+        ticked.set(False)
+    hidden_window.days["winter"].set(True)
+    hidden_window.days["summer"].set(True)
+    hidden_window._sync()
+
+    made = hidden_window.planned()
+    assert [(m.kind, m.day, m.paper) for m in made] == [
+        (window.FACADE_MODEL, "21 Jun", False),
+        (window.FACADE_MODEL, "21 Dec", False),
+    ]
+    assert not any("--model-views" in job.args for job in hidden_window.jobs())
+    _box, says = hidden_window.study_boxes[window.FACADE_JOB]
+    assert says.cget("text") == "0 sheets, 2 models"
+    assert hidden_window.dock.tally.cget("text") == "0"
+
+
+def test_a_long_chip_row_wraps_inside_the_pane_and_lines_up_by_row(hidden_window: Any) -> None:
+    """Fourteen apartment names ran off the right of the page in one line,
+    and the rows that did wrap lined up on the first row's column edges. The
+    chips are placed by measuring, within the pane's width, and each row
+    starts at the left."""
+    chips = hidden_window.apartment_names
+    chips.delete(0, "end")
+    chips.insert(0, "FAST FOOD SHOP, 4B, RETAIL, 3B, UT1.A01, 2B, UT2.B02, XXX, UT3.C04, LOBBY")
+    hidden_window.root.update_idletasks()
+
+    chips._reflow(room=300)
+
+    placed = [
+        (int(w.place_info()["x"]), int(w.place_info()["y"]), w.winfo_reqwidth())
+        for w in chips._made
+    ]
+    assert all(x + wide <= 300 for x, _y, wide in placed), "nothing past the edge"
+    rows = sorted({y for _x, y, _w in placed})
+    assert len(rows) >= 3, "three rows or more at that width"
+    assert all(min(x for x, y, _w in placed if y == row) == 0 for row in rows), "each from the left"
+    assert int(chips.cget("height")) > 0 and int(chips.cget("width")) == 300
+
+
+def test_the_three_site_sheets_are_three_different_pictures(hidden_window: Any) -> None:
+    """Context, site and summary are three drawings, and a panel that drew
+    the same pin on all three said they were one."""
+    drawn: dict[str, list[str]] = {}
+    for kind in ("Context Analysis", "Site Analysis", "Summary of Controls"):
+        paper = tk.Canvas(hidden_window.root)
+        window._draw_drawing(paper, "Site analysis", window.Drawing(kind, "", ""), (0, 0, 150, 150))
+        drawn[kind] = sorted(str(paper.type(item)) for item in paper.find_all())
+    assert len({tuple(items) for items in drawn.values()}) == 3
+
+
+def test_a_model_is_shown_as_geometry_and_not_counted_as_a_sheet(hidden_window: Any) -> None:
+    """The site study's context model and future model are geometry on their
+    own layers, not layouts. The panel shows them as what they are -- no
+    paper -- and the count on the strip stays the count of sheets."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_site.set(True)
+    hidden_window.site_address.insert(0, "1 Example Street")
+    hidden_window.site_radius.delete(0, "end")
+    hidden_window.site_radius.insert(0, "300")
+
+    assert all(sheet.paper for sheet in hidden_window.planned()), "no model ticked"
+
+    hidden_window.do_site_model.set(True)
+    hidden_window.do_site_future.set(True)
+    hidden_window._sync()
+    made = hidden_window.planned()
+    models = [sheet for sheet in made if not sheet.paper]
+    assert [(m.kind, m.day) for m in models] == [
+        (window.CONTEXT_MODEL, "300 m"),
+        (window.FUTURE_MODEL, "100 m reach"),
+    ]
+    assert all(m.number == "" for m in models), "not numbered as sheets"
+    assert hidden_window.dock.tally.cget("text") == "3", "three sheets, and the models are not"
+    _box, says = hidden_window.study_boxes[window.SITE_JOB]
+    assert says.cget("text") == "3 sheets, 2 models"
+
+    paper = tk.Canvas(hidden_window.root)
+    window.draw_model(paper, models[0], 300, 212)
+    assert paper.find_withtag("edge"), "and it still takes the blue edge under the pointer"
+
+
+def test_each_site_sheet_follows_its_own_tick(hidden_window: Any) -> None:
+    """Three sheets, three ticks, and the command gets --no-summary when the
+    summary is unticked -- so the panel must drop it too."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_site.set(True)
+    hidden_window.site_address.insert(0, "1 Example Street")
+    hidden_window.do_site_summary.set(False)
+    hidden_window.do_site_context.set(False)
+
+    assert [sheet.kind for sheet in hidden_window.planned()] == ["Site Analysis"]
+    args = hidden_window.jobs()[0].args
+    assert "--no-summary" in args and "--no-context" in args and "--site" in args
+
+
+def test_the_pen_set_is_chosen_from_the_projects_own_and_blank_is_kept(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Typed, a pen set name was one more thing to misspell. The project's
+    pen tables are offered, blank first -- blank keeps each view's own, which
+    is what the command does -- and nothing is guessed on the person's behalf."""
+    from dataclasses import replace
+
+    found = hidden_window.options
+    monkeypatch.setattr(
+        probe, "options", lambda port: replace(found, pen_sets=("00 FA Pens", "Archicad"))
+    )
+    hidden_window.refresh()
+
+    assert list(hidden_window.eye_pen_set.cget("values")) == ["", "00 FA Pens", "Archicad"]
+    assert hidden_window.eye_pen_set.get() == "", "blank stays blank"
+    assert "--pen-set" not in " ".join(job.args[0] for job in hidden_window.jobs())
+
+    hidden_window.eye_pen_set.set("00 FA Pens")
+    hidden_window.do_sun_eyes.set(True)
+    assert flag(hidden_window.jobs()[-1].args, "--pen-set") == ["00 FA Pens"]
+
+
+def test_the_foot_of_the_window_carries_the_licence_not_a_warning(hidden_window: Any) -> None:
+    from tkinter import ttk as widgets
+
+    from sun_study import AUTHOR
+    from sun_study.licence import EXPIRES, credential
+
+    assert AUTHOR in credential() and str(EXPIRES.year) in credential()
+
+    def labels(parent: Any) -> list[str]:
+        found: list[str] = []
+        for child in parent.winfo_children():
+            if isinstance(child, widgets.Label):
+                found.append(str(child.cget("text")))
+            found.extend(labels(child))
+        return found
+
+    said = labels(hidden_window.root)
+    assert credential() in said
+    assert not [line for line in said if "PROTOTYPE" in line], "the warning lives on the sheets"
+
+
+def test_a_typed_hour_is_spelled_the_way_the_sheet_is_named() -> None:
+    assert [window._clock_text(word) for word in ("9", "9am", "3pm", "09:30", "12", "noon")] == [
+        "09:00",
+        "09:00",
+        "15:00",
+        "09:30",
+        "12:00",
+        "noon",
+    ]
+
+
+def test_the_thumbnail_grid_is_the_runs_grid() -> None:
+    """Four drawings are two by two and not four across, which is the rule
+    the run lays a sheet out by; the panel copies it rather than choosing its
+    own, or the thumbnail shows a row where the sheet has a block."""
+    area = (0.0, 0.0, 200.0, 160.0)
+    four = window._grid(4, area)
+    assert len({round(cell[0]) for cell in four}) == 2, "two columns"
+    assert len({round(cell[1]) for cell in four}) == 2, "two rows"
+    three = window._grid(3, area)
+    assert len({round(cell[0]) for cell in three}) == 3, "three across, none wasted"
+    assert window._grid(0, area) == []
+
+
+# -- presets: the page in a file of the person's choosing -----------------
+
+
+def test_a_preset_is_the_page_in_a_file_and_comes_back_from_it(
+    hidden_window: Any, settings_file: Path, tmp_path: Path
+) -> None:
+    """The Silverwater setup, saved beside the job and loaded on the next desk.
+    The saved defaults are not touched by either half of the trip."""
+    hidden_window.prefix_solar.delete(0, "end")
+    hidden_window.prefix_solar.insert(0, "99 |")
+    hidden_window.do_plans.set(True)
+    where = tmp_path / "job" / "silverwater.json"
+
+    assert hidden_window.save_preset(where) == where
+    assert where.is_file()
+    assert not settings_file.exists(), "a preset is not the defaults"
+
+    hidden_window.apply(hidden_window.factory)
+    assert hidden_window.prefix_solar.get() != "99 |", "back to the defaults first"
+
+    assert hidden_window.load_preset(where) is True
+    assert hidden_window.prefix_solar.get() == "99 |"
+    assert hidden_window.do_plans.get() is True
+    assert "silverwater.json" in hidden_window.lines[-1]
+
+
+def test_a_preset_and_the_defaults_are_one_file_format(
+    hidden_window: Any, settings_file: Path, tmp_path: Path
+) -> None:
+    """So a preset copied over settings.json is the defaults, and the
+    defaults copied out are a preset somebody can send on."""
+    hidden_window.livable.insert(0, "_L")
+    where = hidden_window.save_preset(tmp_path / "preset.json")
+    assert where is not None
+
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_bytes(where.read_bytes())
+
+    assert preferences.load()["livable_suffix"] == "_L"
+
+
+def test_a_file_that_is_not_a_preset_is_reported_not_raised(
+    hidden_window: Any, tmp_path: Path
+) -> None:
+    """The person chose the file and wants to know why it did not take. A
+    window that closes over a wrong file is the worse answer, and a window
+    that silently loads nothing is the next worse."""
+    before = hidden_window.settings()
+    notes = tmp_path / "notes.json"
+    notes.write_text("{ this is not json", encoding="utf-8")
+
+    assert hidden_window.load_preset(notes) is False
+    assert "Could not load notes.json" in hidden_window.lines[-1]
+    assert hidden_window.load_preset(tmp_path / "missing.json") is False
+    assert "missing.json" in hidden_window.lines[-1]
+
+    notes.write_text('["a list, not a mapping"]', encoding="utf-8")
+    assert hidden_window.load_preset(notes) is False
+    assert hidden_window.settings() == before, "and nothing on the page moved"
+
+
+def test_a_preset_from_another_job_is_overruled_by_the_open_project(
+    hidden_window: Any, tmp_path: Path
+) -> None:
+    """The one way a loaded setting could make a run measure the wrong thing,
+    closed the same way it is for the saved defaults: the project drops what
+    it does not have, says so, and fills the emptied field itself."""
+    where = tmp_path / "elsewhere.json"
+    preferences.write(where, {"subject_layers": "01 | Wall.External, 09 | SOMEBODY ELSE'S SLABS"})
+
+    assert hidden_window.load_preset(where) is True
+
+    assert hidden_window._listed(hidden_window.subject) == ["01 | Wall.External"]
+    assert "SOMEBODY ELSE" in "\n".join(hidden_window.lines), "and it is said out loud"
+
+
+def test_a_preset_that_cannot_be_written_is_said_not_raised(
+    hidden_window: Any, tmp_path: Path
+) -> None:
+    """A folder that is a file: the nearest a test can get to a locked share."""
+    blocked = tmp_path / "blocked"
+    blocked.write_text("in the way", encoding="utf-8")
+
+    assert hidden_window.save_preset(blocked / "preset.json") is None
+    assert "Could not save the preset" in hidden_window.lines[-1]
+
+
+def test_the_preset_buttons_wear_their_own_pictures(hidden_window: Any) -> None:
+    """Two more sheets in the run bar, told apart by which way the arrow
+    goes. A button without its picture is a button that was renamed in one
+    place and not the other."""
+    assert icons.named("save_preset", 16) is not None
+    assert icons.named("load_preset", 16) is not None
+
+
+def test_a_project_with_no_location_draws_the_sheet_and_says_it_has_no_sun(
+    hidden_window: Any,
+) -> None:
+    """A shadow at a guessed latitude is a drawing that looks right and is
+    not, which is the one thing this window exists to prevent."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+
+    without = hidden_window.planned()
+    assert without, "the sheets are still listed"
+    assert all(sheet.elevation is None for sheet in without)
+    assert all(sheet.reach is None for sheet in without), "and nothing to draw with"
+
+    hidden_window.options = replace(hidden_window.options, latitude=-33.9663, longitude=151.1340)
+    hidden_window.days["winter"].set(True)
+    hidden_window.custom_day.delete(0, "end")
+    hidden_window.shadow_hours.delete(0, "end")
+    hidden_window.shadow_hours.insert(0, "12:00")
+
+    noon = hidden_window.planned()[0]
+
+    # Winter noon at latitude -34: the sun is due north, 90 - 34 - 23.44 up.
+    assert noon.elevation is not None
+    assert abs(noon.elevation - 32.6) < 0.5, f"sun at {noon.elevation}"
+    assert abs(noon.azimuth - 0.0) % 360 < 2 or abs(noon.azimuth - 360.0) < 2
+    assert noon.reach is not None and abs(noon.reach - 1.56) < 0.05
 
 
 # -- the add-on everything depends on -------------------------------------
@@ -657,6 +1405,7 @@ def test_the_living_room_glazing_is_only_named_when_it_is_set(hidden_window: Any
 def test_both_runs_are_told_the_same_layer_prefix(hidden_window: Any) -> None:
     """One field, and every layer, view and sheet either run leaves behind
     carries it -- so all of it can be found, and deleted, in one search."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     facade, plans = hidden_window.jobs()
 
@@ -671,6 +1420,7 @@ def test_the_archicad_wait_reaches_both_runs_in_seconds(hidden_window: Any) -> N
     and there was no way to say so from the window -- the run stopped partway,
     having already done the slow part.
     """
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     hidden_window.wait_min.delete(0, "end")
     hidden_window.wait_min.insert(0, "45")
@@ -687,6 +1437,7 @@ def test_a_wait_that_is_not_a_number_falls_back_rather_than_stopping_the_study(
     """A mistyped wait is not a reason to refuse a run. The command line's own
     default is right for every project but the largest, so it is what an
     unreadable field means."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.wait_min.delete(0, "end")
     hidden_window.wait_min.insert(0, typed)
     (facade,) = hidden_window.jobs()
@@ -704,6 +1455,7 @@ def test_reading_the_project_does_not_wait_the_exports_wait() -> None:
 def test_another_offices_numbering_reaches_the_command_line(hidden_window: Any) -> None:
     """``14`` is right for a project whose layer groups end at 13. The next
     office numbers differently, which is the whole reason for the field."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.prefix_solar.delete(0, "end")
     hidden_window.prefix_solar.insert(0, "ZZ |")
     (facade,) = hidden_window.jobs()
@@ -800,6 +1552,7 @@ def test_a_zone_is_offered_under_both_of_the_names_archicad_gives_it(
         return ((0.0, 0.0), (side, 0.0), (side, side), (0.0, side))
 
     monkeypatch.setattr(read, "layer_names", lambda _c: {4: "06 | Zone.Units"})
+    monkeypatch.setattr(read, "zone_categories", lambda _c: {})
     monkeypatch.setattr(
         read,
         "zones",
@@ -824,6 +1577,63 @@ def test_a_zone_is_offered_under_both_of_the_names_archicad_gives_it(
     assert "LOOSE" not in by_label
 
 
+def test_each_zone_name_says_its_zone_category(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``G08`` and ``BY`` are codes to anybody who did not model the project;
+    ``Apartment`` and ``Balcony`` are not. The category most of a name's
+    zones carry is shown beside it in the chooser."""
+    from sun_study.archicad import read
+    from sun_study.archicad.read import ArchicadZone
+
+    square = ((0.0, 0.0), (8.0, 0.0), (8.0, 8.0), (0.0, 8.0))
+    small = ((0.0, 0.0), (3.0, 0.0), (3.0, 3.0), (0.0, 3.0))
+    monkeypatch.setattr(read, "layer_names", lambda _c: {4: "06 | Zone.Units"})
+    monkeypatch.setattr(
+        read, "zone_categories", lambda _c: {"CAT-A": "Apartment", "CAT-B": "Balcony"}
+    )
+    monkeypatch.setattr(
+        read,
+        "zones",
+        lambda _c: (
+            ArchicadZone("a", "", "G08", outline=square, layer_index=4, category_guid="cat-a"),
+            ArchicadZone("b", "", "G08", outline=square, layer_index=4, category_guid="CAT-A"),
+            ArchicadZone("c", "", "BY", outline=small, layer_index=4, category_guid="CAT-B"),
+            ArchicadZone("d", "", "SC", outline=small, layer_index=4),
+        ),
+    )
+
+    _, kinds = probe._zones_by_layer(object())  # type: ignore[arg-type]
+    by_label = {kind.label: kind for kind in kinds}
+
+    assert by_label["G08"].category == "Apartment", "GUIDs are matched without regard to case"
+    assert by_label["BY"].category == "Balcony"
+    assert by_label["SC"].category == ""
+    assert "Apartment" in by_label["G08"].described()
+    assert by_label["SC"].described().startswith("SC (")
+
+
+def test_a_project_whose_categories_cannot_be_read_still_offers_its_zones(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sun_study.archicad import read
+    from sun_study.archicad.connection import ArchicadError
+    from sun_study.archicad.read import ArchicadZone
+
+    def refuse(_c: object) -> dict[str, str]:
+        raise ArchicadError("no ZoneCategory here")
+
+    monkeypatch.setattr(read, "layer_names", lambda _c: {4: "06 | Zone.Units"})
+    monkeypatch.setattr(read, "zone_categories", refuse)
+    monkeypatch.setattr(
+        read,
+        "zones",
+        lambda _c: (ArchicadZone("a", "", "G08", outline=((0, 0), (8, 0), (8, 8)), layer_index=4),),
+    )
+
+    _, kinds = probe._zones_by_layer(object())  # type: ignore[arg-type]
+
+    assert [kind.label for kind in kinds] == ["G08"]
+
+
 def test_the_biggest_zones_are_listed_first_because_they_are_what_is_wanted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -836,6 +1646,7 @@ def test_the_biggest_zones_are_listed_first_because_they_are_what_is_wanted(
         return ((0.0, 0.0), (side, 0.0), (side, side), (0.0, side))
 
     monkeypatch.setattr(read, "layer_names", lambda _c: {1: "06 | Zone.Units"})
+    monkeypatch.setattr(read, "zone_categories", lambda _c: {})
     monkeypatch.setattr(
         read,
         "zones",
@@ -1033,7 +1844,7 @@ def test_the_settings_scroll_and_the_run_button_does_not(hidden_window: Any) -> 
     """
     assert in_a_section(hidden_window, hidden_window.prefix_solar), "a setting in General"
     assert in_a_section(hidden_window, hidden_window.grid_m), "and one in Facade skin"
-    assert in_a_section(hidden_window, hidden_window.communal_csv), "and one in Solar diagrams"
+    assert in_a_section(hidden_window, hidden_window.communal_grid), "and one in Solar diagrams"
     assert not in_a_section(hidden_window, hidden_window.go), "Run must stay where it is"
     assert not in_a_section(hidden_window, hidden_window.note), "and so must what it says"
     assert not in_a_section(hidden_window, hidden_window.instance), (
@@ -1155,6 +1966,7 @@ def test_a_window_opened_afterwards_is_already_filled_in(
     """The whole point is what happens tomorrow morning, so the reopening is
     what is tested: a second window over the same fake project, reading the
     file the first one wrote."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.livable.insert(0, "_L")
     hidden_window.wait_min.delete(0, "end")
     hidden_window.wait_min.insert(0, "45")
@@ -1349,6 +2161,140 @@ def test_an_empty_search_offers_everything() -> None:
     assert window.matching(names, "|| //") == names, "punctuation alone narrows nothing"
 
 
+# -- the zone rows' Add: it opens whatever the read found ----------------------
+
+
+class _Recorded:
+    """Stands in for the chooser: remembers how it was opened, answers with
+    what it is told to."""
+
+    opened: ClassVar[list[dict[str, Any]]] = []
+    answer: ClassVar[list[str] | None] = None
+
+    def __init__(self, parent: Any, **kwargs: Any) -> None:
+        type(self).opened.append(kwargs)
+        self.result = type(self).answer
+
+
+@pytest.fixture
+def recorded(monkeypatch: pytest.MonkeyPatch, hidden_window: Any) -> type[_Recorded]:
+    _Recorded.opened = []
+    _Recorded.answer = None
+    monkeypatch.setattr(window, "LayerChooser", _Recorded)
+    monkeypatch.setattr(hidden_window.root, "wait_window", lambda _dialog: None)
+    return _Recorded
+
+
+def test_the_zone_add_opens_even_when_the_read_found_no_zones_there(
+    hidden_window: Any, recorded: type[_Recorded]
+) -> None:
+    """It used to write one line at the foot of the window and do nothing,
+    which from where the button is reads as a button that does not work.
+    It opens now, says why the list is empty, and takes a typed name."""
+    hidden_window.apartments.set("01 | Wall.External")  # carries no Zones
+    recorded.answer = ["G08"]
+
+    hidden_window._choose_zone_names(
+        hidden_window.apartment_names, hidden_window.apartments, "Apartment zones"
+    )
+
+    assert len(recorded.opened) == 1, "the chooser did not open"
+    opened = recorded.opened[0]
+    assert opened["typed"] is True
+    assert opened["available"] == []
+    assert "01 | Wall.External" in opened["empty"], "it does not say which layer was empty"
+    assert "Refresh" in opened["empty"]
+    assert hidden_window._listed(hidden_window.apartment_names) == ["G08"]
+
+
+def test_the_balcony_add_opens_the_same_way(hidden_window: Any, recorded: type[_Recorded]) -> None:
+    """Both rows are the same row, and both were reported broken."""
+    hidden_window.balconies.set("06 | Zone.Units")
+    recorded.answer = ["BY"]
+
+    hidden_window._choose_zone_names(
+        hidden_window.balcony_names, hidden_window.balconies, "Balcony zones"
+    )
+
+    opened = recorded.opened[0]
+    assert "BY" in opened["available"], "the zones the read did find are offered"
+    assert opened["empty"] == "", "nothing to apologise for when the list is full"
+    assert hidden_window._listed(hidden_window.balcony_names) == ["BY"]
+
+
+def test_a_read_that_failed_is_named_rather_than_blamed_on_the_layer(
+    hidden_window: Any, recorded: type[_Recorded]
+) -> None:
+    hidden_window.options = replace(
+        hidden_window.options, zone_kinds=(), problems=("zones: Archicad did not answer",)
+    )
+    hidden_window.apartments.set("06 | Zone.Units")
+
+    hidden_window._choose_zone_names(
+        hidden_window.apartment_names, hidden_window.apartments, "Apartment zones"
+    )
+
+    assert "Archicad did not answer" in recorded.opened[0]["empty"]
+
+
+def test_without_a_layer_the_zone_add_says_so_where_the_button_is(
+    monkeypatch: pytest.MonkeyPatch, hidden_window: Any, recorded: type[_Recorded]
+) -> None:
+    from tkinter import messagebox
+
+    said: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        messagebox, "showinfo", lambda title, message, **_: said.append((title, message))
+    )
+    hidden_window.apartments.set("")
+
+    hidden_window._choose_zone_names(
+        hidden_window.apartment_names, hidden_window.apartments, "Apartment zones"
+    )
+
+    assert not recorded.opened, "nothing to list names from without a layer"
+    assert said and "layer" in said[0][1].lower()
+
+
+def test_a_typed_zone_name_is_added_ticked_and_spelt_as_the_project_spells_it(
+    hidden_window: Any,
+) -> None:
+    chooser = window.LayerChooser(
+        hidden_window.root, title="Zones", hint="", available=["G08"], chosen=[], typed=True
+    )
+    assert chooser.typed is not None
+    chooser.typed.insert(0, "  g08 ")
+    chooser._add_typed()
+    chooser.typed.insert(0, "SC  1")
+    chooser._add_typed()
+    chooser._accept()
+
+    assert chooser.result == ["G08", "SC 1"]
+
+
+def test_a_chosen_zone_name_the_list_lacks_is_kept_not_dropped(hidden_window: Any) -> None:
+    """A saved name the read did not see is still what the office meant, and
+    pressing Use these must not quietly take it away."""
+    chooser = window.LayerChooser(
+        hidden_window.root, title="Zones", hint="", available=["BY"], chosen=["G08"], typed=True
+    )
+    chooser._accept()
+
+    assert chooser.result == ["G08"]
+
+
+def test_a_layer_list_still_drops_what_the_project_does_not_have(hidden_window: Any) -> None:
+    """Layers are the other way round on purpose: a layer typed or saved
+    wrongly is a study that measures nothing, so it goes."""
+    chooser = window.LayerChooser(
+        hidden_window.root, title="Layers", hint="", available=["01 | Core"], chosen=["gone"]
+    )
+    assert chooser.typed is None
+    chooser._accept()
+
+    assert chooser.result == []
+
+
 # -- the chooser opening where it was left ---------------------------------
 
 
@@ -1431,6 +2377,7 @@ def test_storeys_that_will_not_read_leave_the_pickers_alone(hidden_window: Any) 
 
 def test_a_chosen_band_becomes_the_two_storey_flags(hidden_window: Any) -> None:
     """Either end may be left open, and both open is the whole model."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.storey_from.set("AHD")
     hidden_window.storey_to.set("ROOF")
     assert hidden_window._band_args() == [
@@ -1448,60 +2395,89 @@ def test_a_chosen_band_becomes_the_two_storey_flags(hidden_window: Any) -> None:
     assert "--exclude-above" not in facade.args, "the metre flag is gone from the window"
 
 
-def test_the_shadow_study_names_views_and_never_layers(hidden_window: Any, tmp_path: Path) -> None:
-    """The whole reason this study reads a folder instead of a combination.
-
-    The office pins geometry in renovation filters, so two views can show the
-    same layers and different buildings, and AC26 cannot even switch to a view
-    through the API to look. Publishing the views hands that to Archicad. A
-    layer flag reaching this command line would mean the window had found a
-    second route to the same answer -- the one that is quietly wrong on
-    exactly these models.
-    """
-    folder = tmp_path / "published"
-    folder.mkdir()
-    for name in ("EXISTING NEIGHBOURING", "TOD MASSING", "TERRAIN"):
-        (folder / f"{name}.ifc").write_text("", encoding="utf-8")
-
+def test_the_shadow_study_sends_one_flag_per_legend_row_by_layer(hidden_window: Any) -> None:
+    """Layers out of the open project, one legend row each, and the native
+    model rather than an IFC or a folder of published views (D113)."""
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
     hidden_window.do_facade.set(False)
     hidden_window.do_shadows.set(True)
-    hidden_window.view_folder.insert(0, str(folder))
-    hidden_window.baseline_views.insert(0, "EXISTING NEIGHBOURING")
-    hidden_window.scenario_views.insert(0, "TOD MASSING")
-    hidden_window.terrain_views.insert(0, "TERRAIN")
+    rows["EXISTING"].insert(0, "01 | Wall.External, 01 | Floor.Structural")
+    rows["PROPOSED"].insert(0, "06 | Zone.Units")
+    hidden_window.terrain_layers.insert(0, "05 | Dims/Notes.DA")
 
     (job,) = hidden_window.jobs()
 
     assert job.args[0] == "shadows"
-    assert "--shadow-from-views" in job.args
-    assert job.args[job.args.index("--shadow-source") + 1] == "EXISTING NEIGHBOURING"
-    assert job.args[job.args.index("--shadow-scenario") + 1] == "TOD MASSING"
-    assert job.args[job.args.index("--shadow-terrain") + 1] == "TERRAIN"
-    assert "--layer-combination" not in job.args
-    assert "--subject-layer" not in job.args
+    assert flag(job.args, "--shadow-source") == [
+        "EXISTING=01 | Wall.External,01 | Floor.Structural"
+    ]
+    assert flag(job.args, "--shadow-scenario") == ["PROPOSED=06 | Zone.Units"]
+    assert flag(job.args, "--shadow-terrain") == ["05 | Dims/Notes.DA"]
+    assert flag(job.args, "--export") == ["native"]
+    assert "--shadow-from-views" not in job.args
+    assert "--shadow-favourite" not in job.args
 
 
-def test_the_views_offered_are_the_ones_actually_published(
-    hidden_window: Any, tmp_path: Path
+def test_every_study_that_exports_asks_for_the_native_model(hidden_window: Any) -> None:
+    """No job is left on ``auto``, which falls back to an IFC export when the
+    add-on is out of date: the run is to stop and say so instead."""
+    hidden_window.do_facade.set(True)
+    hidden_window.do_plans.set(True)
+    hidden_window.do_communal.set(True)
+    hidden_window.do_shadows.set(True)
+
+    exporting = [job for job in hidden_window.jobs() if job.args[0] != "site"]
+
+    assert {job.args[0] for job in exporting} >= {"massing", "archicad-run", "shadows"}
+    for job in exporting:
+        assert flag(job.args, "--export") == ["native"], job.args[0]
+
+
+def test_every_hour_on_one_drawing_is_asked_for_only_when_ticked(hidden_window: Any) -> None:
+    hidden_window.do_facade.set(False)
+    hidden_window.do_shadows.set(True)
+    (job,) = hidden_window.jobs()
+    assert "--shadow-all-hours" not in job.args
+
+    hidden_window.do_shadow_all_hours.set(True)
+    (job,) = hidden_window.jobs()
+    assert "--shadow-all-hours" in job.args
+    assert hidden_window.settings()["shadow_all_hours"] is True
+
+
+def test_the_legend_rows_are_the_legends_own_in_its_order(hidden_window: Any) -> None:
+    """Three that accumulate, then four that are compared; the short names are
+    what the drawing matches to the legend's colours."""
+    from sun_study.archicad.shadows import LEGEND
+
+    assert [(short, role) for short, role, _box in hidden_window.shadow_rows] == [
+        (short, role) for short, _words, role, _rgb in LEGEND
+    ]
+
+
+def test_the_adg_envelope_is_compared_like_the_proposal_and_drawn_under_it(
+    hidden_window: Any,
 ) -> None:
-    """Read off the folder, not out of the navigator.
+    """The proposal with room to move: a scenario, so it is compared rather
+    than added, and named just before the proposal so the proposal is drawn
+    on top and what shows of the envelope is the extra it would cost."""
+    rows = {short: (role, box) for short, role, box in hidden_window.shadow_rows}
+    shorts = [short for short, _role, _box in hidden_window.shadow_rows]
+    assert rows["ADG ENVELOPE"][0] == "scenario"
+    assert shorts.index("ADG ENVELOPE") == shorts.index("PROPOSED") - 1
 
-    A view listed in Archicad but missing from the set is the mistake worth
-    catching before a run rather than after, and only the folder knows.
-    """
-    folder = tmp_path / "published"
-    folder.mkdir()
-    (folder / "FUTURE CONTEXT.ifc").write_text("", encoding="utf-8")
-    (folder / "SEARS ENVELOPE.ifc").write_text("", encoding="utf-8")
-    (folder / "notes.txt").write_text("", encoding="utf-8")
-    hidden_window.view_folder.insert(0, str(folder))
+    hidden_window.do_shadows.set(True)
+    rows["ADG ENVELOPE"][1].insert(0, "01 | Floor.Structural")
+    job = next(job for job in hidden_window.jobs() if job.args[0] == "shadows")
 
-    assert hidden_window._published_views() == ["FUTURE CONTEXT", "SEARS ENVELOPE"]
+    assert flag(job.args, "--shadow-scenario") == ["ADG ENVELOPE=01 | Floor.Structural"]
 
 
-def test_no_folder_offers_nothing_and_says_so(hidden_window: Any) -> None:
-    """Rather than an empty chooser, which reads as "this project has none"."""
-    assert hidden_window._published_views() == []
+def test_the_legend_rows_survive_a_save(hidden_window: Any) -> None:
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+    rows["TOD"].insert(0, "01 | Floor.Structural")
+    saved = hidden_window.settings()
+    assert saved["shadow_layers_tod"] == "01 | Floor.Structural"
 
 
 def test_the_shadow_study_sends_only_what_was_filled_in(hidden_window: Any) -> None:
@@ -1515,15 +2491,16 @@ def test_the_shadow_study_sends_only_what_was_filled_in(hidden_window: Any) -> N
 
     (job,) = hidden_window.jobs()
 
-    assert "--shadow-favourite" not in job.args
     assert "--shadow-terrain-floor" not in job.args
     assert "--shadow-terrain" not in job.args
+    assert "--shadow-source" not in job.args, "an empty row is left off"
     # The dates and hours have defaults on the page, so they do travel.
     assert "--shadow-date" in job.args
     assert "--shadow-hour" in job.args
 
 
 def test_the_shadow_study_runs_after_the_others(hidden_window: Any) -> None:
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     hidden_window.do_communal.set(True)
     hidden_window.do_shadows.set(True)
@@ -1552,6 +2529,25 @@ def test_the_sun_eye_run_sends_what_is_filled_in_and_nothing_else(hidden_window:
     assert "--hour" not in job.args
 
 
+def test_the_sun_eye_override_and_layers_are_picked_from_the_project(
+    hidden_window: Any,
+) -> None:
+    """Both lists are the open project's own: the overrides through the
+    add-on, which is the only thing that can list them, and the layer
+    combinations through Tapir."""
+    assert list(hidden_window.eye_override.cget("values")) == [
+        "",
+        "Clean",
+        "Sun Eye Views",
+        "Zone Colours",
+    ]
+    assert hidden_window.eye_override.get() == "Sun Eye Views"
+    assert "12 | IFC ARCH. EXPORT" in hidden_window.eye_base_combination.cget("values")
+    assert hidden_window.eye_base_combination.get() in hidden_window.eye_base_combination.cget(
+        "values"
+    )
+
+
 def test_the_sun_eye_settings_survive_a_save(hidden_window: Any) -> None:
     hidden_window.eye_scale.delete(0, "end")
     hidden_window.eye_scale.insert(0, "200")
@@ -1577,7 +2573,10 @@ def test_the_site_analysis_runs_from_an_address_and_names_its_sheets(hidden_wind
     assert flag(site.args, "--anchor") == ["site"]
     assert flag(site.args, "--scale") == ["3000"]
     assert flag(site.args, "--port") == ["19723"]
-    assert "--aerial" not in site.args
+    # The aerial is not a choice on the page: the CLI fetches and places it
+    # by default, so the window neither asks nor passes a flag.
+    assert "--aerial" not in site.args and "--no-aerial" not in site.args
+    assert not hasattr(hidden_window, "do_site_aerial")
     assert "--model" not in site.args and "--keep-location" not in site.args
     hidden_window.do_site_model.set(True)
     hidden_window.do_site_location.set(False)
@@ -1594,12 +2593,15 @@ def test_the_site_analysis_waits_for_an_address(hidden_window: Any) -> None:
     assert hidden_window.settings()["site_anchor"] == "Project location"
 
 
-def test_a_ticked_day_reaches_every_solar_tool_but_the_shadow_diagram(
+def test_a_lit_day_reaches_the_three_solar_studies_and_no_other_page(
     hidden_window: Any,
 ) -> None:
-    """One set of ticks, and the plans, the facade, the communal study and the
-    sun views all run on those days. The shadow diagram keeps its own list,
-    because it is drawn for all three at once."""
+    """One box of days on the Solar analysis page, and the plans, the facade
+    and the communal study run on those days. The sun views and the shadow
+    diagram each have a box of their own on their own page, and neither
+    hears this one: a day lit for the apartments no longer quietly runs
+    the sun views on it too."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     hidden_window.do_communal.set(True)
     hidden_window.do_shadows.set(True)
@@ -1611,8 +2613,81 @@ def test_a_ticked_day_reaches_every_solar_tool_but_the_shadow_diagram(
     assert flag(by_name["solar analysis: facade"], "--date") == ["summer"]
     assert flag(by_name["solar analysis: apartments"], "--date") == ["summer"]
     assert flag(by_name["solar analysis: communal open space"], "--date") == ["summer"]
-    assert flag(by_name["sun views"], "--date") == ["summer"]
-    assert "--date" not in by_name["shadow diagram"]
+    assert "--date" not in by_name["sun views"], "the views keep their own midwinter"
+    assert flag(by_name["shadow diagram"], "--shadow-date") == ["06-21"]
+
+
+def test_the_sun_views_and_the_shadows_run_on_their_own_days(hidden_window: Any) -> None:
+    """The same three buttons on three pages, and three answers. The views
+    lit for the equinox run once per lit day and say which; the shadows
+    lit for every day are one job with every date."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_sun_eyes.set(True)
+    hidden_window.do_shadows.set(True)
+    hidden_window.eye_days["equinox"].set(True)
+    for lit in hidden_window.shadow_day_ticks.values():
+        lit.set(True)
+
+    jobs = hidden_window.jobs()
+    views = [job for job in jobs if job.label.startswith("sun views")]
+    assert [flag(job.args, "--date") for job in views] == [[], ["equinox"]]
+    assert "21 September" in views[1].label
+    (shadows,) = [job for job in jobs if job.label == "shadow diagram"]
+    assert flag(shadows.args, "--shadow-date") == ["06-21,09-21,12-21"]
+    assert hidden_window.chosen_days() == ["winter"], "the solar box did not move"
+
+    saved = hidden_window.settings()
+    assert saved["sun_view_day_equinox"] is True and saved["day_equinox"] is False
+    assert saved["shadow_day_summer"] is True
+
+
+def test_the_site_outputs_are_buttons_over_the_same_ticks(hidden_window: Any) -> None:
+    """Six lines of small print became two rows of buttons, worded short,
+    over the very same variables -- so a preset that ticked the context
+    model still lights the button, and pressing the button is the tick."""
+    buttons = hidden_window.site_buttons
+    assert list(buttons) == [
+        "Context Analysis sheet",
+        "Site Analysis sheet",
+        "Summary of Controls layout",
+        "Future Context (what the controls allow next door)",
+        "Context Model in 3D (terrain, blocks, neighbours)",
+        "Set the project location from the address",
+    ]
+    assert buttons["Context Model in 3D (terrain, blocks, neighbours)"].cget("text") == "3D context"
+    assert all(button.cget("image") for button in buttons.values()), "each wears its drawing"
+
+    assert hidden_window.do_site_model.get() is False
+    buttons["Context Model in 3D (terrain, blocks, neighbours)"].invoke()
+    assert hidden_window.do_site_model.get() is True
+    hidden_window.apply({"site_model": False})
+    assert str(buttons["Context Model in 3D (terrain, blocks, neighbours)"].cget("style")) == (
+        "Tile.TButton"
+    ), "a preset that unticks it unlights it"
+
+
+def test_the_shadow_storey_is_picked_by_name_and_sent_by_index(hidden_window: Any) -> None:
+    """The command places the fills by storey index, and the window offers
+    the project's storey names -- the same list the height band picks
+    from. A number typed the old way still goes through as the index."""
+    hidden_window.options = replace(
+        hidden_window.options,
+        storey_names=("AHD", "GROUND", "LEVEL 01"),
+        storey_indices=(("AHD", -1), ("GROUND", 6), ("LEVEL 01", 7)),
+    )
+    hidden_window._offer_height_cut()
+    assert list(hidden_window.shadow_storey["values"]) == ["AHD", "GROUND", "LEVEL 01"]
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+
+    hidden_window.shadow_storey.set("GROUND")
+    assert flag(hidden_window.jobs()[0].args, "--shadow-storey") == ["6"]
+    hidden_window.shadow_storey.set("2")
+    assert flag(hidden_window.jobs()[0].args, "--shadow-storey") == ["2"]
+    hidden_window.shadow_storey.set("")
+    assert "--shadow-storey" not in hidden_window.jobs()[0].args
 
 
 def test_several_ticked_days_run_each_tool_once_per_day(hidden_window: Any) -> None:
@@ -1623,6 +2698,7 @@ def test_several_ticked_days_run_each_tool_once_per_day(hidden_window: Any) -> N
     Each run carries its own date, so the sets stand beside each other in the
     project rather than the second replacing the first -- and the queued jobs
     say which day they are for, or two identical labels would be waiting."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.days["equinox"].set(True)
 
     jobs = hidden_window.jobs()
@@ -1634,6 +2710,7 @@ def test_several_ticked_days_run_each_tool_once_per_day(hidden_window: Any) -> N
 def test_the_rulesets_own_day_sends_nothing_so_the_names_stay_as_they_were(
     hidden_window: Any,
 ) -> None:
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.do_plans.set(True)
     facade, plans = hidden_window.jobs()
     assert "--date" not in facade.args
@@ -1649,6 +2726,7 @@ def test_a_custom_day_runs_as_well_as_the_ticks_and_is_judged_by_the_command(
     hidden_window: Any,
 ) -> None:
     """As well as, not instead of: the usual pair plus one is three runs."""
+    hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.custom_day.insert(0, "9-22")
     jobs = hidden_window.jobs()
     assert [flag(job.args, "--date") for job in jobs] == [[], ["09-22"]]
@@ -1666,20 +2744,17 @@ def test_a_custom_day_runs_as_well_as_the_ticks_and_is_judged_by_the_command(
 def test_the_future_context_tick_reaches_the_site_command_with_its_settings(
     hidden_window: Any,
 ) -> None:
-    """The reach and the street setback are the two things a designer
-    changes; the zones and the separation are the ADG's and stay put."""
+    """The reach is the one thing a designer changes; the zones stay put."""
     hidden_window.do_site.set(True)
     hidden_window.site_address.insert(0, "1 Test St, Kogarah NSW")
     hidden_window.do_site_future.set(True)
     hidden_window.site_future_reach.delete(0, "end")
     hidden_window.site_future_reach.insert(0, "80")
-    hidden_window.site_future_setback.delete(0, "end")
-    hidden_window.site_future_setback.insert(0, "7.5")
 
     site = next(job for job in hidden_window.jobs() if job.args[0] == "site")
     assert "--future" in site.args
     assert flag(site.args, "--future-reach") == ["80"]
-    assert flag(site.args, "--future-setback") == ["7.5"]
+    assert "--future-setback" not in site.args, "the raised buildings are not set back"
     assert flag(site.args, "--model-radius") == ["500"], "the model's square is what it reads"
     assert "--model" not in site.args
 
@@ -1848,15 +2923,17 @@ def test_open_and_queued_are_two_marks_and_never_the_same_one(hidden_window: Any
     is the page you are on" and "this will run", and so meant neither.
 
     Four styles, two axes. A tab can be open, queued, both or neither, and all
-    four are told apart -- and the rule over the open tab is blue only there.
+    four are told apart -- and only the open ones wear the face with the blue
+    cap, which is a shape and so cannot be mistaken for the queued tint.
     """
+    capped = {name for name, worn in theme.WEARS.items() if worn == "tabopen"}
     hidden_window._show_section(window.Window.GENERAL)
     tab = hidden_window.tabs[window.Window.SHADOWS]
 
     hidden_window.do_shadows.set(False)
     hidden_window._sync()
     assert tab.cget("style") == "Tab.TButton", "neither"
-    assert hidden_window.rules[window.Window.SHADOWS].cget("background") == theme.CHROME
+    assert tab.cget("style") not in capped
 
     hidden_window.do_shadows.set(True)
     hidden_window._sync()
@@ -1865,12 +2942,12 @@ def test_open_and_queued_are_two_marks_and_never_the_same_one(hidden_window: Any
 
     hidden_window._show_section(window.Window.SHADOWS)
     assert tab.cget("style") == "TabOpenQueued.TButton", "open and queued"
-    assert hidden_window.rules[window.Window.SHADOWS].cget("background") == theme.BLUE
+    assert tab.cget("style") in capped, "and it is the capped face that says open"
 
     hidden_window.do_shadows.set(False)
     hidden_window._sync()
     assert tab.cget("style") == "TabOpen.TButton", "open but not queued"
-    assert hidden_window.rules[window.Window.GENERAL].cget("background") == theme.CHROME
+    assert hidden_window.tabs[window.Window.GENERAL].cget("style") not in capped
 
 
 def test_only_the_tabs_that_draw_something_can_be_queued(hidden_window: Any) -> None:
@@ -1962,6 +3039,168 @@ def test_the_palette_argument_is_read_off_the_command_line(argv: list[str], expe
     started afterwards would inherit it.
     """
     assert window.wanted_study(argv) == expected
+
+
+# -- the boxes, the band at rest, and the panel that folds ------------------
+
+
+def test_every_study_heads_a_box_that_says_what_its_tick_is_worth(hidden_window: Any) -> None:
+    """A page was a flat run of rows with a rule between the groups, which is
+    what made it read as a form. Each study is a box now, headed by its own
+    tick, and the header says what that tick costs in sheets -- the same
+    figure the panel down the side draws, said where the decision is made."""
+    assert set(hidden_window.study_boxes) == {name for name, _t, _w in hidden_window._studies()}
+
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+    hidden_window._sync()
+
+    box, says = hidden_window.study_boxes[window.SHADOW_JOB]
+    made = sum(1 for sheet in hidden_window.planned() if sheet.job == window.SHADOW_JOB)
+    assert made > 0
+    assert says.cget("text") == f"{made} sheets"
+    assert str(box.cget("style")) == "Box.TFrame"
+
+    off_box, off_says = hidden_window.study_boxes[window.SUN_EYE_JOB]
+    assert off_says.cget("text") == "off"
+    assert str(off_box.cget("style")) == "BoxOff.TFrame", "a study nobody switched on goes grey"
+
+
+def test_a_study_s_rows_are_inside_its_own_box(hidden_window: Any) -> None:
+    """The rows are built by the code that always built them, pointed at the
+    box instead of at the page. Worth pinning because nothing else would
+    notice a row that ended up outside: it would simply sit on the page."""
+
+    def inside(widget: Any, box: Any) -> bool:
+        above = widget
+        while above is not None:
+            if above is box:
+                return True
+            above = getattr(above, "master", None)
+        return False
+
+    shadow_box, _ = hidden_window.study_boxes[window.SHADOW_JOB]
+    plans_box, _ = hidden_window.study_boxes[window.PLANS_JOB]
+    assert inside(hidden_window.shadow_hours, shadow_box)
+    assert inside(hidden_window.instants, plans_box)
+    assert not inside(hidden_window.instants, shadow_box)
+    assert not inside(hidden_window.adg_subset, plans_box), "and the page's own rows stay out"
+
+
+def test_the_band_is_never_empty(hidden_window: Any) -> None:
+    """With nothing under the pointer the band says what the open tab is for.
+    A strip that blanks itself is dead space at the foot of the window, which
+    is exactly what the log was."""
+    for title in hidden_window.titles:
+        hidden_window._show_section(title)
+        assert hidden_window.info.title.cget("text") == title
+        assert hidden_window.info.short.cget("text") == window.Window.SECTION_BLURB[title]
+
+
+def test_a_site_sheet_is_not_at_an_hour_of_the_day(hidden_window: Any) -> None:
+    """The site sheets are drawn from an address, not from the sun, so they
+    carry no day and no hour -- and a sheet titled "21 JUN 12:00" that is
+    really a Summary of Controls is a miniature of something the run will
+    not make."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_site.set(True)
+
+    sheets = hidden_window.planned()
+
+    assert [sheet.kind for sheet in sheets] == [
+        "Context Analysis",
+        "Site Analysis",
+        "Summary of Controls",
+    ]
+    assert all(sheet.time == "" and sheet.day == "" for sheet in sheets)
+    assert all(sheet.elevation is None for sheet in sheets)
+
+
+def test_the_sheets_panel_folds_when_the_window_cannot_hold_both(hidden_window: Any) -> None:
+    """Only on *crossing* the line. In between, the chevron is the user's:
+    somebody who opened the panel in a narrow window meant to, and having it
+    snap shut on the next pixel of a resize would be the window arguing."""
+
+    class Resized:
+        def __init__(self, widget: Any, width: int) -> None:
+            self.widget, self.width = widget, width
+
+    root, dock = hidden_window.root, hidden_window.dock
+    assert not dock.folded
+
+    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW - 1))
+    assert dock.folded, "too narrow for both, so the panel goes to its edge"
+
+    dock.fold(False)  # the chevron, pressed by hand
+    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW - 40))
+    assert not dock.folded, "still narrow, and still open: it was opened on purpose"
+
+    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW + 1))
+    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW - 1))
+    assert dock.folded, "crossing the line again folds it again"
+
+    hidden_window._fit(Resized(hidden_window.dock, 10))
+    assert dock.folded, "and a child being resized is not the window being resized"
+
+
+def test_a_faced_control_stands_on_its_own_colour(hidden_window: Any) -> None:
+    """The third trap of the rounded theme, checked on the real window.
+
+    A face is a rounded shape in a square widget, and what shows through its
+    four corners is the *style's* background -- not whatever the widget has
+    been put on. A button styled for the white page and placed on the grey
+    run bar has four white nicks in its corners, which at 4 px is a fault
+    nobody can name and everybody can see. So every control that wears a face
+    is compared with what it actually stands on.
+    """
+    from tkinter import ttk as widgets
+
+    style = widgets.Style(hidden_window.root)
+
+    def style_of(widget: Any) -> str:
+        """The style a widget is actually drawn with. One it was not given is
+        its class name -- except for the two that lie along an axis, whose
+        style is the class with the axis in front of it."""
+        given = str(widget.cget("style"))
+        if given:
+            return given
+        name = str(widget.winfo_class())
+        if name in {"TProgressbar", "TScrollbar", "TScale", "TSeparator"}:
+            return f"{str(widget.cget('orient')).title()}.{name}"
+        return name
+
+    def ground_of(widget: Any) -> str:
+        try:
+            return str(style.lookup(style_of(widget), "background")).upper()
+        except tk.TclError:
+            return str(widget.cget("background")).upper()
+
+    def walk(widget: Any) -> list[Any]:
+        found = [widget]
+        for child in widget.winfo_children():
+            found.extend(walk(child))
+        return found
+
+    wrong = []
+    for widget in walk(hidden_window.root):
+        if not isinstance(widget, widgets.Widget):
+            continue
+        layout = style.layout(style_of(widget))
+        if not layout or not str(layout[0][0]).startswith("Loriini."):
+            continue
+        parent = widget.master
+        if isinstance(parent, widgets.Widget):
+            # A card's style colour is the page, for its corners; what sits
+            # on the card sits on its white fill. ``theme.INSIDE`` says so.
+            stands_on = theme.INSIDE.get(style_of(parent), "") or ground_of(parent)
+        else:
+            stands_on = str(parent.cget("background")).upper()
+        if ground_of(widget) != stands_on.upper():
+            wrong.append(f"{style_of(widget)} is styled for {ground_of(widget)} on {stands_on}")
+
+    assert not wrong, sorted(set(wrong))
 
 
 # ---------------------------------------------------------------------------

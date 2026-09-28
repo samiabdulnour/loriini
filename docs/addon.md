@@ -14,9 +14,10 @@ open rather than guessed at.
 ## Why an add-on at all
 
 Everything else this tool asks of Archicad goes through the
-[Tapir add-on](https://github.com/ENZYME-APD/tapir-archicad-automation), and
-should keep going through it. These three do not, because no command for them
-exists anywhere.
+[Tapir](https://github.com/ENZYME-APD/tapir-archicad-automation) commands. Since
+D110 those are built into this add-on (`archicad-addon/Tapir`, answering under
+the `LoriiniTapir` namespace), so Tapir no longer has to be installed. The
+commands below are Loriini's own, because no command for them exists anywhere.
 
 The office's solar penetration diagram is made by hand like this: set the 3D
 window to a parallel projection aimed along the sun's own direction for one
@@ -468,6 +469,9 @@ that silently does nothing reads as a broken add-on.
 Studio with the v142 toolset, and these workstations have no administrator
 rights, so the install fails at the elevation prompt with code 1602. The
 `Archicad add-on` workflow builds it on a runner instead and uploads the .apx.
+A second job in the same run builds `Loriini.exe` and uploads the two together
+as the handover folder; [Installing it](#installing-it) says where to find it,
+and D118 when it is made.
 
 The recipe is Tapir's, which is the only combination proven to build an
 Archicad 26 add-on:
@@ -510,11 +514,27 @@ fixing a compile error does not necessarily have them.
 
 No administrator rights needed, which is the point.
 
-1. Download the `LoriiniAddOn_AC26_Win` artifact from the workflow run.
-2. Put the `.apx` in the same folder as Tapir's, e.g.
-   `C:\Users\<you>\Documents\Tapir\Add-Ons\`.
-3. Put `Loriini.exe` in that folder too, if the menu item should start the app.
-4. In Archicad: **Options > Add-On Manager**, add that folder, restart.
+1. Get the folder. It holds `Loriini.exe`, `LoriiniAddOn_AC26_Win.apx`,
+   `How to install.txt` and `LICENSE.txt`.
+   - **From GitHub**, with no Python at all: on the repository's **Actions**
+     tab, open **Archicad add-on**, then the newest successful run for your
+     branch, and download **Loriini_AC26_Win** under *Artifacts* at the foot
+     of the run's page. A push that changes the add-on or the build makes
+     one. For any other commit, press **Run workflow** on the workflow's page,
+     pick the branch, and download from the run it starts. The note inside
+     names the commit it was built from.
+   - **On a PC** with a checkout: `uv run python scripts/build_app.py` leaves
+     the same folder in `dist/`. It takes the add-on from `--addon <file>`, a
+     local build, or the newest successful run of this workflow on the
+     branch, fetched with the GitHub CLI (`gh auth login` once). Without
+     `gh`, download the `LoriiniAddOn_AC26_Win` artifact from the run and
+     pass it with `--addon`; `--addon-only` puts it in `dist/` without
+     rebuilding the program.
+2. Copy `Loriini.exe` and the `.apx` into one folder of your own, e.g.
+   `C:\Users\<you>\Documents\Loriini\Add-Ons\`. Together, because the menu
+   item looks for `Loriini.exe` beside the `.apx`. Tapir is built in and does
+   not need a folder of its own.
+3. In Archicad: **Options > Add-On Manager**, add that folder, restart.
 
 `sun-study archicad-info` reports whether the add-on answered.
 

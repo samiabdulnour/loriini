@@ -41,13 +41,14 @@ import datetime as dt
 import sys
 from pathlib import Path
 
-from sun_study import AUTHOR, PRODUCT
+from sun_study import AUTHOR, PRODUCT, __version__
 
 __all__ = [
     "EXPIRES",
     "SUMMARY",
     "LicenceExpiredError",
     "check",
+    "credential",
     "file",
     "full_text",
     "has_expired",
@@ -80,6 +81,13 @@ def check(today: dt.date | None = None) -> None:
     """Let the run proceed, or raise ``LicenceExpiredError``. Silent while valid."""
     if has_expired(today):
         raise LicenceExpiredError(explain())
+
+
+def credential() -> str:
+    """The one line the window carries at its foot: whose build this is,
+    which one, and until when. Not a warning, so it is not set in red; the
+    prototype disclaimer stays on every sheet, where the figures are."""
+    return f"{PRODUCT} {__version__} · {AUTHOR} · licensed until {EXPIRES.day} {EXPIRES:%B %Y}"
 
 
 def explain() -> str:

@@ -135,7 +135,7 @@ SOURCES: tuple[Source, ...] = (
             "The planning controls: land use zone, height of building, floor "
             "space ratio, minimum lot size and heritage items -- at the site "
             "for the Summary of Controls, and across the neighbourhood for the "
-            "future context envelopes."
+            "height the future context raises each neighbour to."
         ),
         licence="Creative Commons Attribution 4.0 (CC BY 4.0)",
         terms="https://www.planningportal.nsw.gov.au/copyright-and-disclaimer",
@@ -143,8 +143,8 @@ SOURCES: tuple[Source, ...] = (
         note=(
             "The register is the mapped control, not the instrument. The LEP "
             "and the council's DCP are what a consent is read against, and the "
-            "DCP is not open data at all -- which is why the setbacks are asked "
-            "for in the window rather than fetched."
+            "DCP is not open data at all -- which is why the future context is "
+            "raised to the LEP's height control and not to a DCP's."
         ),
     ),
     Source(

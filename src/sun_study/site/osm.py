@@ -15,11 +15,12 @@ trees first and keeps OSM's only where the council has none.
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sun_study.site.geo import Extent, Point
+from sun_study.site.geo import Extent, Point, point_in_ring
 from sun_study.site.http import Log, overpass
 from sun_study.site.trees import Tree, tree_from_osm, trees_along_row
 
@@ -177,15 +178,20 @@ class Building:
     ring: Line
     levels: int | None = None
     height_m: float | None = None
+    holes: tuple[Line, ...] = ()
+    """Courtyards and light wells. Only a multipolygon building has them."""
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "lon": self.lon,
             "lat": self.lat,
             "ring": [list(p) for p in self.ring],
             "levels": self.levels,
             "height_m": self.height_m,
         }
+        if self.holes:
+            data["holes"] = [[list(p) for p in hole] for hole in self.holes]
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Building:
@@ -195,6 +201,7 @@ class Building:
             tuple((float(x), float(y)) for x, y in data.get("ring") or []),
             int(data["levels"]) if data.get("levels") is not None else None,
             float(data["height_m"]) if data.get("height_m") is not None else None,
+            tuple(tuple((float(x), float(y)) for x, y in hole) for hole in data.get("holes") or []),
         )
 
 
@@ -281,6 +288,135 @@ def _number(value: Any) -> float | None:
         return None
 
 
+def _levels(tags: dict[str, Any]) -> int | None:
+    """Storeys above ground, as OSM records them.
+
+    ``building:levels`` first. A value OSM writes as a range or a list --
+    ``3;4``, ``3-4`` -- is read as its largest, which is the one that casts
+    the shadow; ``roof:levels`` is added, because a storey in the roof is a
+    storey of height all the same.
+    """
+    raw = tags.get("building:levels")
+    if raw is None:
+        return None
+    parts = [_number(part) for part in re.split(r"[;,\-]", str(raw))]
+    counted = [part for part in parts if part is not None and part >= 0]
+    if not counted:
+        return None
+    roof = _number(tags.get("roof:levels")) or 0.0
+    return int(max(counted) + max(roof, 0.0))
+
+
+def _building(tags: dict[str, Any], ring: Line, holes: Sequence[Line] = ()) -> Building:
+    return Building(
+        lon=sum(p[0] for p in ring) / len(ring),
+        lat=sum(p[1] for p in ring) / len(ring),
+        ring=ring,
+        levels=_levels(tags),
+        height_m=_number(tags.get("height")),
+        holes=tuple(holes),
+    )
+
+
+def _stitched(pieces: Sequence[Line]) -> list[Line]:
+    """Closed rings out of the ways a multipolygon's outline is split into.
+
+    A courtyard block is often drawn as four ways, one per street front,
+    and only their ends say how they join: each is appended to whichever
+    open ring ends where it starts (turned round if it ends there instead)
+    until the ring comes back to its own start. A ring that never closes is
+    dropped -- it is a relation cut by the query's box, and half a building
+    is worse than none.
+    """
+    open_rings: list[list[Point]] = []
+    closed: list[Line] = []
+    for piece in pieces:
+        if len(piece) < 2:
+            continue
+        line = list(piece)
+        joined = True
+        while joined:
+            joined = False
+            for ring in open_rings:
+                if ring[-1] == line[0]:
+                    ring.extend(line[1:])
+                elif ring[-1] == line[-1]:
+                    ring.extend(reversed(line[:-1]))
+                elif ring[0] == line[-1]:
+                    ring[:0] = line[:-1]
+                elif ring[0] == line[0]:
+                    ring[:0] = list(reversed(line[1:]))
+                else:
+                    continue
+                open_rings.remove(ring)
+                line = ring
+                joined = True
+                break
+        if len(line) >= 4 and line[0] == line[-1]:
+            closed.append(tuple(line))
+        else:
+            open_rings.append(line)
+    return closed
+
+
+def _multipolygon(element: dict[str, Any]) -> list[tuple[Line, list[Line]]]:
+    """A building relation's outlines, each with the holes that fall in it."""
+    outer: list[Line] = []
+    inner: list[Line] = []
+    for member in element.get("members") or []:
+        geometry = member.get("geometry")
+        if member.get("type") != "way" or not geometry:
+            continue
+        line: Line = tuple((float(g["lon"]), float(g["lat"])) for g in geometry if g and "lon" in g)
+        (inner if member.get("role") == "inner" else outer).append(line)
+    shapes: list[tuple[Line, list[Line]]] = [(ring, []) for ring in _stitched(outer)]
+    for hole in _stitched(inner):
+        for ring, holes in shapes:
+            if point_in_ring(hole[0][0], hole[0][1], list(ring)):
+                holes.append(hole)
+                break
+    return shapes
+
+
+def _buildings_in(elements: Sequence[dict[str, Any]]) -> list[Building]:
+    """Every building in an Overpass answer: plain ways and multipolygons.
+
+    The multipolygons are the ones that matter most and were the ones not
+    asked for. OSM draws a building with a courtyard -- the perimeter
+    apartment block, the shopping centre, the hospital -- as a relation, not
+    a way, and the building tag sits on the relation: its member ways carry
+    none, so a query for tagged ways alone returned nothing of them at all.
+    Around Kogarah station both of the relations are apartment blocks.
+
+    Each outline once. A member way that is tagged as a building as well --
+    it happens -- would otherwise stand as a second slab inside the first.
+    """
+    found: list[Building] = []
+    seen: set[tuple[tuple[float, float], ...]] = set()
+
+    def key(ring: Line) -> tuple[tuple[float, float], ...]:
+        return tuple(sorted({(round(x, 6), round(y, 6)) for x, y in ring}))
+
+    for element in elements:
+        tags = element.get("tags") or {}
+        if not tags.get("building"):
+            continue
+        if element.get("type") == "relation":
+            for ring, holes in _multipolygon(element):
+                if key(ring) not in seen:
+                    seen.add(key(ring))
+                    found.append(_building(tags, ring, holes))
+            continue
+        if element.get("type") != "way" or not element.get("geometry"):
+            continue
+        ring = tuple((float(g["lon"]), float(g["lat"])) for g in element["geometry"])
+        if len(ring) < 3 or key(ring) in seen:
+            continue
+        seen.add(key(ring))
+        found.append(_building(tags, ring))
+    return found
+
+
 def buildings(extent: Extent, *, log: Log | None = None) -> tuple[Building, ...]:
     """Every building footprint in the extent, and nothing else.
 
@@ -289,29 +425,15 @@ def buildings(extent: Extent, *, log: Log | None = None) -> tuple[Building, ...]
     footprints alone, thousands of them, in one answer.
     """
     south, west, north, east = extent.lonlat_bbox()
+    bbox = f"{south},{west},{north},{east}"
     query = f"""[out:json][timeout:120];
-way["building"]({south},{west},{north},{east});
+(
+  way["building"]({bbox});
+  relation["building"]["type"="multipolygon"]({bbox});
+);
 out geom;"""
     data = overpass(query, timeout=120.0, log=log)
-    found: list[Building] = []
-    for element in data.get("elements") or []:
-        if element.get("type") != "way" or not element.get("geometry"):
-            continue
-        tags = element.get("tags") or {}
-        coords: Line = tuple((float(g["lon"]), float(g["lat"])) for g in element["geometry"])
-        if len(coords) < 3:
-            continue
-        levels = _number(tags.get("building:levels"))
-        found.append(
-            Building(
-                lon=sum(p[0] for p in coords) / len(coords),
-                lat=sum(p[1] for p in coords) / len(coords),
-                ring=coords,
-                levels=int(levels) if levels is not None else None,
-                height_m=_number(tags.get("height")),
-            )
-        )
-    return tuple(found)
+    return tuple(_buildings_in(data.get("elements") or []))
 
 
 def furniture(extent: Extent, *, log: Log | None = None) -> Furniture:
@@ -326,6 +448,7 @@ def furniture(extent: Extent, *, log: Log | None = None) -> Furniture:
   node["highway"="street_lamp"]({bbox});
   way["highway"]["oneway"="yes"]({bbox});
   way["building"]({bbox});
+  relation["building"]["type"="multipolygon"]({bbox});
   way["power"="line"]({bbox});
   way["power"="minor_line"]({bbox});
   way["man_made"="pipeline"]({bbox});
@@ -380,16 +503,7 @@ out geom;"""
             )
             continue
         if tags.get("building"):
-            levels = _number(tags.get("building:levels"))
-            buildings.append(
-                Building(
-                    lon=sum(p[0] for p in coords) / len(coords),
-                    lat=sum(p[1] for p in coords) / len(coords),
-                    ring=coords,
-                    levels=int(levels) if levels is not None else None,
-                    height_m=_number(tags.get("height")),
-                )
-            )
+            continue  # all of them together below, the multipolygons with them
         elif tags.get("power") in ("line", "minor_line"):
             utilities.append(Utility("power", coords))
         elif tags.get("man_made") == "pipeline":
@@ -399,6 +513,7 @@ out geom;"""
         elif tags.get("highway") and tags.get("oneway") == "yes":
             oneway.append((tags.get("name"), coords))
 
+    buildings = _buildings_in(data.get("elements") or [])
     return Furniture(
         trees=tuple(trees),
         hydrants=tuple(hydrants),

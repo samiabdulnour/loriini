@@ -1,27 +1,29 @@
 # -*- mode: python ; coding: utf-8 -*-
-import os
 from pathlib import PurePath
 from PyInstaller.utils.hooks import collect_data_files
 from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import collect_all
 
-# Every path from the folder this recipe sits in -- the checkout's root --
-# rather than from one machine's copy of it, so the same recipe builds on a
-# colleague's machine and on the Windows runner (.github/workflows/app.yml).
-# SPECPATH is PyInstaller's own: the directory of the spec it is running.
-ROOT = SPECPATH
+# Every path is taken from the folder this file is in, so the one recipe
+# builds on any machine: a checkout on somebody's PC, or the runner that
+# makes the distribution folder (.github/workflows/archicad-addon.yml).
+# PyInstaller puts SPECPATH in scope for exactly this. A spec PyInstaller
+# writes for itself holds absolute paths, and this one held those of the PC
+# it was first built on, which no other machine has.
+ROOT = PurePath(SPECPATH)
+ICON = str(ROOT / 'assets' / 'loriini.ico')
 
-datas = [(os.path.join(ROOT, 'assets', 'loriini.ico'), 'assets')]
+datas = [(ICON, 'assets')]
 # The window's icons. PNGs rather than a drawing library: Tk reads them
 # itself, so Pillow stays a development dependency and out of the bundle --
 # it is in `excludes` below, and `scripts/make_icons.py` is what needs it.
 # `sun_study.app.icons` looks for them at exactly this path under _MEIPASS.
-datas += [(os.path.join(ROOT, 'assets', 'icons'), 'assets/icons')]
+datas += [(str(ROOT / 'assets' / 'icons'), 'assets/icons')]
 # The licence itself, at the root of the bundle, where `sun_study.licence.file`
 # looks for it. The info box summarises the terms from a constant that is in
 # the executable either way; this is what `Read the full licence` shows, and
 # without it that button is hidden rather than broken.
-datas += [(os.path.join(ROOT, 'LICENSE'), '.')]
+datas += [(str(ROOT / 'LICENSE'), '.')]
 binaries = []
 hiddenimports = []
 datas += collect_data_files('tzdata')
@@ -40,7 +42,7 @@ hiddenimports += [m for m in tmp_ret[2] if not m.startswith(('ifcopenshell.expre
 
 
 a = Analysis(
-    [os.path.join(ROOT, 'src', 'sun_study', 'app', '__main__.py')],
+    [str(ROOT / 'src' / 'sun_study' / 'app' / '__main__.py')],
     pathex=[],
     binaries=binaries,
     datas=datas,
@@ -73,6 +75,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    version=os.path.join(ROOT, 'build', 'version_info.txt'),
-    icon=[os.path.join(ROOT, 'assets', 'loriini.ico')],
+    version=str(ROOT / 'build' / 'version_info.txt'),
+    icon=[ICON],
 )

@@ -39,3 +39,10 @@
 'GICN' ID_ICON_SITE "LoriiniSite" {
 	"LoriiniSite"
 }
+
+// Tapir's shared schema definitions, which every Tapir command built into
+// this add-on validates its parameters against. See Tapir/README.md.
+
+'FILE' ID_TAPIR_SCHEMA_DEFINITIONS_FILE "" {
+	"TapirCommonSchemaDefinitions.json"
+}

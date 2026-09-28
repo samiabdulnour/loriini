@@ -77,4 +77,12 @@
 #define ID_ICON_VIEWS				32525
 #define ID_ICON_SITE				32526
 
+// -- 'FILE' ----------------------------------------------------------------
+//
+// The shared JSON schema definitions Tapir's commands validate against,
+// read at run time by Tapir/SchemaDefinitions.cpp. Tapir's own copy of the
+// file, renamed so it cannot be mistaken for one of Loriini's.
+
+#define ID_TAPIR_SCHEMA_DEFINITIONS_FILE	32530
+
 #endif

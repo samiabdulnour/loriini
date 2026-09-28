@@ -53,6 +53,7 @@ from sun_study.archicad.draw import (
     clear_layer,
     create_elements,
     ensure_layer,
+    place_texts,
 )
 from sun_study.archicad.ids import (
     NOT_GROUPED,
@@ -73,6 +74,7 @@ from sun_study.archicad.layout import (
 )
 from sun_study.archicad.read import elements_by_ifc_ids
 from sun_study.archicad.sheeting import DEFAULT_SHEET_MODE, cells_for, sheet_chunks
+from sun_study.archicad.site_analysis import attribute_index
 from sun_study.archicad.views import views_for_storeys
 from sun_study.core.geometry import PlanTransform, rotation_about_z
 from sun_study.core.patches import Ring
@@ -84,16 +86,22 @@ from sun_study.core.shadow import (
 )
 
 __all__ = [
+    "ALL_HOURS_WORD",
     "BASELINE_RAMP",
     "DEFAULT_SHEETS",
+    "LEGEND",
     "SCENARIO_RAMP",
     "ShadowDrawReport",
     "ShadowSheetReport",
+    "all_hours_combination_name",
+    "all_hours_layer_name",
     "build_shadow_sheets",
     "combination_name",
+    "designed_source",
     "draw_shadow_series",
     "drawing_order",
     "layer_name",
+    "legend_colour",
     "project_frame",
     "require_hatch_favourite",
     "sheet_name",
@@ -120,10 +128,47 @@ BASELINE_RAMP: tuple[tuple[int, int, int], ...] = (
     (158, 158, 158),
 )
 SCENARIO_RAMP: tuple[tuple[int, int, int], ...] = (
-    (204, 216, 225),
-    (168, 193, 205),
-    (147, 174, 192),
+    (207, 215, 224),
+    (175, 191, 204),
+    (156, 172, 191),
 )
+
+#: The ADG envelope's colour: a lilac, not a fourth blue. It is the proposal
+#: with room to move -- the same building a little larger -- so it is drawn
+#: just under the proposal and what shows of it is the fringe the extra room
+#: would add; in a fourth blue that fringe could not be told from the
+#: proposal's own edge.
+ADG_ENVELOPE_RGB: tuple[int, int, int] = (192, 182, 214)
+
+#: The office's shadow legend, row by row: the short name a run is given, the
+#: words on the sheet, whether it accumulates or is compared, and its colour.
+#:
+#: Colours read off the marked-up legend of 21 September 2026 pixel by pixel.
+#: The greys agree with the SSDA 401 ramp exactly; the blues sit a few units
+#: from the ramp's first sampling and are what the sheet shows now.
+#:
+#: Matched by name rather than dealt out by position, so a project that has no
+#: future context still draws its proposal in the proposal's blue. By
+#: position, leaving a row out would have shifted every later row one colour.
+LEGEND: tuple[tuple[str, str, str, tuple[int, int, int]], ...] = (
+    ("EXISTING", "EXISTING NEIGHBOURING BUILDINGS", BASELINE, BASELINE_RAMP[0]),
+    ("FUTURE", "FUTURE NEIGHBOURING CONTEXT BUILDINGS", BASELINE, BASELINE_RAMP[1]),
+    ("EXISTING ON SITE", "EXISTING STRUCTURES WITHIN THE SITE", BASELINE, BASELINE_RAMP[2]),
+    ("TOD", "CURRENT LEP 2023 BUILDING HEIGHT LIMIT", SCENARIO, SCENARIO_RAMP[0]),
+    ("SEARS", "CANTERBURY BANKSTOWN LEP BUILDING HEIGHT LIMIT", SCENARIO, SCENARIO_RAMP[1]),
+    ("ADG ENVELOPE", "ADG BUILDING ENVELOPE", SCENARIO, ADG_ENVELOPE_RGB),
+    ("PROPOSED", "PROPOSED BUILDING ENVELOPE", SCENARIO, SCENARIO_RAMP[2]),
+)
+
+
+def legend_colour(label: str) -> tuple[int, int, int] | None:
+    """The legend's colour for a row named either way, or ``None``."""
+    wanted = " ".join(label.split()).casefold()
+    for short, words, _role, rgb in LEGEND:
+        if wanted in (short.casefold(), words.casefold()):
+            return rgb
+    return None
+
 
 #: Where the shadow pens start. A pen number means whatever one project's pen
 #: table says it means, so these are meant to be overridden; the colours above
@@ -150,7 +195,7 @@ def styles_for(sources: Sequence[SourceSpec]) -> dict[str, BandStyle]:
             source.label.upper(),
             float("inf"),
             fill_pen=FIRST_SHADOW_PEN + index,
-            rgb=ramp[position % len(ramp)],
+            rgb=legend_colour(source.label) or ramp[position % len(ramp)],
         )
     return styles
 
@@ -199,6 +244,7 @@ def project_frame(
     *,
     north_radians: float,
     export_bearing_deg: float,
+    archicad_guids: bool = False,
 ) -> tuple[PlanTransform, str]:
     """The rotation and shift taking export coordinates into the project's.
 
@@ -225,6 +271,12 @@ def project_frame(
     being dragged by it. Geometry then gets the last word as a *check* -- if
     the turned pairs do not land on their Archicad counterparts, something
     here is wrong and the run says so rather than drawing a plausible sheet.
+
+    ``archicad_guids`` is for a native export, whose samples already carry
+    Archicad's own guids rather than IFC GlobalIds, so there is nothing to
+    look up. Its geometry is in the project's frame to begin with and both
+    norths come from the same ``place.north``, so the turn comes out zero and
+    the check is then a check that the identity really is the identity.
     """
     project_bearing = (270.0 + math.degrees(north_radians)) % 360.0
     turn = ((project_bearing - export_bearing_deg + 180.0) % 360.0) - 180.0
@@ -233,7 +285,12 @@ def project_frame(
     offset = np.zeros(2, dtype=np.float64)
     residual = float("nan")
     used = 0
-    found = elements_by_ifc_ids(connection, [gid for gid, _, _ in samples]) if samples else {}
+    if not samples:
+        found: dict[str, list[str]] = {}
+    elif archicad_guids:
+        found = {gid: [gid] for gid, _, _ in samples}
+    else:
+        found = elements_by_ifc_ids(connection, [gid for gid, _, _ in samples])
     pairs = [(x, y, found[gid][0]) for gid, x, y in samples if found.get(gid)]
     if pairs:
         boxes: list[Any] = []
@@ -297,6 +354,34 @@ def combination_name(label: str) -> str:
     return naming.named(f"{naming.SHADOW_WORD} {label}")
 
 
+#: What the drawing of every hour at once is called, after its day.
+ALL_HOURS_WORD = "ALL HOURS"
+
+
+def all_hours_layer_name(date_label: str) -> str:
+    """The layer one day's every-hour outlines are drawn on."""
+    return naming.layer(f"{date_label} {ALL_HOURS_WORD}", naming.SHADOW_WORD)
+
+
+def all_hours_combination_name(date_label: str) -> str:
+    """The combination that shows one day's every-hour drawing and no hour alone."""
+    return naming.named(f"{naming.SHADOW_WORD} {date_label} {ALL_HOURS_WORD}")
+
+
+def designed_source(sources: Sequence[SourceSpec]) -> str | None:
+    """The source whose shadow the every-hour drawing shows.
+
+    The legend's PROPOSED row when there is one, and otherwise the last
+    scenario, which is the one being applied for (see ``drawing_order``).
+    ``None`` with no scenario at all -- a sheet of baselines has no design on it.
+    """
+    for source in sources:
+        if source.key.casefold() in ("proposed", "additional"):
+            return source.key
+    scenarios = [source.key for source in sources if source.role == SCENARIO]
+    return scenarios[-1] if scenarios else None
+
+
 def shared_layer_name() -> str:
     """Where the legend and the site boundary live.
 
@@ -329,6 +414,10 @@ class ShadowDrawReport:
     340 m2 at 9am" -- and a figure somebody has to measure off a drawing with
     a scale rule is a figure that will be measured wrongly.
     """
+    note: str = ""
+    """Said when the fills could not be drawn in the legend's own colours."""
+    all_hours: tuple[str, ...] = ()
+    """The combinations of the every-hour drawings, one per day, if asked for."""
 
     def describe(self) -> str:
         lines = [
@@ -352,6 +441,13 @@ class ShadowDrawReport:
                 "below the terrain. Take the terrain layer out of the context "
                 "layers, or move the datum with --shadow-datum."
             )
+        if self.all_hours:
+            lines.append(
+                f"  every hour of the design's own shadow on one drawing: "
+                f"{', '.join(self.all_hours)}"
+            )
+        if self.note:
+            lines.append(f"  {self.note}")
         lines.append(self.stamped.describe())
         if self.grouped.describe():
             lines.append(self.grouped.describe())
@@ -458,6 +554,127 @@ def _fill(
     return hatch
 
 
+def _as_legend_fill(
+    hatch: dict[str, Any], rgb: tuple[int, int, int] | None, solid: int | None
+) -> dict[str, Any]:
+    """One hatch re-spelled for the add-on's ``CreateFills``, in its own colour.
+
+    The legend is a set of colours, and a pen can only approximate one: pen
+    93 means whatever one project's pen table says. ``CreateFills`` takes the
+    colour itself, and takes contour pen 0, which is no contour at all -- the
+    two things ``CreateHatches`` could not do, and the reason a hand-made Fill
+    Favorite was ever needed.
+
+    ``rgb`` of ``None`` is the site boundary, which is an outline and keeps
+    its pen.
+    """
+    one: dict[str, Any] = {
+        "contours": [{"points": list(hatch["coordinates"])}],
+        "layerIndex": hatch["layerIndex"],
+        "fillPen": hatch["fillPenIndex"],
+        "showArea": False,
+    }
+    if "floorInd" in hatch:
+        one["floorIndex"] = hatch["floorInd"]
+    if rgb is None:
+        one["contourPen"] = hatch.get("contourPenIndex", hatch["fillPenIndex"])
+        one["backgroundPen"] = hatch.get("fillBackgroundPenIndex", 0)
+        return one
+    colour = {"red": rgb[0] / 255.0, "green": rgb[1] / 255.0, "blue": rgb[2] / 255.0}
+    one["contourPen"] = 0
+    one["foregroundColour"] = colour
+    one["backgroundColour"] = colour
+    if solid is not None:
+        one["fillIndex"] = solid
+    return one
+
+
+def _create_legend_fills(
+    connection: ArchicadConnection,
+    hatches: Sequence[dict[str, Any]],
+    colours: Sequence[tuple[int, int, int] | None],
+) -> list[dict[str, Any]]:
+    """Every fill through the add-on, answered in Tapir's shape.
+
+    Re-shaped because ``ids.stamp_in_order`` reads ``elementId`` and the
+    add-on answers ``guid``: handed the add-on's shape it would stamp nothing
+    and every schedule would total an empty drawing.
+    """
+    solid = attribute_index(connection, "Fill", ("Solid Fill", "Solid", "Foreground"))
+    made: list[dict[str, Any]] = []
+    for start in range(0, len(hatches), 500):
+        batch = [
+            _as_legend_fill(hatch, colour, solid)
+            for hatch, colour in zip(
+                hatches[start : start + 500], colours[start : start + 500], strict=True
+            )
+        ]
+        answer = connection.run_loriini("CreateFills", {"fills": batch})
+        elements = answer.get("elements") if isinstance(answer, dict) else None
+        if not isinstance(elements, list):
+            raise ArchicadError(f"CreateFills returned no element list: {answer!r}")
+        made.extend(
+            {"elementId": entry["elementId"]}
+            if "elementId" in entry
+            else {"elementId": {"guid": entry["guid"]}}
+            for entry in elements
+            if isinstance(entry, dict) and ("elementId" in entry or "guid" in entry)
+        )
+    return made
+
+
+def _all_hours_elements(
+    hours: Sequence[tuple[str, Sequence[Ring]]],
+    layer_index: int,
+    storey: int | None,
+    pen: int,
+    height_mm: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """One day's outlines as closed polylines, and each hour's label.
+
+    The label sits on the vertex of that hour's outline farthest from the
+    middle of all of them -- the tip of the shadow, which is where the hours
+    fan apart and where a reader looks for which line is which.
+    """
+    everything = [point for _label, rings in hours for ring in rings for point in ring]
+    if not everything:
+        return [], []
+    middle = np.mean(np.asarray(everything, dtype=np.float64), axis=0)
+
+    lines: list[dict[str, Any]] = []
+    texts: list[dict[str, Any]] = []
+    for label, rings in hours:
+        tip: tuple[float, float] | None = None
+        reach = -1.0
+        for ring in rings:
+            if len(ring) < 3:
+                continue
+            line: dict[str, Any] = {
+                "coordinates": [{"x": x, "y": y} for x, y in (*ring, ring[0])],
+                "layerIndex": layer_index,
+                "linePenIndex": pen,
+            }
+            if storey is not None:
+                line["floorInd"] = storey
+            lines.append(line)
+            for x, y in ring:
+                far = float(np.hypot(x - middle[0], y - middle[1]))
+                if far > reach:
+                    reach, tip = far, (x, y)
+        if tip is None:
+            continue
+        text: dict[str, Any] = {
+            "coordinate": {"x": tip[0], "y": tip[1], "z": 0.0},
+            "text": label,
+            "height": height_mm,
+            "justification": "Center",
+        }
+        if storey is not None:
+            text["floorIndex"] = storey
+        texts.append(text)
+    return lines, texts
+
+
 def _visibility(
     layers: Sequence[Any], showing: str, shared: str, mine: Sequence[str]
 ) -> dict[str, bool]:
@@ -497,8 +714,18 @@ def draw_shadow_series(
     boundary_pen: int = 1,
     transform: PlanTransform | None = None,
     favourite: str | None = None,
+    all_hours: str | None = None,
+    all_hours_pen: int = 1,
+    label_height_mm: float = 2.5,
 ) -> ShadowDrawReport:
     """Draw every instant onto its own layer, and record a combination for each.
+
+    ``all_hours`` names a source whose own shadow was outlined (see
+    ``cast_shadows``); each day then also gets one layer carrying that shadow
+    at every hour as lines, each labelled with its hour at the tip, and a
+    combination showing that layer alone. Lines rather than fills, because
+    fills laid over one another hide each other, and the point of the drawing
+    is to see every hour at once.
 
     ``storey_index`` is which storey the fills belong to; ``None`` omits the
     floor index entirely, which is what a worksheet needs and what a plan must
@@ -541,6 +768,10 @@ def draw_shadow_series(
 
     shared = ensure_layer(connection, shared_layer_name())
     wanted = [layer_name(instant.label) for instant in series.instants]
+    days = _by_date(series) if all_hours else {}
+    # Hidden in every hour's combination too, so a single hour never shows
+    # the every-hour lines over it.
+    wanted += [all_hours_layer_name(day) for day in days]
 
     fills: list[dict[str, Any]] = []
     #: One ID per fill, in the same order. The create command answers in the
@@ -549,6 +780,9 @@ def draw_shadow_series(
     #: ``None`` for a fill that must never be totalled -- see the site
     #: boundary below.
     element_ids: list[str | None] = []
+    #: The legend colour of each fill, in the same order; ``None`` for the
+    #: boundary, which is an outline and not a legend row.
+    colours: list[tuple[int, int, int] | None] = []
     cleared = 0
     made_layers: list[str] = []
     for instant in series.instants:
@@ -562,6 +796,7 @@ def draw_shadow_series(
                 continue
             for ring in instant.regions.get(category, ()):
                 fills.append(_fill(placed(ring), style, layer.index, storey_index, favourite))
+                colours.append(style.rgb)
                 # The hour *and* the category, so one schedule breaks down by
                 # both: how much shadow at 9am, and how much of it is ours.
                 element_ids.append(fill_id(SHADOW, instant.caption, category.upper()))
@@ -582,14 +817,33 @@ def draw_shadow_series(
         # site to the shadow area and report a number nobody could explain.
         # Only measured fills are tagged; the boundary is furniture.
         element_ids.append(None)
+        colours.append(None)
 
     # Batched: twenty-one hours of a tiled shadow is thousands of hatches, and
     # one request carrying all of them is a payload Archicad parses in one go.
+    #
+    # Through the add-on unless a Favorite was named, so each fill is the
+    # legend's own colour with no contour. A Favorite is Tapir's route, and an
+    # add-on too old for CreateFills falls back to it and says so.
     made: list[dict[str, Any]] = []
-    for start in range(0, len(fills), 500):
-        made.extend(
-            create_elements(connection, "CreateHatches", "hatchesData", fills[start : start + 500])
-        )
+    note = ""
+    if not favourite:
+        try:
+            made = _create_legend_fills(connection, fills, colours)
+        except ArchicadError as error:
+            if "not have the registered" not in str(error):
+                raise
+            note = (
+                "the installed Loriini add-on has no CreateFills, so these are pen "
+                "colours with a contour, not the legend's. Install the current build."
+            )
+    if not made:
+        for start in range(0, len(fills), 500):
+            made.extend(
+                create_elements(
+                    connection, "CreateHatches", "hatchesData", fills[start : start + 500]
+                )
+            )
 
     # Positional pairing, and the boundary's ``None`` drops out there: see
     # ``ids.stamp_in_order`` for why a mismatch is refused rather than trimmed.
@@ -603,6 +857,21 @@ def draw_shadow_series(
         else NOT_GROUPED
     )
 
+    for day, instants in days.items():
+        layer = ensure_layer(connection, all_hours_layer_name(day))
+        cleared += clear_layer(connection, layer.index)
+        lines, texts = _all_hours_elements(
+            [(i.label, [placed(r) for r in i.outlines.get(all_hours or "", ())]) for i in instants],
+            layer.index,
+            storey_index,
+            all_hours_pen,
+            label_height_mm,
+        )
+        if lines:
+            create_elements(connection, "CreatePolylines", "polylinesData", lines)
+        if texts:
+            place_texts(connection, texts, layer.index)
+
     # After the fills, so the combinations are recorded against layers that
     # certainly exist and carry the right visibility.
     project = read_layers(connection)
@@ -615,6 +884,15 @@ def draw_shadow_series(
             _visibility(project, layer_name(instant.label), shared.name, wanted),
         )
         combinations.append(name)
+    every_hour: list[str] = []
+    for day in days:
+        name = all_hours_combination_name(day)
+        ensure_combination(
+            connection,
+            name,
+            _visibility(project, all_hours_layer_name(day), shared.name, wanted),
+        )
+        every_hour.append(name)
 
     return ShadowDrawReport(
         fills=len(fills),
@@ -627,6 +905,8 @@ def draw_shadow_series(
         stamped=stamped,
         grouped=grouped,
         areas_m2={instant.label: dict(instant.areas_m2) for instant in series.instants},
+        note=note,
+        all_hours=tuple(every_hour),
     )
 
 
@@ -688,8 +968,12 @@ def build_shadow_sheets(
     subset: str | None = None,
     sheets: str = DEFAULT_SHEETS,
     zoom: tuple[float, float, float, float] | None = None,
+    all_hours: bool = False,
 ) -> ShadowSheetReport:
     """One View per hour, then the day's Layouts as ``sheets`` says, filed.
+
+    ``all_hours`` adds, per day, a View of that day's every-hour drawing (see
+    ``draw_shadow_series``) and a sheet of its own carrying it.
 
     The View is the piece that makes this work: it is a view of the *site
     plan*, pinned to that hour's Layer Combination, so the drawing carries the
@@ -748,6 +1032,29 @@ def build_shadow_sheets(
             )
             names.append(name)
             placed += report.drawings_placed
+
+    for date_label in _by_date(series) if all_hours else {}:
+        caption = f"{date_label} {ALL_HOURS_WORD}"
+        views = views_for_storeys(
+            connection,
+            [storey],
+            combination=all_hours_combination_name(date_label),
+            suffix=f"Shadow {caption}",
+            drawing_scale=drawing_scale,
+            zoom=zoom,
+        )
+        made.extend((view.navigator_id, caption) for view in views)
+        name = naming.named(f"{naming.SHADOW_WORD}s - {caption}")
+        report = layout_from_views(
+            connection,
+            [(view.navigator_id, caption) for view in views],
+            layout_name=name,
+            scale=drawing_scale,
+            master_layout=master_layout,
+            cells=cells_for(sheet_chunks(1, sheets)),
+        )
+        names.append(name)
+        placed += report.drawings_placed
 
     # The sheets an earlier run made under another mode -- ``(1 of 2)``
     # beside a new ``JUNE 21`` -- would otherwise stand looking as current.

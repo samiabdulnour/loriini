@@ -922,11 +922,24 @@ def test_a_write_failure_does_not_cancel_the_drawing() -> None:
     the picture was the part that needed nothing. The exit code still reports
     the failure.
     """
-    import inspect
+    import ast
 
-    from sun_study.cli import archicad_run
+    from sun_study import cli
 
-    source = inspect.getsource(archicad_run)
+    # Found by name in the file as it is on disk, and not with
+    # ``inspect.getsource``. That pairs the line number the function had when
+    # it was imported with whatever the file holds *now*, so somebody saving
+    # cli.py while the suite runs -- forty lines added above this command --
+    # hands back the middle of a different function, and the ``index`` below
+    # fails with "substring not found" on a test that is about something else.
+    # It did exactly that on 18 September 2026, twice, and passed on rerun.
+    text = Path(cli.__file__).read_text(encoding="utf-8")
+    command = next(
+        node
+        for node in ast.walk(ast.parse(text))
+        if isinstance(node, ast.FunctionDef) and node.name == "archicad_run"
+    )
+    source = ast.get_source_segment(text, command) or ""
     write_at = source.index("write_assessment(connection")
     draw_at = source.index("draw_assessment(")
     between = source[write_at:draw_at]
@@ -1069,3 +1082,43 @@ def test_an_empty_layer_prefix_is_a_usage_error_before_anything_is_touched() -> 
 
     assert invocation.exit_code == 2
     assert "--layer-prefix" in invocation.output
+
+
+def test_a_table_carries_the_day_it_studied_once() -> None:
+    """One tables folder, one job per day: the day keeps the files apart."""
+    from pathlib import Path
+
+    from sun_study.archicad import naming
+    from sun_study.cli import _day_tagged
+
+    try:
+        naming.set_day("MAR 21")
+        once = _day_tagged(Path("out/COS areas.csv"))
+        assert once == Path("out/COS areas MAR 21.csv")
+        assert _day_tagged(once) == once
+        naming.set_day("")
+        assert _day_tagged(Path("out/COS areas.csv")) == Path("out/COS areas.csv")
+    finally:
+        naming.set_day("")
+
+
+def test_the_apartment_plans_are_given_a_plan_to_sit_on() -> None:
+    """Both plan kinds, the heat map and the hourly plans, used to be made
+    with no base combination at all -- so each run started from what the last
+    one left on screen, and the sheets drifted to showing the study and
+    nothing under it. Pinned in the source because both calls are deep in a
+    run that needs an Archicad."""
+    import ast
+    import inspect
+
+    from sun_study import cli
+
+    tree = ast.parse(inspect.getsource(cli.archicad_run))
+    calls = {
+        node.func.id: {keyword.arg for keyword in node.keywords}
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "base_combination" in calls["report_penetration"]
+    assert "base_combination" in calls["report_area_bands"]
+    assert "--plan-combination" in runner.invoke(cli.app, ["archicad-run", "--help"]).output

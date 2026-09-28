@@ -52,13 +52,13 @@ Options worth knowing:
 | `--scale 2000` | the context sheet's scale; sets how much neighbourhood is fetched |
 | `--site-scale 300` | pin the site sheet's scale instead of fitting |
 | `--anchor site` | put the site's centre at the project origin (see below) |
-| `--aerial` | also save the SIX orthophoto as JPEG tiles with world files |
+| `--no-aerial` | leave the SIX orthophoto out; by default it is fetched, placed under both sheets and saved as JPEG tiles with world files |
 | `--fetch-only` | fetch and save; touch nothing in Archicad |
 | `--from <folder>` | draw the bundles saved in that folder's `data/`; no fetch |
 | `--out <folder>` | where to save; `Documents\Loriini\site-analysis\<address>` by default |
 | `--no-layout` | leave the sheets off the A1 master (`--master-layout` picks another) |
 | `--set-location` | write the site's lat/lon and MGA survey point into Project Location |
-| `--model` | terrain mesh and neighbour slabs on the `LORIINI` layer (below) |
+| `--model` | terrain mesh, street blocks and neighbour slabs, a layer each (below) |
 | `--model-radius 500` | how far each way the model reaches; `0` keeps to the site sheet's extent |
 | `--fit-layer auto` | fit the fetched lot onto the boundary drawn on this layer (below); `none` skips it |
 | `--north grid` | the project's north angle is an MGA grid bearing from the survey, not a true one |
@@ -220,7 +220,7 @@ command writes UTF-8 now.
 
 **The orthophoto.** No command in Archicad's API or Tapir places a picture,
 so the add-on grew `PlaceFigures`: the tile as base64 inside the request,
-its box in metres and its turn from the frame. With `--aerial` the tiles
+its box in metres and its turn from the frame. The tiles
 are fetched into `data/aerial-context/` and `data/aerial-site/`, and each
 sheet draws them under everything else; the zoning and institution washes
 then use the project's `50%` fill with a clear background so the photo
@@ -239,7 +239,18 @@ No Overrides.
 
 `--model` (the **3D model** tick in the window) builds the neighbourhood the
 shadow diagrams and sun views cast against, in the floor plan, every
-element on the `LORIINI` layer with an `SA ...` element ID:
+element with an `SA ...` element ID, on three layers in the office's site
+group -- one per kind, so a view can show any of them without the others:
+
+| layer | holds |
+|---|---|
+| `03 \| Site Context.Terrain` | the ground mesh |
+| `03 \| Site Context.Roads` | the kerbed street blocks the roads run between |
+| `03 \| Site Context.Buildings` | the neighbours |
+
+`--context-prefix` moves all three to another group. A rerun clears the
+last run by element ID, not by layer, so a model made on the single
+`Site Context.3D` layer of an earlier version is replaced too.
 
 - **Terrain**: one mesh from the contours -- the City of Sydney's 1 m ones
   inside its area, the state's 2 m ones outside -- through the add-on's own
@@ -254,6 +265,29 @@ element on the `LORIINI` layer with an `SA ...` element ID:
   ground at its centre. Where OSM has no storeys the LEP height-of-building
   control gives them (`SA NEIGHBOUR 2 STOREY (ASSUMED)`), two storeys where
   there is neither. Footprints on the site's own lots are left out.
+  Buildings OSM draws as multipolygons -- a block with a courtyard -- are
+  fetched with the rest and stood with their courtyards as holes.
+
+**When buildings are missing.** Three causes were found and closed on 23
+September 2026; what is left is OSM's own coverage.
+
+- *An Overpass answer cut short.* A busy server stops at its timeout and
+  still replies 200 with valid JSON and a `remark`. That is now tried on the
+  next mirror and never cached; with nothing complete anywhere, the fullest
+  partial answer is used and a `WARN` says so.
+- *Buildings drawn as relations*, which a query for tagged ways never
+  returned. Around Kogarah station both are apartment blocks.
+- *One refused footprint.* Archicad makes a request in one undo step and
+  abandons it at the first slab it refuses, which took up to 199 good
+  neighbours with it. A refused request is halved and retried down to the
+  one bad footprint, which is tried without its holes and then as its
+  convex hull before it is given up on; the report counts both.
+
+What remains is data. OSM around Kogarah holds 395 buildings in a
+kilometre square, most detached houses unmapped, and no NSW register
+publishes footprints to fill the gap -- Spatial Services has points for
+named building complexes, not outlines. A house that is not in OSM is not
+in the model; draw it, or add it to OSM.
 - **Location**: with the project unlocated and the site anchored at the
   origin, `SetGeoLocation` writes the site centre and its MGA survey point
   first, so a survey merged later lands on top.
@@ -365,44 +399,43 @@ most trees: across inner Sydney 37 of 24,638 OSM trees carry a crown size.
 
 ## The future context
 
-`--future` (the **Future Context** tick in the window) shows what the
-controls would let a neighbour build, rather than what stands there: each
-lot near the site, set back by the ADG's building separation, stepped, and
-capped by the LEP's height and floor-space ratio. D90 has the reasoning;
-this is what comes out.
+`--future` (the **Future Context** tick in the window) shows the street as
+the controls would let it be, not as it stands: each existing building near
+the site, kept on its own footprint, raised to the storeys the LEP's
+height-of-building control allows where it stands. Never lowered -- a
+building already at or over its control is its own future, and the context
+model already has it.
 
-- **On the Site Analysis sheet**: each envelope's footprint, and the
-  smaller footprints of its upper tiers, dashed in magenta on the Context
-  layer, with `FUTURE 6 STOREY / 18.6 m / FSR 2:1` written in it and
-  `BINDS` after the ratio where the ratio, not the height, set the top.
-  A legend row names it.
-- **In the model**: one slab per tier on `LORIINI FUTURE`, a layer of its
-  own so a shadow diagram's saved view can include the neighbours as they
-  are or as they could be. Element IDs read `SA FUTURE 2//DP1 8 STOREY
-  12.4-24.8 m`, with `FSR` on the end where it bound. A rerun deletes
-  the last run's future slabs by that ID and leaves the context model's.
-- **On the Summary of Controls**: the ADG 3F separation row the envelopes
-  use, under the ADG section.
+- **On the Site Analysis sheet**: each raised building's footprint, dashed
+  in magenta on the Context layer, with `FUTURE 8 STOREY / 24.8 m` written
+  in it. A legend row names it.
+- **In the model**: one slab per building on `Site Context.Future
+  buildings`, a layer of its own so a shadow diagram's saved view can
+  include the neighbours as they are or as they could be. Element IDs read
+  `SA FUTURE 2//DP1 8 STOREY 0-24.8 m`, named by the lot the building
+  stands on. A rerun deletes the last run's future slabs by that ID and
+  leaves the context model's.
 
 The rules, in the order they apply:
 
 | step | rule | source |
 |---|---|---|
-| which lots | within `--future-reach` (100 m) of the site's boundary; zoned in `--future-zones` (R1, R3, R4, B1-B4, E1, E2, MU1); with a height control; not the site's own | the cadastre and `EPI` 2, 5 |
-| street edges | an edge no other lot shares fronts the road reserve | the cadastre |
-| street setback | `--future-setback`, 6 m by default; the DCP's figure, which the register does not carry | the council's DCP |
-| side and rear setbacks | 6 m for storeys 1-4, 9 m for 5-8, 12 m for 9 and over | ADG 3F, half the separation between habitable rooms |
-| storeys | the height control over 3.1 m, rounded down | `EPI` 5, the context model's storey |
-| the ratio | storeys off the top until the gross floor area, tier by tier, fits FSR x lot area | `EPI` 1 |
+| which buildings | every OSM footprint in the model's square, 20 m2 and over | OpenStreetMap |
+| not the site's | a footprint whose centre is on the site is what the proposal replaces | the cadastre |
+| within reach | within `--future-reach` (100 m) of the site's boundary | |
+| zoned for flats | in `--future-zones` (R1, R3, R4, B1-B4, E1, E2, MU1); a house on land zoned for houses keeps its height | `EPI` 2 |
+| a control | a height-of-building control where it stands | `EPI` 5 |
+| storeys | the control over 3.1 m, rounded down; left out when the building already has that many | `EPI` 5, OSM's storeys |
 
-The inset is a true erosion, traced with the shadow tool's edge tracer, so
-a battleaxe keeps its head and an L its arm. What is not done: lot
-amalgamation (two small lots that would be developed together are two
-small envelopes, or none), DCP side setbacks that differ from the ADG's,
-and the ADG's lower separation to non-habitable rooms. The report prints
-how many lots were passed over and why: on the site, zoned for houses,
-without a control, too small once set back.
+The control is the LEP's because the register carries it; a council's DCP
+can say less, and is not open data. Nothing is set back and no ratio is
+applied: the footprint is the one a person recognises, which is the point.
+The lot envelope this replaced -- the lot set back by the ADG's separation,
+stepped, capped by the ratio -- is still in `site.envelope`, the right
+shape for a different question: what the *site* could hold, which the
+shadow diagram's **ADG envelope** row compares against the proposal.
 
-Not yet run live. The tests stand a 30 m square lot under a 25 m control
-at 1.5:1 beside the Kogarah fixture and get four storeys with the ratio
-binding; the first live run is the next thing to do.
+Not yet run live. The tests raise a two-storey building on an R4 lot under
+a 25 m control to eight storeys, and leave alone the one on the site, the
+nine-storey one already over its control, the house on R2 land and the one
+three hundred metres off.

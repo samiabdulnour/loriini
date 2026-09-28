@@ -32,6 +32,7 @@ ANSWERED_BY: dict[str, str] = {
     "lz4.overpass-api.de": "OpenStreetMap",
     "z.overpass-api.de": "OpenStreetMap",
     "overpass.kumi.systems": "OpenStreetMap",
+    "overpass.private.coffee": "OpenStreetMap",
     "overpass.osm.jp": "OpenStreetMap",
     "valhalla1.openstreetmap.de": "Valhalla",
     "api.transport.nsw.gov.au": "Transport for NSW",

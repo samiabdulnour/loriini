@@ -287,10 +287,35 @@ def planned_renovation_filter(connection: ArchicadConnection) -> str | None:
     one the office's own solar penetration documents use. ``None`` when the
     View Map is empty.
     """
+    counted: collections.Counter[str] = collections.Counter()
+    for entry in _view_settings(connection):
+        guid = ((entry or {}).get("renovationFilterGuid") or {}).get("guid")
+        if guid:
+            counted[str(guid)] += 1
+    return counted.most_common(1)[0][0] if counted else None
+
+
+def overrides_in_views(connection: ArchicadConnection) -> tuple[str, ...]:
+    """Every graphic override combination the project's saved views use.
+
+    The fallback for an add-on without ``GetGraphicOverrideCombinations``:
+    Tapir can read a view's override by name and cannot list the project's,
+    so the views are where the names are found. An override no view uses is
+    missed, which is why the add-on's list is preferred.
+    """
+    names = {
+        str((entry or {}).get("graphicOverrideCombination") or "").strip()
+        for entry in _view_settings(connection)
+    }
+    return tuple(sorted(name for name in names if name))
+
+
+def _view_settings(connection: ArchicadConnection) -> list[dict[str, Any]]:
+    """Tapir's settings for every view in the View Map, in chunks."""
     response = connection.run_tapir("GetNavigatorItemTree", {"navigatorMapId": "PublicViewMap"})
     root = response.get("navigatorItemTree") if isinstance(response, dict) else None
     if not isinstance(root, dict):
-        return None
+        return []
 
     identifiers: list[dict[str, Any]] = []
 
@@ -305,17 +330,16 @@ def planned_renovation_filter(connection: ArchicadConnection) -> str | None:
 
     walk(root.get("rootItem", root))
 
-    counted: collections.Counter[str] = collections.Counter()
+    found: list[dict[str, Any]] = []
     for start in range(0, len(identifiers), 200):
         chunk = identifiers[start : start + 200]
         settings = connection.run_tapir(
             "GetViewSettings", {"navigatorItemIds": [{"navigatorItemId": i} for i in chunk]}
         )
         for entry in settings.get("viewSettings", []) if isinstance(settings, dict) else []:
-            guid = ((entry or {}).get("renovationFilterGuid") or {}).get("guid")
-            if guid:
-                counted[str(guid)] += 1
-    return counted.most_common(1)[0][0] if counted else None
+            if isinstance(entry, dict):
+                found.append(entry)
+    return found
 
 
 def aim(connection: ArchicadConnection, eye: SunEye) -> None:

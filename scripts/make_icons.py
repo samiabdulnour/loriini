@@ -38,9 +38,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field, replace
+from itertools import pairwise
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageColor, ImageDraw
 
 # -- the palette, as the design boards set it ------------------------------
 #
@@ -55,10 +56,17 @@ FACE = "#F4F3EE"
 GREY_L = "#DEDDD6"
 GREY = "#C6C5BE"
 GREY_D = "#9A9992"
+#: The edge of a control you can press or type into, and the one colour in
+#: here that is not a drawing decision. GREY_D is a shading grey and reads
+#: at about 2.8:1 on white, which is under the 3:1 a control boundary owes
+#: the eye; this is the window's own field edge and clears it.
+CONTROL_EDGE = "#8D8D8D"
 GROUND = "#EDEBE4"
 BLUE = "#1E63C8"
 BLUE_T = "#C3D7F5"
 BLUE_D = "#14417F"
+#: The hover edge, the same one ``theme.BLUE_EDGE`` uses on the window.
+BLUE_EDGE = "#9DBDEB"
 SUN = "#D98A1E"
 SUN_T = "#F6E2BE"
 RED = "#C0392B"
@@ -211,7 +219,37 @@ class Arc:
         )
 
 
-Shape = Poly | Disc | Line | Arc
+@dataclass(frozen=True)
+class Round:
+    """A rectangle with its corners taken off.
+
+    The tick box, and nothing else so far. It is drawn rather than worn as a
+    nine-slice face because a tick is one size and a picture already, and
+    because the knocked-out tick inside the filled one is drawn over it.
+    """
+
+    x: float
+    y: float
+    w: float
+    h: float
+    radius: float
+    fill: str | tuple[int, int, int, int] | None = None
+    outline: str | None = INK
+    width: float = 1.3
+    detail: bool = False
+    coarse: bool = False
+
+    def draw(self, pen: ImageDraw.ImageDraw, k: float, ink: float) -> None:
+        pen.rounded_rectangle(
+            (self.x * k, self.y * k, (self.x + self.w) * k, (self.y + self.h) * k),
+            radius=self.radius * k,
+            fill=self.fill,
+            outline=self.outline,
+            width=max(1, round(self.width * k * ink)),
+        )
+
+
+Shape = Poly | Disc | Line | Arc | Round
 
 
 @dataclass
@@ -328,6 +366,49 @@ def ground(
     ]
 
 
+def dashed(
+    points: tuple[tuple[float, float], ...],
+    fill: str = BLUE,
+    width: float = 1.6,
+    on: float = 2.8,
+    off: float = 1.9,
+    close: bool = True,
+) -> list[Shape]:
+    """An outline drawn in gaps.
+
+    Solid is built and dashed is proposed. That is the convention on every
+    drawing an architect has ever handed over, and it is the one mark that
+    tells "always there" from "being tested" without either of them having to
+    be a different shape -- which matters, because they *are* the same shape:
+    the same massing, asked about twice.
+    """
+    made: list[Shape] = []
+    corners = [*points, points[0]] if close else list(points)
+    for (x1, y1), (x2, y2) in pairwise(corners):
+        run = math.hypot(x2 - x1, y2 - y1)
+        if run == 0:
+            continue
+        step = on + off
+        # Spread the remainder so a dash lands on each corner rather than
+        # leaving one edge ending in a stub.
+        count = max(1, round((run + off) / step))
+        length = (run + off) / count - off
+        for index in range(count):
+            start = index * (length + off) / run
+            end = (index * (length + off) + length) / run
+            made.append(
+                Line(
+                    (
+                        (x1 + (x2 - x1) * start, y1 + (y2 - y1) * start),
+                        (x1 + (x2 - x1) * end, y1 + (y2 - y1) * end),
+                    ),
+                    fill=fill,
+                    width=width,
+                )
+            )
+    return made
+
+
 def sun(
     cx: float = 25, cy: float = 6.5, r: float = 3.0, rays: int = 8, colour: str = SUN
 ) -> list[Shape]:
@@ -420,6 +501,32 @@ def cross(colour: str = RED) -> list[Shape]:
     return [
         Line(((11.5, 12), (20.5, 21)), fill=colour, width=2.6),
         Line(((20.5, 12), (11.5, 21)), fill=colour, width=2.6),
+    ]
+
+
+def day_sun(cy: float) -> list[Shape]:
+    """The sun at ``cy`` over a horizon line and the ground under it: one
+    picture per assessment day, told apart by how high the sun stands."""
+    return [
+        rect(3, 25, 26, 4, fill=GROUND, outline=None),
+        Line(((3, 25), (29, 25)), fill=INK, width=1.3),
+        *sun(cx=16, cy=cy, r=3.4),
+    ]
+
+
+def arrow(*, up: bool, colour: str = BLUE) -> list[Shape]:
+    """The arrow on the settings sheet: up and out of it is a preset written,
+    down into it is one read. The convention every upload and download button
+    already taught, and at 16 px the two are still told apart by which end the
+    head is on."""
+    if up:
+        return [
+            Line(((16, 24), (16, 10.5)), fill=colour, width=2.6),
+            Poly(((10.8, 13.6), (16, 7.6), (21.2, 13.6)), fill=colour, outline=None),
+        ]
+    return [
+        Line(((16, 8), (16, 21.5)), fill=colour, width=2.6),
+        Poly(((10.8, 18.4), (16, 24.4), (21.2, 18.4)), fill=colour, outline=None),
     ]
 
 
@@ -562,20 +669,22 @@ def studies() -> list[Icon]:
         ),
         Icon(
             "communal",
-            "sample dots over the ground, and the patch that clears",
+            "a courtyard between two wings, in sun, with a tree in it",
             [
-                *ground(cy=19.5, half_w=14, half_h=8),
-                Poly(((9.5, 19.5), (16, 15.8), (22.5, 19.5), (16, 23.2)), fill=SUN_T, outline=None),
-                Disc(16, 14.6, 0.85, fill=INK, detail=True),
-                Disc(11.2, 17.4, 0.85, fill=INK),
-                Disc(20.8, 17.4, 0.85, fill=INK),
-                Disc(16, 19.5, 0.85, fill=INK),
-                Disc(6.4, 20.2, 0.85, fill=INK, detail=True),
-                Disc(25.6, 20.2, 0.85, fill=INK, detail=True),
-                Disc(11.2, 22.3, 0.85, fill=INK),
-                Disc(20.8, 22.3, 0.85, fill=INK),
-                Disc(16, 24.9, 0.85, fill=INK, detail=True),
-                Disc(26.8, 5.4, 2.6, fill=SUN),
+                *ground(cy=20.5, half_w=14, half_h=8),
+                # The courtyard itself, lit: the open ground the study measures.
+                Poly(((8.5, 20.5), (16, 16.2), (23.5, 20.5), (16, 24.8)), fill=SUN_T, outline=None),
+                # The two wings that make it a courtyard, seen from the set's corner.
+                Poly(((3.5, 17.5), (9.5, 14), (12.5, 15.7), (6.5, 19.2)), fill=FACE),
+                Poly(((3.5, 17.5), (6.5, 19.2), (6.5, 24.2), (3.5, 22.5)), fill=GREY),
+                Poly(((6.5, 19.2), (12.5, 15.7), (12.5, 20.7), (6.5, 24.2)), fill=GREY_L),
+                Poly(((19.5, 15.7), (25.5, 12.2), (28.5, 13.9), (22.5, 17.4)), fill=FACE),
+                Poly(((19.5, 15.7), (22.5, 17.4), (22.5, 22.4), (19.5, 20.7)), fill=GREY),
+                Poly(((22.5, 17.4), (28.5, 13.9), (28.5, 18.9), (22.5, 22.4)), fill=GREY_L),
+                # A tree, because a tree says open space in one stroke.
+                Line(((16, 24.5), (16, 20.5)), fill=INK, width=1.3),
+                Disc(16, 18.6, 3.0, fill="#DEDDD6", outline=INK),
+                *sun(cx=26.8, cy=5.4, r=2.6),
             ],
         ),
         Icon(
@@ -639,13 +748,16 @@ def furniture() -> list[Icon]:
         Icon(
             "tick_off",
             "an empty box",
-            [rect(5, 5, 22, 22, fill=PAPER, outline="#9A9992", width=1.7)],
+            # Not GREY_D: an unticked box nobody can see is a control nobody
+            # knows is there, and these are the six most important controls
+            # in the window.
+            [Round(5, 5, 22, 22, 5.5, fill=PAPER, outline=CONTROL_EDGE, width=1.7)],
         ),
         Icon(
             "tick_on",
             "a filled box with the tick knocked out of it",
             [
-                rect(5, 5, 22, 22, fill=BLUE, outline=BLUE_D, width=1.7),
+                Round(5, 5, 22, 22, 5.5, fill=BLUE, outline=BLUE_D, width=1.7),
                 Line(((10.5, 16.5), (14.5, 21), (22, 11)), fill=PAPER, width=3.0),
             ],
         ),
@@ -672,8 +784,24 @@ def controls() -> list[Icon]:
             "a plain red square, the set's only other verb",
             [rect(7, 7, 18, 18, fill=RED, outline=None)],
         ),
+        # The three assessment days, as the sun's height at noon: low in
+        # midwinter, halfway at the equinox, high in midsummer, over the
+        # same horizon line.
+        Icon("day_winter", "the sun low over the horizon -- midwinter", day_sun(21.0)),
+        Icon("day_equinox", "the sun halfway up -- the equinox", day_sun(14.5)),
+        Icon("day_summer", "the sun high -- midsummer", day_sun(8.0)),
         Icon("save_default", "the settings file, ticked", [*sheet(), *tick()]),
         Icon("forget", "the same file, struck out", [*sheet(), *cross()]),
+        Icon(
+            "save_preset",
+            "the same file with the arrow leaving it -- the page written out as a preset",
+            [*sheet(), *arrow(up=True)],
+        ),
+        Icon(
+            "load_preset",
+            "the same file with the arrow arriving -- a preset read back onto the page",
+            [*sheet(), *arrow(up=False)],
+        ),
         Icon("connected", "the plug seated, and blue", plug(live=True)),
         Icon("disconnected", "the same plug drained, with the red mark", plug(live=False)),
         Icon(
@@ -754,6 +882,58 @@ def settings() -> list[Icon]:
                 Poly(((22, 19), (26, 19), (22, 23)), fill=FOLD, detail=True),
                 rect(11, 3, 15, 20, fill=PAPER, coarse=True),
                 rect(14, 7, 9, 8, fill=BLUE_T, outline=BLUE, width=1.1),
+            ],
+        ),
+        # The Plans row: what the solar plans show. Bands are the whole day
+        # in stripes of sun hours; times are the sun where it actually is at
+        # one moment, so that one carries the sun.
+        Icon(
+            "plans_both",
+            "the sheet split: bands on the left, the sun's patch on the right",
+            [
+                *sheet(),
+                rect(9.5, 8, 5.5, 3.6, fill=SUN, outline=None),
+                rect(9.5, 12.4, 5.5, 3.6, fill=SUN_T, outline=None),
+                rect(9.5, 16.8, 5.5, 3.6, fill=GREY_L, outline=None),
+                rect(9.5, 8, 5.5, 12.4, fill=None, outline=GREY_D, width=1.0),
+                rect(16.5, 8, 6, 12.4, fill=PAPER, outline=GREY_D, width=1.0),
+                Poly(((16.5, 20.4), (16.5, 13), (22.5, 9), (22.5, 20.4)), fill=SUN_T, outline=None),
+                *sun(cx=24.5, cy=6.5, r=2.4),
+            ],
+        ),
+        Icon(
+            "plans_bands",
+            "the sheet banded by hours of sun, most to least",
+            [
+                *sheet(),
+                rect(9.5, 8, 13, 3.6, fill=SUN, outline=None),
+                rect(9.5, 12.4, 13, 3.6, fill=SUN_T, outline=None),
+                rect(9.5, 16.8, 13, 3.6, fill=GREY_L, outline=None),
+                rect(9.5, 8, 13, 12.4, fill=None, outline=GREY_D, width=1.0),
+            ],
+        ),
+        Icon(
+            "plans_times",
+            "the sheet with the sun's patch on the floor at one moment",
+            [
+                *sheet(),
+                rect(9.5, 8, 13, 12.4, fill=PAPER, outline=GREY_D, width=1.0),
+                Poly(((9.5, 20.4), (9.5, 14), (22.5, 8.5), (22.5, 20.4)), fill=SUN_T, outline=None),
+                *sun(cx=24.5, cy=6.5, r=2.4),
+            ],
+        ),
+        Icon(
+            "plans_total",
+            "the sheet with each apartment filled whole in its own band",
+            [
+                *sheet(),
+                rect(9.5, 8, 6.5, 6.2, fill=SUN, outline=None),
+                rect(16, 8, 6.5, 6.2, fill=SUN_T, outline=None),
+                rect(9.5, 14.2, 6.5, 6.2, fill=SUN_T, outline=None),
+                rect(16, 14.2, 6.5, 6.2, fill=GREY_L, outline=None),
+                rect(9.5, 8, 13, 12.4, fill=None, outline=GREY_D, width=1.0),
+                Line(((16, 8), (16, 20.4)), fill=GREY_D, width=1.0),
+                Line(((9.5, 14.2), (22.5, 14.2)), fill=GREY_D, width=1.0),
             ],
         ),
         Icon(
@@ -859,51 +1039,57 @@ def settings() -> list[Icon]:
         ),
         Icon(
             "combination",
-            "layers bracketed into one named set",
+            "a named set of layer states, bracketed",
             [
-                Poly(((19, 6), (28, 11), (19, 16), (10, 11)), fill=PAPER, width=1.25),
-                Poly(((19, 13), (28, 18), (19, 23), (10, 18)), fill="#FBFAF7", width=1.25),
-                Poly(((19, 20), (28, 25), (19, 30), (10, 25)), fill=FACE, width=1.25),
-                Line(((6.6, 6.5), (4.4, 6.5), (4.4, 25.5), (6.6, 25.5)), fill=BLUE, width=1.7),
+                rect(10.5, 7.5, 11, 4, fill=PAPER),
+                rect(10.5, 13.5, 11, 4, fill="#FBFAF7"),
+                rect(10.5, 19.5, 11, 4, fill=FACE),
+                # The brackets are the icon. Nothing else in the set has them,
+                # and a saved set of states is exactly what a bracket means.
+                Line(((8.5, 5.5), (5.5, 5.5), (5.5, 26), (8.5, 26)), fill=BLUE, width=2.0),
+                Line(((23.5, 5.5), (26.5, 5.5), (26.5, 26), (23.5, 26)), fill=BLUE, width=2.0),
             ],
         ),
         Icon(
             "also_export",
-            "a layer plane, and a plus",
+            "layers pushed into the run whatever the combination says",
             [
-                Poly(((16, 14), (27, 20), (16, 26), (5, 20)), fill=PAPER),
-                Line(((8, 4.5), (8, 12.5)), fill=BLUE, width=2.4),
-                Line(((4, 8.5), (12, 8.5)), fill=BLUE, width=2.4),
+                rect(15.5, 7.5, 13, 4, fill=PAPER),
+                rect(15.5, 13.5, 13, 4, fill="#FBFAF7"),
+                rect(15.5, 19.5, 13, 4, fill=FACE),
+                # Forced in from outside: the arrow points at the stack.
+                Line(((2.5, 15.5), (9.5, 15.5)), fill=BLUE, width=2.5),
+                Poly(((14, 15.5), (8.8, 12.4), (8.8, 18.6)), fill=BLUE, outline=None),
             ],
         ),
         Icon(
             "neighbours",
-            "grey buildings casting onto the blue site",
+            "what stands around the site and shades it",
             [
-                *ground(),
+                *ground(cy=22.5, half_w=14, half_h=6.4),
+                # The site, and the two things either side of it that are not
+                # part of it but are in its sun.
                 Poly(
-                    ((11.9, 22.4), (16.3, 24.8), (14.6, 25.8), (10.2, 23.4)),
-                    fill=SHADOW,
-                    outline=None,
-                    detail=True,
+                    ((16, 18.6), (22.5, 22.3), (16, 26), (9.5, 22.3)),
+                    fill=BLUE_T,
+                    outline=BLUE,
+                    width=1.5,
                 ),
-                Poly(
-                    ((20.1, 22.4), (15.7, 24.8), (17.4, 25.8), (21.8, 23.4)),
-                    fill=SHADOW,
-                    outline=None,
-                    detail=True,
-                ),
-                *footprint(16, 17.4, half_w=5, half_h=2.8, fill=BLUE_T),
-                *footprint(8.5, 22.4, half_w=3.3, half_h=1.9),
-                *footprint(23.5, 22.4, half_w=3.3, half_h=1.9),
+                *block(cx=5.6, top=6.5, half=4.4, rise=2.5, tall=6.4),
+                *block(cx=26.4, top=9.5, half=4.4, rise=2.5, tall=6.4),
             ],
         ),
         Icon(
             "keep_off",
-            "a layer struck out, the printer's own red mark",
+            "a drawing with a layer struck off it",
             [
-                Poly(((16, 11), (27, 17), (16, 23), (5, 17)), fill=FACE, outline=GREY_D),
-                Line(((5.5, 26.5), (26.5, 5.5)), fill=RED, width=2.6),
+                *sheet(x=7.5, y=3.5, w=17, h=25, fold=4.5),
+                Line(((11, 10.5), (21, 10.5)), fill=GREY_D, width=1.6, detail=True),
+                Line(((11, 15), (21, 15)), fill=GREY_D, width=1.6, detail=True),
+                Line(((11, 19.5), (17, 19.5)), fill=GREY_D, width=1.6, detail=True),
+                # The printer's own red mark, over the drawing rather than over
+                # a layer plane: what this setting keeps off is the sheet.
+                Line(((6, 26.5), (26, 5)), fill=RED, width=2.7),
             ],
         ),
         Icon(
@@ -1071,22 +1257,27 @@ def settings() -> list[Icon]:
         ),
         Icon(
             "always_there",
-            "built, solid, not up for discussion",
-            block(),
+            "context that is built, and stays built in every scenario",
+            [
+                *block(cx=10, top=7, half=6.4, rise=3.5, tall=6.2),
+                *block(cx=22, top=11, half=6.4, rise=3.5, tall=6.2),
+                # Planted. Solid and on the ground, against the dashed
+                # proposal it is compared with.
+                Line(((3, 27), (29, 27)), fill=INK, width=1.9),
+            ],
         ),
         Icon(
             "being_tested",
-            "the same block, blue and open -- a proposal",
+            "the same massing, dashed: a proposal rather than a building",
             [
                 Poly(
-                    ((16, 5), (26.5, 10.8), (16, 16.6), (5.5, 10.8)), fill="#FBFAF7", outline=BLUE
+                    ((16, 5.5), (26.5, 11.3), (16, 17.1), (5.5, 11.3)),
+                    fill="#F3F7FD",
+                    outline=None,
                 ),
-                Poly(
-                    ((5.5, 10.8), (16, 16.6), (16, 25), (5.5, 19.2)), fill="#F3F7FD", outline=BLUE
-                ),
-                Poly(
-                    ((26.5, 10.8), (16, 16.6), (16, 25), (26.5, 19.2)), fill="#F3F7FD", outline=BLUE
-                ),
+                *dashed(((16, 5.5), (26.5, 11.3), (16, 17.1), (5.5, 11.3))),
+                *dashed(((5.5, 11.3), (16, 17.1), (16, 25.5), (5.5, 19.7))),
+                *dashed(((26.5, 11.3), (16, 17.1), (16, 25.5), (26.5, 19.7))),
             ],
         ),
         Icon(
@@ -1167,22 +1358,17 @@ def settings() -> list[Icon]:
         ),
         Icon(
             "layers_from",
-            "pointed at one plane; everything under it goes pale",
+            "a view, and the layer state taken out of it",
             [
-                Poly(((19, 5), (28.5, 10.2), (19, 15.4), (9.5, 10.2)), fill=PAPER, width=1.25),
-                Poly(
-                    ((19, 12), (28.5, 17.2), (19, 22.4), (9.5, 17.2)),
-                    fill=BLUE_T,
-                    outline=BLUE,
-                    width=1.4,
-                ),
-                Poly(
-                    ((19, 19), (28.5, 24.2), (19, 29.4), (9.5, 24.2)),
-                    fill="#EDECE6",
-                    outline=GREY_D,
-                    width=1.25,
-                ),
-                Poly(((2.5, 17.2), (6.1, 15.1), (6.1, 19.3)), fill=BLUE, outline=None),
+                rect(2.5, 9, 11, 13, fill=PAPER, outline=BLUE, width=1.6),
+                Line(((5.2, 13.2), (10.8, 13.2)), fill=BLUE_T, width=1.9, detail=True),
+                Line(((5.2, 16.8), (9, 16.8)), fill=BLUE_T, width=1.9, detail=True),
+                # Out of that view and into the run: the arrow is the "from".
+                Line(((15, 15.5), (18.5, 15.5)), fill=INK, width=1.9),
+                Poly(((22, 15.5), (18, 12.9), (18, 18.1)), fill=INK, outline=None),
+                rect(23, 9.5, 7, 3.4, fill=PAPER),
+                rect(23, 14.3, 7, 3.4, fill=FACE),
+                rect(23, 19.1, 7, 3.4, fill=GREY_L),
             ],
         ),
         Icon(
@@ -1253,6 +1439,230 @@ def settings() -> list[Icon]:
             ],
         ),
     ]
+
+
+# -- rounded faces ---------------------------------------------------------
+#
+# ttk's clam theme draws every button and every field as a square box, and no
+# amount of `style.configure` will round a corner: the border is a drawn
+# element and its shape is compiled in. The way round it is the way the
+# checkbutton's tick already goes -- `style.element_create(..., "image", ...)`
+# -- with one addition: an image element given a `border` is a NINE-SLICE. Tk
+# keeps the four corners at their drawn size and fills what is between them
+# from the middle of the picture, so one face with a 4 px radius dresses a
+# button of any width without the corner ever distorting. It fills by TILING
+# and not by stretching, which is why the faces are drawn as big as they are:
+# see BUTTON below for what a small one cost.
+#
+# So these are not icons. They are the faces ttk wears, one per state, and the
+# window's roundness is entirely in these files. They have one size each and
+# no size in their names, which is how ``icons.face`` tells them from the
+# drawings beside them.
+
+#: How tall a panel's header is. ``theme.PANEL_HEAD`` is the same number, and
+#: has to be: the header's tint and the rule under it are drawn into the top
+#: slice of the panel's face, so the window has to place the header at exactly
+#: the height the picture was drawn for. A test holds the two together.
+PANEL_HEAD = 32
+
+#: The tint of an open study's header, and of one that is switched off. The
+#: window's ``Study.TCheckbutton`` styles sit on top of these and must match
+#: them to the digit, or the tick shows as a patch on its own header.
+HEAD_ON = "#E8F0FC"
+HEAD_OFF = "#F1F1F0"
+#: The window's chrome, behind the tabs and under the scrollbar in the dock.
+CHROME = "#F0F0F0"
+#: The page a section sits on, a shade lighter than the surround. The open
+#: tab's face is drawn in it so the tab joins the page. ``theme.PAGE``.
+PAGE = "#F5F5F5"
+
+
+@dataclass(frozen=True)
+class Face:
+    """One nine-slice face: its size, its shape and its colours."""
+
+    top: str
+    bottom: str
+    edge: str | None = None
+    weight: float = 1.0
+    wide: int = 16
+    tall: int = 16
+    radius: float = 4.0
+    #: Round only the top two corners: a tab, which is square where it joins
+    #: the page beneath it.
+    square_foot: bool = False
+    #: A band across the top, following the corners: the open tab's blue cap,
+    #: a panel's tinted header.
+    cap: str | None = None
+    cap_tall: float = 0.0
+    #: And a hairline under that band, which is a panel header's own edge.
+    cap_rule: str | None = None
+    #: One pixel of soft shadow under the face: Apple's lift, at a quarter of
+    #: Apple's strength. Costs the face one row of height, so every state of
+    #: a control is drawn at the same size whether it is lifted or not --
+    #: otherwise pressing a button moves everything under it by a pixel.
+    lift: bool = False
+    room_for_lift: bool = False
+    #: Clear pixels either side, for a scrollbar thumb that is slimmer than
+    #: the gutter it runs in.
+    margin: int = 0
+
+
+#: How big the faces are drawn, and it is not a matter of taste.
+#:
+#: ttk does not *stretch* the middle of a nine-slice, it TILES it: the centre
+#: of the picture is stamped across the widget as many times as it takes. The
+#: first rounded build drew every face at 16 px, which leaves a 6 px centre --
+#: so one 700 px field was some six hundred image blits, a settings box was
+#: thirteen thousand, and the window's first ``update_idletasks`` took twenty-
+#: six seconds. Nothing about that is visible in a picture of the face, and a
+#: test holds the sizes up so that a tidy-minded redraw cannot bring it back.
+#:
+#: So each face is drawn about as big as the biggest thing that wears it, and
+#: its middle is stamped once or twice. A widget smaller than its face simply
+#: shows less of the middle, which for a flat fill is the same fill.
+#: Taller than the tallest button (36 px, on the run bar), and that matters for
+#: a face with a gradient: a button two pixels taller than its face gets two
+#: pixels of the *top* of the ramp stamped again along its bottom edge, which
+#: shows as a pale band under the label.
+BUTTON = {"wide": 192, "tall": 44}
+RAISED = {**BUTTON, "room_for_lift": True}
+TAB = {"wide": 128, "tall": 88}
+#: How much of a box is drawn under its header, for the same reason.
+PANEL_BODY = 288
+
+#: Every face the window wears. A two-stop fill a few per cent apart is what
+#: stops a flat colour looking painted on rather than sitting there; pressed
+#: and disabled faces are flat on purpose, because a control that is down or
+#: dead is not catching any light.
+FACES: dict[str, Face] = {
+    "face_up": Face("#FDFCFA", "#F1F0EB", "#C7C6C0", lift=True, **RAISED),
+    "face_hover": Face("#FFFFFF", "#F7F6F2", BLUE_EDGE, lift=True, **RAISED),
+    "face_down": Face("#E4E4E4", "#E4E4E4", BLUE_EDGE, **RAISED),
+    "face_off": Face("#E4E4E4", "#E4E4E4", "#DCDCDC", **RAISED),
+    "face_run": Face("#EFF5FE", "#E1EBFA", BLUE, lift=True, **RAISED),
+    "face_run_hover": Face("#F8FBFF", "#EAF1FC", BLUE, lift=True, **RAISED),
+    "face_run_down": Face(BLUE_EDGE, BLUE_EDGE, BLUE_D, **RAISED),
+    "field": Face("#FFFFFF", "#FFFFFF", CONTROL_EDGE, **BUTTON),
+    # Focus is the edge going blue and thickening, not a glow. A ring outside
+    # the border would have to live inside the nine-slice, and every pixel it
+    # took would come off the corner radius.
+    "field_focus": Face("#FFFFFF", "#FFFFFF", BLUE, weight=1.8, **BUTTON),
+    "field_off": Face("#E4E4E4", "#E4E4E4", "#DCDCDC", **BUTTON),
+    "chip": Face("#EDF3FD", "#E3ECFA", BLUE_EDGE, wide=128, tall=24),
+    "add": Face("#FFFFFF", "#FFFFFF", CONTROL_EDGE, **BUTTON),
+    "add_hover": Face("#F2F7FE", "#E8F0FC", BLUE, **BUTTON),
+    "add_down": Face(BLUE_EDGE, BLUE_EDGE, BLUE_D, **BUTTON),
+    # The strip. At rest a tab is the chrome it sits on; under the pointer it
+    # is a rounded tint; open, it is the page's own white under a blue cap,
+    # rounded where it meets nothing and square where it meets its page.
+    "tab_rest": Face(CHROME, CHROME, radius=0, **TAB),
+    # A tab is a rounded card on the chrome: tinted under the pointer, white
+    # with a thin edge and a blue cap when open. It no longer joins the page,
+    # which has a contour of its own and sits a gap below the strip.
+    "tab_hover": Face("#E8F0FC", "#E8F0FC", radius=6, **TAB),
+    "tab_open": Face("#FFFFFF", "#FFFFFF", "#DCDCDC", radius=6, cap=BLUE, cap_tall=3, **TAB),
+    # The page a section sits on: the lighter grey, one thin edge, rounded.
+    "page": Face(PAGE, PAGE, "#DCDCDC", wide=480, tall=320, radius=6),
+    # A pill, and the only one: a bar is the single control whose ends mean
+    # nothing, so nothing is lost by rounding them away.
+    "bar_trough": Face("#FFFFFF", "#FFFFFF", "#DCDCDC", wide=256, tall=10, radius=5),
+    "bar_fill": Face("#2A6FD4", BLUE, wide=256, tall=10, radius=5),
+    "thumb": Face("#C9C8C3", "#C9C8C3", wide=12, tall=96, radius=4, margin=2),
+    "thumb_hover": Face("#ADACA6", "#ADACA6", wide=12, tall=96, radius=4, margin=2),
+    # A study's box. The header's tint and the rule under it are part of the
+    # picture, so the corners of the tint are the corners of the box and not
+    # a square patch poking out past a curve.
+    "panel_on": Face(
+        "#FFFFFF",
+        "#FFFFFF",
+        BLUE_EDGE,
+        wide=480,
+        tall=PANEL_HEAD + PANEL_BODY,
+        radius=6,
+        cap=HEAD_ON,
+        cap_tall=PANEL_HEAD,
+        cap_rule=BLUE_EDGE,
+    ),
+    "panel_off": Face(
+        "#FFFFFF",
+        "#FFFFFF",
+        "#DCDCDC",
+        wide=480,
+        tall=PANEL_HEAD + PANEL_BODY,
+        radius=6,
+        cap=HEAD_OFF,
+        cap_tall=PANEL_HEAD,
+        cap_rule="#DCDCDC",
+    ),
+}
+
+#: What the first rounded build wrote, with a size in the name. Removed on the
+#: next run so a stale face cannot be loaded by a stale name.
+STALE_FACES = (
+    "add", "chip", "face_down", "face_hover", "face_off", "face_run",
+    "face_run_down", "face_run_hover", "face_up", "field", "field_focus", "field_off",
+)  # fmt: skip
+
+
+def face(spec: Face) -> Image.Image:
+    """One face, drawn big and resampled so its corners are curves."""
+    scale = SUPERSAMPLE
+    tall = spec.tall + (1 if spec.room_for_lift else 0)
+    big_w, big_h = spec.wide * scale, tall * scale
+    inset = spec.weight * scale / 2 if spec.edge else 0.0
+    box = (
+        spec.margin * scale + inset,
+        inset,
+        (spec.wide - spec.margin) * scale - 1 - inset,
+        spec.tall * scale - 1 - inset,
+    )
+    corners = (True, True, not spec.square_foot, not spec.square_foot)
+    radius = spec.radius * scale
+
+    def outline_of(image: Image.Image, **how: object) -> None:
+        ImageDraw.Draw(image).rounded_rectangle(box, radius=radius, corners=corners, **how)
+
+    shape = Image.new("L", (big_w, big_h), 0)
+    outline_of(shape, fill=255)
+
+    image = Image.new("RGBA", (big_w, big_h), (0, 0, 0, 0))
+    if spec.lift:
+        # The same shape, a pixel lower, at a tenth of black.
+        shadow = Image.new("L", (big_w, big_h), 0)
+        ImageDraw.Draw(shadow).rounded_rectangle(
+            (box[0], box[1] + scale, box[2], box[3] + scale), radius=radius, fill=26
+        )
+        image.paste((31, 31, 31, 255), (0, 0), shadow)
+
+    # The fill, as a vertical ramp the whole face tall, cut to the shape.
+    first, last = ImageColor.getrgb(spec.top), ImageColor.getrgb(spec.bottom)
+    ramp = Image.new("RGB", (1, big_h))
+    for row in range(big_h):
+        along = min(row / max(spec.tall * scale - 1, 1), 1.0)
+        ramp.putpixel(
+            (0, row), tuple(round(a + (b - a) * along) for a, b in zip(first, last, strict=True))
+        )
+    image.paste(ramp.resize((big_w, big_h)), (0, 0), shape)
+
+    if spec.cap is not None:
+        band = Image.new("L", (big_w, big_h), 0)
+        ImageDraw.Draw(band).rectangle((0, 0, big_w, spec.cap_tall * scale - 1), fill=255)
+        image.paste(ImageColor.getrgb(spec.cap), (0, 0), ImageChops.multiply(band, shape))
+        if spec.cap_rule is not None:
+            rule = Image.new("L", (big_w, big_h), 0)
+            ImageDraw.Draw(rule).rectangle(
+                (0, spec.cap_tall * scale, big_w, (spec.cap_tall + 1) * scale - 1), fill=255
+            )
+            image.paste(ImageColor.getrgb(spec.cap_rule), (0, 0), ImageChops.multiply(rule, shape))
+
+    if spec.edge is not None:
+        outline_of(image, outline=spec.edge, width=max(1, round(spec.weight * scale)))
+    # A box filter, not the Lanczos the drawings use. Lanczos overshoots at a
+    # hard edge, which on a drawing reads as crispness and on a flat face
+    # reads as a bright hairline just inside the border -- a bevel nobody
+    # asked for. The scale is a whole number, so a box is exact.
+    return image.resize((spec.wide, tall), Image.BOX)
 
 
 def every_icon() -> list[Icon]:
@@ -1332,6 +1742,14 @@ def _svg_shape(shape: Shape, ink: float) -> str:
         return (
             f'<circle cx="{shape.cx:.2f}" cy="{shape.cy:.2f}" r="{shape.r:.2f}" '
             f"{_paint(shape.fill)} {stroke}/>"
+        )
+    if isinstance(shape, Round):
+        stroke = (
+            f'stroke="{shape.outline}" {width}' if shape.outline is not None else 'stroke="none"'
+        )
+        return (
+            f'<rect x="{shape.x:.2f}" y="{shape.y:.2f}" width="{shape.w:.2f}" '
+            f'height="{shape.h:.2f}" rx="{shape.radius:.2f}" {_paint(shape.fill)} {stroke}/>'
         )
     if isinstance(shape, Line):
         points = " ".join(f"{x:.2f},{y:.2f}" for x, y in shape.points)
@@ -1466,6 +1884,13 @@ def main() -> None:
             render(icon, size).save(out / f"{icon.name}-{size}.png")
             written += 1
 
+    # The faces ttk wears, which are what round the window's corners.
+    for name, spec in FACES.items():
+        face(spec).save(out / f"{name}.png")
+        written += 1
+    for name in STALE_FACES:
+        (out / f"{name}-16.png").unlink(missing_ok=True)
+
     # The add-on's palette, as SVG, from the same coordinates.
     by_name = {icon.name: icon for icon in icons}
     images = here / "archicad-addon" / "RFIX" / "Images"
@@ -1480,7 +1905,7 @@ def main() -> None:
     sheet_path.parent.mkdir(parents=True, exist_ok=True)
     contact_sheet(icons).save(sheet_path)
 
-    print(f"{len(icons)} icons, {written} files -> {out}")
+    print(f"{len(icons)} icons and {len(FACES)} faces, {written} files -> {out}")
     print(f"{len(PALETTE_BUTTONS)} palette icons -> {images}")
     print(f"contact sheet -> {sheet_path}")
 

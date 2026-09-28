@@ -34,6 +34,11 @@
 //                             locked state is two bits in an attribute header,
 //                             and `ACAPI_Attribute_Modify` sets them without
 //                             recreating the layer.
+//
+//   GetGraphicOverrideCombinations
+//                             Tapir can pin a view to an override combination
+//                             by name and has no way to list them, so the
+//                             window could only offer a text box to type one.
 
 #if !defined (LORIINI_PROJECTCOMMANDS_HPP)
 #define LORIINI_PROJECTCOMMANDS_HPP
@@ -61,6 +66,7 @@ LORIINI_COMMAND (SetCurrentDatabaseCommand)
 LORIINI_COMMAND (CreateWorksheetCommand)
 LORIINI_COMMAND (ActivateLayerCombinationCommand)
 LORIINI_COMMAND (ModifyLayersCommand)
+LORIINI_COMMAND (GetGraphicOverrideCombinationsCommand)
 
 #undef LORIINI_COMMAND
 

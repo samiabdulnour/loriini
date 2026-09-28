@@ -213,7 +213,10 @@ def test_the_context_goes_in_the_offices_own_site_group() -> None:
     them are the neighbourhood, not the study, and the template already has a
     group for them -- on the reference project, under '03 ---- SITE' beside
     the boundaries and the survey mesh."""
-    assert naming.context_layer() == "03 | Site Context.3D"
+    assert naming.terrain_layer() == "03 | Site Context.Terrain"
+    assert naming.roads_layer() == "03 | Site Context.Roads"
+    assert naming.buildings_layer() == "03 | Site Context.Buildings"
+    assert naming.context_layer() == naming.buildings_layer(), "the context is what casts"
     assert naming.future_layer() == "03 | Site Context.Future buildings"
 
 
@@ -222,7 +225,9 @@ def test_another_offices_site_group_moves_both_of_them() -> None:
     anybody's to choose."""
     naming.set_context_prefix("50 |")
 
-    assert naming.context_layer() == "50 | Site Context.3D"
+    assert naming.terrain_layer() == "50 | Site Context.Terrain"
+    assert naming.roads_layer() == "50 | Site Context.Roads"
+    assert naming.buildings_layer() == "50 | Site Context.Buildings"
     assert naming.future_layer() == "50 | Site Context.Future buildings"
 
 

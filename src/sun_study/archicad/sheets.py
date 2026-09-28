@@ -25,19 +25,25 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError, activate
 from sun_study.archicad.draw import create_texts
 from sun_study.archicad.layout import LayoutSheet, Tiling, tile_positions
+from sun_study.archicad.paper import PaperFrame, StudyElements, onto_paper
 
 __all__ = [
+    "TITLE_BLOCK_MM",
     "DrawingPlacement",
+    "PaperReport",
     "SheetReport",
     "TableRow",
     "draw_statistics",
     "draw_table",
+    "enter_layout",
+    "lay_study_on_sheet",
+    "legend_place",
     "measure_drawings",
     "straighten_and_tile",
 ]
@@ -472,7 +478,7 @@ def draw_statistics(
         )
         written += 1
 
-    create_texts(connection, texts)
+    create_texts(connection, texts, heights_in_metres=True)
     return written
 
 
@@ -486,8 +492,16 @@ def draw_table(
     swatch_m: float = 0.006,
     step_m: float = 0.009,
     beside: bool = False,
+    placements: Sequence[DrawingPlacement] | None = None,
+    at: tuple[float, float] | None = None,
 ) -> int:
     """Put the figures table on the sheet itself. Returns the rows drawn.
+
+    ``placements`` is where the drawings are, from a caller that put them
+    there -- ``lay_study_on_sheet``. Given it, the layout is taken to be the
+    current database already and is neither cleared nor measured: measuring
+    needs a saved project, which that route exists to do without, and
+    clearing would delete the study it has just drawn on the sheet.
 
     On the **layout**, not on the plan. Drawn into the model it has to be
     repeated on every storey, so a six-storey study carries six copies of one
@@ -501,17 +515,23 @@ def draw_table(
     if not rows:
         return 0
 
-    activate(connection, layout_database_id, "Layout")
-    # The sheet is regenerated with its layout, so anything here is this
-    # tool's own from an earlier pass over the same sheet.
-    for kind in ("Text", "Hatch"):
-        found = connection.run_tapir("GetElementsByType", {"elementType": kind})
-        elements = found.get("elements") if isinstance(found, dict) else None
-        if isinstance(elements, list) and elements:
-            connection.run_tapir("DeleteElements", {"elements": elements})
+    if placements is None:
+        activate(connection, layout_database_id, "Layout")
+        # The sheet is regenerated with its layout, so anything here is this
+        # tool's own from an earlier pass over the same sheet.
+        for kind in ("Text", "Hatch"):
+            found = connection.run_tapir("GetElementsByType", {"elementType": kind})
+            elements = found.get("elements") if isinstance(found, dict) else None
+            if isinstance(elements, list) and elements:
+                connection.run_tapir("DeleteElements", {"elements": elements})
+        placements = measure_drawings(connection, layout_database_id)
 
-    placements = measure_drawings(connection, layout_database_id)
-    if not placements:
+    if at is not None:
+        # One place on every sheet, chosen by the caller from the page and not
+        # from the drawings: a legend that follows the plan is somewhere else
+        # on each sheet of a set, and a reader has to find it each time.
+        left, top = at
+    elif not placements:
         left, top = 0.02, 0.20
     elif beside:
         # To the right of the drawing, starting level with its top edge. A
@@ -572,5 +592,227 @@ def draw_table(
 
     if fills:
         connection.run_tapir("CreateHatches", {"hatchesData": fills})
-    create_texts(connection, texts)
+    create_texts(connection, texts, heights_in_metres=True)
     return len(rows)
+
+
+# -- the study drawn on the sheet, over the plan ------------------------------
+
+#: The strip down the right of the practice's masters that the title block
+#: occupies. Archicad reports a layout's margins and nothing about its master,
+#: so drawings tiled to the page edge run under the title block -- measured at
+#: about 100 mm on the ``DA B1 - VERTICAL`` masters, and the same figure
+#: ``sun_eyes`` keeps clear for the same reason.
+TITLE_BLOCK_MM = 100.0
+
+#: The column kept for the legend, down the right of the sheet beside the
+#: title block, and how far below the top edge it starts. The plans are tiled
+#: in what is left, so the legend never sits on one.
+LEGEND_COLUMN_MM = 95.0
+LEGEND_DROP_MM = 45.0
+
+
+def legend_place(sheet: LayoutSheet, title_block_mm: float = TITLE_BLOCK_MM) -> tuple[float, float]:
+    """Where the legend's top-left corner goes, in metres up from bottom-left.
+
+    Top right, in the column beside the title block: the same spot on every
+    sheet of every study, which is the point of choosing it from the page.
+    """
+    left, top, width, _ = sheet.usable
+    x = left + width - title_block_mm - LEGEND_COLUMN_MM
+    y = sheet.height_mm - top - LEGEND_DROP_MM
+    return (max(x, left) / 1000.0, y / 1000.0)
+
+
+@dataclass(frozen=True)
+class PaperReport:
+    """What went onto one sheet, and how."""
+
+    drawings: int
+    fills: int
+    polylines: int
+    texts: int
+    missing: tuple[str, ...] = ()
+    """Drawings the layout should hold by name and does not."""
+    ratio: float = 1.0
+    ratio_refused: bool = False
+
+    def describe(self) -> str:
+        line = (
+            f"{self.drawings} drawing(s) placed by their origin, and on the sheet over them: "
+            f"{self.fills} fills, {self.polylines} outlines, {self.texts} texts"
+        )
+        if self.ratio < 1.0:
+            line += f"; shrunk to {self.ratio:.0%} to fit"
+        if self.ratio_refused:
+            line += " -- Archicad refused the shrink, so the frames crop the plans instead"
+        if self.missing:
+            line += f"; not found on the layout: {', '.join(self.missing)}"
+        return line
+
+
+def enter_layout(connection: ArchicadConnection, layout_database_id: str) -> None:
+    """Make a layout the current database, through the add-on.
+
+    Not ``activate``: Tapir's ``ChangeWindow`` reaches a layout only once the
+    project has been saved since the layout was made, and the add-on's
+    ``SetCurrentDatabase`` enters one made a second ago -- and reads back where
+    it ended up before saying so (docs/addon.md).
+    """
+    answer = connection.run_loriini(
+        "SetCurrentDatabase",
+        {"databaseId": {"guid": layout_database_id}, "windowType": "Layout"},
+    )
+    if not isinstance(answer, dict) or not answer.get("success"):
+        raise ArchicadError(f"the layout could not be entered to draw on: {answer!r}")
+
+
+def lay_study_on_sheet(
+    connection: ArchicadConnection,
+    layout_database_id: str,
+    sheet: LayoutSheet,
+    *,
+    drawings: Sequence[tuple[str, StudyElements]],
+    zoom: tuple[float, float, float, float],
+    scale: float,
+    cells: int | None = None,
+    gap_m: float = 0.012,
+    title_block_mm: float = TITLE_BLOCK_MM,
+) -> tuple[PaperReport, list[DrawingPlacement]]:
+    """Tile the plans on the sheet and draw each one's study over it.
+
+    ``drawings`` names each placed Drawing, in reading order, with the
+    elements that belong over it -- still in project metres, exactly as the
+    floor-plan route would have created them. ``zoom`` is the project-space
+    box every plan shows and ``scale`` its denominator.
+
+    **Nothing here reads a drawing's size back, which is what frees the sheet
+    from the save.** The old route placed the drawings, saved the project so
+    they could be measured, and then straightened and tiled what it measured;
+    a project that refused the save kept its drawings wherever they fell, off
+    the page as often as on it. Here the size is *chosen*: every Drawing is
+    pinned by its own origin -- the project origin -- with a clip frame that
+    is the zoom box at scale, so where the model lands on the paper is known
+    by construction and the study is laid over it with the same arithmetic.
+
+    Returns the report and where each drawing now is, which ``draw_table``
+    takes in place of measuring.
+    """
+    answer = connection.run_loriini(
+        "GetDrawings", {"layoutDatabaseId": {"guid": layout_database_id}}
+    )
+    rows = answer.get("drawings") if isinstance(answer, dict) else None
+    if not isinstance(rows, list):
+        raise ArchicadError(f"GetDrawings answered {answer!r}")
+    by_name = {str(row.get("name", "")): row for row in rows if isinstance(row, dict)}
+
+    x_min, y_min, x_max, y_max = zoom
+    tile = ((x_max - x_min) / scale, (y_max - y_min) / scale)
+    room = replace(sheet, right_mm=sheet.right_mm + title_block_mm + LEGEND_COLUMN_MM)
+    tiling = tile_positions(room, max(cells or 0, len(drawings)), tile, gap_m)
+
+    ratio, refused = 1.0, False
+    present = [(name, held) for name, held in drawings if name in by_name]
+    missing = tuple(name for name, _ in drawings if name not in by_name)
+    if not tiling.fits and present:
+        try:
+            connection.run_tapir(
+                "SetDetailsOfElements",
+                {
+                    "elementsWithDetails": [
+                        {
+                            "elementId": {"guid": str(by_name[name]["guid"])},
+                            "details": {"typeSpecificDetails": {"ratio": tiling.fit}},
+                        }
+                        for name, _ in present
+                    ]
+                },
+            )
+            ratio = tiling.fit
+        except ArchicadError:
+            refused = True
+
+    frames: list[PaperFrame] = []
+    arranged: list[dict[str, Any]] = []
+    placements: list[DrawingPlacement] = []
+    for (name, _), centre in zip(present, tiling.positions, strict=False):
+        k = ratio / scale
+        width, height = (x_max - x_min) * k, (y_max - y_min) * k
+        left, bottom = centre[0] - width / 2.0, centre[1] - height / 2.0
+        frame = PaperFrame(origin=(left - x_min * k, bottom - y_min * k), scale=scale, ratio=ratio)
+        clip = {"xMin": left, "yMin": bottom, "xMax": left + width, "yMax": bottom + height}
+        if refused:
+            # Unshrunk, the plan is bigger than its cell: keep the cell and
+            # let the frame crop, centred, rather than run over its neighbour.
+            shown = (tile[0] * tiling.fit, tile[1] * tiling.fit)
+            clip = {
+                "xMin": centre[0] - shown[0] / 2.0,
+                "yMin": centre[1] - shown[1] / 2.0,
+                "xMax": centre[0] + shown[0] / 2.0,
+                "yMax": centre[1] + shown[1] / 2.0,
+            }
+        frames.append(frame)
+        arranged.append(
+            {
+                "guid": str(by_name[name]["guid"]),
+                "x": frame.origin[0],
+                "y": frame.origin[1],
+                "frame": clip,
+            }
+        )
+        placements.append(
+            DrawingPlacement(
+                element={"elementId": {"guid": str(by_name[name]["guid"])}},
+                angle_rad=0.0,
+                x_min=clip["xMin"],
+                y_min=clip["yMin"],
+                x_max=clip["xMax"],
+                y_max=clip["yMax"],
+                ratio=ratio,
+            )
+        )
+
+    if arranged:
+        placed = connection.run_loriini(
+            "ArrangeDrawings",
+            {
+                "layoutDatabaseId": {"guid": layout_database_id},
+                "drawings": arranged,
+                "anchor": "origin",
+                "frameRelativeToOrigin": False,
+                "autoUpdate": True,
+            },
+        )
+        if not isinstance(placed, dict) or not placed.get("success") or placed.get("failures"):
+            raise ArchicadError(f"ArrangeDrawings answered {placed!r}")
+
+    # The drawers' own creators, so a fill with no contour still goes through
+    # the one command that can draw it. Imported here because that module
+    # builds on the drawing ones and this one must not depend on it at import.
+    from sun_study.archicad.penetration import _create, _create_fills
+
+    enter_layout(connection, layout_database_id)
+    fills = polylines = texts = 0
+    for (_, held), frame in zip(present, frames, strict=True):
+        # A cell a quarter of a metre across is under a millimetre at 1:300,
+        # and one that loses nodes to `paper._ring` may have no area left.
+        on_paper = [
+            fill
+            for fill in (onto_paper(fill, frame) for fill in held.fills)
+            if len(fill.get("coordinates") or ()) >= 3
+        ]
+        fills += len(_create_fills(connection, on_paper, outline=held.outline))
+        lines = [
+            line
+            for line in (onto_paper(line, frame) for line in held.polylines)
+            if len(line.get("coordinates") or ()) >= 2
+        ]
+        polylines += len(_create(connection, "CreatePolylines", "polylinesData", lines))
+        words = [onto_paper(one, frame) for one in held.texts]
+        made, _ = create_texts(connection, words)
+        texts += len(made)
+
+    return (
+        PaperReport(len(present), fills, polylines, texts, missing, ratio, refused),
+        placements,
+    )

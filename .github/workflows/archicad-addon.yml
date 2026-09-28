@@ -5,19 +5,27 @@ name: Archicad add-on
 # Not a convenience. Compiling an Archicad add-on needs Visual Studio with the
 # v142 toolset, and the workstations this tool runs on have no administrator
 # rights, so nobody in the office can install one. A runner can. The output is
-# a single .apx a colleague drops into the folder beside Tapir's, which needs
-# no rights at all.
+# a single .apx a colleague drops into an add-on folder, which needs no rights
+# at all. It carries Tapir's commands built in (archicad-addon/Tapir), so it is
+# the only add-on a workstation needs.
 #
 # The recipe is Tapir's, which is the only combination proven to build an
 # Archicad 26 add-on: a windows-2022 runner, the 26.3000 kit from Graphisoft's
 # public releases, and v142 rather than the runner's own v143. Archicad 26's
 # kit predates v143 and does not compile cleanly under it.
+#
+# The second job makes the handover: this add-on beside Loriini.exe, with an
+# install note and the licence, uploaded as the Loriini_AC26_Win artifact.
+# That folder is what a colleague downloads; see the job for when it runs.
 
 on:
   push:
     paths:
       - "archicad-addon/**"
       - ".github/workflows/archicad-addon.yml"
+      # How the folder is made, so a change to that is proved by making one.
+      - "Loriini.spec"
+      - "scripts/build_app.py"
   pull_request:
     paths:
       - "archicad-addon/**"
@@ -127,4 +135,71 @@ jobs:
         with:
           name: LoriiniAddOn_AC${{ matrix.archicad }}_Win
           path: archicad-addon/Build/RelWithDebInfo/LoriiniAddOn_AC${{ matrix.archicad }}_Win.apx
+          if-no-files-found: error
+
+  # The folder a colleague downloads: the add-on above and the program beside
+  # it, built from the same commit, with the install note and the licence --
+  # the Loriini_AC26_Win artifact on the run's page. scripts/build_app.py
+  # makes it here exactly as it does on a PC, so the two cannot drift apart.
+  #
+  # Not on a pull request, whose push has already built the same commit. And
+  # not on every push: the repository is private, a Windows minute is billed
+  # as two, and the program takes several. A push that changes the add-on or
+  # the build makes a folder; for any other branch or commit, Run workflow on
+  # the Actions tab, with the branch picked, makes a fresh one.
+  package:
+    name: Loriini for Windows
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # The Python the CI runs the window's tests on, so the program in the
+      # folder is the one those tests passed.
+      - name: Install the project
+        run: uv sync --python 3.12
+
+      - name: Take the add-on built above
+        uses: actions/download-artifact@v4
+        with:
+          name: LoriiniAddOn_AC26_Win
+          path: addon
+
+      - name: Build the program and gather the folder
+        run: uv run python scripts/build_app.py --addon addon/LoriiniAddOn_AC26_Win.apx
+
+      # A build that succeeds is not yet a program that starts: a module the
+      # scan missed fails only when something imports it. So it is started
+      # once the way the window starts a study -- SUN_STUDY_RUN_CLI set, so it
+      # runs a command and opens no window -- and must list the rulesets,
+      # which it can only do with its own data inside it.
+      - name: Check the program starts
+        shell: bash
+        timeout-minutes: 5
+        env:
+          SUN_STUDY_RUN_CLI: "1"
+        run: |
+          set -u
+          if ./dist/Loriini.exe rulesets > rulesets.txt 2> errors.txt \
+             && grep -q "nsw_adg@" rulesets.txt; then
+            cat rulesets.txt
+          else
+            cat rulesets.txt errors.txt
+            echo "::error::The packaged program did not start and list its rulesets."
+            exit 1
+          fi
+
+      - name: Upload the folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loriini_AC26_Win
+          path: dist/
           if-no-files-found: error

@@ -71,6 +71,7 @@ from sun_study.archicad.layout import (
     project_map,
 )
 from sun_study.archicad.model_bands import draw_model_bands, fit_to_project
+from sun_study.archicad.paper import PaperSink
 from sun_study.archicad.penetration import (
     MAX_FIT_RESIDUAL_M,
     PATCH_STYLE,
@@ -123,6 +124,7 @@ from sun_study.archicad.shadows import (
 )
 from sun_study.archicad.shadows import (
     build_shadow_sheets,
+    designed_source,
     draw_shadow_series,
     project_frame,
 )
@@ -137,6 +139,8 @@ from sun_study.archicad.sheets import (
     TableRow,
     draw_statistics,
     draw_table,
+    lay_study_on_sheet,
+    legend_place,
     straighten_and_tile,
 )
 from sun_study.archicad.sun_eyes import (
@@ -235,6 +239,7 @@ from sun_study.report.bands_out import (
     write_bands_csv,
     write_bands_json,
 )
+from sun_study.report.cos_table import write_workbook, zone_tables
 from sun_study.report.csv_out import write_csv
 from sun_study.report.header import build_header
 from sun_study.report.json_out import write_json
@@ -1090,6 +1095,7 @@ def report_zone_bands(
     spacing_m: float,
     hours: float | None = None,
     hourly: bool = False,
+    bands: bool = True,
     sheet: bool = False,
     stats: bool = False,
     csv_out: Path | None = None,
@@ -1239,6 +1245,7 @@ def report_zone_bands(
     # a layer, a sheet, a save -- and the numbers are the part of a run worth
     # keeping. Written first, they survive whatever the project does next.
     if csv_out is not None:
+        csv_out = _day_tagged(csv_out)
         _write_zone_csv(csv_out, result, banded=banded, hours=hours, samples=samples)
         typer.echo(f"  wrote {csv_out}")
 
@@ -1252,32 +1259,39 @@ def report_zone_bands(
     titles: dict[str, str] = {}
     problem = False
 
-    # 1. The whole day, banded.
+    # 1. The whole day, banded -- unless the run asked for the hours alone,
+    #    in which case neither whole-day plan is drawn and the hourly set
+    #    below is the study. The figures are computed either way, because
+    #    the areas sheet and the CSV quote them.
     label = "Communal"
     layer = f"{layer_prefix} {label}"
-    drawn = _draw_zone_groups(
-        connection,
-        [
-            CellGroup(
-                label=band.label,
-                mask=_band_mask(minutes, band.lower_minutes, band.upper_minutes),
-                style=style,
-                area_m2=band.area_m2,
-                share=band.share,
-            )
-            for band, style in zip(banded.bands, styles, strict=False)
-        ],
-        shared,
-        layer_name=layer,
-        title=f"Solar access to communal open space, {when}",
-        on_storey=on_storey,
-        max_residual_m=max_residual_m,
+    drawn = (
+        _draw_zone_groups(
+            connection,
+            [
+                CellGroup(
+                    label=band.label,
+                    mask=_band_mask(minutes, band.lower_minutes, band.upper_minutes),
+                    style=style,
+                    area_m2=band.area_m2,
+                    share=band.share,
+                )
+                for band, style in zip(banded.bands, styles, strict=False)
+            ],
+            shared,
+            layer_name=layer,
+            title=f"Solar access to communal open space, {when}",
+            on_storey=on_storey,
+            max_residual_m=max_residual_m,
+        )
+        if bands
+        else None
     )
     # A sheet is offered only for a layer that has something on it. See
     # ``_draw_zone_groups``: a refusal still counts as a problem, but it must
     # not put a label into ``made``, or the run builds a layout, a view and a
     # layer combination around an empty layer and reports it as done.
-    problem |= drawn is None or not drawn.complete
+    problem |= bands and (drawn is None or not drawn.complete)
     if drawn is not None:
         made.append((label, layer))
         tables[label] = _table_rows("communal open space", banded, styles)
@@ -1285,8 +1299,9 @@ def report_zone_bands(
 
     # 2. The threshold, as two areas. What a DCP asks is not how the hours
     #    spread but how much of the space clears the minimum, and a
-    #    seven-band plan makes a reader do that sum by eye.
-    if hours:
+    #    seven-band plan makes a reader do that sum by eye. A whole-day
+    #    plan like the first, so it goes with it.
+    if hours and bands:
         achieved = minutes >= hours * 60.0
         total = float(samples.areas.sum())
         area = float(samples.areas[achieved].sum())
@@ -1515,6 +1530,20 @@ def _zone_grid_m(result: MassingResult) -> float:
     return config.zone_spacing_m or config.ground_spacing_m
 
 
+def _day_tagged(path: Path) -> Path:
+    """``path`` with the run's day in its name, unless it already says it.
+
+    The window runs one job per ticked day into one tables folder, and
+    everything else a run makes -- layers, sheets -- already carries the day,
+    so the equinox figures stand beside the midwinter ones instead of
+    replacing them.
+    """
+    tag = naming.day()
+    if not tag or tag in path.stem:
+        return path
+    return path.with_name(f"{path.stem} {tag}{path.suffix}")
+
+
 def _write_zone_csv(
     destination: Path,
     result: MassingResult,
@@ -1572,6 +1601,52 @@ def _write_zone_csv(
         writer.writerow(["kind", "label", "area_m2", "share"])
         for kind, label, area, share in rows:
             writer.writerow([kind, label, f"{area:.3f}", f"{share:.5f}"])
+
+
+def _write_zone_table(destination: Path, result: MassingResult, *, hours: float | None) -> int:
+    """The COS schedules, one per measured Zone, as an .xlsx. Returns how many.
+
+    Split by the Zone each sample was cut from, which is the thing every other
+    output of a zone run throws away: five levels measured together are one
+    figure on the console, in the CSV and on each storey's sheet, and the
+    schedule a drawing needs is per terrace.
+    """
+    samples = result.scene.zone_samples
+    if result.zone_sunlit is None:
+        raise typer.BadParameter("the study kept no per-instant results to tabulate")
+
+    def storey_of(zone: str) -> str | None:
+        element = result.model.by_id(zone)
+        return element.storey if element is not None else None
+
+    def name_of(zone: str) -> str:
+        element = result.model.by_id(zone)
+        return (element.name or element.long_name) if element is not None else zone
+
+    tables = zone_tables(
+        samples.parent_ids,
+        samples.areas,
+        samples.positions[:, 2],
+        result.zone_sunlit,
+        result.times,
+        storey_of=storey_of,
+        name_of=name_of,
+        minutes=result.zone_minutes,
+        threshold_hours=hours,
+    )
+    write_workbook(
+        destination,
+        tables,
+        heading=f"COS solar analysis, {result.assessment_date:%d %B %Y}, {_window_of(result)}",
+        notes=(
+            "Sunlit area of each communal open space Zone at each hour; "
+            "percentage = sunlit area / the Zone's area.",
+            f"{PRODUCT} {__version__}, grid {_zone_grid_m(result):g} m, "
+            f"{_zone_plane_m(result):g} m above the Zone floor. {STATUS}.",
+            DISCLAIMER,
+        ),
+    )
+    return len(tables)
 
 
 def _draw_zone_groups(
@@ -1861,6 +1936,8 @@ def report_area_bands(
     folder: str = "",
     instant_subset: str = "",
     analysis_subset: str = "",
+    paper: PaperSink | None = None,
+    base_combination: str = "",
 ) -> bool:
     """The whole-day area figures: printed, drawn, and written out.
 
@@ -1914,6 +1991,7 @@ def report_area_bands(
         "zone_by_apartment": match.by_apartment,
         "zones": read_zones(connection),
         "export_extents": extents,
+        "paper": paper,
     }
 
     problem = False
@@ -1924,9 +2002,13 @@ def report_area_bands(
         whole = band_by_area(samples, series.floor_minutes)
         # The same figures the console prints, on the sheet where a reader
         # looks for them rather than in a terminal nobody keeps.
-        sheet_tables["Bands"] = [
-            row for where, table in tables.items() for row in _table_rows(where, table, styles)
-        ]
+        sheet_tables["Bands"] = (
+            _table_rows("all floor", whole, styles)
+            if paper is not None
+            else [
+                row for where, table in tables.items() for row in _table_rows(where, table, styles)
+            ]
+        )
         sheet_titles["Bands"] = (
             f"Direct sun on the floor, {result.assessment_date:%d %B}, hours by area"
         )
@@ -2025,6 +2107,8 @@ def report_area_bands(
             also_hide=also_hide,
             instant_subset=instant_subset,
             analysis_subset=analysis_subset,
+            paper=paper,
+            base_combination=base_combination,
         )
     return problem
 
@@ -2171,8 +2255,11 @@ def report_penetration(
     instant_subset: str = "",
     analysis_subset: str = "",
     sheets_mode: str = "each",
+    paper: PaperSink | None = None,
+    base_combination: str = "",
 ) -> bool:
-    """Draw the study diagram on the floor plan. True if anything is wrong."""
+    """Draw the study diagram -- on the sheets with ``paper``, else on the
+    floor plan. True if anything is wrong."""
     series = result.instants
     if series is None or series.floor_sunlit is None or series.floor_positions is None:
         typer.secho(
@@ -2239,6 +2326,7 @@ def report_penetration(
             # apartments would be fitting to points that carry the very error
             # it exists to remove.
             turn_deg=_frame_turn(connection, result),
+            paper=paper,
         )
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
@@ -2269,6 +2357,8 @@ def report_penetration(
             instant_subset=instant_subset,
             analysis_subset=analysis_subset,
             sheets=sheets_mode,
+            paper=paper,
+            base_combination=base_combination,
         )
     return not drawn.complete
 
@@ -2363,8 +2453,16 @@ def _sheet_per_instant(
     every_sheet_table: Sequence[TableRow] | None = None,
     every_sheet_title: str = "",
     sheets: str = "each",
+    paper: PaperSink | None = None,
 ) -> None:
     """A layer combination, a set of views and the Layouts ``sheets`` says.
+
+    ``paper`` holds the study when it was kept off the floor plan. The views
+    are then of the plan alone -- one combination for all of them, with every
+    layer of this tool's switched off -- and each sheet has its drawings
+    pinned by their origin and the study drawn over them on the layout. No
+    save is asked for on that route, because nothing on it reads a drawing
+    back. See ``sheets.lay_study_on_sheet``.
 
     ``sheets`` deals the instants onto layouts -- all on one, split in two on
     one grid, or one each (the default here, which is what the study sheets
@@ -2403,6 +2501,7 @@ def _sheet_per_instant(
     # exactly what happened when the whole-day sheets were added beside the
     # instants.
     finished: list[tuple[str, str, list[str], int]] = []
+    sheet_views: dict[str, list[StoreyView]] = {}
     if not labels:
         typer.secho(
             "  nothing was drawn, so there are no sheets to make",
@@ -2425,9 +2524,9 @@ def _sheet_per_instant(
         try:
             combination = ensure_layer_combination(
                 connection,
-                naming.named(f"Sun Study {label}"),
-                show=[mine],
-                hide=[*sorted(mine_all - {mine}), *extra_hidden],
+                naming.named("Sun Study Plan" if paper is not None else f"Sun Study {label}"),
+                show=[] if paper is not None else [mine],
+                hide=[*sorted(mine_all - ({mine} if paper is None else set())), *extra_hidden],
                 base=base_combination,
             )
             made_views[label] = views_for_storeys(
@@ -2496,65 +2595,126 @@ def _sheet_per_instant(
             continue
         typer.echo(f"  {name}: {placed.describe().splitlines()[0]}")
         finished.append((name, placed.database_id, chunk_labels, cells))
+        sheet_views[name] = list(views)
 
     if not finished:
         return
 
-    # Saving is what makes a layout readable, and everything below reads it:
-    # a drawing's angle and size are only knowable once it exists. See D39.
-    #
-    # A project that refuses to save therefore has no readable sheets -- but
-    # it does have the fills, which are already in the model, and it has
-    # whatever was written to disk before this. So this says what is missing
-    # and returns, rather than throwing the run away at its last step.
-    try:
-        connection.run_tapir("SaveProject", {})
-    except ArchicadError as error:
-        typer.secho(
-            f"  the layouts are made and the fills are drawn, but Archicad would not save: {error}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        typer.secho(
-            "  Their drawings cannot be straightened or given their tables "
-            "until it does, because a Drawing's size is only readable once "
-            "the layout has been saved. Save in Archicad and re-run.",
-            fg=typer.colors.YELLOW,
-            err=True,
-        )
-        return
-    for label, database_id, chunk_labels, cells in finished:
-        try:
-            sheet, _ = layout_sheet(connection, database_id)
-            pass_over = straighten_and_tile(connection, database_id, sheet, cells=cells)
-            # ``every_sheet_table`` wins where it is given: a per-storey sheet
-            # is not one instant, so there is no per-label table to look up --
-            # what belongs on it is the whole day, the same on each storey.
-            # A sheet carrying several instants stacks their tables, each
-            # under its own heading.
-            rows, title = _sheet_table(
-                chunk_labels, tables, titles, every_sheet_table, every_sheet_title, label
-            )
-            drawn = (
-                draw_table(
+    if paper is not None:
+        layer_of = dict(zip(labels, every, strict=True))
+        label_of = {view.name: label for label, views in made_views.items() for view in views}
+        for name, database_id, chunk_labels, cells in finished:
+            try:
+                if zoom is None:
+                    raise ArchicadError(
+                        "the study cannot be laid over the plan without the extent the "
+                        "plans show: there is nothing to size the drawings to"
+                    )
+                sheet, _ = layout_sheet(connection, database_id)
+                laid, placements = lay_study_on_sheet(
                     connection,
                     database_id,
-                    title=title,
-                    rows=rows,
-                    beside=table_beside,
-                    height_mm=table_height_mm,
+                    sheet,
+                    drawings=[
+                        (view.name, paper.take(layer_of[label_of[view.name]], view.storey_index))
+                        for view in sheet_views.get(name, [])
+                    ],
+                    zoom=zoom,
+                    scale=scale,
+                    cells=cells,
                 )
-                if rows
-                else 0
+                rows, title = _sheet_table(
+                    chunk_labels, tables, titles, every_sheet_table, every_sheet_title, name
+                )
+                drawn = (
+                    draw_table(
+                        connection,
+                        database_id,
+                        title=title,
+                        rows=rows,
+                        beside=table_beside,
+                        # Read from across a desk rather than from the screen
+                        # it was checked on: 2.2 mm is the smallest line on the
+                        # practice's own sheets, and a key is not small print.
+                        height_mm=max(table_height_mm, 2.5),
+                        placements=placements,
+                        at=legend_place(sheet),
+                    )
+                    if rows
+                    else 0
+                )
+            except ArchicadError as error:
+                typer.secho(f"  {name}: {error}", fg=typer.colors.RED, err=True)
+                continue
+            typer.echo(
+                f"    {name}: {laid.describe()}"
+                + (f", table of {drawn} rows on the sheet" if drawn else "")
             )
+    else:
+        # Saving is what makes a layout readable, and everything below reads it:
+        # a drawing's angle and size are only knowable once it exists. See D39.
+        #
+        # A project that refuses to save therefore has no readable sheets -- but
+        # it does have the fills, which are already in the model, and it has
+        # whatever was written to disk before this. So this says what is missing
+        # and returns, rather than throwing the run away at its last step.
+        try:
+            connection.run_tapir("SaveProject", {})
         except ArchicadError as error:
-            typer.secho(f"  {label}: {error}", fg=typer.colors.YELLOW, err=True)
-            continue
-        typer.echo(
-            "    "
-            + pass_over.describe()
-            + (f", table of {drawn} rows on the sheet" if drawn else "")
-        )
+            typer.secho(
+                "  the layouts are made and the fills are drawn, but Archicad "
+                f"would not save: {error}",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            typer.secho(
+                "  Their drawings cannot be straightened or given their tables "
+                "until it does, because a Drawing's size is only readable once "
+                "the layout has been saved. Save in Archicad and re-run.",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+            # Back to a floor plan before leaving, as the ordinary way out does.
+            # Placing the drawings left a layout in front, and every read after
+            # this is scoped to the current database: on Kogarah, 21 September
+            # 2026, a refused save returned from here and the banded plan that
+            # followed read no Zones at all -- "0 apartments could be paired" --
+            # so one refusal by Archicad cost a drawing that never needed the save.
+            with contextlib.suppress(ArchicadError):
+                ensure_model_database(connection)
+            return
+        for label, database_id, chunk_labels, cells in finished:
+            try:
+                sheet, _ = layout_sheet(connection, database_id)
+                pass_over = straighten_and_tile(connection, database_id, sheet, cells=cells)
+                # ``every_sheet_table`` wins where it is given: a per-storey sheet
+                # is not one instant, so there is no per-label table to look up --
+                # what belongs on it is the whole day, the same on each storey.
+                # A sheet carrying several instants stacks their tables, each
+                # under its own heading.
+                rows, title = _sheet_table(
+                    chunk_labels, tables, titles, every_sheet_table, every_sheet_title, label
+                )
+                drawn = (
+                    draw_table(
+                        connection,
+                        database_id,
+                        title=title,
+                        rows=rows,
+                        beside=table_beside,
+                        height_mm=table_height_mm,
+                    )
+                    if rows
+                    else 0
+                )
+            except ArchicadError as error:
+                typer.secho(f"  {label}: {error}", fg=typer.colors.YELLOW, err=True)
+                continue
+            typer.echo(
+                "    "
+                + pass_over.describe()
+                + (f", table of {drawn} rows on the sheet" if drawn else "")
+            )
 
     # File the sheets where the practice keeps this kind of drawing, rather
     # than at the root of a book of 299 layouts. Split by what the sheet is:
@@ -2936,8 +3096,10 @@ def report_assessment(
         )
         typer.echo("")
         if csv_out:
+            csv_out = _day_tagged(csv_out)
             typer.echo(f"  wrote {write_csv(csv_out, result.assessment, header)}")
         if json_out:
+            json_out = _day_tagged(json_out)
             typer.echo(f"  wrote {write_json(json_out, result.assessment, header)}")
 
 
@@ -2972,6 +3134,37 @@ def _export_by_route(connection: ArchicadConnection, out: Path, route: str) -> P
         fg=typer.colors.YELLOW,
     )
     return export_ifc(connection, out)
+
+
+def _refuse_stale_export(written: Path, switched_off: Sequence[str]) -> None:
+    """Stop if the export still shows what this run had just switched off.
+
+    The add-on rebuilds the 3D model before reading it, and on Kogarah, 21
+    September 2026, that rebuild twice did not happen: with a layout in front
+    in Archicad the export came back as the model stood *before* the run set
+    its layers -- `09 | Adaptable PRE` in it, which the run had hidden, and the
+    `06 | Zone.SEPP 65` Zones it had forced on missing. That one announced
+    itself, because the apartments were the missing part. Had they not been,
+    the study would have measured the wrong building and said nothing.
+
+    So the export is asked the one question it can answer about itself: does
+    it carry elements on a layer this run switched off. If so it is not this
+    run's model, whatever the cause, and nothing is measured from it.
+    """
+    if written.suffix.lower() == ".ifc" or not switched_off:
+        return
+    carried = {element.layer for element in read_model(written).elements}
+    stale = sorted(carried & set(switched_off))
+    if not stale:
+        return
+    raise ArchicadError(
+        f"The export is not of the model as this run set it: it carries elements on "
+        f"{', '.join(repr(name) for name in stale[:4])}"
+        f"{' and more' if len(stale) > 4 else ''}, which had just been switched off. "
+        f"Archicad kept an older 3D model instead of rebuilding it, which it does when a "
+        f"layout is the window in front. Click the floor plan's tab, or the 3D window's, "
+        f"in Archicad and run again."
+    )
 
 
 def _export_for_massing(
@@ -3054,6 +3247,11 @@ def _export_for_massing(
     ) as plan:
         typer.echo(plan.describe())
         written = _export_by_route(connection, out, route)
+        try:
+            _refuse_stale_export(written, plan.hidden)
+        except ArchicadError as error:
+            typer.secho(str(error), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from error
     typer.echo(f"  exported {written.stat().st_size / 1e6:.1f} MB")
     # Only an IFC can be bloated by the properties a translator writes; the
     # native file carries none, so the note would be nonsense about it.
@@ -3386,6 +3584,18 @@ def massing(
             ),
         ),
     ] = False,
+    zone_bands: Annotated[
+        bool,
+        typer.Option(
+            "--zone-bands/--no-zone-bands",
+            help=(
+                "Draw the whole-day plans: the Zones banded by hours of sun, "
+                "and the threshold split when --zone-hours is given. Off, with "
+                "--zone-hourly, leaves only the plans at each hour; the areas "
+                "sheet and the CSV are written either way."
+            ),
+        ),
+    ] = True,
     zone_view_combination: Annotated[
         str,
         typer.Option(
@@ -3406,6 +3616,18 @@ def massing(
                 "Write every figure -- band, threshold and hour, with area "
                 "and share -- to this CSV. A spreadsheet is a better place "
                 "for a number than an Archicad Text."
+            ),
+        ),
+    ] = None,
+    zone_table: Annotated[
+        Path | None,
+        typer.Option(
+            "--zone-table",
+            help=(
+                "Write the COS schedules to this .xlsx: one table per Zone -- "
+                "'L2 COS SOLAR ANALYSIS' -- with the sunlit area and its share "
+                "at every hour. A run over several levels sums them everywhere "
+                "else; this splits them back out."
             ),
         ),
     ] = None,
@@ -3789,6 +4011,24 @@ def massing(
     typer.echo("")
     typer.secho(result.summary(), fg=typer.colors.GREEN, bold=True)
 
+    if zone_table is not None:
+        # Before anything reaches Archicad, like the CSV: the numbers are the
+        # part of a run worth keeping, and this path needs no connection.
+        if result.zone is None:
+            typer.secho(
+                "  --zone-table needs --zone-layer or --zone-name: there is no "
+                "zone surface to tabulate.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        # The window runs one job per ticked day with the same path; the day
+        # goes in the name, as it does on every layer and sheet, so the
+        # equinox table does not land on top of the midwinter one.
+        zone_table = _day_tagged(zone_table)
+        written = _write_zone_table(zone_table, result, hours=zone_hours)
+        typer.echo(f"  wrote {written} COS schedule(s) to {zone_table}")
+
     if model_bands:
         typer.echo("")
         connection = _connect(port, timeout)
@@ -3822,9 +4062,10 @@ def massing(
             spacing_m=zone_grid or ground_grid,
             hours=zone_hours,
             hourly=zone_hourly,
+            bands=zone_bands,
             sheet=zone_sheet,
             stats=zone_stats,
-            csv_out=zone_csv,
+            csv_out=_day_tagged(zone_csv) if zone_csv is not None else None,
             sheets_mode=sheets,
             # The plan the diagrams sit on. Without it each run snapshots
             # whatever the last one left applied, and the sheets lose the
@@ -5431,6 +5672,19 @@ def archicad_run(
             ),
         ),
     ] = "SHADOW DIAGRAMS",
+    plan_combination: Annotated[
+        str,
+        typer.Option(
+            "--plan-combination",
+            help=(
+                "The layer combination the plan sheets are drawn over -- the "
+                "plan a reader expects to see under the sunlight. Defaults to "
+                "--layer-combination. Without either, each run starts from "
+                "whatever the last one left on screen, and over a few runs the "
+                "sheets drift to showing the study and nothing under it."
+            ),
+        ),
+    ] = "",
     adg_subset: Annotated[
         str,
         typer.Option(
@@ -5502,6 +5756,22 @@ def archicad_run(
             ),
         ),
     ] = False,
+    on_sheet: Annotated[
+        bool,
+        typer.Option(
+            "--on-sheet/--on-plan",
+            help=(
+                "Where the floor diagrams are drawn. On the sheet: the plan is "
+                "placed on the layout as it stands and the study is drawn over "
+                "it there, so the project gains no layers and no fills, and "
+                "nothing waits on Archicad agreeing to save. On the plan is the "
+                "older route, kept for a drawing that has to live in the model: "
+                "fills on a floor-plan layer per diagram, with Element IDs a "
+                "Schedule can total, which a layout element cannot carry. Needs "
+                "--sheet, since on the sheet is the only place it is drawn."
+            ),
+        ),
+    ] = True,
     plan_hours: Annotated[
         float | None,
         typer.Option(
@@ -5757,6 +6027,7 @@ def archicad_run(
                     connection, require_layer or [], role="layers named by --require-layer"
                 )
                 exported = _export_by_route(connection, destination, export_route)
+                _refuse_stale_export(exported, plan.hidden)
         except ArchicadError as error:
             typer.secho(str(error), fg=typer.colors.RED, err=True)
             raise typer.Exit(code=2) from error
@@ -5772,6 +6043,13 @@ def archicad_run(
             )
         except GeoreferencingError as error:
             typer.secho(f"Georeferencing error: {error}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from error
+        except SceneConfigError as error:
+            # A sentence, as `massing` gives. A storey named 'LEVEL 04' on a
+            # project that calls it 'LEVEL 04 (5)' is a typo, and the message
+            # already lists the storeys the apartments are on; under a
+            # traceback nobody reads that far.
+            typer.secho(f"Scene setting error: {error}", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=2) from error
         except RulesetError as error:
             typer.secho(f"Ruleset error: {error}", fg=typer.colors.RED, err=True)
@@ -5842,6 +6120,32 @@ def archicad_run(
                         fg=typer.colors.RED,
                     )
 
+        # One clearing out and one folder for the whole run, before any sheet
+        # is made: the sheet-building steps would otherwise delete each
+        # other's work and file their views separately.
+        #
+        # Before the first of them, which is --draw's. It stood after it until
+        # 21 September 2026, and the clearing goes by the tool's own prefix:
+        # so the per-flat sheet was made, and removed seconds later as "the
+        # previous run", on every run that asked for it beside any other plan
+        # -- which is what the window asks for by default. The console said
+        # "removed 1 views and layouts" on a project that had none.
+        view_folder = ""
+        if sheet:
+            gone, left = remove_previous(connection)
+            view_folder = next_view_folder(connection)
+            typer.echo("")
+            typer.echo(f"  views go in {view_folder!r}")
+            if gone:
+                typer.echo(f"  removed {gone} views and layouts from the previous run")
+            if left:
+                typer.secho(
+                    f"  {left} could not be removed and are still there. A View "
+                    f"a placed Drawing points at cannot be deleted, and Archicad "
+                    f"reports success either way.",
+                    fg=typer.colors.YELLOW,
+                )
+
         if draw:
             typer.echo("")
             try:
@@ -5889,24 +6193,9 @@ def archicad_run(
                     zoom=assessed_extent(read_zones(connection), match, margin_m=10.0),
                 )
 
-        # One clearing out and one folder for the whole run, before any sheet
-        # is made: the two sheet-building steps would otherwise delete each
-        # other's work and file their views separately.
-        view_folder = ""
-        if sheet:
-            gone, left = remove_previous(connection)
-            view_folder = next_view_folder(connection)
-            typer.echo("")
-            typer.echo(f"  views go in {view_folder!r}")
-            if gone:
-                typer.echo(f"  removed {gone} views and layouts from the previous run")
-            if left:
-                typer.secho(
-                    f"  {left} could not be removed and are still there. A View "
-                    f"a placed Drawing points at cannot be deleted, and Archicad "
-                    f"reports success either way.",
-                    fg=typer.colors.YELLOW,
-                )
+        # Only with sheets: on the sheet is the only place that route draws,
+        # and a run that asked for no sheets still wants its diagram somewhere.
+        paper = PaperSink() if on_sheet and sheet else None
 
         if plan_instant:
             typer.echo("")
@@ -5917,6 +6206,7 @@ def archicad_run(
                     wanted=plan_instant,
                     match=match,
                     layer_prefix=layer,
+                    paper=paper,
                     sheets=sheet,
                     master_layout=master_layout,
                     folder=view_folder,
@@ -5924,6 +6214,7 @@ def archicad_run(
                     instant_subset=layout_subset,
                     analysis_subset=adg_subset,
                     sheets_mode=sheets,
+                    base_combination=plan_combination or layer_combination or "",
                 )
                 or partial
             )
@@ -5950,6 +6241,7 @@ def archicad_run(
                     result,
                     match=match,
                     layer_prefix=layer,
+                    paper=paper,
                     bands=plan_bands,
                     hours=plan_hours,
                     csv_out=csv_out,
@@ -5968,6 +6260,7 @@ def archicad_run(
                     zoom=assessed_extent(read_zones(connection), match, margin_m=10.0),
                     instant_subset=layout_subset,
                     analysis_subset=adg_subset,
+                    base_combination=plan_combination or layer_combination or "",
                 )
                 or partial
             )
@@ -6386,14 +6679,42 @@ def shadows(
         bool, typer.Option("--sheet/--no-sheet", help="Build views and layouts from the fills.")
     ] = False,
     shadow_storey: Annotated[int, typer.Option("--shadow-storey")] = 0,
+    shadow_all_hours: Annotated[
+        bool,
+        typer.Option(
+            "--shadow-all-hours/--no-shadow-all-hours",
+            help=(
+                "Also draw the designed building's own shadow at every hour on one "
+                "plan, as outlines labelled by hour, with a view and a sheet per "
+                "day. The designed building is the PROPOSED row, or the last "
+                "--shadow-scenario."
+            ),
+        ),
+    ] = False,
     drawing_scale: Annotated[float, typer.Option("--drawing-scale")] = 1000.0,
     master_layout: Annotated[str | None, typer.Option("--master-layout")] = None,
     shadow_subset: Annotated[str | None, typer.Option("--shadow-subset")] = None,
     sheets: Annotated[str, typer.Option("--sheets", help=SHEETS_HELP)] = SHADOW_SHEETS,
-    ifc_out: Annotated[Path | None, typer.Option("--ifc-out")] = None,
+    export_route: Annotated[
+        str,
+        typer.Option(
+            "--export",
+            help=(
+                "Where the geometry comes from: 'native' uses the add-on's own model "
+                "and refuses rather than fall back, 'auto' falls back to an IFC "
+                "export, 'ifc' always exports an IFC."
+            ),
+        ),
+    ] = "native",
+    ifc_out: Annotated[
+        Path | None,
+        typer.Option("--ifc-out", help="Keep the exported model here instead of discarding it."),
+    ] = None,
     ifc_in: Annotated[
         Path | None,
-        typer.Option("--ifc-in", help="Analyse this IFC instead of exporting a new one."),
+        typer.Option(
+            "--ifc-in", help="Analyse this model file (IFC or native) instead of exporting."
+        ),
     ] = None,
 ) -> None:
     """Shadow diagrams: what already stands, and what the proposal adds.
@@ -6416,14 +6737,25 @@ def shadows(
     is skipped is producing it, not reading it -- but the file is a snapshot:
     a model edited since it was written is not the model being drawn, and
     nothing here can tell.
+
+    The geometry comes from the add-on's own model by default (``--export
+    native``), not an IFC: the same file the other studies read, a fraction
+    of the size, and already in the project's frame. ``--shadow-from-views``
+    is the exception, since what it reads is what Publisher wrote.
     """
     naming.set_prefix(layer_prefix, default=naming.SHADOW_PREFIX)
+    if export_route not in ("auto", "ifc", "native"):
+        raise typer.BadParameter("takes auto, ifc or native", param_hint="--export")
     moments, labels = _shadow_moments(shadow_date, shadow_hour, year, timezone)
     if not moments:
         typer.secho("No instants to draw.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2)
 
-    connection = _connect(port, timeout)
+    # Without moving the database on the native route, which it cannot
+    # survive: the add-on reads the 3D window's sight, and with the database
+    # moved off it the rebuild misses geometry (see _export_for_massing). The
+    # IFC route keeps its move, because a layout left current exports empty.
+    connection = _connect(port, timeout, switch_database=export_route == "ifc")
     exclude_above, exclude_below = _storey_band(
         port, timeout, above=exclude_above_storey, below=exclude_below_storey, metres=exclude_above
     )
@@ -6458,6 +6790,7 @@ def shadows(
             draw=draw,
             sheet=sheet,
             shadow_storey=shadow_storey,
+            shadow_all_hours=shadow_all_hours,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -6491,6 +6824,7 @@ def shadows(
             draw=draw,
             sheet=sheet,
             shadow_storey=shadow_storey,
+            shadow_all_hours=shadow_all_hours,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -6511,8 +6845,10 @@ def shadows(
             # write then goes there instead of to the model -- while the window
             # on screen still shows a floor plan and the export still reports
             # success. Measured on a real project: 396 Zones and 40% of the
-            # walls missing from a file that looked fine.
-            ensure_model_database(connection)
+            # walls missing from a file that looked fine. The IFC route only;
+            # the native one must not move the database (see above).
+            if export_route == "ifc":
+                ensure_model_database(connection)
             cleared = clear_selection(connection)
             if cleared:
                 typer.secho(
@@ -6537,6 +6873,10 @@ def shadows(
                 # how that run says which layers to carry.
                 only=(
                     tuple(selector for rule in config.shadow_sources for selector in rule.selectors)
+                    # The ground as well: it is not a legend row, and left out
+                    # of the export the run stops on "nothing matches the
+                    # terrain selector" with the layer sitting right there.
+                    + tuple(shadow_terrain or ())
                     + tuple(subject_layer or ())
                     + tuple(context_layer or ())
                     + tuple(require_layer or ())
@@ -6547,8 +6887,9 @@ def shadows(
                 hide=tuple(hide_layer or ()),
             ) as plan:
                 typer.echo(plan.describe())
-                exported = export_ifc(connection, destination)
-            note = oversized_export_note(exported)
+                exported = _export_by_route(connection, destination, export_route)
+            typer.echo(f"  model written to {exported}")
+            note = oversized_export_note(exported) if exported.suffix.lower() == ".ifc" else ""
             if note:
                 typer.secho(note, fg=typer.colors.YELLOW)
         except ArchicadError as error:
@@ -6567,6 +6908,7 @@ def shadows(
             draw=draw,
             sheet=sheet,
             shadow_storey=shadow_storey,
+            shadow_all_hours=shadow_all_hours,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -6593,6 +6935,7 @@ def _shadow_report(
     sheet: bool,
     shadow_storey: int,
     shadow_favourite: str | None,
+    shadow_all_hours: bool = False,
     terrain_floor: float | None,
     edge_tolerance: float,
     drawing_scale: float,
@@ -6694,6 +7037,14 @@ def _shadow_report(
         solar_position(moments, scene.orientation.latitude_deg, scene.orientation.longitude_deg),
         scene.orientation.normalised_bearing_deg,
     )
+    designed = designed_source([source.spec for source in scene.sources])
+    if shadow_all_hours and designed is None:
+        typer.secho(
+            "  --shadow-all-hours needs a design to outline: name a PROPOSED row or a "
+            "--shadow-scenario. Drawing the hours without it.",
+            fg=typer.colors.YELLOW,
+        )
+    outlined = designed if shadow_all_hours else None
     series = cast_shadows(
         grid,
         sources=scene.sources,
@@ -6703,6 +7054,7 @@ def _shadow_report(
         spacing_m=shadow_grid,
         receiving=receiving,
         edge_tolerance_m=edge_tolerance if edge_tolerance > 0 else None,
+        outline=outlined,
     )
 
     lower, upper = scene.bounds
@@ -6776,9 +7128,16 @@ def _shadow_report(
             scene.frame_samples,
             north_radians=read_geo_location(connection).north_radians,
             export_bearing_deg=scene.orientation.normalised_bearing_deg,
+            archicad_guids=scene.provenance.get("schema") == "LORIINI",
         )
         typer.echo(note)
-        drawn = draw_shadow_series(connection, series, storey_index=shadow_storey, transform=frame)
+        drawn = draw_shadow_series(
+            connection,
+            series,
+            storey_index=shadow_storey,
+            transform=frame,
+            all_hours=outlined,
+        )
         typer.echo("")
         typer.echo(drawn.describe())
         if sheet:
@@ -6790,6 +7149,7 @@ def _shadow_report(
                 master_layout=master_layout,
                 subset=shadow_subset,
                 sheets=sheets,
+                all_hours=outlined is not None,
             )
             typer.echo("")
             typer.echo(built.describe())
@@ -7193,14 +7553,14 @@ def site_analysis(
     with_aerial: Annotated[
         bool,
         typer.Option(
-            "--aerial",
+            "--aerial/--no-aerial",
             help=(
-                "Fetch the aerial photo. Without this there is no orthophoto to put "
-                "on the site sheet -- --aerial-as chooses how it is placed, but only "
-                "if it was fetched. The tiles are also saved as georeferenced JPEGs."
+                "Fetch the aerial photo and place it under both sheets; on by default. "
+                "--aerial-as chooses how it is placed. The tiles are also saved as "
+                "georeferenced JPEGs."
             ),
         ),
-    ] = False,
+    ] = True,
     fetch_only: Annotated[
         bool,
         typer.Option("--fetch-only", help="Fetch and save the bundles; do not touch Archicad."),
@@ -7266,9 +7626,10 @@ def site_analysis(
         typer.Option(
             "--future/--no-future",
             help=(
-                "The future context: what the LEP height, the FSR and the ADG's separation "
-                "would let a flat building be on each lot near the site. Drawn on the site "
-                "sheet and stood as slabs on the LORIINI FUTURE layer."
+                "The future context: each existing building near the site, on its own "
+                "footprint, raised to the storeys the LEP's height control allows there. "
+                "Drawn on the site sheet and stood as slabs on the 'Site Context.Future "
+                "buildings' layer."
             ),
         ),
     ] = False,
@@ -7276,19 +7637,9 @@ def site_analysis(
         float,
         typer.Option(
             "--future-reach",
-            help="Metres from the site's boundary a lot is still its future context.",
+            help="Metres from the site's boundary a building is still its future context.",
         ),
     ] = future_context.DEFAULT_REACH_M,
-    future_setback: Annotated[
-        float,
-        typer.Option(
-            "--future-setback",
-            help=(
-                "The street setback, metres: the council's DCP figure, which the register "
-                "does not carry. Side and rear setbacks are the ADG's, by height."
-            ),
-        ),
-    ] = future_context.DEFAULT_FRONT_SETBACK_M,
     datum: Annotated[str, typer.Option("--datum", help=context_model.DATUM_HELP)] = "project",
     aerial_as: Annotated[
         str,
@@ -7306,8 +7657,8 @@ def site_analysis(
         typer.Option(
             "--future-zones",
             help=(
-                "LEP zones a flat building may stand in, comma separated. Lots zoned "
-                "otherwise keep their houses."
+                "LEP zones a flat building may stand in, comma separated. A building on "
+                "land zoned otherwise keeps its height: its future is what stands."
             ),
         ),
     ] = ",".join(future_context.DEFAULT_ZONES),
@@ -7347,8 +7698,9 @@ def site_analysis(
             "--context-prefix",
             help=(
                 "The office's own site group, the number in front of "
-                "'Site Context.3D'. The neighbours and the ground under them "
-                "go there rather than on a layer of this tool's own, so a "
+                "'Site Context.Terrain', '.Roads' and '.Buildings'. The "
+                "neighbours and the ground under them go there, one layer per "
+                "kind, rather than on a layer of this tool's own, so a "
                 "colleague finds them where neighbours live. A layer the "
                 "template already has is used, not duplicated; point this at a "
                 "group the project does not have and the layers are made. "
@@ -7364,7 +7716,7 @@ def site_analysis(
     the City of Sydney's contours and trees inside its area, Transport for
     NSW, OpenStreetMap and Valhalla -- and drawn as native fills, lines
     and texts at true ground scale in the project's own frame, with a view of
-    each sheet at its scale. Needs the Loriini add-on beside Tapir: a
+    each sheet at its scale. Needs the Loriini add-on: a
     worksheet can only be drawn into in the session that made it through the
     add-on's own command.
     """
@@ -7581,7 +7933,6 @@ def site_analysis(
         raise typer.BadParameter(str(error), param_hint="--datum") from error
     future_options = future_context.FutureOptions(
         reach_m=future_reach,
-        front_setback_m=future_setback,
         zones=tuple(z.strip().upper() for z in future_zones.split(",") if z.strip()),
         datum_m=datum_m,
     )
@@ -7598,10 +7949,10 @@ def site_analysis(
                 source, frame_and_offset(source), future_options
             )
             typer.echo(future_report.describe())
-            if not source.floor_space_ratio.get("features"):
+            if not source.furniture.buildings:
                 typer.secho(
-                    "  no floor-space ratio in the bundle (fetched before it was read, or none "
-                    "at this site); the envelopes are capped by height alone.",
+                    "  no building footprints in the bundle, so there is nothing to raise; "
+                    "the future context is empty.",
                     fg=typer.colors.YELLOW,
                 )
 

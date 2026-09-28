@@ -3527,7 +3527,471 @@ somebody's source. A hex dump around a known caption shows the whole `STR#`
 block — length, name line, item — and settles in seconds what reasoning from
 the API got wrong twice.
 
-### D106 — The info box says the terms and never the date; the credits sit beside the fetching
+### D106 — The COS schedule is split per Zone, and written as an .xlsx without a library
+
+Asked 18 September 2026, after the Silverwater options were run over five
+COS levels at once and the per-level figures had to be pulled out by hand:
+*"this is how the table for COS solar should look like ... please implement
+this into our program."* The table is the office's own: `L2 COS SOLAR
+ANALYSIS`, then TIME / AREA (sqm) / PERCENTAGE, a row per hour.
+
+**Every other output of a multi-level zone run is the sum.** The console, the
+`--zone-csv` rows and the table on each storey's sheet all total the Zones
+together, which answers "how much of the communal open space" and hides "how
+does this terrace do". On Silverwater that hid the whole story: only L2 differs
+between the three options, and L3 and L4 barely see the sun in any of them.
+`--zone-table` splits by the Zone each sample was cut from. Verified on the
+three options: the five per-Zone tables add back up to each run's hourly
+totals to the tenth of a square metre.
+
+**The workbook is built from the standard library.** A runtime dependency is a
+conversation here, and an `.xlsx` is a zip of six small XML parts, so there
+was nothing to have it about. Each percentage is a formula over the cells
+beside it and also carries its value: it recalculates when somebody edits an
+area, and still reads right in a previewer that never calculates. Areas are
+rounded as written, so the recalculated share matches the one printed. Checked
+by opening the output in Excel, not only by parsing it.
+
+**The format is the decision; the geometry route is not.** The table reads
+only the per-sample results every route produces, so it carries over unchanged
+when the study moves off the IFC.
+
+*Not done, and worth doing:* the table on each storey's sheet in Archicad is
+still the five-level sum, repeated on every sheet. It should be that storey's
+own schedule, and now that the split exists it can be.
+
+### D107 — The sheets panel deals by the Sheets row, and the page can be saved as a preset
+
+Asked 21 September 2026, after the window's first build went out: *"the sheets
+in right bar need to be connected with the sheet setting 1sheet/2sheets/
+multiple sheets ... needs to correspond truthfully to the actual output
+settings"*, and *"make possible to save preset and import presets."*
+
+**The panel was drawing one sheet per drawing whatever General said.** Seven
+shadow hours were seven thumbnails while the run, set to *Two layouts*, made a
+four-and-three pair. The count on the strip was wrong by the same factor, and
+the count is the one thing the panel exists to get right. Three other
+untruths came out in the same pass: the shadow sheets were drawn for the days
+ticked in Model, when the shadow study is one job that reads its own Days row;
+the sun views were drawn at the apartment instants rather than their own
+Hours; and the communal study's threshold plan, its hourly set and its areas
+table were not drawn at all.
+
+**Dealt by the same function the run calls.** `Window.planned` now builds each
+study's drawings and passes them through `sheeting.sheet_chunks` with the mode
+the Sheets row sends -- or, when the row is blank and sends nothing, the mode
+each command falls back to on its own, because that is what a blank row does.
+A `Sheet` carries its `drawings`, the `cells` of the grid it is laid out on,
+and its place in the set; the short second sheet of a pair keeps the first
+one's grid with a cell drawn empty, as the run leaves it. The thumbnail lays
+the cells out by the same wasted-cells-then-nearest-square rule as
+`sun_eyes.sheet_cells_for`, so four drawings are a block and not a row. The
+band lists the sun at every drawing on a sheet.
+
+**Presets are the settings file, wherever the person puts it.** Two buttons
+in the run bar, *Save preset…* and *Load preset…*, write and read the same
+JSON `Save as default` writes -- one format on purpose, so a preset copied
+over `settings.json` is the defaults and the defaults sent on are a preset.
+Loading changes only what the file names, and the open project then has the
+last word exactly as it does over the saved defaults: layer names it does not
+carry are dropped and said out loud. `preferences.read` is the one function in
+that module that raises, because the person chose the file and wants to know
+why it did not load. The dialogs open in Documents, not `%APPDATA%`: a preset
+exists to be found.
+
+### D108 — Hours and days are pressed, the plans row picks bands or times, and each sheet says its own scale
+
+Asked 21 September 2026, on seeing the first build with the dealt panel:
+*"bigger names of sheets. correct scale on the sheets written. possibility to
+choose if i want bands by hour or just the sunlight in actual time. site
+analysis and context analysis should have different miniature. days and hours
+needs to be clickable, not write entry."*
+
+**Hours and days are buttons.** Five typed fields -- the plan times, the
+communal window, the shadow days and hours, the sun-view hours -- took three
+spellings between them, and a person had to know which. `Ticks` is a row of
+buttons, six in the morning to seven at night or the four assessment days,
+that answers `get`, `delete` and `insert` the way the Entry did, so
+`Window.apply`, the saved files and the run see the same text as before. The
+text is *kept*, not rebuilt: a file that says `9, 3pm` lights nine and three
+and is sent as `9, 3pm`, and a value no button stands for is sent as typed
+and lights nothing, so nothing saved on purpose is rounded to a button. The
+communal window is a span: press the first hour and the last.
+
+**Bands or times, for both plan studies.** The apartment plans and the
+communal plans each drew the whole day in bands *and* the sun at each time,
+with only the communal hourly set switchable. One Plans row in Solar analysis
+now chooses for both: bands, times, or both. For the apartments, bands is
+`--draw` and times is `--plan-instant`, with `--no-draw --sheet` making the
+instant sheets alone. For the communal space, times is `--zone-hourly` and a
+new `--no-zone-bands` skips the banded and threshold plans; the figures are
+still computed, because the areas sheet and the CSV quote them.
+
+**Each sheet says the scale its command sends.** The block said 1:1000 on
+every thumbnail. It now says what the run will place the drawings at: the sun
+views' own Scale row, the context sheet's, 1:1000 for the shadows, 1:200 for
+the apartment plans and the model, 1:300 for the communal plans -- and
+honestly "to fit" for the site sheet, whose scale the run picks from a list
+to suit the site, and nothing for the summary, which is a table.
+
+**Three site sheets, three pictures**, and the sheet name set at 11 points
+rather than 9, because the name is what tells one sheet from the next across
+the panel and a thumbnail is not a print preview. Each site sheet now follows
+its own tick, as the command does with `--no-context` and the rest.
+
+**A model is drawn as geometry, not as a sheet.** Asked in the same session:
+*"if we creating model, there should not be sheet visible but miniature of
+actual model without the sheet."* The context model and the future model are
+geometry on their own layers and the run makes no layout of them, so the
+panel draws them as an isometric of the ground within the radius, the blocks
+on it and the site among them -- the future model with the allowed envelopes
+dashed over the lots within reach -- with no paper, no shadow and no sheet
+number. The strip's count stays the count of sheets; the study's own line
+says "3 sheets, 2 models".
+
+**The facade study is a model too.** Asked next: *"facade solar analysis is
+not sheet as well as creating 3d geometry. repair its miniature."* Checked
+against `jobs`: the window never sends `--model-views`, so the facade run
+colours the model -- a skin of 3D elements, one colour per band -- and makes
+no layout at all. The panel had drawn it as a sheet. It is now a model per
+day, the building's faces striped by hours of sun with the sun over it.
+
+**Chip rows wrap inside the pane.** From the same screenshot: fourteen
+apartment names ran off the right of the page in one line, and the rows that
+did wrap lined up on the first row's column edges. Two faults. A frame is
+given whatever width it asks for, and a row that measured *itself* asked for
+one long line -- so the row now measures the scroller's canvas less its own
+offset. And `grid` lines columns up down the page, so the chips are `place`d
+from measured widths, each row from the left, and the row states its own
+size because placed children do not size their parent.
+
+### D109 — The window's design principles: three surfaces, thin contours, one radius scale, air
+
+Asked 21 September 2026, after a review of the window as built: *"some tabs,
+windows inside the program are not fully detailed ... there should be couple
+contours distinguishing different windows ... really need to commit to some
+design principles. rounded corners etc"*, and the brief: *"everything very
+airy. archicad, light grey, light blue, apple kind of style. thin contour."*
+
+**The review found four things.** The page and every panel were white, so on
+a short tab the panel dissolved into empty page and the only contour was a
+hairline doing all the work. Two rows on Solar analysis floated outside any
+panel. The run bar gave Run, Stop and four settings actions equal weight in
+one row. And the page scrollbar drew its trough down a page that did not
+scroll. The palette, the type, the rounded faces and the dock were sound.
+
+**The principles are written into `theme.py`'s docstring**, seven of them,
+and every change since is one of them: three surfaces (light grey ground,
+white cards, blue tint for chosen); thin one-pixel contours wherever a region
+ends and never a frame inside a frame; one radius scale (4 px controls, 6 px
+cards, 5 px tab tops, 0 on paper and geometry); air, with cards inset and
+rows stepping six pixels; every control in a card under a header; one mark
+per state on its own axis; Segoe UI at the system size.
+
+**What changed to meet them.** A `PAGE` colour, a shade lighter than the
+surround, under the sections; the open tab's face redrawn in it so the tab
+still joins the page; cards standing on it rather than on white, which is a
+`STANDS_ON` entry because a face's corners show the style's background. A
+one-pixel rule between page and dock, above the info band and above the run
+bar. A *Filing and plans* card for the two shared rows. A gap in the run bar
+between the run buttons and the settings buttons. The scrollbar shown only
+when the page is taller than its pane. Wider card padding and row spacing.
+
+*Not changed, on purpose:* the queued mark. The orange dot on a drawing tab's
+icon is the sun the section icons carry, not a second queued mark; queued is
+the blue name and its dot, one mark on one axis, as before.
+
+**Sized to Archicad's own dialogs.** Sami sent the Work Environment dialog as
+the reference for sizes and choices: buttons no taller than the field beside
+them, a one-pixel edge, a small radius, a grey capitalised band heading a
+section. So every button and field is now set at the same compact height,
+the tiles carry 20 px drawings instead of 24, *+ Add* matches the chips, and
+a settings card's title is capitals on the grey band -- the tint is kept for
+what is switched on. The tabs are rounded cards on the chrome and the page
+is a rounded card of its own a gap below them, because a tab whose face
+merged into the page had no contour and read as neither. The captions over
+the two groups of tabs are gone; the rule between them says it. A rule under
+the project bar parts *which Archicad* from everything else. The pen set is
+chosen from the project's own pen tables rather than typed. And the foot of
+the window carries the licence line -- product, version, author, term --
+instead of the prototype warning, which stays on every sheet and export where
+the figures are.
+
+**One height, and more pictures.** Measured rather than eyeballed: every
+button, tile, field and list now asks for the same 29 px, so a row is a row
+whatever it holds. The three assessment days are buttons with the sun at
+that day's height instead of check boxes; the site study's outputs keep
+their boxes and gain their pictures; Browse carries a folder. The dotted
+focus rectangle is gone from tabs and tiles -- their face says their state,
+and the ring read as a second mark.
+
+**Named for the drawing.** A thumbnail led with the day -- *21 JUN · ALL
+DAY* -- which says almost nothing; it now leads with what the drawing is,
+*Communal open space by hour*, *Sun view*, *Facade model*, with the day and
+the hour under it and the sun last and smallest. The models say what they
+are rather than what they are not: "not a sheet" is gone.
+
+**Named for Archicad.** *Where the results are filed* did not say it meant
+layers, and a colleague who has not read the code should not have to guess.
+The cards and rows now use Archicad's own words: *Archicad layers the results
+are drawn on* with *Layer prefix* rows, *Layout Book filing* with *Subset*
+rows, *Master layout*, *Layer combination*, *Layers forced visible*, *Layers
+hidden on sheets*, *Model export: the layers that leave Archicad*. The
+communal icon is a courtyard between two wings with a tree in it, in place of
+a field of dots nobody could read.
+
+### D110 — Tapir is built into the Loriini add-on, and no longer installed on its own
+
+**Decided 21 September 2026.** Every study needed two add-ons side by side:
+Tapir for the ~60 ordinary JSON commands the Python side uses (elements,
+layers, the navigator, hatches, layouts, views) and Loriini for the ones no
+JSON command exposes. Two installs, two versions to keep in step, and two
+things to go wrong on a workstation without admin rights.
+
+**What.** Tapir 1.5.8's command sources (MIT) are copied into
+`archicad-addon/Tapir` and compiled into `LoriiniAddOn_AC26_Win.apx`. Its
+registration list is kept verbatim as `InstallTapirCommands`, called at the end
+of Loriini's `Initialize`: 233 commands. Left out: Tapir's menus, palette,
+script runner and Script UI commands, self-updater and developer commands. No
+command's code was edited. 1.5.8 because it is the build the Python side was
+verified against live; `GetAddOnVersion` still answers 1.5.8, so every version
+gate holds.
+
+**A namespace of its own, `LoriiniTapir`.** Not `TapirCommand`: a standalone
+Tapir left installed would claim the same namespace and names, and Loriini's
+own `CreateSlabs` and `CreateTexts` differ from Tapir's commands of the same
+name. So the one change to Tapir's code is the namespace string in
+`CommandBase.cpp`.
+
+**Either order.** `run_tapir` sends to `LoriiniTapir` first. On a first-call
+"not registered" (4010, at either level, or no add-on response) it retries once
+under `TapirCommand`, and whichever answers is kept for the connection. So an
+old Loriini with Tapir beside it still works, and the new Loriini works with or
+without Tapir. Once the new build loads, Tapir can be removed.
+
+**Unverified until it loads.** The build is CI's (no admin rights here), with
+Tapir's own recipe: the 26.3000 kit and v142. Tapir compiles clean under /W4
+/WX there, so Loriini's /W3 /WX should pass; it has not yet been loaded into
+Archicad.
+
+
+
+### D111 — The aerial photo is fetched and placed without being asked for
+
+Asked 21 September 2026, on learning the orthophoto was placed only when a box
+was ticked: "there should be automatic then."
+
+The box dated from before D92, when nothing could place a picture and the
+tiles were a download for placing by hand. Once `PlaceFigures` and
+`PlaceDrawings` put the photo under both sheets, an unticked box meant a
+context sheet with no ground under the zoning wash -- not what the office's
+sheets look like -- and the tooltip still said it could not be drawn.
+
+So the checkbox is gone from the window and `--aerial` is on by default;
+`--no-aerial` leaves it out for a run that has to be quick or offline. A
+failed imagery fetch stays soft, as it always was: the sheets are drawn
+without it and the run says so. Settings files that still carry
+`site_aerial` are read as before, the key ignored.
+
+
+### D112 — The Plans row lights either or both, not one of three
+
+Asked 21 September 2026: "in solar analysis - the plans. this shouldnt be pick
+option. all should be selecteble, not only one of them?"
+
+D108 made the row three tiles of which one was lit: bands, times, or a third
+tile for both. A third tile that means "the other two" is a pick standing in
+for a switch. `Tiles` now takes `multi`: each tile turns on and off by
+itself, the value is the lit ones joined by commas, and the last one lit
+stays lit, because neither is no plan study at all. "Bands and times" is
+gone as a tile and read as both wherever it is still written down. The row
+is also saved with the window's settings now; it never was.
+
+
+### D113 — Shadow diagrams come from layers and the native model, drawn in the legend's colours
+
+Asked 21 September 2026: "update it in exe file. so we dont use published
+views of ifc model but layers? no fill favorite. match hatch to this legend
+for shadow analysis. in sun views there should be graphic override and
+layers selectable from actual model."
+
+**The model.** `shadows` takes `--export` like the other studies and defaults
+to `native`: the geometry is the add-on's `ExportModel`, and there is no quiet
+fallback to an IFC. The native file already sits in the project's frame, so
+the drawing frame's check reads its samples as Archicad guids instead of
+looking them up as IFC GlobalIds, and the turn comes out at zero. On the
+native route the database is not moved before the export (the same rule as
+`_export_for_massing`). The terrain layers now go into the export's `only`
+set with the legend rows, because without them a layer-trimmed export has no
+ground and the run stops.
+
+**The window.** The shadow page no longer asks for a folder of published
+views. It has one layer picker per legend row -- Existing, Future, Existing on
+site, TOD, SEARs, Proposed -- plus the ground, all read out of the open
+project, and sends each as `NAME=layer,layer`. What this gives up is what a
+view could say beyond layers (a renovation filter, pinned geometry); a project
+that separates its massings that way has to put them on their own layers.
+`--shadow-from-views` stays on the command line.
+
+**The fills.** Drawn through `Loriini.CreateFills` in the project's solid
+fill, with the legend's own RGB and contour pen 0. No pen matching and no Fill
+Favorite. The colours are `shadows.LEGEND`, read off the marked-up legend
+pixel by pixel. The greys are the SSDA 401 ramp exactly; the three blues were
+off by a few units and were corrected. Rows are coloured by name, not by
+position, so leaving one out does not shift the rest. An add-on without
+`CreateFills` falls back to `CreateHatches` and the report says the colours
+are pens. `--shadow-favourite` still works from the command line and takes
+the Tapir route.
+
+**Sun views.** Graphic override and base layer combination are pickers
+filled from the project. Layer combinations come through Tapir. The overrides
+come through a new add-on command, `GetGraphicOverrideCombinations`
+(`ACAPI_Override_GetOverrideCombinationList`), because Tapir can pin a view
+to an override by name but cannot list them. On an older add-on the field is
+still typed.
+
+
+### D114 — One tables folder, every hour on one drawing, and overrides read from the views
+
+Asked 21 September 2026: "I am not able to choose the graphic override for
+sun view if i need something else then default one. the comunal are csv.
+there should be only one option for tables. writing all of them, COS and
+apartments together. and you need to have option to browse through the file
+system to find proper folder to save. in shadows. make possibility to create
+view showing all shadows from designed building in every selected hour in
+one drawing."
+
+**Overrides.** The list came only from the add-on's new command, and the
+Archicad in use had been started a minute before that add-on was installed,
+so the list was empty. With the add-on's command missing, the probe now reads
+the override names the project's saved views use, through Tapir's
+`GetViewSettings`. It found 24 in 0.4 s on the live project. The only override
+it misses is one that no view uses.
+
+**Tables.** The two communal file boxes are gone. General has one **Tables**
+folder with a Browse button, and every table goes there: `Apartments.csv`
+from the apartment study, `COS areas.csv` and `COS schedule.xlsx` from the
+communal one. The command line puts the day in each file's name
+(`_day_tagged`), as it already did for the schedule, so the window's
+one-job-per-day runs sit side by side instead of overwriting.
+
+**Every hour on one drawing.** `--shadow-all-hours` (a tick on the shadow page)
+casts the designed building once more on its own. The designed building is
+the PROPOSED row, or else the last scenario. That cast gives the building's
+whole shadow rather than the part it adds to existing shadow. Each hour is
+traced from it and drawn on one layer per day as closed polylines, with the
+hour written at the tip of each outline. The day then gets a combination, a
+view and a sheet of its own. Outlines rather than fills, because fills laid
+over each other hide each other, and pattern fills stacked on one another
+line up exactly and do not darken. The outlines follow the grid cells, so at
+a 1 m grid they are stepped. Every single-hour combination hides the layer.
+
+### D115 — Each sun study keeps its own days, the site outputs are buttons, the storey is picked, and the apartment plans are three
+
+Asked 22 September 2026, going through the program build: "in model tab
+there is section days studied - that should be under solar analysis and sun
+views separately. in site analysis ... under it is list of outputs. this
+should be main staff but its so easy to miss. can you make them maybe
+horizontal buttons with simplified text?" And a minute later: "in shadow
+analysis there is 'days' make it the same buttons as they are in solar and
+sun view analysis. they should be the same. draw on storey section should be
+selectable from actual model, not type in stuff. in solar analysis for
+apartments there should be 3 different plans. one mapping the sunlight in
+every hour. one mapping the heatmap ... with band of hours. and one filling
+the whole apartment with united fill telling the number of hours in whole
+apartment in whole day."
+
+**Days.** The one box of three day buttons sat on the Model tab, a page
+about what geometry leaves Archicad, and every solar tool read it, the sun
+views included. The shadow page had its own row of four dates spelled
+differently. Now there is one builder, `_days_panel`, and three boxes headed
+DAYS STUDIED: on Solar analysis (with the Year, which every sun tool still
+reads), on Sun views and on Shadow diagram. Each holds its own three
+buttons and its own custom-day field, and only its own study reads it. The
+custom-day field takes several days with commas between, which is how a
+settings file from the old shadow row (`shadow_dates`) restores: into the
+shadow box's custom field, deduplicated against whatever is lit. The lit
+buttons are saved too, as `day_*`, `sun_view_day_*` and `shadow_day_*`. All
+three default to midwinter alone; the shadow page used to default to three
+days, and now says so with its buttons like the other two.
+
+**Site outputs.** Six ticks, each with a sentence, read as small print under
+the address. They are two rows of buttons now over the same six variables:
+Sheets (Context, Site, Controls) and Project (Future context, 3D context,
+Location). The sentence each tick carried is the button's tooltip, titled
+with the old long label. The icons moved from `BY_LABEL` to `BY_OUTPUT`,
+keyed by the short word, because the label test refuses a table entry no
+widget renders.
+
+**Storey.** "Draw on storey" was a typed index. It is a combo of the
+project's storey names, filled by the same read that fills the height band,
+and the run translates the name to the index the command takes through a
+new `storey_indices` on the probe. A number typed the old way, or restored
+from an older file, still goes through as the index.
+
+**Three plans.** The Plans row had two tiles; "Bands by hour" was the floor
+heat map and the flat-by-flat total together. It has three: Sun at each
+time (`--plan-instant` per time), Floor heat map (`--plan-bands`) and
+Apartment total (`--draw`). Nothing new is drawn; the two whole-day
+drawings were already two sheets, and the run already took them as two
+flags. A file that says "Bands by hour" lights the last two; "Bands and
+times" lights all three. The communal study has one banded plan, so either
+whole-day tile asks for it.
+
+### D116 — The future context is today's buildings raised; the model is three layers; a missing building is a bug until proven data
+
+Six decisions from one review of the program on 23 September 2026, recorded
+together because they came from the same question -- what does a colleague
+actually get out of a run -- and each changes what the drawings show.
+
+**The future context raises what is there.** D90's envelope -- each lot set
+back by the ADG's separation, stepped, capped by the height and the ratio --
+answered "what could stand on this lot" and drew buildings where there are
+none today, moving every neighbour off the footprint a person recognises.
+The office reads a future context as the street as it is, each building
+built up to its limit, and that is also what a shadow diagram needs: the
+same gaps between the same buildings, each as high as it may go. So each
+existing footprint within reach, on land zoned for flats and under a height
+control, is raised to the whole storeys the LEP control allows; never
+lowered. The control is the LEP's because the register has it; a DCP is not
+open data. The envelope code stays, for the question it does answer -- what
+the *site* could hold.
+
+**The shadow diagram compares an ADG envelope.** A seventh legend row, a
+scenario like the proposal and drawn just under it in a lilac of its own:
+the proposal with room to move, whose visible fringe is what the room would
+cost the neighbours.
+
+**The context model is three layers.** `Site Context.Terrain`, `.Roads`
+and `.Buildings` in the office's site group, not one `Site Context.3D`: each
+is switched on for a different reason -- the terrain for the sun views, the
+roads for a site plan, the buildings for a shadow -- and one layer made
+every view take all three or none.
+
+**A missing building is a bug until proven to be data.** Buildings went
+missing from the model for three technical reasons before OSM's coverage
+was to blame: an Overpass answer cut short and cached for a month, buildings
+drawn as multipolygon relations never asked for, and one refused slab
+rolling back a request of two hundred. All three are closed (see
+`docs/site-analysis.md`, *When buildings are missing*). What remains is
+data: around Kogarah, OSM has 395 buildings in a kilometre square and most
+detached houses are unmapped, and no NSW register publishes footprints.
+
+**The Model tab is what every study sees, and every study sees it.** The
+native route exports no file, but the add-on reads the model Archicad has
+built, which holds only what is shown, so the layer state still decides
+every number. The neighbouring-buildings layers reached the communal study
+alone; the facade and apartments studies were measured without them when
+the combination hid them. They reach all three now.
+
+**The plans sit on a named combination.** The apartments' heat-map and
+hourly plans were made with no base, so each run started from what the last
+left on screen -- the drift ``ensure_layer_combination`` documents, down to
+two layers shown of 155. A **Plan combination** on the Solar analysis tab
+is the base for the apartment and communal plans alike, picked from the
+project's plan-like combinations and never one of the tool's own.
+
+### D117 — The info box says the terms and never the date; the credits sit beside the fetching
 
 Two questions arrive together the first time somebody sends a Context Analysis
 sheet out of the office: *may I pass this program on*, and *whose data is this
@@ -3596,7 +4060,45 @@ catchment adds both slugs and the line reads `...; © OpenStreetMap
 contributors; Walking catchments: Valhalla (FOSSGIS e.V.).` rather than
 naming the contributors twice in one sentence.
 
-### D107 — The City of Sydney's contours and trees, and a terrain that spends its vertices at the site
+### D118 — The handover folder is built on GitHub, in the add-on's own run
+
+`Loriini.exe` came from one PC. `Loriini.spec` held that machine's absolute
+paths, as every spec PyInstaller writes for itself does, so the recipe ran
+nowhere else and the only executable in existence was whichever one had last
+been built there. The add-on had been built on GitHub from the start, because
+a runner is the only place it can be compiled. The program had not.
+
+**Now both come from one run.** The `Archicad add-on` workflow gains a second
+job. It builds the program with `scripts/build_app.py` on a Windows runner,
+puts the add-on the first job has just compiled beside it with
+`How to install.txt` and `LICENSE.txt`, and uploads the folder as the
+`Loriini_AC26_Win` artifact. Both halves come from the same commit, so an
+executable cannot arrive with an add-on that lacks a command it calls. The
+spec takes every path from `SPECPATH`, so the same recipe still builds on a
+PC, and `build_app.py` writes the same four files there.
+
+**It proves the program starts before handing it over.** A PyInstaller build
+that succeeds can still fail when it runs, on a module or a data file its scan
+missed. So the job starts the packaged executable once, the way the window
+starts its child, with `SUN_STUDY_RUN_CLI=1`, and requires it to list the
+rulesets. That needs the bundled command line and the rulesets' YAML, which
+nothing imports. It opens no window and no IFC, so it is a floor under the
+build rather than a test of every path through it.
+
+**When it runs is a cost decision.** The repository is private, and GitHub
+bills a Windows minute as two. The program takes several, so a folder is made
+by a push that changes the add-on, the spec or the build script, and otherwise
+on request: **Run workflow** on the Actions tab, with the branch picked. It is
+never made for a pull request, whose push has already built the same commit.
+So the newest folder can be a commit or more behind its branch. The install
+note names the commit it was built from, which makes that visible rather than
+assumed.
+
+Artifacts also expire, after 90 days unless the repository says otherwise.
+That is one more reason the folder is cheap to remake and is not kept in the
+repository.
+
+### D119 — The City of Sydney's contours and trees, and a terrain that spends its vertices at the site
 
 Asked on 28 September 2026, after the office's `au-site-analysis` generator
 took them the day before: inside the City of Sydney the contours and the
