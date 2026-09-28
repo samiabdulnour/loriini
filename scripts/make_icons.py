@@ -621,6 +621,33 @@ def sections() -> list[Icon]:
                 *only_small([rect(16, 17, 8.5, 6.5, fill=GREY, width=1.1)]),
             ],
         ),
+        Icon(
+            "yield",
+            "the massing as the floor slabs it is modelled in, stacked, the top "
+            "one lit -- the area calculation counts floors",
+            yield_stack(),
+        ),
+    ]
+
+
+def yield_stack() -> list[Shape]:
+    """Floor plates, one over the other, with the gap between them that says
+    they are slabs and not a solid; the top plate's face in the interface's
+    tint, the floor being measured. Four at 24 px and up; three, further
+    apart, below it, where four turn to a dark column."""
+
+    def plates(tops: tuple[float, ...], tall: float) -> list[Shape]:
+        shapes: list[Shape] = []
+        for level, top in enumerate(tops):
+            plate = block(cx=16, top=top, half=11.0, rise=5.2, tall=tall)
+            if level == len(tops) - 1:
+                plate[0] = replace(plate[0], fill=BLUE_T)  # type: ignore[type-var]
+            shapes.extend(plate)
+        return shapes
+
+    return [
+        *only_big(plates((19.0, 13.6, 8.2, 2.8), 2.4)),
+        *only_small(plates((17.0, 10.0, 3.0), 2.0)),
     ]
 
 

@@ -4336,3 +4336,61 @@ blind, and are the first two things to check on a workstation; the third
 is where the frame lands on a high-DPI display, where Tk and the Win32
 calls should be speaking the same scaled coordinates because they are
 asked by the same process.
+
+### D122 — The area calculation measures the slabs' own outlines, and the office's factors take GBA to yield
+
+Asked on 28 September 2026 (roadmap R3), with the office's sheet as the
+expected output: *Area calculation, GFA + Yield* -- GBA, GFA, NSA and FSR,
+total and by use, and the yield in a mix -- from a massing modelled in
+slabs, with the slabs chosen by layer or by the renovation filter, or
+simply the GBA and an approximate GFA.
+
+**The slabs are measured here, from their polygons.** Tapir's
+``GetDetailsOfElements`` gives a slab's outline, its holes and its arcs in
+project metres, with its storey and its layer (``archicad.slabs``); the area
+is the shoelace sum of the corners plus the circular segment of each arc,
+less the holes (``core.plan_area``). The alternative, Archicad's own area
+properties through ``GetPropertyValuesOfElements``, arrives as a display
+string in the project's units and language, and would have to be found by
+its localised name first. The one thing the polygon route takes on trust is
+the sense of an arc's angle -- counter-clockwise positive, as the API and
+GDL document it -- and a curved slab compared with its own area is the
+first thing to check live (``docs/yield.md``).
+
+**Which slabs, three ways, all Archicad's own filters where they can be.**
+By layer, which also says the use: residential layers and non-residential
+layers, a layer in both refused, a slab on neither passed over and listed.
+By the renovation filter, through Tapir's ``IsVisibleByRenovation`` on the
+floor plan -- whatever filter the person has set. And, with no layer named,
+everything on a showing layer (``IsVisibleByLayer``), as residential: the
+quick GBA. Loriini's own context slabs, marked ``SA``, are never counted.
+
+**The arithmetic is the office's, with its numbers as settings.** GBA to GFA
+at 0.75 and 0.9, GFA to NSA at 0.85 and 0.9, FSR over the site; the yield
+is the residential NSA over the mix's average unit, rounded down, split by
+the largest remainder so the types add back up (``rules.area_yield``). The
+office's sheet is the test fixture and comes out exactly, 112 units at 17,
+78 and 17 -- and it showed that sheet's two uses' rows swapped, which is
+said in the docs rather than copied.
+
+**The site and the target come from the address when they are not typed.**
+The Summary of Controls already reads the cadastral lots' area and the LEP's
+FSR (``site.pipeline.run_summary``); the study reads them the same way,
+only for what is left blank.
+
+**Three outputs from one list of rows.** The sheet on a layout, the table in
+the log and the workbook are built from ``report.area_table.rows``, so they
+cannot disagree. The sheet is drawn straight on a layout, as the Summary of
+Controls is -- texts and lines, the legend's swatches as close lines since
+fills are not drawn on paper here -- and a named view is placed with the
+machinery the sun views use (``layout_from_views``, ``ArrangeDrawings``).
+The workbook is written with the standard library (``report.xlsx``, the same
+reasoning as D106) and is live: the inputs are cells and everything else a
+formula, the mix's split included as working columns. LibreOffice Calc,
+recalculating it with every cached value removed, gives Loriini's figures;
+a test does that wherever Calc is installed.
+
+**The window grew a seventh tab, and measures its strip.** Seven tabs need
+more room than the page was sized for, in any font; the strip now says how
+wide it is, the sheets panel folds below that, and the window opens at
+least that wide.

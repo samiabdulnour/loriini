@@ -9,16 +9,16 @@ commonest way a run measures the wrong thing.
 
 Grouped by what comes out of it
 -------------------------------
-Six tabs in two kinds. Two of them set the job up -- what the sheets are drawn
-on, and what geometry leaves Archicad -- and four of them each draw one thing:
-the site analysis, the solar analysis, the shadow diagram, the sun views. That
-is how the work is asked for: a job wants the shadow diagrams for Tuesday, and
-the person setting one up should be able to read the whole of that study and
-none of the rest.
+Seven tabs in two kinds. Two of them set the job up -- what the sheets are
+drawn on, and what geometry leaves Archicad -- and five of them each draw one
+thing: the site analysis, the solar analysis, the shadow diagram, the sun
+views, the area calculation. That is how the work is asked for: a job wants
+the shadow diagrams for Tuesday, and the person setting one up should be able
+to read the whole of that study and none of the rest.
 
 The two kinds are drawn as two groups in the strip, because that split is the
-only thing that makes six tabs a list rather than a bag: only the four can be
-ticked, and so only the four can ever carry the queued mark.
+only thing that makes seven tabs a list rather than a bag: only the five can
+be ticked, and so only the five can ever carry the queued mark.
 
 It replaces a single column of thirty settings with an Advanced panel under
 them, which was the wrong cut. "Advanced" is not a property of a setting: the
@@ -147,6 +147,11 @@ COMMUNAL_JOB = "solar analysis: communal open space"
 SHADOW_JOB = "shadow diagram"
 SUN_EYE_JOB = "sun views"
 SITE_JOB = "site tools"
+#: The area calculation (roadmap R3): the massing slabs' GBA, GFA, NSA, FSR
+#: and yield, on one sheet of its own.
+YIELD_JOB = "area and yield"
+#: That sheet, as the panel draws it: a table beside the massing.
+AREA_SHEET = "Area Calculation"
 
 #: What a queued study is called on a chip in the run bar and in the summary,
 #: and which icon it wears. Keyed on the job name so the chips, the tab ticks
@@ -159,6 +164,7 @@ CHIPS: dict[str, tuple[str, str]] = {
     SHADOW_JOB: ("Shadow diagram", "shadow"),
     SUN_EYE_JOB: ("Sun views", "views"),
     SITE_JOB: ("Site analysis", "site_analysis"),
+    YIELD_JOB: ("Yield", "yield"),
 }
 
 
@@ -648,6 +654,18 @@ class LayerChooser(tk.Toplevel):
 APARTMENTS_TABLE = "Apartments.csv"
 COS_AREAS_TABLE = "COS areas.csv"
 COS_SCHEDULE_TABLE = "COS schedule.xlsx"
+AREA_TABLE = "Area calculation.xlsx"
+
+#: The unit types the Yield page offers, with the share of the units and the
+#: net saleable area each opens with. The three with a share are the office's
+#: sheet, fifteen, seventy and fifteen per cent at an average of 75 m²; the
+#: studio is there at nothing, for a scheme that has them.
+MIX_ROWS: tuple[tuple[str, str, str], ...] = (
+    ("Studio", "0", "38"),
+    ("1 Bedroom", "15", "55"),
+    ("2 Bedroom", "70", "75"),
+    ("3 Bedroom", "15", "95"),
+)
 
 #: The shadow diagram's legend, one row each: the short name the run is given
 #: (and matches to the legend's colour in ``archicad.shadows.LEGEND``),
@@ -1720,6 +1738,12 @@ def _untimed_note(sheet: Sheet) -> str:
             "The measured area of every communal space, tabled on a sheet of its "
             "own, so it has no hour and no sun on it."
         )
+    if sheet.kind == AREA_SHEET:
+        return (
+            "Worked from the massing slabs' areas, so it has no hour and no sun on "
+            "it: the table on a layout of its own, and the view named on the page "
+            "beside it."
+        )
     return (
         "The whole assessment window on one plan, banded by hours of sun, so it "
         "is not at any one hour and the Sheets row does not deal it."
@@ -2208,6 +2232,31 @@ def _draw_drawing(
             table[3],
             theme.LINE,
         )
+    elif kind == AREA_SHEET:
+        # The office's sheet: the table down the left, and the massing beside
+        # it floor on floor, the tower in the legend's yellow over a lilac
+        # podium.
+        box(FRAME_MM, fill=theme.SURFACE, outline="")
+        table = (FRAME_MM[0] + 6, FRAME_MM[1] + 16, FRAME_MM[0] + 64, FRAME_MM[3] - 14)
+        line(table[0], table[1] - 8, table[0] + 40, table[1] - 8, theme.INK)
+        down = table[1]
+        while down < table[3]:
+            line(table[0], down, table[0] + 22, down, theme.EDGE)
+            line(table[0] + 32, down, table[2], down, theme.EDGE)
+            down += 8
+        left, foot = FRAME_MM[0] + 84, FRAME_MM[3] - 18
+        for storey in range(2):
+            box(
+                (left, foot - 9 * (storey + 1), left + 56, foot - 9 * storey - 2),
+                fill="#DCCBF7",
+                outline=theme.EDGE,
+            )
+        for storey in range(2, 13):
+            box(
+                (left + 8, foot - 9 * (storey + 1), left + 44, foot - 9 * storey - 2),
+                fill="#FFF4A8",
+                outline=theme.EDGE,
+            )
     elif kind == "Context Analysis":
         # The neighbourhood: the site in the middle of the radius the data
         # is fetched for, the blocks around it, and the streets between.
@@ -2439,7 +2488,7 @@ class Window:
         # The pane beside it wants a label column, three chips and the button
         # that adds a fourth, which is 728. So the window is 1072 wide, and
         # 856 tall is the strip, a section, the info band and the run bar.
-        self.root.geometry(self._on_the_screen(1072, 856))
+        self.root.geometry(self._on_the_screen(self.OPENING_WIDTH, self.OPENING_HEIGHT))
 
         #: Lines from the worker thread. Tkinter is not thread-safe, so nothing
         #: touches a widget from the runner's thread: lines go through here and
@@ -2455,7 +2504,20 @@ class Window:
         #: fact, so the transcript is kept rather than drawn.
         self.lines: list[str] = []
 
+        #: The width under which the sheets panel folds away. At least
+        #: ``FOLD_BELOW``, and measured once the tabs exist: see below.
+        self.fold_below = self.FOLD_BELOW
         self._build()
+        # Wide enough for every tab beside the sheets panel, measured rather
+        # than assumed. Seven tabs need more than the 728 the page was sized
+        # for, and a font wider than Segoe UI -- the one a machine without it
+        # falls back to -- needs more again; a tab past the edge of the
+        # window is a page nobody can open. So the strip says what it needs,
+        # the panel folds below that, and the window opens at least that wide.
+        self.root.update_idletasks()
+        self.fold_below = max(self.FOLD_BELOW, self.strip.winfo_reqwidth() + Dock.WIDTH + 1)
+        if self.fold_below > self.OPENING_WIDTH:
+            self.root.geometry(self._on_the_screen(self.fold_below, self.OPENING_HEIGHT))
         #: What the window opens with when nothing has been saved. Taken
         #: before any saved settings land on top of it, so Forget has
         #: something to go back to that is not "whatever was on screen".
@@ -2476,7 +2538,7 @@ class Window:
         return f"{max(wide, 880)}x{max(tall, 620)}"
 
     # -- layout ------------------------------------------------------------
-    #: The six pages, and the two kinds they come in. That split is the
+    #: The seven pages, and the two kinds they come in. That split is the
     #: taxonomy, and it is what six equal cards had no way of saying: *set up*
     #: is what the job is, answered once and never run; *what it draws* is
     #: what comes out, one page per output, each with a tick that Run obeys.
@@ -2494,6 +2556,7 @@ class Window:
     DIAGRAMS = "Solar analysis"
     SHADOWS = "Shadow diagram"
     EYE = "Sun views"
+    YIELD = "Yield"
 
     #: The two kinds, in strip order, under the word that names each. Two
     #: words of chrome, and they are the only text in the strip that is not
@@ -2502,7 +2565,7 @@ class Window:
     DRAWS = "WHAT IT DRAWS"
     GROUPS: ClassVar[tuple[tuple[str, tuple[str, ...]], ...]] = (
         (SET_UP, (GENERAL, MODEL)),
-        (DRAWS, (SITE, DIAGRAMS, SHADOWS, EYE)),
+        (DRAWS, (SITE, DIAGRAMS, SHADOWS, EYE, YIELD)),
     )
 
     #: What each tab says when hovered. The tab carries a drawing at 32 px and
@@ -2536,6 +2599,10 @@ class Window:
         EYE: (
             "3D documents aimed straight down the sun on the days lit here, and "
             "the sheets they are dealt onto."
+        ),
+        YIELD: (
+            "GBA, GFA, NSA and FSR from the massing slabs, and the units they hold: "
+            "the area calculation on a sheet of its own, and a live workbook."
         ),
     }
     #: The facade study lives in the Solar analysis section now; the name
@@ -2788,20 +2855,23 @@ class Window:
             self.DIAGRAMS: self._diagrams,
             self.SHADOWS: self._shadows,
             self.EYE: self._sun_eyes,
+            self.YIELD: self._yield,
         }
         for title in self.titles:
             builders[title](self._section(title))
         self._show_section(self.GENERAL)
 
     def _strip(self) -> None:
-        """The six tabs, in their two kinds, across the top of the window.
+        """The seven tabs, in their two kinds, across the top of the window.
 
-        Grouped rather than flat because the taxonomy is the thing six equal
-        cards could not say: two of these pages set the job up and four of
-        them draw something, and only the four can be queued. A colleague
+        Grouped rather than flat because the taxonomy is the thing equal
+        cards could not say: two of these pages set the job up and five of
+        them draw something, and only the five can be queued. A colleague
         hunting for the queued mark can rule out two tabs without looking.
         """
         strip = ttk.Frame(self.pane, style="Chrome.TFrame", padding=(PAD, 4, PAD, 0))
+        #: Kept so the window can ask how wide the tabs need to be.
+        self.strip = strip
         strip.pack(side="top", fill="x")
 
         column = 0
@@ -4035,6 +4105,190 @@ class Window:
             "sun-study site --from <this folder>.",
         )
 
+    def _yield(self, frame: ttk.Frame) -> None:
+        """The area calculation: GBA, GFA, NSA, FSR and yield from the massing.
+
+        Roadmap R3. A massing is modelled in slabs, a floor each, and the
+        question is what it comes to: the areas the controls are measured in
+        and the units it holds. Which slabs are the massing is said the two
+        ways the office asked for -- by layer, the residential floors and the
+        rest, and by the renovation filter -- or, with no layer named, by what
+        is showing: every slab on a layer that is shown counts, as residential.
+
+        Two boxes. The study's own says what is measured and against what; the
+        second holds the office's factors and the mix, which are set once for
+        the practice and kept with Save as default.
+        """
+        row = 0
+        self.do_yield = tk.BooleanVar(value=False)
+        self.yield_renovation = tk.BooleanVar(value=False)
+        outer = frame
+        frame, row = self._panel(outer, row), 0
+        box = ttk.Checkbutton(
+            frame,
+            text="Area and yield",
+            variable=self.do_yield,
+            command=self._sync,
+            style="Study.TCheckbutton",
+            **icons.study_options("Area and yield"),
+        )
+        self._head(frame, box, YIELD_JOB)
+        Tooltip(
+            box,
+            "Measures the massing slabs to their edges -- arcs and holes and "
+            "all -- and works the office's area calculation from them: GBA, "
+            "GFA and NSA for each use, the FSR over the site, and the units "
+            "the residential floors hold at the mix below. Drawn as the Area "
+            "Calculation sheet, and written to the tables folder as a workbook "
+            "whose figures recalculate when a factor is changed.",
+        )
+        row += 1
+        self._caption(
+            frame,
+            row,
+            "The slabs on the layers named below, measured and added up. Leave both empty "
+            "to count every slab showing, as residential.",
+        )
+        row += 1
+        self.yield_residential, row = self._picker(
+            frame,
+            row,
+            "Residential layers",
+            "The layers whose slabs are residential floor.",
+            "Each slab on these layers is a residential floor: its area is residential GBA, "
+            "and its NSA is what the yield is worked from. A slab on a layer named for "
+            "neither use is not counted, and the run says which layers those were.",
+        )
+        self.yield_other, row = self._picker(
+            frame,
+            row,
+            "Non-residential layers",
+            "The layers whose slabs are any other floor: retail, office, a podium.",
+            "Counted in the GBA, GFA and FSR at the non-residential factors, and left out "
+            "of the yield. A layer cannot be both; the run refuses one named twice.",
+        )
+        renovation = ttk.Checkbutton(
+            frame,
+            text="Only the slabs the renovation filter shows",
+            variable=self.yield_renovation,
+            command=self._sync,
+        )
+        renovation.grid(row=row, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        Tooltip(
+            renovation,
+            "Counts only what the floor plan's renovation filter shows, so a massing "
+            "modelled as New over a building that stays counts the new floors and not "
+            "the old. Archicad decides what the filter shows; set it on the floor plan "
+            "before pressing Run.",
+            title="Renovation filter",
+        )
+        row += 1
+        self.yield_site_area, row = self._entry(
+            frame,
+            row,
+            "Site area (m²)",
+            "",
+            "Blank reads it at the address on the Site analysis page, when one is typed.",
+            "The FSR is the GFA over this. From the address it is the cadastral lots' own "
+            "area, which is the figure to confirm against the survey.",
+        )
+        self.yield_target_fsr, row = self._entry(
+            frame,
+            row,
+            "Target FSR",
+            "",
+            "Blank reads the LEP's control at the address, when one is typed.",
+            "The FSR the massing is measured against. Its GFA -- the FSR times the site -- "
+            "is the Target beside the proposed total GFA.",
+        )
+        self.yield_target_units, row = self._entry(
+            frame,
+            row,
+            "Target units",
+            "",
+            "The unit count the brief asks for, beside the yield. Blank leaves it out.",
+            "Only said beside the yield; it changes nothing the run works out.",
+        )
+        self.yield_view, row = self._entry(
+            frame,
+            row,
+            "View beside the table",
+            "",
+            "A view in the View Map, such as the massing in axonometric. Blank: the table alone.",
+            "The office's own 3D view of the massing, coloured by use with its graphic "
+            "override, placed on the sheet and framed to the page right of the table. A "
+            "name the View Map does not have costs the picture, not the sheet.",
+        )
+
+        frame, row = self._panel(outer, 1, title="Factors and mix"), 0
+        self.yield_gfa_residential, row = self._entry(
+            frame,
+            row,
+            "GBA to GFA, residential",
+            "0.75",
+            "The share of the residential GBA that is GFA.",
+            "What the walls, the cores, the plant and the circulation take out of a "
+            "residential floor, as the LEP's definition of GFA does. The office's 0.75.",
+        )
+        self.yield_gfa_other, row = self._entry(
+            frame,
+            row,
+            "GBA to GFA, other",
+            "0.9",
+            "The share of the non-residential GBA that is GFA.",
+            "A retail or office floor loses less to cores and circulation. The office's 0.9.",
+        )
+        self.yield_nsa_residential, row = self._entry(
+            frame,
+            row,
+            "GFA to NSA, residential",
+            "0.85",
+            "The share of the residential GFA that is net saleable.",
+            "The yield is worked from this: the residential NSA over the mix's average unit.",
+        )
+        self.yield_nsa_other, row = self._entry(
+            frame,
+            row,
+            "GFA to NSA, other",
+            "0.9",
+            "The share of the non-residential GFA that is net saleable or lettable.",
+            "Said on the sheet; nothing else is worked from it.",
+        )
+        self.yield_mix: dict[str, tuple[ttk.Entry, ttk.Entry]] = {}
+        for name, share, size in MIX_ROWS:
+            share_box, size_box, row = self._mix_row(frame, row, name, share, size)
+            self.yield_mix[name] = (share_box, size_box)
+
+    def _mix_row(
+        self, parent: ttk.Frame, row: int, name: str, share: str, size: str
+    ) -> tuple[ttk.Entry, ttk.Entry, int]:
+        """One type in the mix: its share of the units and its size, side by side."""
+        label = ttk.Label(parent, text=name)
+        label.grid(row=row, column=0, sticky="w", pady=(6, 0))
+        cells = ttk.Frame(parent)
+        cells.grid(row=row, column=1, sticky="w", pady=(6, 0))
+        share_box = ttk.Entry(cells, width=6)
+        share_box.insert(0, share)
+        share_box.grid(row=0, column=0)
+        ttk.Label(cells, text="% of the units, at", foreground=HINT).grid(
+            row=0, column=1, padx=(6, 8)
+        )
+        size_box = ttk.Entry(cells, width=6)
+        size_box.insert(0, size)
+        size_box.grid(row=0, column=2)
+        ttk.Label(cells, text="m² NSA each", foreground=HINT).grid(row=0, column=3, padx=(6, 0))
+        for target in (label, share_box, size_box):
+            Tooltip(
+                target,
+                f"How many of the units are {name.lower()} apartments, as a share of them "
+                "all, and the net saleable area of one. The shares come to 100; a type at "
+                "nothing is not in the mix. "
+                "The yield is the residential NSA over the average these make, rounded "
+                "down, and split into the mix so the types add back up.",
+                title=f"{name} in the mix",
+            )
+        return share_box, size_box, row + 1
+
     def _folder_row(
         self, parent: ttk.Frame, row: int, label: str, hint: str, detail: str
     ) -> tuple[ttk.Entry, int]:
@@ -4611,6 +4865,7 @@ class Window:
             (SHADOW_JOB, self.do_shadows, self.SHADOWS),
             (SUN_EYE_JOB, self.do_sun_eyes, self.EYE),
             (SITE_JOB, self.do_site, self.SITE),
+            (YIELD_JOB, self.do_yield, self.YIELD),
         ]
 
     def _open_section(self) -> str:
@@ -4741,7 +4996,13 @@ class Window:
 
     #: Under this many pixels the window cannot hold the page and the sheets
     #: panel side by side: the page is left with less than a chip row needs.
+    #: The least of it: ``fold_below`` is the one in force, which is more when
+    #: the tab strip needs more room than this leaves it.
     FOLD_BELOW = 960
+    #: The size the window opens at on a screen with room for it: see
+    #: ``__init__`` for where the numbers come from.
+    OPENING_WIDTH = 1072
+    OPENING_HEIGHT = 856
 
     def _fit(self, event: tk.Event[tk.Misc]) -> None:
         """Fold the sheets panel when the window is dragged too narrow for both.
@@ -4753,7 +5014,7 @@ class Window:
         """
         if event.widget is not self.root:
             return
-        narrow = event.width < self.FOLD_BELOW
+        narrow = event.width < self.fold_below
         if narrow == self._narrow:
             return
         self._narrow = narrow
@@ -4848,6 +5109,21 @@ class Window:
             "context_site_group": self.prefix_context,
             "archicad_wait_minutes": self.wait_min,
             "skin_grid": self.grid_m,
+            "yield_residential_layers": self.yield_residential,
+            "yield_other_layers": self.yield_other,
+            "yield_site_area": self.yield_site_area,
+            "yield_target_fsr": self.yield_target_fsr,
+            "yield_target_units": self.yield_target_units,
+            "yield_view": self.yield_view,
+            "yield_gfa_residential": self.yield_gfa_residential,
+            "yield_gfa_other": self.yield_gfa_other,
+            "yield_nsa_residential": self.yield_nsa_residential,
+            "yield_nsa_other": self.yield_nsa_other,
+            **{
+                f"yield_mix_{name.lower().replace(' ', '_')}_{part}": box
+                for name, (share, size) in self.yield_mix.items()
+                for part, box in (("share", share), ("size", size))
+            },
         }
 
     def _ticks(self) -> dict[str, tk.BooleanVar]:
@@ -4867,6 +5143,8 @@ class Window:
             "site_model": self.do_site_model,
             "site_future": self.do_site_future,
             "site_location": self.do_site_location,
+            "study_yield": self.do_yield,
+            "yield_renovation": self.yield_renovation,
             # The three boxes of days, one key per button, so a preset that
             # studies the equinox beside midwinter opens the same way.
             **{f"day_{name}": state for name, state in self.days.items()},
@@ -5726,6 +6004,10 @@ class Window:
                         )
                     )
 
+        if YIELD_JOB in queued:
+            # One sheet, at no hour: the table, and the massing beside it.
+            deal(YIELD_JOB, "Yield", "yield", "AC", AREA_SHEET, "", [""])
+
         if FACADE_JOB in queued:
             for day in days:
                 # Not a sheet. The run colours the model itself -- a thin skin
@@ -6375,7 +6657,55 @@ class Window:
                 args += ["--out", self.site_out.get().strip()]
             made.append(Job(SITE_JOB, args))
 
+        if self.do_yield.get():
+            made.append(Job(YIELD_JOB, self._yield_args(common)))
+
         return made
+
+    def _yield_args(self, common: list[str]) -> list[str]:
+        """The area calculation's command line, from the Yield page."""
+        args = ["yield", *common]
+        for name in self._listed(self.yield_residential):
+            args += ["--residential-layer", name]
+        for name in self._listed(self.yield_other):
+            args += ["--non-residential-layer", name]
+        if self.yield_renovation.get():
+            args.append("--renovation-filter")
+        for flag, box in (
+            ("--gfa-residential", self.yield_gfa_residential),
+            ("--gfa-non-residential", self.yield_gfa_other),
+            ("--nsa-residential", self.yield_nsa_residential),
+            ("--nsa-non-residential", self.yield_nsa_other),
+            ("--site-area", self.yield_site_area),
+            ("--target-fsr", self.yield_target_fsr),
+            ("--target-units", self.yield_target_units),
+        ):
+            args += self._flag(flag, box)
+        # Whatever the page does not say about the site is read at the
+        # address the Site analysis page has, when it has one.
+        address = self.site_address.get().strip()
+        if address and not (
+            self.yield_site_area.get().strip() and self.yield_target_fsr.get().strip()
+        ):
+            args += ["--address", address]
+        defaults = {name: size for name, _share, size in MIX_ROWS}
+        for name, (share_box, size_box) in self.yield_mix.items():
+            share = share_box.get().strip().rstrip("%").strip()
+            try:
+                counted = float(share) > 0
+            except ValueError:
+                counted = bool(share)
+            if counted:
+                size = size_box.get().strip() or defaults.get(name, "")
+                args += ["--unit", f"{name}={share},{size}"]
+        if self.yield_view.get().strip():
+            args += ["--view", self.yield_view.get().strip()]
+        if self.master.get():
+            args += ["--master-layout", self.master.get()]
+        tables = self._tables_folder()
+        if tables is not None:
+            args += ["--xlsx", str(tables / AREA_TABLE)]
+        return args
 
     def _start(self) -> None:
         if self.run is not None and self.run.running:

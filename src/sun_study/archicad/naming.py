@@ -63,6 +63,9 @@ SOLAR_PREFIX = DEFAULT_PREFIX
 SHADOW_PREFIX = "15 |"
 SUN_VIEW_PREFIX = "16 |"
 SITE_PREFIX = "17 |"
+#: The area calculation's sheet (roadmap R3): a layout and nothing on a
+#: layer, so the number only files the sheet in the Layout Book.
+YIELD_PREFIX = "18 |"
 
 #: And one number that is *not* the tool's, which is why it is kept apart from
 #: the four above. The context a study stands in -- the neighbours and the

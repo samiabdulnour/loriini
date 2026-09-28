@@ -133,6 +133,26 @@ balconies and voids.
 **First step.** One massing file from the office, and the yield spreadsheet
 they fill in by hand today, to copy its arithmetic exactly.
 
+**Done so far (28 September).** The office sent its sheet, *Area
+calculation, GFA + Yield*, and asked for the slabs to be chosen by layer or
+by the renovation filter, or simply for the GBA and an approximate GFA. The
+study exists: the **Yield** tab and `sun-study yield`. The slabs on the
+layers named residential and non-residential -- or only those the
+renovation filter shows, or with no layer named every slab showing -- are
+measured to their edges, arcs and holes and all; the office's four factors
+take GBA to GFA to NSA, the site to an FSR against the LEP's, and the
+residential NSA over the mix's average unit to a yield split into the mix.
+Out of it: the Area Calculation sheet on a layout, with the office's own 3D
+view of the massing placed beside the table when one is named; a live
+workbook whose formulas recalculate when a factor or a share is changed;
+and the table in the log. The office's sheet is reproduced from its own
+figures -- 112 units, 17, 78 and 17 -- and has its two uses' rows the wrong
+way round, which the new sheet does not. Tested against a scripted Archicad,
+not yet a live project: a curved slab's area and the renovation filter are
+the first things to check. [`yield.md`](yield.md) is how to use it; D122 is
+how it is built. Per-building figures, parking and the Summary of Controls'
+project rows are next.
+
 ## R4 — A reference image over the 3D window
 
 **Asked.** Sometimes a view has to be set up from the same angle as a

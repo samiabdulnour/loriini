@@ -274,8 +274,10 @@ headline compliance percentage, and [`docs/archicad.md`](docs/archicad.md) for w
 verified about the Archicad protocol and what was not. [`docs/roadmap.md`](docs/roadmap.md)
 is what the office has asked for next, numbered, with where each one stands, and
 [`docs/agent.md`](docs/agent.md) is how an agent such as Claude Desktop drives Loriini
-through `Loriini.exe mcp`, and [`docs/overlay.md`](docs/overlay.md) is the reference
-image laid over Archicad's 3D window to set a view up from a photograph.
+through `Loriini.exe mcp`, [`docs/overlay.md`](docs/overlay.md) is the reference
+image laid over Archicad's 3D window to set a view up from a photograph, and
+[`docs/yield.md`](docs/yield.md) is the area calculation -- GBA, GFA, FSR and yield --
+worked from the massing slabs.
 
 ## The fixture
 

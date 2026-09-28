@@ -1103,6 +1103,89 @@ def test_the_reference_image_opens_one_palette_for_the_chosen_project(
     assert overlay._open is None
 
 
+def only_yield(hidden_window: Any) -> None:
+    """The area calculation ticked on its own."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_yield.set(True)
+
+
+def test_the_yield_page_is_the_command_line_the_office_would_type(
+    hidden_window: Any, tmp_path: Path
+) -> None:
+    only_yield(hidden_window)
+    hidden_window.yield_residential.insert(0, "01 | Wall.External")
+    hidden_window.yield_other.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_renovation.set(True)
+    hidden_window.yield_site_area.insert(0, "1386.78")
+    hidden_window.yield_target_fsr.insert(0, "8")
+    hidden_window.yield_target_units.insert(0, "110")
+    hidden_window.yield_view.insert(0, "Yield Axo")
+    hidden_window.tables.delete(0, "end")
+    hidden_window.tables.insert(0, str(tmp_path))
+    hidden_window.site_address.insert(0, "1 Example Street")
+    (job,) = hidden_window.jobs()
+    args = job.args
+    assert job.label == window.YIELD_JOB
+    assert args[0] == "yield"
+    assert flag(args, "--residential-layer") == ["01 | Wall.External"]
+    assert flag(args, "--non-residential-layer") == ["01 | Floor.Structural"]
+    assert "--renovation-filter" in args
+    assert flag(args, "--gfa-residential") == ["0.75"]
+    assert flag(args, "--nsa-non-residential") == ["0.9"]
+    assert flag(args, "--site-area") == ["1386.78"]
+    assert flag(args, "--target-fsr") == ["8"] and flag(args, "--target-units") == ["110"]
+    assert "--address" not in args, "the site and the FSR are both typed"
+    # The studio is in the list at nothing, so it is not in the mix.
+    assert flag(args, "--unit") == ["1 Bedroom=15,55", "2 Bedroom=70,75", "3 Bedroom=15,95"]
+    assert flag(args, "--view") == ["Yield Axo"]
+    assert flag(args, "--xlsx") == [str(tmp_path / window.AREA_TABLE)]
+    assert flag(args, "--port") == ["19723"]
+
+
+def test_what_the_yield_page_does_not_say_about_the_site_is_read_at_the_address(
+    hidden_window: Any,
+) -> None:
+    only_yield(hidden_window)
+    hidden_window.site_address.insert(0, "1 Example Street")
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--address") == ["1 Example Street"]
+    assert "--renovation-filter" not in job.args
+    assert "--residential-layer" not in job.args, "empty counts what is showing"
+
+
+def test_a_studio_given_a_share_joins_the_mix_at_its_size(hidden_window: Any) -> None:
+    only_yield(hidden_window)
+    share, size = hidden_window.yield_mix["Studio"]
+    share.delete(0, "end")
+    share.insert(0, "10%")
+    size.delete(0, "end")
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--unit")[0] == "Studio=10,38", "a blank size is the row's own"
+
+
+def test_the_area_calculation_is_one_sheet_in_the_panel(hidden_window: Any) -> None:
+    only_yield(hidden_window)
+    (sheet,) = hidden_window.planned()
+    assert (sheet.study, sheet.number, sheet.kind) == ("Yield", "AC.01", window.AREA_SHEET)
+    assert sheet.paper and not sheet.time
+    assert "massing slabs" in window._untimed_note(sheet)
+
+
+def test_the_yield_page_is_saved_and_restored(hidden_window: Any) -> None:
+    only_yield(hidden_window)
+    hidden_window.yield_other.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_gfa_residential.delete(0, "end")
+    hidden_window.yield_gfa_residential.insert(0, "0.8")
+    saved = hidden_window.settings()
+    assert saved["study_yield"] is True
+    assert saved["yield_gfa_residential"] == "0.8"
+    assert saved["yield_mix_2_bedroom_share"] == "70"
+    hidden_window.apply({**saved, "yield_gfa_residential": "0.7", "yield_renovation": True})
+    assert hidden_window.yield_gfa_residential.get() == "0.7"
+    assert hidden_window.yield_renovation.get() is True
+
+
 def test_a_typed_hour_is_spelled_the_way_the_sheet_is_named() -> None:
     assert [window._clock_text(word) for word in ("9", "9am", "3pm", "09:30", "12", "noon")] == [
         "09:00",
@@ -3253,20 +3336,32 @@ def test_the_sheets_panel_folds_when_the_window_cannot_hold_both(hidden_window: 
 
     root, dock = hidden_window.root, hidden_window.dock
     assert not dock.folded
+    assert hidden_window.fold_below >= window.Window.FOLD_BELOW
 
-    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW - 1))
+    hidden_window._fit(Resized(root, hidden_window.fold_below - 1))
     assert dock.folded, "too narrow for both, so the panel goes to its edge"
 
     dock.fold(False)  # the chevron, pressed by hand
-    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW - 40))
+    hidden_window._fit(Resized(root, hidden_window.fold_below - 40))
     assert not dock.folded, "still narrow, and still open: it was opened on purpose"
 
-    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW + 1))
-    hidden_window._fit(Resized(root, window.Window.FOLD_BELOW - 1))
+    hidden_window._fit(Resized(root, hidden_window.fold_below + 1))
+    hidden_window._fit(Resized(root, hidden_window.fold_below - 1))
     assert dock.folded, "crossing the line again folds it again"
 
     hidden_window._fit(Resized(hidden_window.dock, 10))
     assert dock.folded, "and a child being resized is not the window being resized"
+
+
+def test_the_sheets_panel_folds_before_it_pushes_a_tab_off_the_window(
+    hidden_window: Any,
+) -> None:
+    """Every tab has to fit beside the panel while the panel is open: a tab
+    past the edge of the window is a page nobody can open. The strip is
+    measured, so a seventh tab or a wider font moves the line with it."""
+    needed = hidden_window.strip.winfo_reqwidth() + window.Dock.WIDTH + 1
+    assert hidden_window.fold_below >= needed
+    assert window.Window.YIELD in hidden_window.tabs
 
 
 def test_a_faced_control_stands_on_its_own_colour(hidden_window: Any) -> None:

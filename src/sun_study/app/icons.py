@@ -291,6 +291,7 @@ BY_SECTION: dict[str, str] = {
     "Solar analysis": "analysis",
     "Shadow diagram": "shadow",
     "Sun views": "views",
+    "Yield": "yield",
 }
 
 #: The six studies, by the label on their own tick.
@@ -301,6 +302,7 @@ BY_STUDY: dict[str, str] = {
     "Shadow diagram": "shadow",
     "Sun views": "views",
     "Site analysis": "site",
+    "Area and yield": "yield",
 }
 
 #: Every field that has a picture worth drawing, by its own label.
