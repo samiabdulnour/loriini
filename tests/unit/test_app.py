@@ -1082,6 +1082,27 @@ def test_the_foot_of_the_window_carries_the_licence_not_a_warning(hidden_window:
     assert not [line for line in said if "PROTOTYPE" in line], "the warning lives on the sheets"
 
 
+def test_the_reference_image_opens_one_palette_for_the_chosen_project(
+    hidden_window: Any,
+) -> None:
+    """The button above the tabs opens the picture's palette, told which
+    project is chosen so that the Archicad window it looks for is that one.
+    A second press raises the same palette rather than opening a twin."""
+    from sun_study.app import overlay
+
+    hidden_window._reference()
+    opened = overlay._open
+    assert opened is not None
+    try:
+        assert opened.project() == "SAMPLE"
+        hidden_window._reference()
+        assert overlay._open is opened
+    finally:
+        opened.close()
+        hidden_window.root.update()
+    assert overlay._open is None
+
+
 def test_a_typed_hour_is_spelled_the_way_the_sheet_is_named() -> None:
     assert [window._clock_text(word) for word in ("9", "9am", "3pm", "09:30", "12", "noon")] == [
         "09:00",

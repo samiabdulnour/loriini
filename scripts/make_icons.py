@@ -10,10 +10,10 @@ that consistency lasts until the third person edits one of them. Written down
 as coordinates it cannot drift, and a change to the ink colour is one line
 rather than sixty files.
 
-It runs at development time, not in the app. Pillow is a dev dependency and is
-excluded from the bundle -- ``Loriini.spec`` says so -- because the app only
-ever needs the PNGs, which Tk reads by itself. So this script is run when an
-icon changes, and its output is committed.
+It runs at development time, not in the app: the app only ever needs the
+PNGs, which Tk reads by itself, so this script is run when an icon changes and
+its output is committed. (Pillow is in the bundle since D121, for the reference
+image; nothing in the window draws an icon with it.)
 
     uv run python scripts/make_icons.py
 
@@ -821,6 +821,24 @@ def controls() -> list[Icon]:
             [
                 Arc(16, 16, 10, 300, 210, fill=BLUE, width=2.4),
                 Poly(((22.4, 3.6), (22.8, 9.2), (17.6, 7.4)), fill=BLUE, outline=None),
+            ],
+        ),
+        # The reference image: a photograph in its frame -- a hill under a
+        # sun, which is what every photograph of a site has in it -- laid
+        # over a block of the model, whose corner shows past the frame.
+        Icon(
+            "reference",
+            "a photograph in a frame over the corner of a block -- the "
+            "reference image laid over the 3D window",
+            [
+                *block(cx=21, top=9, half=8, rise=4.4, tall=7),
+                rect(3, 5, 18, 14, fill=PAPER),
+                Poly(
+                    ((4.3, 17.7), (9.0, 11.0), (12.0, 14.2), (14.4, 12.0), (19.7, 17.7)),
+                    fill=GREY_L,
+                    outline=None,
+                ),
+                Disc(16.6, 9.0, 2.0, fill=SUN),
             ],
         ),
     ]

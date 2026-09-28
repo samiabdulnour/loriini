@@ -327,8 +327,9 @@ def main(argv: list[str] | None = None) -> int:
     #   collect_data sun_study  the rulesets are YAML. Nothing imports them, so
     #       gathering code is not enough and the app dies on "No ruleset at".
     #   collect_submodules typer  its runtime hides behind lazy imports.
-    #   exclude PIL  it builds the icon and nothing imports it at run time, but
-    #       a dependency scan finds it and bundles 8 MB of image codecs.
+    #   Pillow is in  it was excluded until D121, when only the icon script
+    #       imported it; the reference image (app.overlay) reads photographs
+    #       with it now, so its codecs ride along, a few MB.
     command = [
         sys.executable,
         "-m",

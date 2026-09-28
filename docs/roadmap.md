@@ -157,6 +157,19 @@ overlay alone is most of the value.
 **First step.** Half a day: the overlay window on Windows, over a 3D window,
 with a slider.
 
+**Done so far (28 September).** The overlay exists: *Reference image*
+beside the project picker opens a small palette that stays on top, and the
+picture -- PNG, JPEG, TIFF, BMP, GIF or WebP, turned the way a phone's
+orientation tag says -- is a borderless window over Archicad at the
+opacity the slider says. Unlocked it is dragged and sized by its corner,
+or laid over the Archicad window showing the chosen project by a button;
+locked, the corner goes and the mouse goes through it to the model. Fit
+keeps the picture's shape with see-through margins; Stretch pulls it to
+the frame. Driven by tests under a virtual display; not yet on a Windows
+workstation over Archicad, where the colour key and the click-through are
+the two things to check first. [`overlay.md`](overlay.md) is how to use
+it; D121 is how it is built, and why Pillow came into the bundle for it.
+
 ## R5 — Licence keys sent by mail
 
 **Asked.** Licensing that sends a licence code to the buyer's email, so

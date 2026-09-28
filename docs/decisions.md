@@ -4266,3 +4266,73 @@ run a fake command line through the real runner. The windowed executable
 may hand Python no wrapped standard streams; ``serve`` opens the
 descriptors directly then, which is untested until Claude Desktop starts
 ``Loriini.exe mcp`` on Windows.
+
+### D121 — The reference image is a window of Loriini's own over Archicad's 3D window, and Pillow comes into the bundle for it
+
+Asked on 28 September 2026 (roadmap R4): a view sometimes has to be set
+up from the angle a photograph was taken at, Archicad cannot show a
+picture in its 3D window, and a tool that lays one over it at reduced
+opacity would do.
+
+**A window of our own, not a drawing in Archicad.** Nothing in the API
+draws into the 3D window, and Trace Reference is for the plan, the
+sections and the elevations. What can be put over the 3D window is a Tk
+toplevel of Loriini's: borderless (``overrideredirect``), always on top
+(``-topmost``), and as see-through as its slider says (``-alpha``, which on
+Windows is a layered window). It touches neither the project nor the
+add-on, works over any version of Archicad, and the Mac has the same three
+window attributes for later. ``app.overlay`` is the whole of it.
+
+**Two windows, because the picture has to let the mouse through.** The
+point of the overlay is to orbit the model *through* it, which on Windows
+is one bit of the window's extended style (``WS_EX_TRANSPARENT`` on the
+layered window Tk already made, set through ``ctypes`` on the window Tk
+wraps every toplevel in). A slider on a window the mouse goes through
+would be a slider the mouse goes through, so the controls are a second
+small toplevel that stays on top with the picture; the picture itself has
+two states, placed (dragged, sized by its corner) and locked (the corner
+gone, the mouse through it).
+
+**Fit's margins are a colour key.** A picture kept in its own shape inside
+a frame of another shape has margins, and margins over a model have to be
+see-through. Tk's ``-transparentcolor`` asks Windows to leave one colour
+out of the window (``LWA_COLORKEY``, which sits beside the alpha), so the
+margins -- and a PNG's own transparency, laid on the same colour -- are
+holes. The key is nearly black, ``#010203``, rather than black, because a
+photograph's shadows are full of black and every such pixel would be a
+hole. The alternative, a window with per-pixel alpha
+(``UpdateLayeredWindow``), means drawing the whole window by hand outside
+Tk, and margins are not worth it. Off Windows the margins are a dark mat.
+
+**Pillow comes in.** The dependency note in ``pyproject.toml`` said the
+approved set, and Pillow was kept out of the bundle because Tk reads the
+icons' PNGs by itself (``Loriini.spec`` excluded it). A reference is nearly
+always a JPEG photograph, which Tk cannot read; a phone's photograph is
+turned by an EXIF tag rather than in its pixels; and a picture has to be
+resized cleanly to any frame, where Tk scales by whole numbers. Two ways
+round it were weighed. GDI+ through ``ctypes`` reads JPEG on Windows with
+nothing added, but is Windows-only, untestable from here, and leaves the
+orientation and the resampling to be written by hand. Tk's own readers
+cover PNG and GIF and integer zooms, which for a photograph is no tool at
+all. Pillow does all three in three calls, is already used to draw the
+icons, and costs a few megabytes in a 58 MB executable; it is the runtime
+dependency now, and ``PIL`` leaves the spec's excludes.
+
+**Finding the Archicad window is by title, and is only a start.** The
+Archicad window is found among the top-level windows by the word in its
+title, and the one whose title names the project chosen in the picker is
+taken over a bigger one, since two projects open is the ordinary case.
+What is found is the whole area inside its frame; the 3D window is a tab
+inside that, under the toolbars and beside the palettes, and no call names
+where. So the picture starts there and the corner is dragged in, which is
+five seconds against a heuristic on child windows that could not be tested
+here and would be wrong on the next layout of palettes.
+
+**Untested on Windows.** The overlay has been driven by its tests under a
+virtual display on Linux: the fit and the stretch, the opacity, the lock,
+the hide, a file that is not a picture, a phone's orientation tag, a PNG's
+transparency. The colour key and the click-through are Win32 calls made
+blind, and are the first two things to check on a workstation; the third
+is where the frame lands on a high-DPI display, where Tk and the Win32
+calls should be speaking the same scaled coordinates because they are
+asked by the same process.

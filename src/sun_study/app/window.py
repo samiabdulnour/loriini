@@ -83,7 +83,7 @@ from tkinter import font as tkfont
 from typing import ClassVar, Literal
 
 from sun_study import PRODUCT
-from sun_study.app import icons, preferences, probe, theme
+from sun_study.app import icons, overlay, preferences, probe, theme
 from sun_study.app.runner import Run
 from sun_study.archicad import naming
 from sun_study.archicad.connection import DEFAULT_TIMEOUT_SECONDS
@@ -2646,6 +2646,25 @@ class Window:
         # one output. Icon and no word, because it is the only thing in the
         # window nobody is looking for until they need it, and a labelled
         # button would take room from the project name, which everybody is.
+        # A picture laid over Archicad's 3D window, to set a view up from
+        # the angle a photograph was taken at. Up here with the picker
+        # because it is a tool on the chosen Archicad and a setting of no
+        # study; ``overlay`` is the whole of it.
+        picture = ttk.Button(
+            picker,
+            text="Reference image",
+            style="Chrome.TButton",
+            command=self._reference,
+            width=16,
+            **icons.button_options("reference"),
+        )
+        picture.grid(row=0, column=2, padx=(6, 0))
+        Tooltip(
+            picture,
+            "Lays a photograph or a rendering over Archicad's 3D window, as "
+            "see-through as you like, so the model can be orbited under it "
+            "until the two line up. Nothing is written into the project.",
+        )
         tell = ttk.Button(
             picker,
             text="",
@@ -2654,7 +2673,7 @@ class Window:
             width=3,
             **icons.button_options("info"),
         )
-        tell.grid(row=0, column=2, padx=(6, 0))
+        tell.grid(row=0, column=3, padx=(6, 0))
         Tooltip(
             tell,
             "What this program is, the licence it is used under, and the "
@@ -2682,6 +2701,15 @@ class Window:
         # The contour under the project bar: which Archicad is one question,
         # asked once, and everything below it is the study.
         ttk.Frame(self.root, style="Rule.TFrame", height=1).pack(side="top", fill="x")
+
+    def _reference(self) -> None:
+        """Open the reference-image palette, or raise the one already open.
+
+        It is told which project is chosen up here, as a question rather
+        than a name, so that the Archicad window it looks for is the one
+        chosen at the moment the button on the palette is pressed.
+        """
+        overlay.show(self.root, project=lambda: self.options.project)
 
     def _about(self, at: str = "") -> None:
         """Open the info box, at the top or at the data sources.
