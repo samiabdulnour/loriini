@@ -88,6 +88,91 @@ void Aim (const Direction& from, API_AxonoPars& axono)
 }
 
 
+// Aims a 3D Document's projection and sets its sun, from the parameters
+// SetProjection takes, either or both. Returns whether it found anything to
+// change.
+//
+// A document made while the 3D window was in perspective carries perspective
+// numbers in the union, so its sun is lifted out before the parallel half is
+// written -- the same care SetProjection takes with the window.
+bool AimDocument (const GS::ObjectState& parameters, API_3DProjectionInfo& projection)
+{
+	double azimuth = 0.0;
+	double altitude = 0.0;
+	const bool hasDirection = parameters.Get ("viewAzimuth", azimuth) &&
+							  parameters.Get ("viewAltitude", altitude);
+	if (hasDirection) {
+		if (projection.isPersp) {
+			const API_SunAngleSettings sun = projection.u.persp.sunAngSets;
+			projection.u.axono = {};
+			projection.u.axono.sunAngSets = sun;
+		}
+		projection.isPersp = false;
+		const Direction from = { azimuth, altitude };
+		Aim (from, projection.u.axono);
+	}
+
+	GS::ObjectState date;
+	const bool hasSun = parameters.Get ("sun", date);
+	if (hasSun) {
+		ApplySun (date, projection.isPersp ? projection.u.persp.sunAngSets : projection.u.axono.sunAngSets);
+	}
+	return hasDirection || hasSun;
+}
+
+
+// The fill a document's vectorial sun shadows are drawn in, from
+// `{"fillIndex", "fillPen", "backgroundPen", "contourPen"}`, each optional.
+// These four are the "Sun Shadows" group of the document's Model Display.
+void ApplyShadowFill (const GS::ObjectState& fill, API_UniformAttributeOptions& options)
+{
+	Int32 index = 0;
+	if (ReadInt (fill, "fillIndex", index)) {
+		options.shadFill = static_cast<API_AttributeIndex> (index);
+	}
+	ReadShort (fill, "fillPen", options.shadFillPen);
+	ReadShort (fill, "backgroundPen", options.shadFillBkgPen);
+	ReadShort (fill, "contourPen", options.shadContPen);
+}
+
+
+GS::ObjectState ShadowFillState (const API_UniformAttributeOptions& options)
+{
+	GS::ObjectState state;
+	state.Add ("fillIndex", static_cast<Int32> (options.shadFill));
+	state.Add ("fillPen", static_cast<Int32> (options.shadFillPen));
+	state.Add ("backgroundPen", static_cast<Int32> (options.shadFillBkgPen));
+	state.Add ("contourPen", static_cast<Int32> (options.shadContPen));
+	return state;
+}
+
+
+// A document's settings as they now are, read back rather than assumed.
+//
+// `effects3D` is Archicad's own word for the document's vectorial effects --
+// its sun shadows among them -- and the kit says of it only "Effects to
+// apply". Which bit is which is not written down anywhere, so the number is
+// reported whole: a caller compares a document made with shadows against one
+// made without, and can copy the value from one to the other.
+GS::ObjectState DocumentState (API_DatabaseUnId document)
+{
+	API_DocumentFrom3DType now = {};
+	const GSErrCode err = ACAPI_Environment (APIEnv_GetDocumentFrom3DSettingsID, &document, &now);
+	GS::ObjectState result = Succeeded ();
+	if (err != NoError) {
+		return result;
+	}
+	result.Add ("effects3D", static_cast<Int32> (now.effects3D));
+	result.Add ("shadowFill", ShadowFillState (now.attributeOptions));
+	result.Add ("isPerspective", now.projectionSetting.isPersp);
+	// The settings read back carry a handle the kit's own example frees
+	// after use; nothing here owns it.
+	BMhFree (reinterpret_cast<GSHandle> (now.cutSetting.shapes));
+	now.cutSetting.shapes = nullptr;
+	return result;
+}
+
+
 }		// namespace
 
 
@@ -267,7 +352,20 @@ GS::Optional<GS::UniString> CreateDocumentFrom3DCommand::GetInputParametersSchem
 			"referenceId": { "type": "string", "description": "Its reference string, the sheet-style ID shown beside the name." },
 			"viewAzimuth": { "type": "number", "description": "Where the camera stands, in degrees clockwise from the project's own +Y axis, as for SetProjection." },
 			"viewAltitude": { "type": "number", "description": "How high the camera stands, in degrees above the horizon." },
-			"sun": { "type": "object", "description": "The date and time this document keeps its sun at." }
+			"sun": { "type": "object", "description": "The date and time this document keeps its sun at." },
+			"sunShadows": { "type": "boolean", "description": "Make the document with Archicad's vectorial sun shadows on (or off). The 3D Document defaults are switched for this one document and put back." },
+			"shadowContours": { "type": "boolean", "description": "With sunShadows, whether the shadows carry contour lines. Off by default." },
+			"shadowFill": {
+				"type": "object",
+				"description": "The fill the sun shadows are drawn in. Any field left out keeps what the project had.",
+				"properties": {
+					"fillIndex": { "type": "integer", "description": "The fill type's attribute index." },
+					"fillPen": { "type": "integer" },
+					"backgroundPen": { "type": "integer" },
+					"contourPen": { "type": "integer" }
+				},
+				"additionalProperties": false
+			}
 		},
 		"required": [ "name" ],
 		"additionalProperties": false
@@ -281,6 +379,10 @@ GS::Optional<GS::UniString> CreateDocumentFrom3DCommand::GetResponseSchema () co
 		"properties": {
 			"success": { "type": "boolean" },
 			"databaseId": { "type": "object", "properties": { "guid": { "type": "string" } } },
+			"sunShadows": { "type": "boolean", "description": "The defaults' vectorial sun shadow setting the document was made under, when one was asked for." },
+			"effects3D": { "type": "integer", "description": "The document's vectorial effects flags, read back. Undocumented bits; reported whole." },
+			"shadowFill": { "type": "object" },
+			"isPerspective": { "type": "boolean" },
 			"error": { "type": "object" }
 		}
 	})");
@@ -304,6 +406,43 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 		CopyName (referenceId, database.ref);
 	}
 
+	// The sun shadows, which a document takes from the 3D Document defaults
+	// when it is made. `API_DocumentFrom3DDefaults::vectSunShadow` is the
+	// "Vectorial Sun Shadows" of a new document's Model Display, and
+	// `contureOff` their contours; the existing document's own switch lives in
+	// `effects3D`, whose bits the kit does not document. So the defaults are
+	// set for this one creation and put back straight after, whatever
+	// happened -- the next document a person makes by hand is theirs.
+	bool sunShadows = false;
+	const bool askedShadows = parameters.Get ("sunShadows", sunShadows);
+	bool shadowContours = false;
+	parameters.Get ("shadowContours", shadowContours);
+	GS::ObjectState shadowFill;
+	const bool hasShadowFill = parameters.Get ("shadowFill", shadowFill);
+
+	API_DocumentFrom3DDefaults before = {};
+	bool defaultsChanged = false;
+	GSErrCode err = NoError;
+	if (askedShadows || hasShadowFill) {
+		err = ACAPI_Environment (APIEnv_GetDocumentFrom3DDefaultsID, &before);
+		if (err != NoError) {
+			return Failed ("Could not read the 3D Document defaults to set the sun shadows.", err);
+		}
+		API_DocumentFrom3DDefaults wanted = before;
+		if (askedShadows) {
+			wanted.vectSunShadow = sunShadows;
+			wanted.contureOff = !shadowContours;
+		}
+		if (hasShadowFill) {
+			ApplyShadowFill (shadowFill, wanted.attributeOptions);
+		}
+		err = ACAPI_Environment (APIEnv_ChangeDocumentFrom3DDefaultsID, &wanted);
+		if (err != NoError) {
+			return Failed ("Could not set the 3D Document defaults for the sun shadows.", err);
+		}
+		defaultsChanged = true;
+	}
+
 	// Not inside an undo scope, and that is not a choice. The kit documents
 	// `APIDb_NewDatabaseID` as a non-undoable data structure modifier that
 	// answers APIERR_REFUSEDCMD from inside one, which is what the first live
@@ -311,7 +450,10 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 	// ACAPI_CallUndoableCommand. So a document this makes is deleted the way
 	// any other is: by hand, in the Navigator. The name it is given is what
 	// makes that bearable.
-	GSErrCode err = ACAPI_Database (APIDb_NewDatabaseID, &database);
+	err = ACAPI_Database (APIDb_NewDatabaseID, &database);
+	if (defaultsChanged) {
+		ACAPI_Environment (APIEnv_ChangeDocumentFrom3DDefaultsID, &before);
+	}
 	if (err != NoError) {
 		return Failed ("Failed to create the 3D Document.", err);
 	}
@@ -319,32 +461,24 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 	// The projection is set afterwards, on the document that now exists. It
 	// is the half that matters: a 3D Document created and left alone borrows
 	// whatever the 3D window happened to show, so seven of them made in a row
-	// would all be the same hour.
-	double azimuth = 0.0;
-	double altitude = 0.0;
-	GS::ObjectState date;
-
-	const bool hasDirection = parameters.Get ("viewAzimuth", azimuth) &&
-							  parameters.Get ("viewAltitude", altitude);
-	const bool hasSun = parameters.Get ("sun", date);
-
-	if (hasDirection || hasSun) {
+	// would all be the same hour. The shadow fill is written again here as
+	// well, on the document itself, in case the defaults were not what it
+	// was made from.
+	{
 		API_DocumentFrom3DType settings = {};
 		err = ACAPI_Environment (APIEnv_GetDocumentFrom3DSettingsID, &database.databaseUnId, &settings);
 		if (err != NoError) {
 			return Failed ("The 3D Document was created but its settings could not be read.", err);
 		}
 
-		if (hasDirection) {
-			const Direction from = { azimuth, altitude };
-			settings.projectionSetting.isPersp = false;
-			Aim (from, settings.projectionSetting.u.axono);
+		const bool aimed = AimDocument (parameters, settings.projectionSetting);
+		if (hasShadowFill) {
+			ApplyShadowFill (shadowFill, settings.attributeOptions);
 		}
-		if (hasSun) {
-			ApplySun (date, settings.projectionSetting.u.axono.sunAngSets);
+		if (aimed || hasShadowFill) {
+			// Non-undoable as well, per the same documentation.
+			err = ACAPI_Environment (APIEnv_ChangeDocumentFrom3DSettingsID, &database.databaseUnId, &settings);
 		}
-		// Non-undoable as well, per the same documentation.
-		err = ACAPI_Environment (APIEnv_ChangeDocumentFrom3DSettingsID, &database.databaseUnId, &settings);
 
 		// The settings read back carry a handle the kit's own example frees
 		// after use; nothing here owns it.
@@ -359,9 +493,87 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 	GS::ObjectState identifier;
 	identifier.Add ("guid", APIGuidToString (database.databaseUnId.elemSetId));
 
-	GS::ObjectState result = Succeeded ();
+	GS::ObjectState result = DocumentState (database.databaseUnId);
 	result.Add ("databaseId", identifier);
+	if (askedShadows) {
+		result.Add ("sunShadows", sunShadows);
+	}
 	return result;
+}
+
+
+// -- SetDocumentFrom3D ------------------------------------------------------
+
+GS::String SetDocumentFrom3DCommand::GetName () const		{ return "SetDocumentFrom3D"; }
+
+GS::Optional<GS::UniString> SetDocumentFrom3DCommand::GetInputParametersSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"databaseId": { "type": "object", "properties": { "guid": { "type": "string" } }, "description": "The 3D Document, as CreateDocumentFrom3D answered it." },
+			"viewAzimuth": { "type": "number", "description": "Where the camera stands, in degrees clockwise from the project's own +Y axis, as for SetProjection." },
+			"viewAltitude": { "type": "number", "description": "How high the camera stands, in degrees above the horizon." },
+			"sun": { "type": "object", "description": "The date and time the document keeps its sun at. Any field left out keeps its value." },
+			"shadowFill": { "type": "object", "description": "The fill its sun shadows are drawn in, as for CreateDocumentFrom3D." },
+			"effects3D": { "type": "integer", "description": "The document's vectorial effects flags, copied whole from a document read back with the effects wanted." }
+		},
+		"required": [ "databaseId" ],
+		"additionalProperties": false
+	})");
+}
+
+GS::Optional<GS::UniString> SetDocumentFrom3DCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"effects3D": { "type": "integer" },
+			"shadowFill": { "type": "object" },
+			"isPerspective": { "type": "boolean" },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState SetDocumentFrom3DCommand::Execute (const GS::ObjectState& parameters,
+												   GS::ProcessControl& /*processControl*/) const
+{
+	GS::ObjectState identifier;
+	GS::UniString guid;
+	if (!parameters.Get ("databaseId", identifier) || !identifier.Get ("guid", guid)) {
+		return Failed ("databaseId needs a guid.", APIERR_BADPARS);
+	}
+	API_DatabaseUnId document = {};
+	document.elemSetId = APIGuidFromString (guid.ToCStr ().Get ());
+
+	// Read first and written back whole: the struct carries the document's
+	// filter, cut planes and model display, and a command that built it from
+	// nothing would reset every one of them.
+	API_DocumentFrom3DType settings = {};
+	GSErrCode err = ACAPI_Environment (APIEnv_GetDocumentFrom3DSettingsID, &document, &settings);
+	if (err != NoError) {
+		return Failed ("Failed to read the 3D Document's settings.", err);
+	}
+
+	AimDocument (parameters, settings.projectionSetting);
+	GS::ObjectState fill;
+	if (parameters.Get ("shadowFill", fill)) {
+		ApplyShadowFill (fill, settings.attributeOptions);
+	}
+	Int32 effects = 0;
+	if (ReadInt (parameters, "effects3D", effects)) {
+		settings.effects3D = static_cast<short> (effects);
+	}
+
+	err = ACAPI_Environment (APIEnv_ChangeDocumentFrom3DSettingsID, &document, &settings);
+	BMhFree (reinterpret_cast<GSHandle> (settings.cutSetting.shapes));
+	settings.cutSetting.shapes = nullptr;
+	if (err != NoError) {
+		return Failed ("Failed to change the 3D Document's settings.", err);
+	}
+	return DocumentState (document);
 }
 
 

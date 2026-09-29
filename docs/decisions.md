@@ -4394,3 +4394,74 @@ a test does that wherever Calc is installed.
 more room than the page was sized for, in any font; the strip now says how
 wide it is, the sheets panel folds below that, and the window opens at
 least that wide.
+
+### D123 — A larger model is read from a log; shadow plans are 3D Documents with Archicad's own shadows
+
+Asked on 28 September 2026 (roadmap R1): the shadow analysis failed outright
+on a larger model, and the ideal might be to make the diagrams as 3D
+Documents, the way the sun views are made, so that Loriini prepares and
+Archicad draws the shadows. The roadmap's first step was an assisted session
+to read the failure, with the log the window keeps.
+
+**The window keeps its log, on disk.** It kept every line of a run in memory
+and cleared it on the next run, and showed one line; a failure forty minutes
+in was unreadable after the fact. Now each run is written to
+`%APPDATA%\Loriini\Logs` as it comes, flushed line by line, the newest sixty
+kept, with a head saying which build, on what, with how much memory, and what
+was asked (``app.run_log``). Nothing about it may stop a run: a folder that
+will not take a file costs the transcript and not the study.
+
+**The shadow diagram says what it did, stage by stage.** A ``timing:`` line
+per stage -- export, read, drape, cast, draw, sheets -- with its duration and
+the peak memory so far (``core.resources``, the standard library only, the
+Windows working set through ``ctypes``); the grid's size before the cast, and
+the rays each cast will take; progress every thirty seconds of a long cast.
+The last stage named is the one that was running, and the memory beside it
+says whether the machine ran out.
+
+**Two failures were found by reading, and fixed before a session.** The
+caster gathered an origin and a direction for every (sample, hour) pair
+before casting the first -- about nine gigabytes for a grid two kilometres
+across over three days -- so ``sunlit_matrix`` now casts 65,536 samples at a
+time; the answer is identical, which a test checks against the single batch,
+and the time is unchanged. And the add-on's ``CreateFills`` draws a batch as
+one undo step, so one fill Archicad refused took back 500 and ended the run
+naming nothing; now a refused batch is halved down to the fill, which is left
+out and named, and a refusal of every fill still stops the run. The grid is
+left as large as it was -- it is laid over every solid in the export, and a
+long winter shadow may reach a far one -- but a layer holding a solid more
+than 500 m from every legend row is named, since that is the usual reason a
+grid is enormous. Out of memory is said with the numbers and the ways out.
+
+**Shadow plans: the SDK answers the roadmap's question.** A 3D Document's
+vectorial sun shadows are its own and not its view's -- Tapir refuses a 3D
+style on a view of a document, which is what the add-on's header had
+suggested using -- and the kit reaches them twice: a new document takes
+*Vectorial Sun Shadows* from ``API_DocumentFrom3DDefaults::vectSunShadow``,
+and every document carries its shadow fill in ``attributeOptions``. An
+existing document's switch is somewhere in ``effects3D``, which the kit
+documents as "Effects to apply" and nothing more. So ``CreateDocumentFrom3D``
+takes ``sunShadows`` and switches the defaults for that one creation, putting
+them back whatever happens, writes ``shadowFill`` onto both, and answers the
+document's ``effects3D`` read back; ``SetDocumentFrom3D`` re-aims a document
+already there -- none can be deleted through the API -- and copies
+``effects3D`` whole from a document the run just made with shadows, rather
+than guessing a bit.
+
+**One document per hour, overhead, Archicad's sun.** ``archicad.shadow_plans``
+makes a document per date and hour at altitude 90, which the add-on snaps to
+a top view with the project's +Y up, with the sun as a date so it is
+Archicad's; takes the storey filter off before and after (D98); pins a view of
+each to the layer combination, the planned renovation filter and 1:1000; and
+deals them onto sheets by day, captioned in the fills' words, with the
+placement the sun views use (``sun_eyes.place_on_sheets``, shared). The days
+and hours are the shadow diagram's own, so the two routes draw the same
+instants under the same names, and the window's Shadow diagram tab has both.
+
+**What the documents cannot say, they do not pretend to.** A document shows
+the whole shadow of its layer combination; the split between existing and
+additional shadow is the fills' alone. A set name puts two runs -- two
+combinations -- side by side to be compared sheet against sheet, which is
+how the office compared them by hand. The fills stay the argument, and the
+documents are the record, and the route for a model too big for the caster.
+

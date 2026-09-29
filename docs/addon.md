@@ -98,11 +98,33 @@ was made at**. Without that, seven documents made in a row would all show
 whatever the 3D window happens to display now, and a sheet of seven hours would
 be seven copies of one hour.
 
-The vectorial sun shadow is not part of it, though the field names suggest it
-should be. `vectSunShadow` belongs to `API_3DStyle`, and a 3D style is already
-reachable: Tapir's `SetViewSettings` pins one on a view by name through
-`d3styleName`. Make the style once, with the shadow settings the office wants,
-and every document uses it.
+**The vectorial sun shadows are part of it, since roadmap R1.** The first
+build said they were not, because `vectSunShadow` belongs to `API_3DStyle` and
+a style can be pinned on a view -- which is true of a view of the 3D window
+and not of a document's view: Tapir refuses a 3D style there, as the sun views
+found. A document's shadows are its own, the *Vectorial Sun Shadows* of its
+Model Display, and the kit reaches them in two places:
+
+| | What it is |
+|---|---|
+| `API_DocumentFrom3DDefaults::vectSunShadow`, `contureOff` | what a **new** document is made with: the shadows on, and their contours |
+| `attributeOptions.shadFill`, `shadFillPen`, `shadFillBkgPen`, `shadContPen` | the fill the shadows are drawn in -- on the defaults and on a document alike |
+| `API_DocumentFrom3DType::effects3D` | an existing document's vectorial effects, shadows among them; the kit says only "Effects to apply" and not which bit is which |
+
+So `sunShadows: true` switches the defaults on for the one creation and puts
+them back straight after, whatever happened, and `shadowFill` is written onto
+the defaults and onto the document. The answer carries `effects3D` and
+`shadowFill` read back from the document, which is how the first live run
+will say what Archicad did (`docs/shadow-plans.md`).
+
+| Parameter | |
+|---|---|
+| `name`, `referenceId` | the document's name and reference ID in the Project Map |
+| `viewAzimuth`, `viewAltitude` | where the camera stands, as for `SetProjection`; 90 is straight down, snapped north-up |
+| `sun` | the date and time the document keeps its sun at |
+| `sunShadows` | make it with Archicad's vectorial sun shadows on (or off) |
+| `shadowContours` | with `sunShadows`, outline each shadow; off by default |
+| `shadowFill` | `fillIndex`, `fillPen`, `backgroundPen`, `contourPen`, each optional |
 
 Neither write is undoable, and the first build's attempt to make them so is
 why it failed. The kit documents both `APIDb_NewDatabaseID` and
@@ -112,6 +134,25 @@ scope: wrapped in `ACAPI_CallUndoableCommand`, the live call came back
 `-2130312312`, which is that code. So seven documents made by a run and then
 abandoned are deleted the way any other is, by hand in the Navigator. The names
 a run gives them are what make that tolerable.
+
+### `Loriini.SetDocumentFrom3D`
+
+Re-aims a 3D Document the add-on made, sets its sun again, its shadow fill,
+and -- given `effects3D` -- its vectorial effects, read and written back whole
+with `APIEnv_ChangeDocumentFrom3DSettingsID`.
+
+It exists because a document cannot be deleted through the API:
+`APIDb_DeleteDatabaseID` takes details, worksheets, layouts and masters and
+nothing else, and `DeleteNavigatorItems` reports success on a document and
+leaves it (measured on the Bondi file, D98). A second run over the same hours
+finds the first run's documents by name, and without this they would keep
+whatever sun and aim they were made with. `effects3D` is copied whole from a
+document read back with the effects wanted -- one the same run has just made
+with `sunShadows` -- because which of its bits is the shadow is not written
+down, and copying Archicad's own value is safer than guessing one.
+
+Takes `databaseId` (required), `viewAzimuth` and `viewAltitude`, `sun`,
+`shadowFill` and `effects3D`; answers `effects3D` and `shadowFill` read back.
 
 ### `Loriini.CreateFills`
 
@@ -150,6 +191,14 @@ claims a shadow where the sky is.
 the section plane passes through, and either can change or vanish under a model
 view option the tool never set — which is how a diagram that looked right on
 screen arrives empty on a layout.
+
+A batch is **one undo step**, so a fill Archicad refuses takes the whole
+batch back with it, and the answer says which: *Archicad refused to create
+fill 212 of the 500 in this batch*. That is right for an undo and was fatal
+for a run -- on a larger model one outline Archicad would not draw stopped
+the diagram with nothing on the plan (roadmap R1). The caller now halves a
+refused batch until it has the fill, leaves that one out, draws the rest and
+names what it left out (`archicad.shadows._create_legend_fills`).
 
 ### `Loriini.ArrangeDrawings`
 

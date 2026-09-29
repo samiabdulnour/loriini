@@ -90,8 +90,8 @@ class HelpArguments(Arguments):
     command: str = Field(
         default="",
         description=(
-            "A command name -- site, shadows, sun-views, massing, archicad-run, archicad-info "
-            "-- for that command's options; blank for the list of commands."
+            "A command name -- site, shadows, shadow-plans, sun-views, massing, archicad-run, "
+            "archicad-info -- for that command's options; blank for the list of commands."
         ),
     )
 
@@ -246,6 +246,44 @@ class ShadowArguments(SheetedArguments):
     )
 
 
+class ShadowPlanArguments(SheetedArguments):
+    dates: list[str] = Field(
+        default_factory=lambda: ["winter"],
+        min_length=1,
+        description=(
+            "The days to draw: winter, equinox, summer, or MM-DD; a sheet or two for each."
+        ),
+    )
+    hours: list[int] | None = Field(
+        default=None,
+        description="Whole hours of the day to draw, e.g. [9, 12, 15]; 9 to 15 otherwise.",
+    )
+    layer_combination: str | None = Field(
+        default=None,
+        description=(
+            "The layer combination the plans show -- what casts the shadows and what they "
+            "fall on, so the ground must be in it; the office's shadow diagram one otherwise."
+        ),
+    )
+    label: str | None = Field(
+        default=None,
+        description=(
+            "A word in the documents' and sheets' names, e.g. 'Existing' or 'Proposed', so "
+            "two sets under two layer combinations sit side by side."
+        ),
+    )
+    pen_set: str | None = Field(default=None, description="The pen set the plans print in.")
+    shadow_pen: int | None = Field(
+        default=None, ge=0, description="The pen the shadows are filled in."
+    )
+    scale: int | None = Field(
+        default=None, gt=0, description="The scale the plans are placed at, e.g. 1000."
+    )
+    subset: str | None = Field(
+        default=None, description="The Layout Book subset the sheets are filed in."
+    )
+
+
 class SunViewArguments(SheetedArguments):
     day: str | None = Field(
         default=None,
@@ -377,6 +415,26 @@ def shadow_argv(arguments: ShadowArguments) -> list[str]:
         argv += ["--shadow-hour", ",".join(str(hour) for hour in a.hours)]
     argv += _option("--shadow-storey", a.storey) + _option("--master-layout", a.master_layout)
     argv += _option("--shadow-subset", a.subset) + _option("--year", a.year)
+    argv += _option("--sheets", a.sheets)
+    return argv
+
+
+def shadow_plans_argv(arguments: ShadowPlanArguments) -> list[str]:
+    a = arguments
+    argv = [
+        "shadow-plans",
+        "--timezone",
+        TIMEZONE,
+        *_common(a),
+        *_option("--layer-prefix", a.layer_prefix),
+    ]
+    argv += ["--shadow-date", ",".join(_mmdd(day) for day in a.dates)]
+    if a.hours:
+        argv += ["--shadow-hour", ",".join(str(hour) for hour in a.hours)]
+    argv += _option("--layer-combination", a.layer_combination) + _option("--label", a.label)
+    argv += _option("--pen-set", a.pen_set) + _option("--shadow-pen", a.shadow_pen)
+    argv += _option("--scale", a.scale) + _option("--master-layout", a.master_layout)
+    argv += _option("--subset", a.subset) + _option("--year", a.year)
     argv += _option("--sheets", a.sheets)
     return argv
 
@@ -514,6 +572,10 @@ def shadow_diagrams(arguments: Mapping[str, Any], call: Call) -> ToolResult:
     return run_command(shadow_argv(_validated(ShadowArguments, arguments)), call)
 
 
+def shadow_plans(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    return run_command(shadow_plans_argv(_validated(ShadowPlanArguments, arguments)), call)
+
+
 def sun_views(arguments: Mapping[str, Any], call: Call) -> ToolResult:
     return run_command(sun_views_argv(_validated(SunViewArguments, arguments)), call)
 
@@ -575,6 +637,17 @@ TOOLS: tuple[Tool, ...] = (
         ShadowArguments.model_json_schema(),
         shadow_diagrams,
         title="Shadow diagrams",
+    ),
+    Tool(
+        "shadow_plans",
+        "The same days and hours as 3D Documents looking straight down, each with "
+        "Archicad's own sun and vectorial shadows for that hour, placed on layouts by day. "
+        "Archicad casts the shadows, so it suits a model too large for shadow_diagrams; it "
+        "shows the whole shadow of what the layer combination shows, not the split into "
+        "existing and additional -- run it once per combination, with a label each.",
+        ShadowPlanArguments.model_json_schema(),
+        shadow_plans,
+        title="Shadow plans",
     ),
     Tool(
         "sun_views",

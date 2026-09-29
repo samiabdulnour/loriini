@@ -58,6 +58,7 @@ __all__ = [
     "build_scene",
     "build_shadow_scene",
     "build_shadow_scene_from_files",
+    "far_layers",
     "planar_face_grid",
 ]
 
@@ -2049,6 +2050,22 @@ class ShadowScene:
     by example, and can decide whether that is survey clutter or the argument.
     """
 
+    far: tuple[tuple[str, float], ...] = ()
+    """Layers with a solid well clear of every legend row, and how far, farthest
+    first.
+
+    The grid is laid over ``bounds``, which is every solid in the export and
+    not only the ones that cast: a neighbour nobody named still wants the
+    shadows drawn over it. But one solid parked a kilometre away -- a hotlink
+    master, a copy of the massing left beside the site, a survey marker at the
+    project origin -- stretches the grid to reach it, and the grid's cost goes
+    with its area. A 300 m site gridded to reach something 1.5 km off is
+    twenty-five times the samples, and on a larger model that is the run that
+    never finishes (roadmap R1). Named here so the run can say which layer to
+    take out of the export; the grid itself is left as it was, since a long
+    winter shadow may really reach that far.
+    """
+
     def describe(self) -> str:
         parts = " | ".join(f"{source.key} {source.mesh.triangle_count}" for source in self.sources)
         return f"{parts} triangles | north {self.orientation.normalised_bearing_deg:.1f} deg"
@@ -2237,6 +2254,35 @@ def build_shadow_scene_from_files(
     )
 
 
+#: How far past the legend rows' own geometry a solid has to sit before it is
+#: named as stretching the grid: past any shadow the margin was sized for, and
+#: past the street or two of neighbours a sheet shows.
+FAR_M = 500.0
+
+
+def far_layers(
+    everything: Sequence[IfcElement], casting: Sequence[IfcElement], *, beyond_m: float = FAR_M
+) -> tuple[tuple[str, float], ...]:
+    """Layers holding a solid more than ``beyond_m`` in plan outside the box of
+    ``casting``, each with the farthest such distance, farthest first. Empty
+    when nothing casts, since then there is no box to be outside of."""
+    if not casting:
+        return ()
+    lower = np.min([e.bounds[0][:2] for e in casting], axis=0)
+    upper = np.max([e.bounds[1][:2] for e in casting], axis=0)
+    farthest: dict[str, float] = {}
+    for element in everything:
+        low, high = np.asarray(element.bounds[0][:2]), np.asarray(element.bounds[1][:2])
+        # The gap between the two boxes along each axis, nothing where they
+        # overlap: the distance from the solid to the legend's geometry.
+        gap = np.maximum(np.maximum(lower - high, low - upper), 0.0)
+        distance = float(np.hypot(gap[0], gap[1]))
+        if distance > beyond_m:
+            layer = element.layer or "(no layer)"
+            farthest[layer] = max(farthest.get(layer, 0.0), distance)
+    return tuple(sorted(farthest.items(), key=lambda item: -item[1]))
+
+
 def build_shadow_scene(model: IfcModel, config: MassingConfig) -> ShadowScene:
     """Split the model into the sources a shadow diagram attributes shadow to.
 
@@ -2316,10 +2362,16 @@ def build_shadow_scene(model: IfcModel, config: MassingConfig) -> ShadowScene:
 
     lower = np.min([element.bounds[0] for element in everything], axis=0).astype(np.float64)
     upper = np.max([element.bounds[1] for element in everything], axis=0).astype(np.float64)
+    casting = (
+        [e for rule in config.shadow_sources for e in claimed.get(rule.key, [])]
+        if config.shadow_sources
+        else everything
+    )
 
     return ShadowScene(
         sources=sources,
         terrain=terrain,
+        far=far_layers(everything, casting),
         frame_samples=_frame_samples(
             [e for rule in config.shadow_sources for e in claimed.get(rule.key, [])]
             if config.shadow_sources

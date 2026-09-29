@@ -275,9 +275,12 @@ verified about the Archicad protocol and what was not. [`docs/roadmap.md`](docs/
 is what the office has asked for next, numbered, with where each one stands, and
 [`docs/agent.md`](docs/agent.md) is how an agent such as Claude Desktop drives Loriini
 through `Loriini.exe mcp`, [`docs/overlay.md`](docs/overlay.md) is the reference
-image laid over Archicad's 3D window to set a view up from a photograph, and
+image laid over Archicad's 3D window to set a view up from a photograph,
 [`docs/yield.md`](docs/yield.md) is the area calculation -- GBA, GFA, FSR and yield --
-worked from the massing slabs.
+worked from the massing slabs, [`docs/shadow-plans.md`](docs/shadow-plans.md) is the
+shadow diagram's hours as 3D Documents with Archicad's own shadows, and
+[`docs/larger-models.md`](docs/larger-models.md) is how a shadow run on a big project is
+read from the log every run now keeps.
 
 ## The fixture
 

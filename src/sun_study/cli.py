@@ -24,7 +24,7 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, NoReturn
 
 import numpy as np
 import numpy.typing as npt
@@ -120,6 +120,16 @@ from sun_study.archicad.series import (
     find_worksheet,
     restore_after,
 )
+from sun_study.archicad.shadow_plans import (
+    DEFAULT_COMBINATION as SHADOW_PLAN_COMBINATION,
+)
+from sun_study.archicad.shadow_plans import (
+    PLAN_SCALE,
+    ShadowPlanSettings,
+    make_shadow_plan_sheets,
+    make_shadow_plans,
+    shadow_plans,
+)
 from sun_study.archicad.shadows import (
     DEFAULT_SHEETS as SHADOW_SHEETS,
 )
@@ -193,6 +203,7 @@ from sun_study.core.analysis import (
     ZERO_TOLERANCE_MINUTES,
     BandedResult,
     band_by_area,
+    candidate_rays,
     cumulative_minutes,
     instant_weights,
     sunlit_matrix,
@@ -201,6 +212,13 @@ from sun_study.core.facade import face_panels
 from sun_study.core.geometry import TriangleMesh
 from sun_study.core.occlusion import Occluder
 from sun_study.core.orientation import sun_vectors_in_model_frame
+from sun_study.core.resources import (
+    Stopwatch,
+    duration_text,
+    peak_memory_bytes,
+    physical_memory_bytes,
+    size_text,
+)
 from sun_study.core.sampling import SamplePoints
 from sun_study.core.shadow import (
     BASELINE,
@@ -6848,6 +6866,7 @@ def shadows(
 
     with tempfile.TemporaryDirectory(prefix="sun-study-shadow-") as scratch:
         destination = ifc_out or Path(scratch) / "shadow.ifc"
+        clock = Stopwatch()
         try:
             # Before the layer state is touched. A previous run that filed a
             # sheet leaves the *database* on a layout, and every layer read and
@@ -6897,7 +6916,8 @@ def shadows(
             ) as plan:
                 typer.echo(plan.describe())
                 exported = _export_by_route(connection, destination, export_route)
-            typer.echo(f"  model written to {exported}")
+            typer.echo(f"  model written to {exported} ({size_text(exported.stat().st_size)})")
+            typer.echo(clock.said("exported the model"))
             note = oversized_export_note(exported) if exported.suffix.lower() == ".ifc" else ""
             if note:
                 typer.secho(note, fg=typer.colors.YELLOW)
@@ -6927,6 +6947,7 @@ def shadows(
             shadow_subset=shadow_subset,
             check_georeferencing=True,
             from_views=shadow_from_views,
+            clock=clock,
         )
 
 
@@ -6953,6 +6974,7 @@ def _shadow_report(
     check_georeferencing: bool,
     from_views: Path | None = None,
     sheets: str = SHADOW_SHEETS,
+    clock: Stopwatch | None = None,
 ) -> None:
     """Measure one exported model and say what it shows. Draws only if asked.
 
@@ -6960,7 +6982,13 @@ def _shadow_report(
     export cannot drift into measuring differently. The cross-check is the one
     thing they do not share: it compares the live project against the file,
     which is a question only worth asking of a file this run just produced.
+
+    Every stage says how long it took and how much memory the run had reached
+    by then (``timing:`` lines), and the size of the cast is said before it
+    starts: on a larger model the log is how a failure is read, and the last
+    stage it names is the one that was running (roadmap R1).
     """
+    clock = clock or Stopwatch()
     try:
         if from_views is not None:
             # Archicad already decided what belongs in each of these, so
@@ -6996,6 +7024,7 @@ def _shadow_report(
 
     typer.echo("")
     typer.echo(f"  {scene.describe()}")
+    typer.echo(clock.said("read the model and sorted it into the legend"))
 
     # Project zero, not the lowest point of the geometry. Archicad's zero
     # is conventionally the ground floor level, while the lowest geometry
@@ -7005,9 +7034,15 @@ def _shadow_report(
     # out solid grey: measured, 24% of the plane permanently dark and
     # 87 hectares of "existing shadow".
     datum = shadow_datum if shadow_datum is not None else 0.0
-    grid = ground_plane_grid(
-        scene.bounds, datum_m=datum, spacing_m=shadow_grid, margin_m=shadow_margin
-    )
+    # Said before the grid is laid, so a grid too big to hold is on the log
+    # with its size before it is attempted.
+    samples = _say_grid(scene, grid_m=shadow_grid, margin_m=shadow_margin)
+    try:
+        grid = ground_plane_grid(
+            scene.bounds, datum_m=datum, spacing_m=shadow_grid, margin_m=shadow_margin
+        )
+    except MemoryError as error:
+        _out_of_memory(f"laying a grid of about {samples:,} samples", error)
     # What the shadow lands on is the ground *and* what stands on it. A
     # shadow reaching a thirty-metre neighbour stops on its roof; carried on
     # to the ground under it, the fill would run tens of metres too far and
@@ -7025,7 +7060,10 @@ def _shadow_report(
     )
     receiving = None
     if receiver.triangle_count:
-        draped = drape_onto_terrain(grid, receiver, floor_m=terrain_floor)
+        try:
+            draped = drape_onto_terrain(grid, receiver, floor_m=terrain_floor)
+        except MemoryError as error:
+            _out_of_memory(f"draping {len(grid):,} samples onto the ground", error)
         grid, receiving = draped.grid, draped.on_terrain
         typer.echo(
             f"  draped onto {scene.terrain.triangle_count:,} terrain and "
@@ -7042,6 +7080,7 @@ def _shadow_report(
                 err=True,
             )
             raise typer.Exit(code=2)
+        typer.echo(clock.said("draped the grid onto the ground"))
     sun = sun_vectors_in_model_frame(
         solar_position(moments, scene.orientation.latitude_deg, scene.orientation.longitude_deg),
         scene.orientation.normalised_bearing_deg,
@@ -7054,17 +7093,26 @@ def _shadow_report(
             fg=typer.colors.YELLOW,
         )
     outlined = designed if shadow_all_hours else None
-    series = cast_shadows(
-        grid,
-        sources=scene.sources,
-        sun_vectors=sun,
-        moments=moments,
-        labels=labels,
-        spacing_m=shadow_grid,
-        receiving=receiving,
-        edge_tolerance_m=edge_tolerance if edge_tolerance > 0 else None,
-        outline=outlined,
+    typer.echo(
+        f"  {candidate_rays(grid, sun):,} rays a cast, {len(scene.sources)} casts"
+        + (" and one more for the every-hour drawing" if outlined else "")
     )
+    try:
+        series = cast_shadows(
+            grid,
+            sources=scene.sources,
+            sun_vectors=sun,
+            moments=moments,
+            labels=labels,
+            spacing_m=shadow_grid,
+            receiving=receiving,
+            edge_tolerance_m=edge_tolerance if edge_tolerance > 0 else None,
+            outline=outlined,
+            say=typer.echo,
+        )
+    except MemoryError as error:
+        _out_of_memory(f"casting {len(grid):,} samples x {len(moments)} instants", error)
+    typer.echo(clock.said("cast and traced the shadows"))
 
     lower, upper = scene.bounds
     typer.echo(
@@ -7113,6 +7161,7 @@ def _shadow_report(
             "build the views and layouts from them.",
             fg=typer.colors.GREEN,
         )
+        typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
         return
 
     try:
@@ -7149,6 +7198,7 @@ def _shadow_report(
         )
         typer.echo("")
         typer.echo(drawn.describe())
+        typer.echo(clock.said("drew the fills"))
         if sheet:
             built = build_shadow_sheets(
                 connection,
@@ -7162,9 +7212,64 @@ def _shadow_report(
             )
             typer.echo("")
             typer.echo(built.describe())
+            typer.echo(clock.said("made the views and sheets"))
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from error
+    typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
+
+
+#: A grid past this many samples is said to be large before it is cast. About
+#: the size where the caster's hour starts, on the machines measured.
+LARGE_GRID_SAMPLES = 5_000_000
+
+
+def _say_grid(scene: Any, *, grid_m: float, margin_m: float) -> int:
+    """How big the grid will be, and what stretched it, before it is laid.
+
+    Said up front because the cast is where a larger model spends its time
+    and its memory, and both go with the grid's area: a log that ends in the
+    caster should already have said how much it was asked to do. Returns the
+    samples, near enough -- the grid rounds its edges to the spacing.
+    """
+    lower, upper = scene.bounds
+    width = float(upper[0] - lower[0]) + 2.0 * margin_m
+    depth = float(upper[1] - lower[1]) + 2.0 * margin_m
+    samples = max(round(width / grid_m), 1) * max(round(depth / grid_m), 1)
+    typer.echo(
+        f"  grid {width:,.0f} x {depth:,.0f} m at {grid_m:g} m, {margin_m:g} m past "
+        f"everything: about {samples:,} samples"
+    )
+    for layer, distance in scene.far[:6]:
+        typer.secho(
+            f"    stretched by {layer!r}, which has a solid {distance:,.0f} m clear of every "
+            f"legend row; if it is not meant to be in the drawing, take it out of the "
+            f"export",
+            fg=typer.colors.YELLOW,
+        )
+    if samples > LARGE_GRID_SAMPLES:
+        typer.secho(
+            "    that is a large grid, and the cast takes time and memory with it. A 2 m "
+            "--shadow-grid is a quarter of the samples.",
+            fg=typer.colors.YELLOW,
+        )
+    return samples
+
+
+def _out_of_memory(doing: str, error: MemoryError) -> NoReturn:
+    """Stop, saying what ran out of memory, how close the machine came, and
+    the ways to a smaller job -- rather than a numpy traceback."""
+    typer.secho(
+        f"  Out of memory {doing}: the run had reached {size_text(peak_memory_bytes())} "
+        f"of the machine's {size_text(physical_memory_bytes())}. A 2 m --shadow-grid is a "
+        f"quarter of the samples; a smaller --shadow-margin, fewer days at once, or a "
+        f"stretching layer named above taken out of the export shrink the grid; and "
+        f"'sun-study shadow-plans' has Archicad draw the hours as 3D Documents, at any "
+        f"size it can display. ({str(error) or 'no detail'})",
+        fg=typer.colors.RED,
+        err=True,
+    )
+    raise typer.Exit(code=2) from error
 
 
 @app.command("sun-views")
@@ -7450,6 +7555,245 @@ def sun_eye_views(
         "  each drawing's origin is at the centre of its cell and its frame clips to "
         "the cell; the content fills the frame when the layout is next opened."
     )
+
+
+@app.command("shadow-plans")
+def shadow_plan_documents(
+    port: Annotated[int, typer.Option("--port", help="Which Archicad to talk to.")] = DEFAULT_PORT,
+    timeout: Annotated[
+        float, typer.Option("--timeout", help="Seconds to wait for one Archicad command.")
+    ] = DEFAULT_TIMEOUT_SECONDS,
+    timezone: Annotated[str, typer.Option("--timezone")] = "Australia/Sydney",
+    year: Annotated[int, typer.Option("--year")] = 2024,
+    shadow_date: Annotated[
+        str, typer.Option("--shadow-date", help="Days to draw, MM-DD, comma separated.")
+    ] = DEFAULT_SHADOW_DATES,
+    shadow_hour: Annotated[
+        str, typer.Option("--shadow-hour", help="Whole hours, comma separated.")
+    ] = DEFAULT_SHADOW_HOURS,
+    layer_combination: Annotated[
+        str,
+        typer.Option(
+            "--layer-combination",
+            help=(
+                "What the plans show, and so what casts and catches the shadows: "
+                "the ground has to be in it, or the shadows fall on nothing."
+            ),
+        ),
+    ] = SHADOW_PLAN_COMBINATION,
+    set_label: Annotated[
+        str,
+        typer.Option(
+            "--label",
+            help=(
+                "A name for this set, in its documents' and sheets' names -- "
+                "'Existing' and 'Proposed' under two layer combinations sit side by "
+                "side and are compared sheet against sheet."
+            ),
+        ),
+    ] = "",
+    renovation_filter: Annotated[
+        str | None,
+        typer.Option(
+            "--renovation-filter",
+            help=(
+                "GUID of the renovation filter to pin. By default the one most of the "
+                "project's views carry, which is its planned state."
+            ),
+        ),
+    ] = None,
+    model_view_options: Annotated[str | None, typer.Option("--model-view-options")] = None,
+    pen_set: Annotated[str | None, typer.Option("--pen-set")] = None,
+    override: Annotated[
+        str | None, typer.Option("--override", help="Graphic override combination to pin.")
+    ] = None,
+    shadow_fill: Annotated[
+        str | None,
+        typer.Option(
+            "--shadow-fill",
+            help="Fill type the shadows are drawn in, by name. Blank keeps the project's.",
+        ),
+    ] = None,
+    shadow_pen: Annotated[
+        int | None, typer.Option("--shadow-pen", help="Pen the shadow fill is drawn in.")
+    ] = None,
+    shadow_background_pen: Annotated[
+        int | None,
+        typer.Option("--shadow-background-pen", help="The fill's background pen; 0 is none."),
+    ] = None,
+    shadow_contours: Annotated[
+        bool,
+        typer.Option("--shadow-contours/--no-shadow-contours", help="Outline each shadow."),
+    ] = False,
+    scale: Annotated[
+        float, typer.Option("--scale", help="Scale of the plans' views, and so of the drawings.")
+    ] = PLAN_SCALE,
+    layout: Annotated[
+        bool, typer.Option("--layout/--no-layout", help="Place the plans on layouts.")
+    ] = True,
+    sheets: Annotated[str, typer.Option("--sheets", help=SHEETS_HELP)] = SHADOW_SHEETS,
+    master_layout: Annotated[str | None, typer.Option("--master-layout")] = None,
+    subset: Annotated[
+        str | None, typer.Option("--subset", help="Layout Book subset the sheets go into.")
+    ] = None,
+    title_block_mm: Annotated[
+        float,
+        typer.Option(
+            "--title-block-mm",
+            help="Width of the master's title block strip on the right, kept clear of drawings.",
+        ),
+    ] = TITLE_BLOCK_MM,
+    layer_prefix: Annotated[
+        str | None,
+        typer.Option(
+            "--layer-prefix",
+            help=(
+                "What every document, view and sheet is named under. Defaults to "
+                "15 |, the shadow diagram's own number."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Shadow plans as 3D Documents: Archicad draws each hour's shadows.
+
+    One 3D Document per day and hour, looking straight down with north up,
+    carrying the sun at that hour and Archicad's own vectorial sun shadows,
+    each with a view pinned to the layer combination and dealt onto sheets by
+    day. Archicad casts the shadows, at any size of model it can display --
+    the route for a model too large for the shadow diagram's own caster, and
+    the record beside its fills. What it cannot give is the split between
+    existing and additional shadow: run it once per layer combination, with
+    --label, and read the sheets against each other.
+
+    Needs the Loriini add-on, current build: the document's sun shadows are
+    switched on as it is made, which older builds cannot do.
+    """
+    banner()
+    naming.set_prefix(layer_prefix, default=naming.SHADOW_PREFIX)
+    clock = Stopwatch()
+    moments, labels = _shadow_moments(shadow_date, shadow_hour, year, timezone)
+    if not moments:
+        typer.secho("No instants to draw.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2)
+    connection = _connect(port, timeout, switch_database=False)
+
+    # A floor plan in front, as for the sun views: documents are made from
+    # the 3D window's state, and the database must not be moved under it.
+    front = connection.run_tapir("GetCurrentWindowType", {})
+    where = front.get("currentWindowType") if isinstance(front, dict) else None
+    if where != "FloorPlan":
+        typer.secho(
+            f"  Archicad has a {where or 'non-plan window'} in front. Click a floor plan "
+            f"tab first: a 3D Document is made from the 3D window's state, and this "
+            f"command must not move the database from under it.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    geo = read_geo_location(connection)
+    plans, down = shadow_plans(geo, moments, labels)
+    for plan in down:
+        typer.secho(
+            f"  {plan.caption}: the sun is below the horizon, so there is no plan to draw",
+            fg=typer.colors.YELLOW,
+        )
+    if not plans:
+        typer.secho("  the sun is down at every hour asked for.", fg=typer.colors.RED)
+        raise typer.Exit(code=2)
+
+    # Before any document is made: a document keeps the storey filter the
+    # window had when it was made (D98).
+    trouble = show_every_storey(connection)
+    if trouble:
+        typer.secho(f"  {trouble}", fg=typer.colors.YELLOW)
+
+    fill: dict[str, int] = {}
+    if shadow_fill:
+        index = site_drawing.attribute_index(connection, "Fill", (shadow_fill,))
+        if index is None:
+            typer.secho(
+                f"  the project has no fill called {shadow_fill!r}; the shadows keep the "
+                f"project's own fill",
+                fg=typer.colors.YELLOW,
+            )
+        else:
+            fill["fillIndex"] = index
+    if shadow_pen is not None:
+        fill["fillPen"] = shadow_pen
+    if shadow_background_pen is not None:
+        fill["backgroundPen"] = shadow_background_pen
+
+    guid = renovation_filter or planned_renovation_filter(connection)
+    settings = ShadowPlanSettings(
+        layer_combination=layer_combination,
+        renovation_filter_guid=guid,
+        model_view_options=model_view_options,
+        pen_set=pen_set,
+        graphic_override=override,
+        scale=scale,
+        shadow_fill=fill,
+        shadow_contours=shadow_contours,
+    )
+    typer.echo(
+        f"  {len(plans)} plans, overhead with north up, each with Archicad's sun and "
+        f"shadows; views on {layer_combination!r} at 1:{scale:g}"
+        + ("" if guid else ", no renovation filter pinned (no view carries one)")
+    )
+
+    try:
+        made, said = make_shadow_plans(connection, plans, settings=settings, set_label=set_label)
+    except ArchicadError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    for line in said:
+        typer.secho(f"  {line}", fg=typer.colors.YELLOW)
+    # Over the documents just made as well: each keeps its own copy of the
+    # storey filter from the moment it exists (D98).
+    mended, looked, note = mend_document_filters(connection)
+    if mended:
+        typer.echo(f"  took the storey filter off {mended} of {looked} documents")
+    if note:
+        typer.secho(f"  {note}", fg=typer.colors.YELLOW)
+    typer.echo("    document                               sun altitude")
+    for one in made:
+        typer.echo(
+            f"    {one.view.name:<38} {one.plan.altitude_deg:6.1f}"
+            + ("  (already there, re-set)" if one.reused else "")
+        )
+    typer.echo(clock.said("made the documents"))
+
+    if layout:
+        try:
+            placed, removed = make_shadow_plan_sheets(
+                connection,
+                made,
+                sheets=sheets,
+                set_label=set_label,
+                scale=scale,
+                master_layout=master_layout,
+                title_block_mm=title_block_mm,
+            )
+        except ArchicadError as error:
+            typer.secho(
+                f"  the documents are made; the sheets are not: {error}",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+        else:
+            for name in removed:
+                typer.echo(f"  removed the earlier sheet {name!r}")
+            for report in placed:
+                typer.echo(report.describe())
+            if subset:
+                filing = file_under_subset(connection, [r.layout_name for r in placed], subset)
+                typer.echo(filing.describe())
+            typer.echo(clock.said("placed them on sheets"))
+    typer.echo(
+        "  Archicad draws the shadows when a document is opened or its drawing updated; "
+        "open one to check the shadows are on and fall where the fills say."
+    )
+    typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
 
 
 def _site_out_dir(address: str, out: Path | None) -> Path:

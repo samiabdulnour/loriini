@@ -277,7 +277,9 @@ GS::ObjectState CreateFillsCommand::Execute (const GS::ObjectState& parameters,
 	// fills on the reference project, and an undo that takes them back one at
 	// a time is not an undo anybody can use.
 	const GSErrCode err = ACAPI_CallUndoableCommand ("Draw solar diagram fills", [&] () -> GSErrCode {
+		UIndex index = 0;
 		for (const GS::ObjectState& one : wanted) {
+			++index;
 			GS::Array<Contour> contours;
 			why.Clear ();
 			if (!ReadContours (one, contours, why)) {
@@ -324,8 +326,13 @@ GS::ObjectState CreateFillsCommand::Execute (const GS::ObjectState& parameters,
 			step = ACAPI_Element_Create (&element, &memo);
 			ACAPI_DisposeElemMemoHdls (&memo);
 			if (step != NoError) {
+				// Which one, by its place in the batch, for whoever reads the
+				// error. The whole batch is rolled back either way, and the
+				// caller halves it until it has the fill.
 				failure = step;
-				failureText = "Archicad refused to create a fill.";
+				failureText = GS::UniString::Printf ("Archicad refused to create fill %u of the %u in this batch.",
+													 static_cast<unsigned int> (index),
+													 static_cast<unsigned int> (wanted.GetSize ()));
 				return step;
 			}
 

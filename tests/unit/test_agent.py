@@ -154,6 +154,7 @@ def test_the_tools_are_listed_with_what_they_take(client: Client) -> None:
         "run_loriini",
         "site_analysis",
         "shadow_diagrams",
+        "shadow_plans",
         "sun_views",
     }
     site = listed["site_analysis"]["inputSchema"]
@@ -464,3 +465,23 @@ def test_the_sun_views_name_a_day_only_when_it_is_not_the_rulesets_own() -> None
         "--date",
         "equinox",
     ]
+
+
+def test_the_shadow_plans_take_the_diagrams_days_and_hours() -> None:
+    """Roadmap R1: the same instants as documents, with the set named."""
+    argv = tools.shadow_plans_argv(
+        tools.ShadowPlanArguments(
+            dates=["winter", "12-21"],
+            hours=[9, 12, 15],
+            layer_combination="04 | Shadow Diagrams",
+            label="Proposed",
+            shadow_pen=3,
+        )
+    )
+    assert argv[:3] == ["shadow-plans", "--timezone", "Australia/Sydney"]
+    assert argv[argv.index("--shadow-date") + 1] == "06-21,12-21"
+    assert argv[argv.index("--shadow-hour") + 1] == "9,12,15"
+    assert argv[argv.index("--layer-combination") + 1] == "04 | Shadow Diagrams"
+    assert argv[argv.index("--label") + 1] == "Proposed"
+    assert argv[argv.index("--shadow-pen") + 1] == "3"
+    assert "--pen-set" not in argv, "left to the command when not given"

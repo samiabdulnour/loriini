@@ -85,6 +85,7 @@ __all__ = [
     "make_sun_eye_sheets",
     "make_sun_eye_views",
     "mend_document_filters",
+    "place_on_sheets",
     "planned_renovation_filter",
     "sheet_cells_for",
     "sheet_groups",
@@ -737,11 +738,37 @@ def make_sun_eye_sheets(
     stem = naming.named(SET_WORD)
 
     removed = remove_stale_layouts(connection, stem, wanted)
+    reports = place_on_sheets(
+        connection,
+        groups,
+        cells=cells,
+        scale=scale,
+        master_layout=master_layout,
+        title_block_mm=title_block_mm,
+    )
+    return reports, removed
 
+
+def place_on_sheets(
+    connection: ArchicadConnection,
+    groups: Sequence[tuple[str, Sequence[tuple[str, str]]]],
+    *,
+    cells: int,
+    scale: float,
+    master_layout: str | None = None,
+    title_block_mm: float = TITLE_BLOCK_MM,
+) -> list[LayoutReport]:
+    """Each group of document views onto its layout, one to a cell.
+
+    ``groups`` is ``(layout name, [(navigator id, drawing name), ...])``, as
+    ``sheet_groups`` deals them; ``cells`` is how many cells the fullest
+    sheet has, so every sheet of a set shares one grid. Shared by the sun
+    views and the shadow plans, which are both 3D Documents dealt by hour.
+    """
     reports: list[LayoutReport] = []
     for name, views in groups:
         report = layout_from_views(
-            connection, views, layout_name=name, scale=scale, master_layout=master_layout
+            connection, list(views), layout_name=name, scale=scale, master_layout=master_layout
         )
         reports.append(report)
         if not report.database_id:
@@ -758,7 +785,7 @@ def make_sun_eye_sheets(
             if drawing_name in placed
         ]
         arrange_drawings(connection, report.database_id, placements)
-    return reports, removed
+    return reports
 
 
 def _document_item(connection: ArchicadConnection, name: str) -> ModelSource:

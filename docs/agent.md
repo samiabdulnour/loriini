@@ -58,9 +58,10 @@ read-only and run without asking.
 | `run_loriini` | Any command line, as `["shadows", "--port", "19724", ...]`, for what the named tools do not cover: the solar analysis (`archicad-run`, `massing`), the reports, the checks. | yes |
 | `site_analysis` | The site tools for an address: the Context Analysis and Site Analysis sheets and the Summary of Controls, optionally the 3D context model and the future context. Sets the project location from the address unless told to keep it. | yes |
 | `shadow_diagrams` | Shadow diagrams for the days and hours asked, from the layers named as the existing shadow and the proposal, onto the terrain named. | yes |
+| `shadow_plans` | The same days and hours as 3D Documents from overhead, with Archicad's own sun and shadows, on layouts by day ([`shadow-plans.md`](shadow-plans.md)). For a model too large for `shadow_diagrams`, and as the record beside it. | yes |
 | `sun_views` | The sun's-eye views, one per hour, each as a 3D Document on layouts. | yes |
 
-The three study tools take the questions the window's pages ask, and spell
+The four study tools take the questions the window's pages ask, and spell
 them onto the command line the way the window does (`Window.jobs`), so a
 study run by an agent and one run from the window are the same run. What
 they do not offer, `run_loriini` does, with `loriini_help` to read the
