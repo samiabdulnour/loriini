@@ -16,13 +16,17 @@ What it needs, all opened by the owner:
   container with a disk will do);
 - a Stripe account;
 - a mail account that can send over SMTP, for the keys it emails;
-- a name under the website's domain (R7): `licence.loriini.com.au`, say.
+- nothing else. Its address is `https://<app>.fly.dev` from the start. A name
+  of your own (`licence.example.com.au`) can be added at any time, and the
+  `fly.dev` address keeps working beside it, so builds that carry it never
+  lose the service.
 
 ## Putting it up, on Fly.io
 
 From the repository's root, with [flyctl](https://fly.io/docs/flyctl/) installed
-and signed in. First set `app` in `deploy/licence-service/fly.toml` to a name of
-your own; below it is `loriini-licences`.
+and signed in (`fly auth login`). An app's name is shared by everyone on Fly;
+below it is `loriini-licences`. If that is taken, pick another, and use it
+everywhere below and as `app` in `deploy/licence-service/fly.toml`.
 
 ```
 fly apps create loriini-licences
@@ -38,21 +42,22 @@ print(secrets.token_urlsafe(32))"`), kept in a password manager:
 fly secrets set --app loriini-licences LORIINI_SIGNING_KEY=<hex> LORIINI_ADMIN_TOKEN=<token>
 fly secrets set --app loriini-licences LORIINI_SMTP_HOST=smtp.office365.com ^
     LORIINI_SMTP_PORT=587 LORIINI_SMTP_USER=<user> LORIINI_SMTP_PASSWORD=<password> ^
-    LORIINI_MAIL_FROM=licences@loriini.com.au
+    LORIINI_MAIL_FROM=<the address keys come from>
 ```
 
-Then deploy, and give it its name:
+Then deploy:
 
 ```
 fly deploy . --config deploy/licence-service/fly.toml --dockerfile deploy/licence-service/Dockerfile
-fly certs add licence.loriini.com.au --app loriini-licences
 ```
 
-The last step prints the DNS record to add at the domain's registrar.
+A name of your own, whenever wanted:
+`fly certs add licence.example.com.au --app loriini-licences` prints the DNS
+record to add at the domain's registrar.
 
 To check it:
-- `https://licence.loriini.com.au/v1/health` answers `{"ok": true}`.
-- With `LORIINI_LICENCE_SERVICE=https://licence.loriini.com.au` and
+- `https://loriini-licences.fly.dev/v1/health` answers `{"ok": true}`.
+- With `LORIINI_LICENCE_SERVICE=https://loriini-licences.fly.dev` and
   `LORIINI_ADMIN_TOKEN` set on the vendor's machine,
   `uv run python scripts/licence.py status` lists no licences, without an
   error.
@@ -64,7 +69,7 @@ To check it:
 Finally, write the address into the build, and commit it:
 
 ```
-uv run python scripts/licence.py service https://licence.loriini.com.au
+uv run python scripts/licence.py service https://loriini-licences.fly.dev
 ```
 
 ## Stripe
@@ -78,7 +83,7 @@ uv run python scripts/licence.py service https://licence.loriini.com.au
      name*, since it becomes the licence's holder;
    - set a trial period there if wanted.
 3. **The webhook.** In Developers → Webhooks, add an endpoint:
-   - **address:** `https://licence.loriini.com.au/v1/stripe`;
+   - **address:** `https://loriini-licences.fly.dev/v1/stripe`;
    - **events:** `checkout.session.completed`, `invoice.paid`,
      `invoice.payment_failed`, `customer.subscription.created`,
      `customer.subscription.updated` and `customer.subscription.deleted`.
@@ -113,8 +118,9 @@ card, the key arriving by email, installed on a computer, and the licence under
 - **The first practice's licence** under LICENSE clause 1, complimentary:
   `scripts/licence.py issue --email ... --holder "Fuse Architects" --seats 50
   --complimentary --send`
-- **The download address**, for a recall's sentence:
-  `scripts/licence.py set download=https://loriini.com.au/download`
+- **The download address**, for a recall's sentence, once there is one:
+  `scripts/licence.py set download=<where the current build is>`. R6 will
+  serve the program from the service itself.
 
 ## Keeping it
 

@@ -112,7 +112,7 @@ the time of the run.
 
 ```
 uv run python scripts/licence.py keygen --out "D:\Private\loriini-signing.key"
-uv run python scripts/licence.py service https://licence.loriini.com.au
+uv run python scripts/licence.py service https://loriini-licences.fly.dev
 ```
 
 `keygen` makes the Ed25519 key pair.

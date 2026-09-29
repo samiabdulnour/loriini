@@ -336,3 +336,15 @@ serve; the site is the front on them.
 
 **First step.** The domain and the merchant account, both to be opened by
 the owner; then the page.
+
+**Decided, 29 September: no website.** Nothing in selling Loriini needs
+one.
+- **Selling.** Stripe's hosted checkout, reached by a payment link, sells
+  it. The licence service issues and emails the key when it is paid (R5).
+- **The program itself.** It reaches practices through the licence
+  service, which serves its download and its updates (R6).
+- **Terms and privacy.** Stripe asks to link to both, and they can be two
+  plain pages the licence service serves.
+
+What stays of R7 is the brand: the name, the bird and the icon. The
+licence service runs on Fly.io, at its own `fly.dev` address.

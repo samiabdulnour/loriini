@@ -254,8 +254,8 @@ It sends:
 - optionally, the Archicad licence's serial.
 
 It sends nothing about projects, files or results. This is a deliberate change from
-R6's stance that the update check sends no identifier. The privacy note on the website
-says what is sent and why, and so does `licensing.md`.
+R6's stance that the update check sends no identifier. The privacy note says what
+is sent and why, and so does `licensing.md`.
 
 ### 4.4 When things go wrong
 
@@ -376,8 +376,9 @@ but name, at the price of replacing R5's keys with Keygen's.
   clause 1: online, so that it receives recalls and notices, but never refused for
   payment, and with more seats than the practice has desks.
 - **Trials.** Fourteen days, three seats, online, with outputs stamped. They are issued
-  by hand at first; the website issues them later (R7). A trial is tied to an email
-  address and a computer, so a second trial on the same computer is visible.
+  by hand at first, and later from a Stripe payment link with a free trial. A trial is
+  tied to an email address and a computer, so a second trial on the same computer is
+  visible.
 - **Education.** Free, later: Archicad's education flag is readable from the add-on,
   and education outputs are stamped too.
 - **Graphisoft, and whoever else sells to these practices.** There is no Graphisoft
@@ -485,8 +486,8 @@ Each with what this note recommends:
    with the ABN.
 6. **Build or buy the licence service.** *Recommended: build it,* on R5's keys as
    they are. *Fallback: Keygen Cloud.*
-7. **Where it runs.** A small container host or VPS, and a name for it under the
-   website's domain (R7). The owner opens both accounts.
+7. **Where it runs.** A small container host or VPS, opened by the owner.
+   *Chosen, 29 September: Fly.io, at its own `fly.dev` address.*
 8. **The lease and the grace.** *Recommended: 14 days each.*
 9. **The terms.** A commercial licence agreement and a privacy note, with the
    continuity promise in them, and a lawyer's hour on both.
@@ -494,7 +495,8 @@ Each with what this note recommends:
     1. merge PR #12;
     2. R5's second half: the service, leases, seats and recall, with Fuse and the
        first practices moved to online keys by hand;
-    3. Stripe and the website (R7);
+    3. Stripe. A website was decided against on 29 September: Stripe's hosted
+       checkout sells, and R6 delivers the program;
     4. Graphisoft ID seats, when the add-on moves to Archicad 28 or later.
 
 ## Sources
