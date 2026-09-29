@@ -10,9 +10,16 @@ own term alone (``licence.EXPIRES``), exactly as builds did before keys
 existed, and nothing about keys reaches the screen. A build with a public key
 here asks for a key the first time it is started, and checks it at every start
 after.
+
+``SERVICE`` is where the licence service is, for the online keys that are
+kept in force by its leases (D125); ``scripts/licence.py service`` writes it.
+A build with a public key and no service takes offline keys only.
 """
 
 from __future__ import annotations
 
 #: 32 bytes of Ed25519 public key, as 64 hex digits, or ``None``.
 PUBLIC_KEY: str | None = None
+
+#: The licence service's address, ``https://...``, or ``None``.
+SERVICE: str | None = None

@@ -45,8 +45,10 @@ def build_massing_header(
     scene_config_description: str,
     scene_provenance: Mapping[str, Any],
     generated_at: str,
+    licensee: str = "",
 ) -> dict[str, Any]:
-    """Provenance for a massing run.
+    """Provenance for a massing run, with whose licence made it when there is
+    one (``licence.licensee``).
 
     Deliberately says what this metric *is not*: an area share is not the ADG's
     per-apartment criterion, and the two must never be quoted for each other.
@@ -56,6 +58,7 @@ def build_massing_header(
         "status": STATUS,
         "disclaimer": DISCLAIMER,
         "tool": f"sun-study {__version__}",
+        **({"licence": licensee} if licensee else {}),
         "mode": "massing",
         "generated_at": generated_at,
         "site": site_description,

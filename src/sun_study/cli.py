@@ -3121,6 +3121,7 @@ def report_assessment(
             scene_provenance=result.scene.provenance,
             scene_config_description=result.scene.config.describe(),
             generated_at=dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+            licensee=licence.licensee(),
         )
         typer.echo("")
         if csv_out:
@@ -4131,6 +4132,7 @@ def massing(
             scene_config_description=result.scene.config.describe(),
             scene_provenance=result.scene.provenance,
             generated_at=dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+            licensee=licence.licensee(),
         )
         typer.echo("")
         if csv_out:
@@ -6121,8 +6123,9 @@ def archicad_run(
 
         if write:
             typer.echo("")
+            who = licence.licensee()
             try:
-                written = write_assessment(connection, result.assessment, match=match)
+                written = write_assessment(connection, result.assessment, match=match, licensee=who)
             except ArchicadError as error:
                 # Not fatal when a drawing was also asked for. A fill is
                 # geometry on a layer: it needs no property, no classification
@@ -8687,7 +8690,15 @@ def licence_command(
         typer.Argument(help="The key from the licence email, pasted whole. Spaces are fine."),
     ] = None,
     remove: Annotated[
-        bool, typer.Option("--remove", help="Remove the licence key this machine holds.")
+        bool,
+        typer.Option(
+            "--remove",
+            help="Remove the licence key this machine holds, freeing its seat.",
+        ),
+    ] = False,
+    renew: Annotated[
+        bool,
+        typer.Option("--renew", help="Ask the licence service now, for an online key."),
     ] = False,
 ) -> None:
     """Show the licence this machine holds, or install one from its key.
@@ -8695,14 +8706,11 @@ def licence_command(
     Hidden from the list of commands, as the licence is everywhere a
     colleague looks (``licence`` module); a start that needs a key says this
     command's name in the sentence that refuses it. Runs with no key, which is
-    the point of it.
+    the point of it. An online key is checked with the licence service as it
+    is installed, and ``--renew`` asks again (D125).
     """
     if remove:
-        typer.echo(
-            f"Removed the licence key from {licence.key_path()}."
-            if licence.remove()
-            else "There was no licence key to remove."
-        )
+        typer.echo(licence.remove() or "There was no licence key to remove.")
         return
     if key:
         try:
@@ -8710,13 +8718,27 @@ def licence_command(
         except KeyRefusedError as refused:
             typer.secho(str(refused), fg=typer.colors.RED, err=True)
             raise typer.Exit(code=2) from refused
-        typer.secho(f"Installed: {installed.describe()}.", fg=typer.colors.GREEN)
+        if installed.online:
+            found = licence.renew()
+            if not found.usable:
+                typer.secho(
+                    f"Installed {installed.describe()}, but it cannot be used yet. {found.problem}",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                typer.echo(f"Kept in {licence.key_path()}; Loriini.exe licence --renew asks again.")
+                raise typer.Exit(code=2)
+            typer.secho(found.describe(), fg=typer.colors.GREEN)
+        else:
+            typer.secho(f"Installed: {installed.describe()}.", fg=typer.colors.GREEN)
         typer.echo(f"Kept in {licence.key_path()}.")
         return
-    found = licence.standing()
+    found = licence.renew() if renew else licence.standing()
     typer.echo(found.describe())
     if found.required and found.usable:
         typer.echo(f"Kept in {licence.key_path()}.")
+    elif found.online:
+        typer.echo("Loriini.exe licence --renew asks the licence service again.")
     elif found.required:
         typer.echo(licence.HOW_TO_INSTALL)
 

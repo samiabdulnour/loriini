@@ -1,130 +1,226 @@
-# Licence keys: a subscription, a key per paid period
+# Licence keys: a subscription, kept in force online
 
-Loriini is sold by subscription. Each subscriber is emailed a **licence key**
-for the period they have paid for; they paste it into Loriini once, and
-Loriini checks it at every start, offline. When the subscription renews, a new
-key comes the same way. When it lapses, the last key runs out and Loriini asks
-for a new one. This is roadmap R5; D124 records how it is built.
+Loriini is sold by subscription. Each practice is emailed one **licence key**. It
+is pasted into Loriini once on each computer, and from then on Loriini keeps it in
+force by itself: once a day, while it is used, it asks the licence service for a
+**lease** -- a small signed note that says the licence is in force on this
+computer for the next fortnight. A monthly renewal needs nothing from anyone. A
+lapse, or a licence the vendor withdraws, stops Loriini at the next contact,
+with the reason in a sentence.
+
+This is roadmap R5. D124 is how the keys are built and D125 is how they are kept
+in force online. [`licence-model.md`](licence-model.md) is why the model is
+what it is, and [`licence-service.md`](licence-service.md) is how the service
+is run.
+
+An **offline key** -- the whole licence, good to a last day, checked on the
+computer alone -- still exists for the office that cannot let Loriini reach the
+internet. It is the exception, and the last section says what it gives up.
 
 ## For a subscriber
 
-**Installing a key.** Open Loriini. A build that takes keys asks for one when
-it opens: paste the whole key from the email -- from `LORIINI` to the last
-group; the line breaks do not matter -- and read the line under it. It says
-whose licence the key is and until when, *before* anything is pressed:
+**Installing the key.** Open Loriini. It asks for the key when it opens:
+- paste the whole key from the email, from `LORIINI` to the last group (the line
+  breaks do not matter);
+- read the line under it, which says whose licence the key is *before*
+  anything is pressed;
+- press **Use this key**.
 
-> This is licence 0042, Fuse Architects (office@fuse.example), 12 seats,
-> until 5 October 2027.
+Loriini then checks the key with the licence service, which takes a second or
+two, and the window opens. If the key is not whole -- a mail client cut it, or
+a character went wrong -- the line says so in red: *copy it again, all of it*.
+If the service refuses it -- every seat is in use, say -- the line says why, and
+**Try again** asks once more once that is put right.
 
-If the key is not whole -- a mail client cut it, or a character went wrong --
-the line says so in red: *copy it again, all of it*. That is not the key
-being refused as a forgery, and the fix is a second paste. Press **Use this
-key** and the window opens. The key is kept in `%APPDATA%\Loriini\licence.key`,
-beside the saved settings, so it is asked for once per person per machine.
+Each person using Loriini does the same on their own computer. The key is kept
+in `%APPDATA%\Loriini\licence.key`, and the lease beside it in `licence.lease`.
 
-**Renewing.** Each renewal brings a new key by email before the old one runs
-out, with a week's grace after the paid period so a late email stops nobody.
-Install it from the info box (ⓘ, then **Enter licence key…**), or simply when
-Loriini asks for it after the old key's last day.
+**Day to day there is nothing to do.**
+- **Once a day** Loriini asks the service for a fresh lease, in the background,
+  when it starts. Nobody waits for it.
+- **Offline**, a lease runs a fortnight, so a day without internet changes
+  nothing. Loriini waits on the network only when it holds no lease in force:
+  the first time, or after a fortnight offline.
+- **Renewals** need nothing. When the subscription renews, the lease follows,
+  and there is no new key.
+
+**The info box** (ⓘ) says whose licence it is and what the service last said:
+
+> Licensed: licence 0042, Fuse Architects (office@fuse.example), 12 seats,
+> renewed online. Paid to 31 October 2026; 4 of 12 seats in use; checked with
+> the licence service on 29 September 2026.
+
+**Check now** asks the service there and then -- after a payment, say, or a seat
+freed on another computer. When the service has something to say -- *the
+October payment failed; update the card at …* -- it is said there too, and the
+foot of the window points at it.
+
+**Seats** are counted as computers that have used Loriini in the last
+fortnight.
+- **Rotating.** Loriini can be installed on every desk; a practice using it in
+  bursts rotates its seats among everyone.
+- **Freeing.** A computer that stops using Loriini frees its seat a fortnight
+  after its last use. `Loriini.exe licence --remove` frees it at once, which is
+  the thing to do before a computer is handed on.
+- **Over the seats.** A practice one computer over is told, not stopped. A
+  second computer over is refused, with the names of the computers holding the
+  seats.
+
+**When Loriini stops**, it says why, and what to do:
+- the subscription was paid to a day and has not been renewed;
+- the licence was withdrawn;
+- every seat is in use;
+- this version of Loriini has been recalled -- a version found to give a wrong
+  result, stopped the day that is found, with where the current one is. The
+  licence carries over to the new version.
 
 **On a command line**, or for an agent (`Loriini.exe mcp`):
 
 ```
-Loriini.exe licence LORIINI-XXXXX-XXXXX-...     installs a key
+Loriini.exe licence LORIINI-XXXXX-XXXXX-...     installs a key, and checks it
 Loriini.exe licence                             says what is installed
-Loriini.exe licence --remove                    forgets it
+Loriini.exe licence --renew                     asks the licence service now
+Loriini.exe licence --remove                    removes it, freeing its seat
 ```
 
-A command that would touch a project without a usable key refuses at the
+A command that would touch a project without a usable licence refuses at the
 door, before connecting to Archicad, with the sentence that says what to do.
-The ones that only say something -- `--help`, `rulesets`, `info` -- and
-`licence` itself always run.
+`--help`, `rulesets`, `info` and `licence` itself always run.
 
-**The foot of the window** says whose licence it is and until when.
+**What Loriini sends** to the licence service, and nothing else:
+- the licence key;
+- a one-way hash of the computer, made from Windows' machine GUID and the
+  user's name with the product's name mixed in, so the raw values never leave
+  the computer;
+- the user's and computer's names (`jsmith on FUSE-PC-07`), so a practice can
+  tell its seats apart;
+- the version of Loriini.
+
+Nothing about any project, file or result is sent.
+
+**Through a proxy or firewall**, Loriini needs HTTPS to the licence service's
+one address. It uses Windows' own proxy setting and certificate store, as a
+browser does.
+
+**Every result says whose licence made it**: the CSV and JSON headers carry a
+`licence` line, and the Zone property *Solar Analysis Run* carries it beside
+the time of the run.
 
 ## For the vendor
 
-### Once: the key pair
+### Once: the key pair, and where the service is
 
 ```
 uv run python scripts/licence.py keygen --out "D:\Private\loriini-signing.key"
+uv run python scripts/licence.py service https://licence.loriini.com.au
 ```
 
-This makes an Ed25519 key pair. The **private half** goes into the file named
--- keep it out of every repository, back it up, and treat it like a
-certificate's private key: with it anybody can issue keys, and without it no
-further key can be issued for the builds in circulation. The **public half** is
-written into `src/sun_study/licence_public_key.py`. Commit that file: from the
-next build on, Loriini asks for a licence key.
+`keygen` makes the Ed25519 key pair.
+- **The private half** goes into the file named. Keep it out of every
+  repository, back it up, and give it to the licence service as a secret: with
+  it anybody can issue keys and leases.
+- **The public half** is written into `src/sun_study/licence_public_key.py`.
 
-Until that file carries a key, a build takes no keys at all and runs on its
-own term (`licence.EXPIRES`) exactly as the office's builds always have. The
-two kinds of build are the same code with one line different.
+`service` writes the service's address into the same file. Commit it: from the
+next build on, Loriini asks for a key and keeps online keys in force at that
+address. Until that file carries a key, a build takes no keys at all and runs on
+its own term (`licence.EXPIRES`), as the office's builds always have.
 
-### For each paid period
+[`licence-service.md`](licence-service.md) is how to put the service up (one
+small container), point Stripe at it, and take in the keys issued before it
+ran.
+
+### Selling
+
+Stripe does it, and the service follows. Somebody subscribes through Stripe
+Checkout or a payment link:
+- the service makes the licence, for the seats bought and the practice named
+  at the checkout;
+- it issues the online key and emails it;
+- each invoice paid moves the licence's paid-to date;
+- a failed card is said on every lease while Stripe retries, and the 14 days'
+  grace covers the retries;
+- a cancelled subscription lapses on the day it was paid to.
+
+Nothing is done by hand.
+
+### By hand, through the service
+
+With `LORIINI_ADMIN_TOKEN` set to the service's admin token:
 
 ```
-uv run python scripts/licence.py issue --signing-key "D:\Private\loriini-signing.key" ^
-    --email office@fuse.example --holder "Fuse Architects" --seats 12 ^
-    --paid-to 2027-09-28 --eml order.eml
+scripts/licence.py issue --email office@fuse.example --holder "Fuse Architects" ^
+    --seats 12 --online --paid-to 2026-10-31 --send      a practice paying by invoice
+scripts/licence.py issue --email ... --trial --send      a fortnight's trial, 1 seat
+scripts/licence.py issue --email ... --complimentary     never lapses (LICENSE clause 1)
+scripts/licence.py paid 0042 --to 2026-11-30             their next invoice, paid
+scripts/licence.py status [0042]                         every licence, or one in full
+scripts/licence.py seats 0042 14
+scripts/licence.py withdraw 0042 --reason "refunded"     and restore 0042
+scripts/licence.py free 0042 "jsmith on FUSE-PC-07"      a seat, from the vendor's side
+scripts/licence.py send 0042                             the key's email, again
+scripts/licence.py recall --below 1.2.1 --reason "..."   stop a wrong version; --clear
+scripts/licence.py notice "Loriini 1.3 is out."          said on every lease; --clear
+scripts/licence.py backup --out D:\Backups\licences.sqlite3
 ```
 
-- The key runs to `--paid-to`, the last day paid for as the shop dates it,
-  plus `--grace-days` (7 by default). Without `--paid-to`, `--months 1` or
-  `--months 12` from today (or from `--starts`).
-- It gets the next licence number from `licences.csv`, the ledger beside the
-  signing key, and is recorded there -- so a lost email is answered by sending
-  the same key again, and the ledger says what is out there.
-- It is read back exactly as a subscriber's Loriini will read it before
-  anything is recorded or sent.
-- `--eml` writes the subscriber's email as an **unsent draft**: Outlook and
-  Windows Mail open it ready to check and send. `--send` sends it over SMTP
-  instead, with the server in `LORIINI_SMTP_HOST`, `LORIINI_SMTP_PORT`,
-  `LORIINI_SMTP_USER` and `LORIINI_SMTP_PASSWORD`, and the sender in `--from`
-  or `LORIINI_MAIL_FROM`.
+`status 0042` says everything the service knows about a licence: the key (to
+send again), the computers holding its seats and when each was last seen, and
+what has happened to it.
 
-The script refuses a signing key that is not the one this checkout's build
-trusts, since every key it signed would be refused.
+### Offline keys, still
 
-`scripts/licence.py show LORIINI-...` says what a key is and whether it
-checks out, for support.
-
-Issuing by hand is the start. The shop's webhook (roadmap R7) is the same
-`issue`, called with the paid-through date of each invoice.
+`scripts/licence.py issue --signing-key "D:\Private\loriini-signing.key" ...`
+without `--online` signs an offline key on the vendor's own machine, as R5 did:
+the period paid for plus a week, recorded in `licences.csv` beside the signing
+key and emailed as a draft or over SMTP. It is for the office that cannot let
+Loriini reach the internet, paid a year ahead. `show LORIINI-...` says what any
+key is and whether it checks out.
 
 ## What is checked, and what is not
 
-Checked, at every start: that the key is **whole** (a CRC over it), that it is
-**genuine** (an Ed25519 signature by the vendor's private key, checked with
-the public key compiled into the build), and that it is **in force** on the
-machine's own date. Offline: nothing is sent anywhere, and nothing needs a
-server to be up for Loriini to open.
+**Checked, at every start:**
+- the key is **whole** (a CRC over it);
+- it is **genuine** (an Ed25519 signature by the vendor's key, checked with the
+  public key compiled into the build);
+- for an online key, the **lease** held is genuine, is for this key on this
+  computer, and is in force on this computer's date. A lease copied from
+  another computer, written by hand or served by anything but the licence
+  service is refused, like a forged key;
+- for an offline key, the key is in force on this computer's date.
 
-Not checked:
+**Stopped at the next contact with the service:** a lapse, a withdrawal, a
+licence over its seats, a recalled version. On a computer kept offline on
+purpose, within a fortnight.
 
-- **Seats** are what the subscriber agreed to, printed on the key and in the
-  info box. Offline there is nothing to count them against.
-- **Revocation.** A key cannot be withdrawn once issued. For a subscription
-  that is the model rather than a gap: a subscription that is not renewed
-  lapses when its last key does, a period plus a week later.
-- **The clock.** A key is checked against the system date, so winding the
-  clock back defeats it -- the same speed bump as the build's own term, and
-  said as plainly. Remembering the latest date seen was considered and not
-  done: a machine whose clock once jumped a year ahead would lock a paying
-  subscriber out, which is worse than what it prevents.
+**The clock.** A computer whose date is earlier than the day its lease was
+given is told to set its clock right, with the service's date. Off the network,
+a clock held inside the fortnight still works, as against any check made
+offline, and on a work computer it breaks email and the web first. A clock that
+once ran ahead is never punished afterwards.
 
-**The build's own term stays as the floor.** A key good until 2028 does not
-make a build that ends in 2027 run past its end: the prototype's term
-(`licence.EXPIRES`) still stops an old build, whatever key it holds. Set it
-per release, far enough ahead of the subscriptions it will serve, or keep the
-subscribers on current builds (roadmap R6).
+**The build's own term** (`licence.EXPIRES`) binds builds that take no keys, and
+offline keys. It does not bind an online key: the service's recall stops a
+version known to be wrong on the day it is found, rather than every version on
+a fixed date.
+
+**An offline key gives up the rest:** it cannot be withdrawn, seats are printed
+on it but not counted, and a renewal is a new key by email.
 
 ## How the key is written
 
-`LORIINI-` and groups of five characters in Crockford's base 32 -- digits and
-capitals without I, L, O or U, read back case-blind, with O taken as 0 and
-I or L as 1 -- so a key survives being read aloud, retyped, lower-cased or
-wrapped over lines. Inside: a format version, the licence number, the
-issue date and the last day, the seats, the email and the holder's name, then
-the signature over all of them and a domain tag, then the CRC. About 200
-characters; nobody types it, and pasting does not mind.
+`LORIINI-` and groups of five characters in Crockford's base 32: digits and
+capitals without I, L, O or U, read back case-blind, with O taken as 0 and I or
+L as 1. So a key survives being read aloud, retyped, lower-cased or wrapped over
+lines.
+
+Inside it:
+- a format version, and whether it is online, a trial, or offline;
+- the licence number;
+- the issue date, and the last day (an online key's first period);
+- the seats;
+- the email and the holder's name;
+- the signature over all of them and a domain tag;
+- then the CRC.
+
+It is about 200 characters. Nobody types it, and pasting does not mind.

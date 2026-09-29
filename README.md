@@ -281,7 +281,9 @@ worked from the massing slabs, [`docs/shadow-plans.md`](docs/shadow-plans.md) is
 shadow diagram's hours as 3D Documents with Archicad's own shadows, and
 [`docs/larger-models.md`](docs/larger-models.md) is how a shadow run on a big project is
 read from the log every run now keeps, [`docs/licensing.md`](docs/licensing.md) is the
-subscription's licence keys -- installing and renewing one, and issuing them -- and
+subscription's licence keys -- installing one, how it is kept in force online, and
+issuing them -- [`docs/licence-service.md`](docs/licence-service.md) is putting the
+licence service up and pointing Stripe at it, and
 [`docs/licence-model.md`](docs/licence-model.md) is the analysis behind the licence model
 as a whole: what is counted, for how long, online leases, payments and price.
 
