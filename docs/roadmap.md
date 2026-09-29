@@ -260,6 +260,14 @@ for both sides; D124 is why. Next: run `keygen`, commit the public key it
 writes, and issue the first keys by hand; the shop's webhook (R7) then calls
 the same `issue`.
 
+**Thinking, 29 September.** A monthly subscription and withdrawing access
+both need something online. [`licence-model.md`](licence-model.md) analyses
+the licence model as a whole: what is counted, for how long, how it is kept,
+how it is paid and what runs it. It keeps everything above. It recommends
+adding activation and short signed leases from a small licence service of our
+own, with a seat counted as a computer used in the last fortnight, and Stripe
+for payments. Its §10 lists the decisions that are the owner's to make.
+
 ## R6 — Automatic updates
 
 **Asked.** An update server, so that the programs update themselves.

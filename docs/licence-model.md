@@ -13,9 +13,9 @@ building it would change.
 |---|---|
 | **What is sold** | A practice's subscription, counted in **seats**, where a seat is a computer that has used Loriini in the last fortnight. The key names the practice. |
 | **For how long** | **Annual** as the anchor, paid by invoice or card; **monthly** at a premium, for a practice that needs Loriini for one DA; a **14-day trial**. No perpetual licence. |
-| **How it is kept** | The signed key R5 built, **activated online** once per computer, then kept alive by **short signed leases** the program renews by itself. A new month renews without anyone pasting anything, a lapse or a withdrawal lands within a fortnight at most, and a day offline changes nothing. |
-| **How it is paid** | *Pending: the comparison of payment providers (§5).* |
-| **What runs it** | *Pending: build or buy (§6).* |
+| **How it is kept** | The signed key R5 built, **activated online** once per computer, then kept alive by **short signed leases** the program renews by itself. A new month renews without anyone pasting anything. A withdrawal reaches a computer that is online the same day, and one kept offline within a fortnight. A day offline changes nothing. |
+| **How it is paid** | **Stripe, directly, in AUD.** Card or BECS for self-serve plans; annual invoices paid by bank transfer for practices that pay that way. Every invoice is a tax invoice carrying the owner's ABN. It costs less than half what a merchant of record takes. |
+| **What runs it** | **A small licence service of our own**: Python and SQLite in one container, on R5's keys, for about A$10 a month. Every service for sale still needs a server of ours for Stripe's webhooks, so buying one adds a vendor without removing the server. Keygen is the fallback if running anything is unwelcome. |
 | **Also** | The licensee is named in what Loriini writes into a project. The build's fixed end date gives way to a minimum version the service can raise: a recall for a build with a known wrong result. Offline keys stay, for an office that cannot go online. |
 
 The rest of this note is the reasoning.
@@ -26,7 +26,10 @@ The rest of this note is the reasoning.
 often pays against an invoice. Practices run from two people to fifty. A practice that
 pays for Archicad pays for its software as a matter of course. The risk is not that it
 cracks Loriini: it is that it installs one licence on every desk, or forgets to renew.
-So the model has to make being licensed the easy path and over-installing visible. It
+In a 2004 poll paid for by the software industry, 48% of architects said some software at work was
+unlicensed, the most of the five professions asked. Software vendors in 2026 rank
+over-use beside piracy [6]. So the model has to make being licensed the easy path and
+over-installing visible. It
 must not make a practice manager's life harder than a card on file or one invoice a
 year.
 
@@ -49,13 +52,15 @@ exactly what to do -- the standard R5 already set.
 **The program is Python.** A PyInstaller bundle unpacks with public tools, so anyone
 who wants to can remove a check from it; and by the LICENSE's own words the source may
 be read. No enforcement can make not paying impossible. It can make not paying a
-deliberate act, which a practice with a professional reputation will not commit. Time
-spent on obfuscation or anti-tamper is time taken from the product. It also makes
-antivirus software -- already suspicious of PyInstaller executables -- more
-suspicious still.
+deliberate act, which a practice with a professional reputation will not commit.
+PyInstaller itself dropped its bytecode encryption in version 6 as ineffective, and
+a licensing vendor's own advice is that anti-tamper work has diminishing returns [6].
+Time spent on obfuscation is time taken from the product, and it makes antivirus
+software -- already suspicious of PyInstaller executables -- more suspicious still.
 
-**Every user already has an Archicad licence.** Archicad has been sold only by
-subscription since 2025, at A$4,210 a seat a year for Studio [1], and since February
+**Every user already has an Archicad licence.** Archicad is now sold only by
+subscription, at A$4,210 a seat a year for Studio. Perpetual licences ended for new
+customers at the end of 2024, and for everyone at the end of 2025 [1]. Since February
 2026 Graphisoft sells it in Australia itself, having bought its distributor [2]. So
 every buyer already pays yearly, per seat, for the program Loriini runs inside.
 Archicad 26's API tells an add-on:
@@ -153,8 +158,8 @@ project is.
   every year, each needing the add-on rebuilt. The ADG and the SEPPs change (SEPP 65
   itself was folded into the Housing SEPP in 2023). Those are recurring costs, which a
   one-off price does not cover. The market has already moved: Archicad and nearly
-  every comparable tool in §8 are sold only by subscription, and the perpetual
-  add-ons that remain are the ones tied to Archicad dongles [4].
+  every comparable tool in §8 are sold only by subscription. The perpetual licences
+  left are older add-ons, tied to a dongle or to the Archicad key [4].
 - **Annual** is what a practice budgets for and what an invoice suits, and it churns
   least. It is the anchor price.
 - **Monthly** is for the practice with one DA a year. It costs more per month than
@@ -177,8 +182,8 @@ project is.
 | Floating seats with heartbeats | use beyond the seats at any instant | a live service; offline use needs "borrowing" | later, if a large practice asks |
 | Obfuscation, anti-tamper | casual patching | time; antivirus false alarms | no |
 
-The user's instinct -- *something online, for a monthly subscription or for revoking
-access* -- is right, and for three reasons beyond the two it names:
+The owner's instinct -- *something online, for a monthly subscription or for
+revoking access* -- is right, and for three reasons beyond the two it names:
 - A monthly subscription on offline keys means a new key pasted on every computer every
   month.
 - Seats cannot be counted offline.
@@ -186,6 +191,12 @@ access* -- is right, and for three reasons beyond the two it names:
 
 Online also means the office depends on the service. The leases in §4.2 are how that
 dependence is kept small enough that nobody feels it.
+
+**What the work carries.** Each run already writes its ruleset, its version and its
+time onto the Zones it assesses. Writing the licence number and the practice's name
+beside them costs nothing. Every result in a project then says whose licence made it:
+an audit trail for the practice, and a quiet reason not to lend a key to another one.
+Trial outputs carry the visible stamp (§3).
 
 ### 4.2 Leases, in numbers
 
@@ -203,18 +214,29 @@ what the practice pastes once. The lease is what the program fetches by itself.
   - the longest a computer works without contact;
   - the longest a withdrawal takes on a computer kept offline on purpose;
   - how long a seat counts as in use.
+
+  It sits in the middle of the segment's norms. Graphisoft's own named licences
+  allow 7 days offline, and Chaos lends an Enscape licence for 14. Adobe, Autodesk and
+  JetBrains ask for contact every 30 days [6]. Anything longer would hold a seat for a
+  month after a burst of use.
 - **Renewal: once a day,** at start and in the background. The program waits on the
   network only when no lease is in force, which means the first activation or a
   fortnight offline.
 - **A lease never runs past the paid-to date plus the grace.** The grace matches the
-  payment provider's retry window, 7 to 14 days, so a card being retried stops nobody.
-  The lease's notice says what to do while it is retried.
+  payment provider's retry window: Stripe tries a failed card up to eight times over
+  two weeks (§5), so the grace is 14 days. That way a card being retried stops nobody,
+  and the lease's notice says what to do in the meantime. R5's week of grace was chosen
+  for keys sent by email, and it stays for those.
 - **A refusal is signed too,** so the program believes it and stops at once.
   Withdrawal is immediate for a computer that is online. Nobody but the vendor can
   forge a refusal to stop a practice.
-- **The clock.** Winding the clock back still works against a computer kept off the
-  network, as it does against any check made offline. On a work computer it breaks
-  email and the web first, so it stays the speed bump it is today.
+- **The clock.** A lease carries the service's own date. A computer whose clock reads
+  earlier than the day its lease was given asks the service again before it believes
+  the lease, so winding the clock back gains nothing on a computer that is online.
+  Off the network, a clock held inside the fortnight still works, as it does against
+  any check made offline. No offline-only scheme stops that [6], and on a work
+  computer it breaks email and the web first. A clock that runs *ahead* is never
+  punished, which is the lockout that remembering dates would have caused (D124).
 
 ### 4.3 What the check sends
 
@@ -233,7 +255,11 @@ says what is sent and why, and so does `licensing.md`.
 ### 4.4 When things go wrong
 
 - **The service is down.** Nobody notices for a fortnight. One small instance is
-  enough; the service does not need to be highly available.
+  enough; the service does not need to be highly available. This is the lesson of the
+  segment's bad days. An Azure outage in October 2025 reportedly stopped Archicad's
+  own cloud licence logins for about seven and a half hours. In January 2025 a
+  certificate expiry at Chaos put customers' access at risk [6]. A lease that outlives
+  the service's bad days, signed with a key the build carries, is immune to both.
 - **An office proxy or firewall blocks it.** The office allows one host name. Failing
   that, it gets an offline key for the year (R5, as built).
 - **A computer is replaced.** The old seat frees itself in 14 days, `licence --remove`
@@ -248,11 +274,96 @@ says what is sent and why, and so does `licensing.md`.
 
 ## 5. How it is paid
 
-*Pending: Stripe direct against the merchants of record (Paddle, Lemon Squeezy, Polar, FastSpring), on fees, GST, invoices and bank transfer, and licence keys.*
+The buyers are Australian practices that pay in AUD, many of them against an
+invoice, and each needs a tax invoice it can claim GST on. That decides most of it [5]:
+
+| | Stripe, direct | Stripe Managed Payments | Paddle | Lemon Squeezy | Polar |
+|---|---|---|---|---|---|
+| Who sells to the practice | the owner, with the ABN on every invoice | Link, LLC | Paddle (UK) | Lemon Squeezy (US) | Polar (US) |
+| On an Australian card subscription | ≈2.35% + A$0.30 (card 1.65% from 1 October 2026, Billing 0.7%) | ≈5.85% + A$0.30 | 5% + 50¢ | ≈8% + 50¢ | ≈6.5% + 50¢, plus payout fees |
+| An annual invoice paid by bank transfer, in AUD | yes: bank details on the invoice, marked paid when the money arrives; or BECS direct debit at 1%, capped at A$3.50 | no | only in USD, EUR or GBP | no | not documented |
+| A tax invoice with the owner's ABN | yes | no | no | no | no |
+| Licence keys | none | none | none | built in | built in |
+| Worth knowing | the owner carries GST, disputes and support | new in April 2026; Stripe may refund within 60 days | invoices come from a foreign company | being wound down towards Managed Payments | young; changed its prices in 2026 |
+
+**Recommended: Stripe, directly, in AUD.**
+- **Invoices and EFT.** Of the five, it is the only one that gives every practice a
+  tax invoice under the owner's ABN. It is also the only one that lets an annual
+  invoice be paid by bank transfer in AUD, which is how many practices pay.
+- **Cost.** It costs less than half as much: about 2.35% + A$0.30 on an Australian
+  card from 1 October 2026, against 5% to 8% for a merchant of record.
+- **What a merchant of record adds matters little here.** Its job is collecting other
+  countries' taxes, mostly on sales to consumers, and this is a product sold to
+  businesses in one state.
+- **Leaving is cheap.** If overseas sales ever become real, Managed Payments can be
+  turned on in the same Stripe account (+3.5%), or Polar used, and nothing else
+  changes, since the licence service only needs to be told *paid to*.
+
+**What the owner needs to set up:**
+- **GST registration** is compulsory from A$75,000 a year. Below that it is
+  voluntary, and only a registered business can issue a tax invoice, so a practice
+  buying from an unregistered seller has no GST to claim. Many practices will ask for
+  one, which argues for registering from the start.
+- **Invoices.** In Stripe, a manual 10% GST rate (Stripe Tax is not needed for sales
+  in Australia), and "Tax invoice" with the ABN on every invoice.
+- **Surcharges** on eftpos, Mastercard and Visa cards are banned from 1 October 2026,
+  so the card fee is part of the price.
+- **An accountant's hour.** A ruling from July 2025 (GSTR 2025/1) bears on software
+  sold to Australians through an overseas merchant of record. That is one more reason
+  to sell directly, and worth confirming with an accountant either way.
+
+**How it is set up:**
+- **Plans.** One product with two prices per seat, annual and monthly, in AUD, quoted
+  without GST as practices expect.
+- **Checkout** takes a card or BECS. The 14-day trial needs no card.
+- **The Customer Portal** lets a practice change its card and its seats and download
+  its invoices.
+- **Larger practices** get an annual Stripe invoice with the bank details on it,
+  marked paid on arrival. Paid that way it costs only Billing's 0.7%.
+- **Smart Retries** try a failed card up to eight times over two weeks. That is where
+  the lease's grace of 14 days comes from (§4.2).
+- **Stripe has no licence keys**; its Entitlements only switch features on and off.
+  So the licence service (§6) listens to Stripe's webhooks:
+  - an invoice paid moves *paid to*;
+  - a change of quantity changes the seats;
+  - a cancelled subscription is left to lapse at the end of what was paid.
 
 ## 6. What runs it
 
-*Pending: a small service of our own against Keygen, Cryptlex, LicenseSpring and the payment providers' own licence keys.*
+Stripe collects the money; something has to turn *paid to 31 October* into leases.
+It can be built or bought [6]:
+
+| | Cost at 50 to 500 seats | What it gives | What is still ours | Lock-in |
+|---|---|---|---|---|
+| **A service of our own** | about A$10 a month to host; four to six days to build | §4 exactly: leases, seats with a margin, withdrawal, recall, notices, on R5's keys as they are | running it: one container, SQLite, a nightly copy | none |
+| Keygen Cloud (Std 1) | US$990 a year, ≈A$1,400 | licences, machines, heartbeats, machine files and responses signed with Ed25519 | a Stripe webhook handler hosted by us anyway, since Keygen has no Stripe integration; a REST client; R5's keys replaced by Keygen's | low: its source is available |
+| Keygen CE, self-hosted | free, plus Postgres and Redis to run | the same, less audit logs | a bigger stack to run than our own | lowest |
+| Cryptlex | US$100 a month; US$300 with floating seats | node-locked seats, offline use, clock checks | a Stripe script hosted by us; its own SDK | high |
+| LicenseSpring | US$199 a month; US$750 with floating seats | a Stripe app that follows renewals, seats and refunds | its entry plan allows 10,000 calls a month, and a daily check from 500 computers is 15,000 | high |
+| Polar's or Lemon Squeezy's keys | inside their 5% to 8% | activation limits; keys that follow the subscription | leases and offline use, since their checks are unsigned and online-only; Lemon Squeezy is winding down | medium to high |
+
+**Recommended: our own.**
+- **The hard part is done.** Signing, verifying, the key format and the box are R5,
+  built and tested. What is left is small: a table of licences, a table of computers,
+  and four kinds of request -- activate or renew, release, Stripe's webhook, and the
+  vendor's commands.
+- **Buying does not remove the server.** Keygen and Cryptlex still need a webhook
+  handler of ours. LicenseSpring's entry plan is capped below one check a day. Polar's
+  and Lemon Squeezy's keys are unsigned and online-only, so leases would be built on
+  top of them anyway. Buying adds a second vendor and keeps the first job.
+- **The trust anchor stays ours.** The key that signs every lease is the one R5 pinned
+  in the build. No third party's outage, price change or certificate can lock a
+  practice out (§4.4).
+- **It costs about A$10 a month,** against A$1,400 a year and upwards.
+
+What it asks of the owner is running it, and the leases make that light:
+- one small container on a host with a disk (Fly.io, or a small VPS);
+- SQLite, copied nightly somewhere else;
+- the signing key and Stripe's webhook secret kept as its secrets.
+
+It can be down for a day without anybody noticing (§4.4). If running anything at all
+is unwelcome, Keygen Cloud is the fallback. Its machine files are signed leases in all
+but name, at the price of replacing R5's keys with Keygen's.
 
 ## 7. Around the edges
 
@@ -337,7 +448,10 @@ A starting point, to be tested with the first practices:
   - withdrawal and recall;
   - the licence service;
   - the vendor's commands against it: `status`, `paid`, `withdraw`, `restore`,
-    `seats`, `release`.
+    `seats`, `release`;
+  - the licensee written beside each result, and the trial stamp.
+
+  Four to six days, the service included.
 - **R6.** The minimum version lives in the lease. The update manifest stays a static
   file, as R6 planned; the lease's notice can point at it.
 - **R7.** The shop's webhook stops emailing a new key every period. It tells the
@@ -350,8 +464,83 @@ A starting point, to be tested with the first practices:
 
 ## 10. Decisions for the owner
 
-*Pending, once §5, §6 and §8 are written.*
+Each with what this note recommends:
+
+1. **What is counted.** Seats as computers used in the last fortnight, or the whole
+   practice by size, metered rather than enforced. *Recommended: seats.*
+2. **The seat margin.** *Recommended: one computer over is told, two over is stopped,
+   adjustable per licence.*
+3. **The price.** *Suggested: A$600 to 900 a seat a year, a tenth of that a month, and
+   a founding price for the first practices.* Test it with them before it is printed.
+4. **GST.** *Recommended: register from the start, so that every invoice is a tax
+   invoice.* An accountant's hour on it, and on GSTR 2025/1.
+5. **Payments.** *Recommended: Stripe, directly, in AUD.* The owner opens the account,
+   with the ABN.
+6. **Build or buy the licence service.** *Recommended: build it,* on R5's keys as
+   they are. *Fallback: Keygen Cloud.*
+7. **Where it runs.** A small container host or VPS, and a name for it under the
+   website's domain (R7). The owner opens both accounts.
+8. **The lease and the grace.** *Recommended: 14 days each.*
+9. **The terms.** A commercial licence agreement and a privacy note, with the
+   continuity promise in them, and a lawyer's hour on both.
+10. **The order.** *Recommended:*
+    1. merge PR #12;
+    2. R5's second half: the service, leases, seats and recall, with Fuse and the
+       first practices moved to online keys by hand;
+    3. Stripe and the website (R7);
+    4. Graphisoft ID seats, when the add-on moves to Archicad 28 or later.
 
 ## Sources
 
-*Pending.*
+Checked on 29 September 2026. Some vendors' pages (Autodesk, Adobe, Graphisoft
+support, the ATO) would not load directly. Their figures come from those pages as
+search engines index them, and the text says *reportedly* where it leans on one.
+
+1. Archicad's price and licensing:
+   - [Graphisoft Australia, Archicad Studio](https://www.graphisoft.com/en-au/plans-and-products/archicad-studio/)
+   - [Nemetschek on the move to subscription](https://www.nemetschek.com/en/news-media/graphisoft-announces-next-phase-its-shift-future-proof-subscription-model)
+   - [Archicad 29 help on licensing](https://help.graphisoft.com/AC/29/INT/_AC29_Help/022_Licensing/022_Licensing-2.htm)
+2. [Architosh: Graphisoft buys its Australian and New Zealand distributors, February 2026](https://architosh.com/2026/02/graphisoft-acquires-its-australian-and-new-zealand-distributors/).
+3. The Archicad API:
+   - [`ACAPI::GSID`](https://graphisoft.github.io/archicad-api-devkit/class_a_c_a_p_i_1_1_g_s_i_d.html)
+   - [licence information and serial numbers](https://graphisoft.github.io/archicad-api-devkit/group___license_info.html)
+   - the 26.3000 kit this repository builds against: `ACAPI_Protection_*` in `ACAPinc.h`, and `API_IGraphisoftIDEventHandler` in `APIdefs_Callback.h`
+   - [an add-on's MDID](https://archicadapi.graphisoft.com/how-to-get-mdid-for-my-add-on)
+   - The add-on store is on Graphisoft's public roadmap, last seen "under research" in April 2025; no live store was found.
+4. Comparable tools and services:
+   - [DL-Light](https://deluminaelab.com/en/licenses/)
+   - [Architools](https://architools.net/)
+   - [Shadowmap](https://shadowmap.org/pricing)
+   - [Enscape](https://www.chaos.com/enscape/pricing)
+   - [Pollination](https://www.pollination.solutions/pricing)
+   - [Archistar](https://www.archistar.ai/pricing/)
+   - [Cigraph](http://www.cigraph.it/en/node/164)
+   - [Andrew Marsh](https://andrewmarsh.com/software/)
+   - Autodesk Forma, from Autodesk's page as indexed
+   - Consultants: [WeShadow](https://www.weshadow.au/), [Amores](https://www.amores.au/product-page/shadow-diagram), [Feasly's guide](https://www.feasly.com.au/guides/shadow-diagrams-solar-access-australia-developer-guide) and [Town Planning Online](https://www.townplanning.com.au/nsw/adg-check)
+5. Payments and GST:
+   - Stripe:
+     - [Australian pricing](https://stripe.com/au/pricing)
+     - [card pricing from October 2026](https://support.stripe.com/questions/updates-to-card-pricing-in-australia-from-october-2026)
+     - [Billing pricing](https://stripe.com/au/billing/pricing)
+     - [Invoicing pricing](https://support.stripe.com/questions/stripe-invoicing-pricing)
+     - [invoice payment methods](https://docs.stripe.com/invoicing/payment-methods)
+     - [Australian invoicing](https://docs.stripe.com/invoicing/australia-invoicing)
+     - [Smart Retries](https://docs.stripe.com/billing/revenue-recovery/smart-retries)
+     - Managed Payments: [pricing](https://support.stripe.com/questions/managed-payments-pricing) and [eligibility](https://docs.stripe.com/payments/managed-payments/eligibility)
+   - Paddle: [pricing](https://www.paddle.com/pricing) and [invoices](https://developer.paddle.com/build/invoices/create-issue-invoices)
+   - Lemon Squeezy: [2026 update](https://www.lemonsqueezy.com/blog/2026-update) and [fees](https://docs.lemonsqueezy.com/help/getting-started/fees)
+   - Polar: [fees](https://polar.sh/docs/merchant-of-record/fees) and [licence keys](https://polar.sh/docs/features/benefits/license-keys)
+   - GST:
+     - [registering for GST](https://business.gov.au/registrations/register-for-taxes/register-for-goods-and-services-tax-gst)
+     - [GSTR 2025/1](https://www.ato.gov.au/law/view/document?DocID=GST%2FGSTR20251%2FNAT%2FATO%2F00001)
+     - [the RBA on surcharges](https://www.rba.gov.au/payments-and-infrastructure/review-of-retail-payments-regulation/2026-03/conclusions-paper/faqs/)
+6. Licensing services and practice:
+   - Keygen: [pricing](https://keygen.sh/pricing/), [Keygen and Stripe](https://keygen.sh/integrate/stripe/) and [security](https://keygen.sh/docs/api/security/)
+   - [Cryptlex pricing](https://cryptlex.com/pricing)
+   - [LicenseSpring pricing](https://licensespring.com/pricing)
+   - Offline periods: [Adobe](https://helpx.adobe.com/creative-cloud/kb/internet-connection-creative-cloud-apps.html), [JetBrains](https://sales.jetbrains.com/hc/en-gb/articles/206544169), [Graphisoft's named licences](https://support.graphisoft.com/hc/en-us/articles/36564607306897), [Chaos](https://support.chaos.com/hc/en-us/articles/360020455278) and Autodesk (via [IMAGINiT](https://resources.imaginit.com/support-blog/how-long-can-an-autodesk-product-on-subscription-be-used-without-an-internet-connection))
+   - [PyInstaller 6.0's changes](https://pyinstaller.org/en/v6.0.0/CHANGES.html)
+   - [Revenera's 2026 outlook](https://www.globenewswire.com/news-release/2025/11/13/3187406/0/en/Revenera-s-Monetization-Monitor-2026-Outlook-Almost-1-in-3-Software-Producers-say-Piracy-is-a-Major-Problem.html)
+   - [Ipsos for the BSA, 2004](https://www.ipsos.com/en-us/online-software-piracy-poll)
+   - [the Chaos certificate expiry](https://support.chaos.com/hc/en-us/articles/30185867975185)
