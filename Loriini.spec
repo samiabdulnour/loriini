@@ -14,9 +14,10 @@ ROOT = PurePath(SPECPATH)
 ICON = str(ROOT / 'assets' / 'loriini.ico')
 
 datas = [(ICON, 'assets')]
-# The window's icons. PNGs rather than a drawing library: Tk reads them
-# itself, so Pillow stays a development dependency and out of the bundle --
-# it is in `excludes` below, and `scripts/make_icons.py` is what needs it.
+# The window's icons. PNGs rather than drawings made at run time: Tk reads
+# them itself, and `scripts/make_icons.py` is what draws them. Pillow is in
+# the bundle since D121 for the reference image (`sun_study.app.overlay`),
+# which reads photographs with it; the icons still never need it.
 # `sun_study.app.icons` looks for them at exactly this path under _MEIPASS.
 datas += [(str(ROOT / 'assets' / 'icons'), 'assets/icons')]
 # The licence itself, at the root of the bundle, where `sun_study.licence.file`
@@ -50,7 +51,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['PIL', 'rhino3dm', 'shapely', 'mypy', 'pydantic.v1.mypy', 'pydantic.mypy'],
+    excludes=['rhino3dm', 'shapely', 'mypy', 'pydantic.v1.mypy', 'pydantic.mypy'],
     noarchive=False,
     optimize=0,
 )

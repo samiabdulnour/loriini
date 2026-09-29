@@ -33,9 +33,10 @@ open the window for, so every failure answers ``None`` and the label renders
 bare. This mirrors ``preferences``, where a settings file hand-edited into
 nonsense costs one setting rather than the whole window.
 
-The PNGs are drawn by ``scripts/make_icons.py`` and committed. Pillow is a
-development dependency and is excluded from the bundle, because Tk reads PNG
-by itself and the app only ever needs the finished files.
+The PNGs are drawn by ``scripts/make_icons.py`` and committed: Tk reads PNG
+by itself, so the window needs only the finished files and never draws one.
+Pillow is in the bundle since D121, for the reference image; nothing here
+uses it.
 """
 
 from __future__ import annotations
@@ -290,6 +291,7 @@ BY_SECTION: dict[str, str] = {
     "Solar analysis": "analysis",
     "Shadow diagram": "shadow",
     "Sun views": "views",
+    "Yield": "yield",
 }
 
 #: The six studies, by the label on their own tick.
@@ -300,6 +302,7 @@ BY_STUDY: dict[str, str] = {
     "Shadow diagram": "shadow",
     "Sun views": "views",
     "Site analysis": "site",
+    "Area and yield": "yield",
 }
 
 #: Every field that has a picture worth drawing, by its own label.

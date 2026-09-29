@@ -33,6 +33,7 @@ import typer
 from sun_study import AUTHOR, PRODUCT, STOP_FILE_VAR, __version__, licence
 from sun_study.archicad import context_model, future_context, naming
 from sun_study.archicad import site_analysis as site_drawing
+from sun_study.archicad.area_sheet import draw_area_sheet
 from sun_study.archicad.connection import (
     DEFAULT_PORT,
     DEFAULT_TIMEOUT_SECONDS,
@@ -143,6 +144,7 @@ from sun_study.archicad.sheets import (
     legend_place,
     straighten_and_tile,
 )
+from sun_study.archicad.slabs import floors_from, read_slabs
 from sun_study.archicad.sun_eyes import (
     DEFAULT_SHEETS as SUN_VIEW_SHEETS,
 )
@@ -234,6 +236,9 @@ from sun_study.pipeline import (
     run_assessment,
     run_massing,
 )
+from sun_study.report.area_table import notes as area_notes
+from sun_study.report.area_table import text_lines as area_text_lines
+from sun_study.report.area_table import write_workbook as write_area_workbook
 from sun_study.report.bands_out import (
     build_massing_header,
     write_bands_csv,
@@ -243,10 +248,14 @@ from sun_study.report.cos_table import write_workbook, zone_tables
 from sun_study.report.csv_out import write_csv
 from sun_study.report.header import build_header
 from sun_study.report.json_out import write_json
+from sun_study.rules.area_yield import DEFAULT_MIX, Ratios, checked_mix, parse_unit
+from sun_study.rules.area_yield import Targets as AreaTargets
+from sun_study.rules.area_yield import schedule as area_schedule
 from sun_study.rules.days import DAY_HELP, day_tag, day_title, parse_day, with_day
 from sun_study.rules.ruleset import BUILTIN_RULESETS, Ruleset, RulesetError, load_ruleset
 from sun_study.site import pipeline as site_pipeline
 from sun_study.site.geocode import geocode
+from sun_study.site.http import FetchError
 
 #: A sheet label that is a time of day. Those are shadow diagrams; the
 #: banded and two-hour plans are not, and the two go to different subsets.
@@ -8077,6 +8086,252 @@ def site_analysis(
                     f"  aerial tiles with world files in {bundle.aerial.folder}; place them with "
                     f"File > External Content > Place External Drawing."
                 )
+
+
+def _slabs(count: int) -> str:
+    return "1 slab" if count == 1 else f"{count} slabs"
+
+
+@app.command("yield")
+@app.command("area-yield", hidden=True)
+def area_yield(
+    port: Annotated[int, typer.Option("--port", help="Which Archicad to talk to.")] = DEFAULT_PORT,
+    timeout: Annotated[
+        float, typer.Option("--timeout", help="Seconds to wait for one Archicad command.")
+    ] = DEFAULT_TIMEOUT_SECONDS,
+    residential_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--residential-layer",
+            help="A layer whose slabs are residential floor. Repeat for more.",
+        ),
+    ] = None,
+    non_residential_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--non-residential-layer",
+            help=(
+                "A layer whose slabs are any other floor: retail, office, a podium. "
+                "Repeat for more."
+            ),
+        ),
+    ] = None,
+    renovation_filter: Annotated[
+        bool,
+        typer.Option(
+            "--renovation-filter/--any-renovation-status",
+            help=(
+                "Count only the slabs the floor plan's renovation filter shows, so that a "
+                "massing modelled as New over an existing building counts the new."
+            ),
+        ),
+    ] = False,
+    gfa_residential: Annotated[
+        float, typer.Option("--gfa-residential", help="GBA to GFA, residential.")
+    ] = 0.75,
+    gfa_non_residential: Annotated[
+        float, typer.Option("--gfa-non-residential", help="GBA to GFA, non-residential.")
+    ] = 0.90,
+    nsa_residential: Annotated[
+        float, typer.Option("--nsa-residential", help="GFA to NSA, residential.")
+    ] = 0.85,
+    nsa_non_residential: Annotated[
+        float, typer.Option("--nsa-non-residential", help="GFA to NSA, non-residential.")
+    ] = 0.90,
+    unit: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--unit",
+            help=(
+                "One type in the mix: its name, its share in per cent and its size in m² NSA, "
+                "as '2 Bedroom=70,75'. Repeat for each; the shares come to 100. "
+                "15/70/15 per cent of 55/75/95 m² by default."
+            ),
+        ),
+    ] = None,
+    site_area: Annotated[
+        float | None, typer.Option("--site-area", help="The site's area in m², for the FSR.")
+    ] = None,
+    target_fsr: Annotated[
+        float | None, typer.Option("--target-fsr", help="The FSR the massing is measured against.")
+    ] = None,
+    target_units: Annotated[
+        int | None, typer.Option("--target-units", help="The unit count the brief asks for.")
+    ] = None,
+    address: Annotated[
+        str | None,
+        typer.Option(
+            "--address",
+            help=(
+                "The site's address: the site area and the LEP's FSR are read at it, for "
+                "whichever of --site-area and --target-fsr is not given. NSW only."
+            ),
+        ),
+    ] = None,
+    xlsx_out: Annotated[
+        Path | None,
+        typer.Option("--xlsx", help="Write the calculation as a live workbook, here."),
+    ] = None,
+    sheet: Annotated[
+        bool,
+        typer.Option("--sheet/--no-sheet", help="Draw the Area Calculation sheet on a layout."),
+    ] = True,
+    view: Annotated[
+        str | None,
+        typer.Option(
+            "--view",
+            help=(
+                "A view in the View Map, such as the massing in axonometric, placed "
+                "beside the table."
+            ),
+        ),
+    ] = None,
+    master_layout: Annotated[
+        str | None, typer.Option("--master-layout", help="The master the sheet is made on.")
+    ] = None,
+    layer_prefix: Annotated[
+        str | None,
+        typer.Option(
+            "--layer-prefix", help="Files the sheet in the Layout Book. '18 |' by default."
+        ),
+    ] = None,
+) -> None:
+    """The area calculation from the massing slabs: GBA, GFA, NSA, FSR and yield.
+
+    The slabs on the residential and non-residential layers are measured to
+    their edges, arcs and holes and all; the GBA of each use goes to GFA and
+    NSA by the office's factors, over the site to an FSR, and the
+    residential NSA over the mix's average unit to a yield. With no layer
+    named, every slab on a layer that is showing counts, as residential.
+    Printed, drawn on a sheet of its own, and written as a live workbook.
+    """
+    banner()
+    naming.set_prefix(layer_prefix, default=naming.YIELD_PREFIX)
+    residential = [name for name in residential_layer or [] if name.strip()]
+    non_residential = [name for name in non_residential_layer or [] if name.strip()]
+    try:
+        mix = [parse_unit(text) for text in unit] if unit else list(DEFAULT_MIX)
+        checked_mix(mix)
+        ratios = Ratios(gfa_residential, gfa_non_residential, nsa_residential, nsa_non_residential)
+    except ValueError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+
+    def say(line: str) -> None:
+        typer.echo(line)
+
+    if address and (site_area is None or target_fsr is None):
+        typer.echo(f"reading the site and its controls at {address}...")
+        try:
+            found = site_pipeline.run_summary(address, log=say)
+        except (FetchError, OSError, ValueError, RuntimeError) as error:
+            typer.secho(
+                f"  the site could not be read ({error}); the FSR is left out.",
+                fg=typer.colors.YELLOW,
+            )
+        else:
+            if site_area is None and found.site_area_m2:
+                site_area = found.site_area_m2
+                typer.echo(f"  site area {site_area:.2f} m² (the cadastral lots)")
+            if target_fsr is None and found.controls.fsr:
+                target_fsr = found.controls.fsr
+                typer.echo(f"  FSR control {target_fsr:g}:1")
+
+    connection = _connect(port, timeout)
+    try:
+        reading = read_slabs(
+            connection,
+            renovation=renovation_filter,
+            shown_layers_only=not (residential or non_residential),
+        )
+    except ArchicadError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    try:
+        assignment = floors_from(reading.slabs, residential, non_residential)
+    except ValueError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+
+    everything = not (residential or non_residential)
+    typer.echo(
+        f"read {_slabs(len(reading.slabs))}"
+        + (", only those the renovation filter shows" if renovation_filter else "")
+        + (", on the layers showing" if everything else "")
+    )
+    for layer, (use, count, area) in sorted(assignment.by_layer.items()):
+        typer.echo(f"  {layer.strip()}: {_slabs(count)}, {area:.2f} m², {use}")
+    for layer, count in sorted(assignment.passed_over.items()):
+        typer.echo(f"  {layer.strip()}: {_slabs(count)}, not counted -- named for neither use")
+    for layer in assignment.missing:
+        typer.secho(f"  {layer.strip()}: named, and no slab stands on it", fg=typer.colors.YELLOW)
+    if reading.own:
+        typer.echo(f"  {reading.own} of Loriini's own context slabs left out")
+    if reading.unreadable:
+        typer.secho(
+            f"  {len(reading.unreadable)} slabs Archicad would not describe were left out",
+            fg=typer.colors.YELLOW,
+        )
+    if everything:
+        typer.secho(
+            "  No layer named for either use: every slab showing is counted as residential.",
+            fg=typer.colors.YELLOW,
+        )
+    if not assignment.floors:
+        typer.secho(
+            "No slab was counted. Name the layers the massing slabs are on, or show them.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        result = area_schedule(
+            assignment.floors,
+            ratios=ratios,
+            mix=mix,
+            site_area_m2=site_area,
+            targets=AreaTargets(fsr=target_fsr, units=target_units),
+        )
+    except ValueError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+
+    counted = sum(count for _use, count, _area in assignment.by_layer.values())
+    source = [
+        f"GBA : {_slabs(counted)}, measured to their edges"
+        + (", as the renovation filter shows them" if renovation_filter else "")
+    ]
+    typer.echo("")
+    for line in area_text_lines(result):
+        typer.echo(line)
+    typer.echo("")
+    for line in area_notes(result, source):
+        typer.echo(f"  {line}")
+
+    if xlsx_out is not None:
+        try:
+            written = write_area_workbook(xlsx_out, result, note=source[0])
+        except OSError as error:
+            typer.secho(f"  the workbook was not written: {error}", fg=typer.colors.RED, err=True)
+        else:
+            typer.echo(f"\nwrote {written}")
+
+    if sheet:
+        typer.echo("\ndrawing the area calculation sheet...")
+        try:
+            report = draw_area_sheet(
+                connection,
+                result,
+                source=source,
+                master_layout=master_layout,
+                view=view,
+                say=say,
+            )
+        except ArchicadError as error:
+            typer.secho(str(error), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from error
+        typer.echo(report.describe())
 
 
 @app.command("mcp")

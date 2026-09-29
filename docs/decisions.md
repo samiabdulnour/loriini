@@ -4266,3 +4266,131 @@ run a fake command line through the real runner. The windowed executable
 may hand Python no wrapped standard streams; ``serve`` opens the
 descriptors directly then, which is untested until Claude Desktop starts
 ``Loriini.exe mcp`` on Windows.
+
+### D121 — The reference image is a window of Loriini's own over Archicad's 3D window, and Pillow comes into the bundle for it
+
+Asked on 28 September 2026 (roadmap R4): a view sometimes has to be set
+up from the angle a photograph was taken at, Archicad cannot show a
+picture in its 3D window, and a tool that lays one over it at reduced
+opacity would do.
+
+**A window of our own, not a drawing in Archicad.** Nothing in the API
+draws into the 3D window, and Trace Reference is for the plan, the
+sections and the elevations. What can be put over the 3D window is a Tk
+toplevel of Loriini's: borderless (``overrideredirect``), always on top
+(``-topmost``), and as see-through as its slider says (``-alpha``, which on
+Windows is a layered window). It touches neither the project nor the
+add-on, works over any version of Archicad, and the Mac has the same three
+window attributes for later. ``app.overlay`` is the whole of it.
+
+**Two windows, because the picture has to let the mouse through.** The
+point of the overlay is to orbit the model *through* it, which on Windows
+is one bit of the window's extended style (``WS_EX_TRANSPARENT`` on the
+layered window Tk already made, set through ``ctypes`` on the window Tk
+wraps every toplevel in). A slider on a window the mouse goes through
+would be a slider the mouse goes through, so the controls are a second
+small toplevel that stays on top with the picture; the picture itself has
+two states, placed (dragged, sized by its corner) and locked (the corner
+gone, the mouse through it).
+
+**Fit's margins are a colour key.** A picture kept in its own shape inside
+a frame of another shape has margins, and margins over a model have to be
+see-through. Tk's ``-transparentcolor`` asks Windows to leave one colour
+out of the window (``LWA_COLORKEY``, which sits beside the alpha), so the
+margins -- and a PNG's own transparency, laid on the same colour -- are
+holes. The key is nearly black, ``#010203``, rather than black, because a
+photograph's shadows are full of black and every such pixel would be a
+hole. The alternative, a window with per-pixel alpha
+(``UpdateLayeredWindow``), means drawing the whole window by hand outside
+Tk, and margins are not worth it. Off Windows the margins are a dark mat.
+
+**Pillow comes in.** The dependency note in ``pyproject.toml`` said the
+approved set, and Pillow was kept out of the bundle because Tk reads the
+icons' PNGs by itself (``Loriini.spec`` excluded it). A reference is nearly
+always a JPEG photograph, which Tk cannot read; a phone's photograph is
+turned by an EXIF tag rather than in its pixels; and a picture has to be
+resized cleanly to any frame, where Tk scales by whole numbers. Two ways
+round it were weighed. GDI+ through ``ctypes`` reads JPEG on Windows with
+nothing added, but is Windows-only, untestable from here, and leaves the
+orientation and the resampling to be written by hand. Tk's own readers
+cover PNG and GIF and integer zooms, which for a photograph is no tool at
+all. Pillow does all three in three calls, is already used to draw the
+icons, and costs a few megabytes in a 58 MB executable; it is the runtime
+dependency now, and ``PIL`` leaves the spec's excludes.
+
+**Finding the Archicad window is by title, and is only a start.** The
+Archicad window is found among the top-level windows by the word in its
+title, and the one whose title names the project chosen in the picker is
+taken over a bigger one, since two projects open is the ordinary case.
+What is found is the whole area inside its frame; the 3D window is a tab
+inside that, under the toolbars and beside the palettes, and no call names
+where. So the picture starts there and the corner is dragged in, which is
+five seconds against a heuristic on child windows that could not be tested
+here and would be wrong on the next layout of palettes.
+
+**Untested on Windows.** The overlay has been driven by its tests under a
+virtual display on Linux: the fit and the stretch, the opacity, the lock,
+the hide, a file that is not a picture, a phone's orientation tag, a PNG's
+transparency. The colour key and the click-through are Win32 calls made
+blind, and are the first two things to check on a workstation; the third
+is where the frame lands on a high-DPI display, where Tk and the Win32
+calls should be speaking the same scaled coordinates because they are
+asked by the same process.
+
+### D122 — The area calculation measures the slabs' own outlines, and the office's factors take GBA to yield
+
+Asked on 28 September 2026 (roadmap R3), with the office's sheet as the
+expected output: *Area calculation, GFA + Yield* -- GBA, GFA, NSA and FSR,
+total and by use, and the yield in a mix -- from a massing modelled in
+slabs, with the slabs chosen by layer or by the renovation filter, or
+simply the GBA and an approximate GFA.
+
+**The slabs are measured here, from their polygons.** Tapir's
+``GetDetailsOfElements`` gives a slab's outline, its holes and its arcs in
+project metres, with its storey and its layer (``archicad.slabs``); the area
+is the shoelace sum of the corners plus the circular segment of each arc,
+less the holes (``core.plan_area``). The alternative, Archicad's own area
+properties through ``GetPropertyValuesOfElements``, arrives as a display
+string in the project's units and language, and would have to be found by
+its localised name first. The one thing the polygon route takes on trust is
+the sense of an arc's angle -- counter-clockwise positive, as the API and
+GDL document it -- and a curved slab compared with its own area is the
+first thing to check live (``docs/yield.md``).
+
+**Which slabs, three ways, all Archicad's own filters where they can be.**
+By layer, which also says the use: residential layers and non-residential
+layers, a layer in both refused, a slab on neither passed over and listed.
+By the renovation filter, through Tapir's ``IsVisibleByRenovation`` on the
+floor plan -- whatever filter the person has set. And, with no layer named,
+everything on a showing layer (``IsVisibleByLayer``), as residential: the
+quick GBA. Loriini's own context slabs, marked ``SA``, are never counted.
+
+**The arithmetic is the office's, with its numbers as settings.** GBA to GFA
+at 0.75 and 0.9, GFA to NSA at 0.85 and 0.9, FSR over the site; the yield
+is the residential NSA over the mix's average unit, rounded down, split by
+the largest remainder so the types add back up (``rules.area_yield``). The
+office's sheet is the test fixture and comes out exactly, 112 units at 17,
+78 and 17 -- and it showed that sheet's two uses' rows swapped, which is
+said in the docs rather than copied.
+
+**The site and the target come from the address when they are not typed.**
+The Summary of Controls already reads the cadastral lots' area and the LEP's
+FSR (``site.pipeline.run_summary``); the study reads them the same way,
+only for what is left blank.
+
+**Three outputs from one list of rows.** The sheet on a layout, the table in
+the log and the workbook are built from ``report.area_table.rows``, so they
+cannot disagree. The sheet is drawn straight on a layout, as the Summary of
+Controls is -- texts and lines, the legend's swatches as close lines since
+fills are not drawn on paper here -- and a named view is placed with the
+machinery the sun views use (``layout_from_views``, ``ArrangeDrawings``).
+The workbook is written with the standard library (``report.xlsx``, the same
+reasoning as D106) and is live: the inputs are cells and everything else a
+formula, the mix's split included as working columns. LibreOffice Calc,
+recalculating it with every cached value removed, gives Loriini's figures;
+a test does that wherever Calc is installed.
+
+**The window grew a seventh tab, and measures its strip.** Seven tabs need
+more room than the page was sized for, in any font; the strip now says how
+wide it is, the sheets panel folds below that, and the window opens at
+least that wide.

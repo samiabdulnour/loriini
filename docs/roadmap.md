@@ -133,6 +133,26 @@ balconies and voids.
 **First step.** One massing file from the office, and the yield spreadsheet
 they fill in by hand today, to copy its arithmetic exactly.
 
+**Done so far (28 September).** The office sent its sheet, *Area
+calculation, GFA + Yield*, and asked for the slabs to be chosen by layer or
+by the renovation filter, or simply for the GBA and an approximate GFA. The
+study exists: the **Yield** tab and `sun-study yield`. The slabs on the
+layers named residential and non-residential -- or only those the
+renovation filter shows, or with no layer named every slab showing -- are
+measured to their edges, arcs and holes and all; the office's four factors
+take GBA to GFA to NSA, the site to an FSR against the LEP's, and the
+residential NSA over the mix's average unit to a yield split into the mix.
+Out of it: the Area Calculation sheet on a layout, with the office's own 3D
+view of the massing placed beside the table when one is named; a live
+workbook whose formulas recalculate when a factor or a share is changed;
+and the table in the log. The office's sheet is reproduced from its own
+figures -- 112 units, 17, 78 and 17 -- and has its two uses' rows the wrong
+way round, which the new sheet does not. Tested against a scripted Archicad,
+not yet a live project: a curved slab's area and the renovation filter are
+the first things to check. [`yield.md`](yield.md) is how to use it; D122 is
+how it is built. Per-building figures, parking and the Summary of Controls'
+project rows are next.
+
 ## R4 — A reference image over the 3D window
 
 **Asked.** Sometimes a view has to be set up from the same angle as a
@@ -156,6 +176,19 @@ overlay alone is most of the value.
 
 **First step.** Half a day: the overlay window on Windows, over a 3D window,
 with a slider.
+
+**Done so far (28 September).** The overlay exists: *Reference image*
+beside the project picker opens a small palette that stays on top, and the
+picture -- PNG, JPEG, TIFF, BMP, GIF or WebP, turned the way a phone's
+orientation tag says -- is a borderless window over Archicad at the
+opacity the slider says. Unlocked it is dragged and sized by its corner,
+or laid over the Archicad window showing the chosen project by a button;
+locked, the corner goes and the mouse goes through it to the model. Fit
+keeps the picture's shape with see-through margins; Stretch pulls it to
+the frame. Driven by tests under a virtual display; not yet on a Windows
+workstation over Archicad, where the colour key and the click-through are
+the two things to check first. [`overlay.md`](overlay.md) is how to use
+it; D121 is how it is built, and why Pillow came into the bundle for it.
 
 ## R5 — Licence keys sent by mail
 
