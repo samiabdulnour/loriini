@@ -32,9 +32,10 @@ sent to the next desk.
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Mapping
 from pathlib import Path
+
+from sun_study import user_folder
 
 #: The folder name under %APPDATA%, and the file in it. Named for the program
 #: rather than for the product: everything the tool writes *into a project* is
@@ -56,10 +57,10 @@ def folder() -> Path:
     ``%APPDATA%`` because that is where Windows keeps per-user application
     settings and it follows a roaming profile between machines. The home
     directory is the fallback for a developer on anything else, so the module
-    can be exercised off Windows.
+    can be exercised off Windows. The same folder as the licence key and the
+    run logs (``sun_study.user_folder``).
     """
-    roaming = os.environ.get("APPDATA")
-    return Path(roaming) / FOLDER if roaming else Path.home() / f".{FOLDER.casefold()}"
+    return user_folder()
 
 
 def path() -> Path:

@@ -4465,3 +4465,72 @@ combinations -- side by side to be compared sheet against sheet, which is
 how the office compared them by hand. The fills stay the argument, and the
 documents are the record, and the route for a model too big for the caster.
 
+### D124 — Licence keys are time-limited per subscription period, signed with Ed25519 from the standard library, and checked offline
+
+Asked on 28 September 2026 (roadmap R5): licensing that sends a licence code
+to the buyer's email, so that Loriini can be used; and on 29 September, that
+Loriini will be sold by subscription, so the keys should be time-limited.
+
+**A key per paid period.** Every key carries its last day: the end of the
+period paid for, as the shop dates it, plus a week's grace so a renewal email
+that arrives late -- a card retried, a junk folder -- stops nobody on a
+deadline. Each renewal brings a new key. Offline keys cannot be revoked, and
+under a subscription they need not be: one not renewed lapses when its last
+key does. Seats are printed on the key and not counted, since there is
+nothing offline to count them against.
+
+**Ed25519, written here.** The check runs at every start on a workstation
+with no administrator rights, so it is in the bundle, and a runtime
+dependency is a conversation here (D106). RFC 8032's reference algorithm is a
+page of integer arithmetic that Python's ``int`` and ``hashlib.sha512`` do
+exactly (``sun_study.signing``); it passes all five of the RFC's Ed25519 test
+vectors, agreed with the ``cryptography`` package on two hundred random keys
+when written, and makes every decoding check the RFC asks for -- a coordinate
+past the prime, a point off the curve, a zero with its sign set, ``S`` not
+below ``L``. Verification is about 4 ms and touches only public data.
+Signing is the vendor's, on the vendor's machine.
+
+**Written for a person.** ``LORIINI-`` and groups of five in Crockford's base
+32, read case-blind with O as 0 and I and L as 1, spaces, dashes and line
+breaks ignored; a CRC-32 over everything, checked before the signature, so a
+key cut short or mistyped is said as that and not as a forgery; a version
+byte first, so a later format is refused politely; and a domain tag under the
+signature, so no Ed25519 signature made for anything else reads as a licence
+(``sun_study.licence_key``).
+
+**One line decides whether a build takes keys.** ``licence_public_key.py``
+carries the public key, or ``None``. With ``None`` nothing about keys reaches
+the screen and a build runs on its own term, as the office's always have; the
+vendor's ``keygen`` writes the key there, and the next build asks for one. So
+an office build and a sold build are the same code. The private key is never
+in the repository: ``keygen`` writes it to a file the vendor names.
+
+**Where it is asked for.** The window asks before it opens, in a box that
+reads the key as it is pasted and says whose it is and until when, or in red
+what to do instead; the info box changes it. The command line refuses a
+command that touches a project without a usable key, at the door, with exit
+code 5 and the sentence that says how to install one -- and keeps ``--help``,
+``rulesets``, ``info`` and ``licence`` open, so a refusal can always be acted
+on and the handover build's own start-up check still runs keyless. The
+``licence`` command is hidden from the list of commands, as the licence is
+everywhere the program is silent about its terms while they hold.
+
+**The build's own term stays as the floor** (roadmap R5's own words): a key
+good past a build's ``EXPIRES`` does not keep that build running, so a
+prototype that has not been replaced still stops. Set per release, or keep
+subscribers on current builds (R6).
+
+**Not done, on purpose.** Remembering the latest date seen, to defeat a clock
+wound back: a machine whose clock once jumped ahead would then lock a paying
+subscriber out, which is worse than what it prevents. The clock stays the
+speed bump it always was, and ``docs/licensing.md`` says so.
+
+**The vendor's side** is ``sun_study.licence_issue`` -- in the package so it
+is tested, excluded from the bundle so Loriini never carries the code that
+makes keys -- behind ``scripts/licence.py``: ``keygen`` once; ``issue`` per
+paid period, numbered from a CSV ledger beside the private key, read back as
+a subscriber's Loriini will read it before anything is recorded, and the
+email written as an unsent ``.eml`` draft (``X-Unsent: 1``) or sent over SMTP
+with TLS; ``show`` for support. The shop's webhook (R7) will call ``issue``
+with each invoice's paid-through date.
+

@@ -241,6 +241,25 @@ a mistyped one fails as "mistyped" and not as "invalid".
 licence module -- parse, verify, install, with a test keypair -- and the box
 in the window.
 
+**Done so far (29 September).** The term is decided: Loriini is sold by
+subscription, so every key is time-limited to the period paid for, plus a
+week's grace, and each renewal brings a new key -- a lapsed subscription
+simply runs out, which is the revocation offline keys cannot otherwise have.
+The keys exist. A key is the licence number, the subscriber's email and name,
+the seats and the last day, signed with Ed25519 -- written here from RFC 8032
+with the standard library and checked against the RFC's own vectors, so no
+new dependency -- and set in groups of Crockford base 32 with a CRC, so a key
+cut short says "copy it again" rather than "invalid". A build carrying a
+public key asks for a key when it opens, reads it as it is pasted and says
+whose it is, keeps it beside the settings and checks it at every start; the
+command line refuses work without one at the door and `Loriini.exe licence`
+installs one. The vendor's side is `scripts/licence.py`: `keygen` once, then
+`issue` per paid period, which numbers the key from a ledger and writes the
+email as an unsent draft or sends it. [`licensing.md`](licensing.md) is how,
+for both sides; D124 is why. Next: run `keygen`, commit the public key it
+writes, and issue the first keys by hand; the shop's webhook (R7) then calls
+the same `issue`.
+
 ## R6 — Automatic updates
 
 **Asked.** An update server, so that the programs update themselves.

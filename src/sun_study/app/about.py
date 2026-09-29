@@ -185,6 +185,19 @@ class About(tk.Toplevel):
 
     def _licence(self, page: ttk.Frame, row: int) -> int:
         row = self._title(page, row, "Licence")
+        if licence.keys_required():
+            # Whose licence this is, and the way to change the key -- only in
+            # a build that takes keys, so a build that does not says nothing
+            # about them (roadmap R5).
+            self._holder = ttk.Label(
+                page, text=licence.standing().describe(), wraplength=WRAP, justify="left"
+            )
+            self._holder.grid(row=row, column=0, sticky="w", pady=(0, 4))
+            row += 1
+            ttk.Button(page, text="Enter licence key…", command=self._enter_key, width=20).grid(
+                row=row, column=0, sticky="w", pady=(0, 8)
+            )
+            row += 1
         for clause in licence.SUMMARY:
             ttk.Label(
                 page,
@@ -383,6 +396,13 @@ class About(tk.Toplevel):
         # the section does not read as having begun off the top of the pane.
         top = max(0.0, heading.winfo_y() - 12.0)
         self._scroller.canvas.yview_moveto(max(0.0, min(1.0, top / tall)))
+
+    def _enter_key(self) -> None:
+        """The licence box, to change the key this machine holds."""
+        from sun_study.app import licence_box
+
+        if licence_box.ask(self) is not None:
+            self._holder.configure(text=licence.standing().describe())
 
     def _show_the_licence(self) -> None:
         """The whole text, in a window of its own.

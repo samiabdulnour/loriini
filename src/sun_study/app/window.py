@@ -82,8 +82,8 @@ from tkinter import filedialog, ttk
 from tkinter import font as tkfont
 from typing import ClassVar, Literal
 
-from sun_study import PRODUCT
-from sun_study.app import icons, overlay, preferences, probe, run_log, theme
+from sun_study import PRODUCT, licence
+from sun_study.app import icons, licence_box, overlay, preferences, probe, run_log, theme
 from sun_study.app.runner import Run
 from sun_study.archicad import naming
 from sun_study.archicad.connection import DEFAULT_TIMEOUT_SECONDS
@@ -7044,6 +7044,15 @@ def wanted_study(argv: Sequence[str]) -> str:
 def launch(study: str = "") -> None:
     root = tk.Tk()
     wear_the_icon(root)
+    # A build that takes licence keys asks for one before anything else, the
+    # first time and whenever the key held cannot be used; closed without
+    # one, nothing opens (roadmap R5).
+    if not licence.standing().usable:
+        root.withdraw()
+        if licence_box.ask(root, first=True) is None:
+            root.destroy()
+            return
+        root.deiconify()
     window = Window(root)
     if study:
         window.ask_for(study)

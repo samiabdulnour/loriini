@@ -29,16 +29,21 @@ def main() -> None:
         # the check is made here instead, and reported the way a child is
         # heard: on stderr, which the window is already streaming.
         try:
-            licence.check()
+            licence.check(key_needed=licence.needs_key(sys.argv[1:]))
         except licence.LicenceExpiredError as expired:
             print(str(expired), file=sys.stderr)
             raise SystemExit(4) from expired
+        except licence.LicenceKeyError as unlicensed:
+            print(str(unlicensed), file=sys.stderr)
+            raise SystemExit(5) from unlicensed
 
         app()
         return
 
+    # The build's own term only: a missing licence key is asked for by the
+    # window when it opens, rather than refused before there is one.
     try:
-        licence.check()
+        licence.check(key_needed=False)
     except licence.LicenceExpiredError as expired:
         _say_and_stop(str(expired))
         return
