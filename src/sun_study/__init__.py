@@ -9,6 +9,9 @@ therefore fully testable without an Archicad licence. Everything that talks to
 Archicad lives in the ``archicad`` package and nowhere else.
 """
 
+import os
+from pathlib import Path
+
 from sun_study.disclaimer import DISCLAIMER, STATUS
 
 __all__ = [
@@ -19,6 +22,7 @@ __all__ = [
     "STATUS",
     "STOP_FILE_VAR",
     "__version__",
+    "user_folder",
 ]
 __version__ = "0.0.1"
 
@@ -46,3 +50,17 @@ COPYRIGHT = "Copyright (c) 2026 Sami Abdulnour. All rights reserved."
 #: the name must not import each other: the window would pull in the whole
 #: command line, numpy and all, to start up.
 STOP_FILE_VAR = "SUN_STUDY_STOP_FILE"
+
+
+def user_folder() -> Path:
+    """This user's own folder for Loriini: the settings, the run logs, the
+    licence key.
+
+    ``%APPDATA%\\Loriini`` on Windows, because that is where Windows keeps a
+    person's application settings and it follows a roaming profile from one
+    machine to the next; ``~/.loriini`` elsewhere, for a developer. Here
+    rather than in the window's own settings module because the licence is
+    read before any window exists, by the command line as well.
+    """
+    roaming = os.environ.get("APPDATA")
+    return Path(roaming) / PRODUCT if roaming else Path.home() / f".{PRODUCT.casefold()}"

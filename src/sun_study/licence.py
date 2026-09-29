@@ -33,25 +33,60 @@ A speed bump. It reads the system clock, so winding the clock back defeats it,
 and a PyInstaller bundle can be unpacked by anyone who wants to. It is here to
 stop a stale build being used by accident, which is the thing that actually
 happens. It is not a copy protection scheme and should not be sold as one.
+
+Licence keys (roadmap R5)
+-------------------------
+A build that carries a public key (``licence_public_key``) also asks for a
+licence key: the one emailed to the subscriber, pasted in, kept in the user's
+folder beside the settings, and checked offline at every start -- whole,
+genuine, and not past its last day (``licence_key``, D124). Loriini is sold by
+subscription, so every key is time-limited: it runs to the end of the period
+paid for, plus a few days' grace, and each renewal brings a new one. A build
+without a public key takes no keys and behaves exactly as above, so an office
+build and a sold build are the same code with one line different.
+
+The build's own term stays as the floor: a key good until 2028 does not make
+a beta build that ends in 2027 run past its end. And the same speed bump
+applies -- a key is checked against the system clock, and a key cannot be
+revoked once issued, which is accepted for keys that run a year. What a
+start without a usable key refuses is the work: the commands that only say
+something (``--help``, ``rulesets``, ``info``) and the one that installs a key
+stay open, so the refusal can always be acted on.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import sys
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
-from sun_study import AUTHOR, PRODUCT, __version__
+from sun_study import AUTHOR, PRODUCT, __version__, licence_public_key, user_folder
+from sun_study.licence_key import KeyExpiredError, KeyRefusedError, LicenceKey, read, tidy
 
 __all__ = [
     "EXPIRES",
+    "FREE_COMMANDS",
+    "KEY_FILE",
+    "NO_KEY",
     "SUMMARY",
+    "LicenceError",
     "LicenceExpiredError",
+    "LicenceKeyError",
+    "Standing",
     "check",
     "credential",
     "file",
     "full_text",
     "has_expired",
+    "install",
+    "key_path",
+    "keys_required",
+    "needs_key",
+    "public_key",
+    "remove",
+    "standing",
 ]
 
 #: The last day this build runs. Chosen as a term, not a countdown -- see the
@@ -59,12 +94,24 @@ __all__ = [
 EXPIRES = dt.date(2027, 1, 1)
 
 
-class LicenceExpiredError(Exception):
+class LicenceError(Exception):
+    """Either reason a start is refused. The entry points catch this."""
+
+
+class LicenceExpiredError(LicenceError):
     """Raised at the entry point when the build is past its term.
 
     Its own type, and not an ``ArchicadError`` or a ``typer.Exit``, because
     the two entry points report it differently -- the command line to stderr,
     the window in a dialog box, neither having a console the other can use.
+    """
+
+
+class LicenceKeyError(LicenceError):
+    """A build that takes licence keys, started without a usable one.
+
+    Apart from the build's own term because the window answers it
+    differently: an expired build stops, while a missing key is asked for.
     """
 
 
@@ -77,17 +124,160 @@ def has_expired(today: dt.date | None = None) -> bool:
     return (today or dt.date.today()) >= EXPIRES
 
 
-def check(today: dt.date | None = None) -> None:
-    """Let the run proceed, or raise ``LicenceExpiredError``. Silent while valid."""
+def check(today: dt.date | None = None, *, key_needed: bool = True) -> None:
+    """Let the run proceed, or raise. Silent while valid.
+
+    ``LicenceExpiredError`` past the build's own term, whatever key is held;
+    then, with ``key_needed`` and a build that takes keys, ``LicenceKeyError``
+    when this machine holds no key it can use. The window passes False and
+    asks for a key itself, rather than refusing to open.
+    """
     if has_expired(today):
         raise LicenceExpiredError(explain())
+    if key_needed:
+        found = standing(today)
+        if not found.usable:
+            raise LicenceKeyError(f"{found.problem} {HOW_TO_INSTALL}")
 
 
-def credential() -> str:
+def credential(today: dt.date | None = None) -> str:
     """The one line the window carries at its foot: whose build this is,
     which one, and until when. Not a warning, so it is not set in red; the
-    prototype disclaimer stays on every sheet, where the figures are."""
+    prototype disclaimer stays on every sheet, where the figures are.
+
+    With a licence key, whose licence it is instead of whose build, and the
+    earlier of the key's last day and the build's own end.
+    """
+    found = standing(today)
+    if found.key is not None and found.usable:
+        until = min(found.key.expires, EXPIRES)
+        holder = found.key.holder or found.key.email
+        return f"{PRODUCT} {__version__} · licensed to {holder} until {until.day} {until:%B %Y}"
     return f"{PRODUCT} {__version__} · {AUTHOR} · licensed until {EXPIRES.day} {EXPIRES:%B %Y}"
+
+
+# -- licence keys (roadmap R5) -----------------------------------------------
+
+#: The file the key is kept in, in the user's own folder.
+KEY_FILE = "licence.key"
+
+#: The commands a start without a usable key still runs: the ones that only
+#: say something, and the one that installs a key. Everything else touches a
+#: project, and is the work a licence is for.
+FREE_COMMANDS = frozenset({"licence", "rulesets", "info"})
+
+#: What a start with no key at all says, before how to give it one.
+NO_KEY = "Loriini needs a licence key, and none is installed."
+
+#: What every refusal for want of a key ends with: how to give it one.
+HOW_TO_INSTALL = (
+    "Keys come by email with the subscription, a new one each time it renews. "
+    "Loriini's window asks for the key when it opens; on a command line, run "
+    f"Loriini.exe licence followed by the key. {AUTHOR} can send it again."
+)
+
+
+def public_key() -> bytes | None:
+    """The public key this build checks licence keys against, if it takes any."""
+    written = licence_public_key.PUBLIC_KEY
+    return bytes.fromhex(written) if written else None
+
+
+def keys_required() -> bool:
+    """Whether this build asks for a licence key at all."""
+    return public_key() is not None
+
+
+def key_path() -> Path:
+    """Where this user's licence key is kept."""
+    return user_folder() / KEY_FILE
+
+
+@dataclass(frozen=True)
+class Standing:
+    """This machine's licence, as a start sees it."""
+
+    required: bool
+    """Whether this build takes keys at all."""
+    key: LicenceKey | None = None
+    """The key held, when it is whole and genuine, whether or not in force."""
+    problem: str = ""
+    """Why it cannot be used, in a sentence. Empty when it can."""
+
+    @property
+    def usable(self) -> bool:
+        return not self.required or (self.key is not None and not self.problem)
+
+    def describe(self) -> str:
+        if not self.required:
+            return "This build takes no licence keys."
+        if self.key is not None and not self.problem:
+            return f"Licensed: {self.key.describe()}."
+        return self.problem
+
+
+def _expired(key: LicenceKey) -> KeyExpiredError:
+    return KeyExpiredError(
+        f"The licence key for {key.whose} ended on {key.expires.day} {key.expires:%B %Y}. "
+        f"Renewing the subscription brings a new key by email."
+    )
+
+
+def standing(today: dt.date | None = None) -> Standing:
+    """What key this machine holds, and whether a start can use it."""
+    public = public_key()
+    if public is None:
+        return Standing(required=False)
+    try:
+        text = key_path().read_text(encoding="utf-8")
+    except OSError:
+        return Standing(required=True, problem=NO_KEY)
+    try:
+        key = read(text, public)
+    except KeyRefusedError as problem:
+        return Standing(
+            required=True, problem=f"The licence key installed cannot be used. {problem}"
+        )
+    if not key.good_on(today or dt.date.today()):
+        return Standing(required=True, key=key, problem=str(_expired(key)))
+    return Standing(required=True, key=key)
+
+
+def install(text: str, today: dt.date | None = None) -> LicenceKey:
+    """Check a pasted key and keep it, or raise ``KeyRefusedError`` and keep nothing.
+
+    Only a key that would let Loriini start is kept: whole, genuine and in
+    force. A key refused leaves whatever was installed before where it was.
+    """
+    public = public_key()
+    if public is None:
+        raise KeyRefusedError("This build takes no licence keys, so there is nothing to install.")
+    key = read(text, public)
+    if not key.good_on(today or dt.date.today()):
+        raise _expired(key)
+    where = key_path()
+    where.parent.mkdir(parents=True, exist_ok=True)
+    where.write_text(tidy(text) + "\n", encoding="utf-8")
+    return key
+
+
+def remove() -> bool:
+    """Forget the key this machine holds. False when there was none."""
+    try:
+        key_path().unlink()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def needs_key(argv: Sequence[str]) -> bool:
+    """Whether the command line in ``argv`` needs a usable licence key.
+
+    The command is the first word that is not an option. None at all --
+    ``--help`` on its own -- needs nothing.
+    """
+    command = next((word for word in argv if not word.startswith("-")), None)
+    return command is not None and command not in FREE_COMMANDS
 
 
 def explain() -> str:

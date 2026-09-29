@@ -245,7 +245,8 @@ from sun_study.ingest.scene import (
     massing_subject,
     open_ground_grid,
 )
-from sun_study.licence import LicenceExpiredError
+from sun_study.licence import LicenceExpiredError, LicenceKeyError
+from sun_study.licence_key import KeyRefusedError
 from sun_study.pipeline import (
     WEIGHTING_BY_RULESET,
     InstantSeries,
@@ -8678,6 +8679,48 @@ def area_yield(
         typer.echo(report.describe())
 
 
+@app.command("licence", hidden=True)
+@app.command("license", hidden=True)
+def licence_command(
+    key: Annotated[
+        list[str] | None,
+        typer.Argument(help="The key from the licence email, pasted whole. Spaces are fine."),
+    ] = None,
+    remove: Annotated[
+        bool, typer.Option("--remove", help="Remove the licence key this machine holds.")
+    ] = False,
+) -> None:
+    """Show the licence this machine holds, or install one from its key.
+
+    Hidden from the list of commands, as the licence is everywhere a
+    colleague looks (``licence`` module); a start that needs a key says this
+    command's name in the sentence that refuses it. Runs with no key, which is
+    the point of it.
+    """
+    if remove:
+        typer.echo(
+            f"Removed the licence key from {licence.key_path()}."
+            if licence.remove()
+            else "There was no licence key to remove."
+        )
+        return
+    if key:
+        try:
+            installed = licence.install(" ".join(key))
+        except KeyRefusedError as refused:
+            typer.secho(str(refused), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from refused
+        typer.secho(f"Installed: {installed.describe()}.", fg=typer.colors.GREEN)
+        typer.echo(f"Kept in {licence.key_path()}.")
+        return
+    found = licence.standing()
+    typer.echo(found.describe())
+    if found.required and found.usable:
+        typer.echo(f"Kept in {licence.key_path()}.")
+    elif found.required:
+        typer.echo(licence.HOW_TO_INSTALL)
+
+
 @app.command("mcp")
 def agent_server() -> None:
     """Serve the studies to an AI agent, over MCP on stdin and stdout.
@@ -8714,12 +8757,17 @@ def main() -> None:
             reconfigure(errors="replace")
 
     # Before the banner, and before anything is read or written. A build past
-    # its term should not get as far as opening somebody's project.
+    # its term should not get as far as opening somebody's project; nor should
+    # a build that takes licence keys and has none it can use -- except for
+    # the commands that only say something, and the one that installs a key.
     try:
-        licence.check()
+        licence.check(key_needed=licence.needs_key(sys.argv[1:]))
     except LicenceExpiredError as expired:
         typer.secho(str(expired), fg=typer.colors.RED, err=True)
         raise SystemExit(4) from expired
+    except LicenceKeyError as unlicensed:
+        typer.secho(str(unlicensed), fg=typer.colors.RED, err=True)
+        raise SystemExit(5) from unlicensed
 
     listen_for_stop()
     app()
