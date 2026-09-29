@@ -54,11 +54,19 @@ spent on obfuscation or anti-tamper is time taken from the product. It also make
 antivirus software -- already suspicious of PyInstaller executables -- more
 suspicious still.
 
-**Every user already has an Archicad licence.** Archicad 26's API tells an add-on the
-licence's serial number, how many seats it has, and whether it is a network, trial,
-demo or education licence. It also says whether the licence carries a Forward
-subscription (`ACAPI_Protection_*` in the DevKit). No other sales channel knows this
-much about a buyer for free. §2 weighs tying seats to it.
+**Every user already has an Archicad licence.** Archicad has been sold only by
+subscription since 2025, at A$4,210 a seat a year for Studio [1], and since February
+2026 Graphisoft sells it in Australia itself, having bought its distributor [2]. So
+every buyer already pays yearly, per seat, for the program Loriini runs inside.
+Archicad 26's API tells an add-on:
+- the licence's serial number, and how many seats it has;
+- whether it is a network, trial, demo or education licence;
+- whether it carries a Forward subscription.
+
+These come from `ACAPI_Protection_*` in the DevKit. From Archicad 28 the API also
+gives stable, anonymous identifiers for the signed-in Graphisoft ID user and their
+organisation, and Graphisoft's own example uses them to check an add-on's entitlement
+[3]. §2 weighs tying seats to either.
 
 **Its numbers end up in DAs.** A tool whose output is a compliance figure owes
 something that other tools don't. The build term exists so that a stale copy on a
@@ -111,14 +119,28 @@ rests on trust: a practice of forty on a ten-person tier is invisible, and so is
 passed to a second practice. If the owner prefers it, the same service can meter
 instead of enforce: count, report, and leave the rest to a conversation.
 
-**The Archicad serial was considered and not chosen as the unit.** It is attractive:
-the practice has already counted its seats for Graphisoft, and it would work offline.
-But the AC26 documentation says the serial belongs to hardware and software keys, and
-Graphisoft's newer licence types may not have one in the same sense. A licence resting
-on it rests on another company's internals, which change with each Archicad version the
-add-on has to follow. It is better used as a signal. The activation can report it, so a
-key that turns up under several unrelated Archicad licences stands out. And the
-education and trial flags make a free student licence possible later (§7).
+**The Archicad serial was considered and not chosen as the unit.** It is
+attractive: the practice has already counted its seats for Graphisoft, and it would
+work offline. But the serial belongs to hardware and software keys only [3], and a
+practice on Graphisoft's cloud licences -- named or floating, on a Graphisoft ID -- has
+none in that sense. A licence resting on it rests on another company's internals, which
+change with each Archicad version the add-on has to follow. It is better used as a
+signal. Where it exists, the activation can report it, so a key that turns up under
+several unrelated Archicad licences stands out.
+
+**Graphisoft ID is the unit to move to later.** The add-on builds against the 26.3000
+kit, which has only a notification that the signed-in user changed. The identifiers
+come with Archicad 28 (reportedly with a late Archicad 26 update, not checked here).
+Once the add-on targets a version that has them:
+- the practice's Graphisoft organisation can be the licence;
+- each Graphisoft user in it can be a seat.
+
+That is the named-user model the rest of the segment uses -- Enscape on a Chaos login,
+Forma on an Autodesk one [4] -- without Loriini keeping a single account or password of
+its own. The identifiers also exist in Archicad's demo mode, so they say who is using
+Loriini, not that anyone has paid; the payment stays with the licence service. The
+activation in §4 is built so that the computer can later be swapped for the Graphisoft
+user without changing anything else.
 
 **Per project is covered by monthly.** A practice that subscribes for the month of a DA
 and then cancels has bought a project pass, without anyone having to define what a
@@ -128,8 +150,11 @@ project is.
 
 - **Perpetual, with paid upgrades,** suits a finished product in a stable host.
   Loriini is neither. The validation is still open, and Archicad has a new version
-  every year, each needing the add-on rebuilt. ADG and the SEPPs change. Those are
-  recurring costs, which a one-off price does not cover.
+  every year, each needing the add-on rebuilt. The ADG and the SEPPs change (SEPP 65
+  itself was folded into the Housing SEPP in 2023). Those are recurring costs, which a
+  one-off price does not cover. The market has already moved: Archicad and nearly
+  every comparable tool in §8 are sold only by subscription, and the perpetual
+  add-ons that remain are the ones tied to Archicad dongles [4].
 - **Annual** is what a practice budgets for and what an invoice suits, and it churns
   least. It is the anchor price.
 - **Monthly** is for the practice with one DA a year. It costs more per month than
@@ -239,10 +264,14 @@ says what is sent and why, and so does `licensing.md`.
   address and a computer, so a second trial on the same computer is visible.
 - **Education.** Free, later: Archicad's education flag is readable from the add-on,
   and education outputs are stamped too.
-- **Resellers.** The Archicad reseller already sells to exactly these practices. A
-  model with one price per seat per year leaves room for a reseller's margin and fits
-  how resellers sell Archicad itself. The service needs one thing for it: a licence
-  whose payer is the reseller and whose holder is the practice.
+- **Graphisoft, and whoever else sells to these practices.** There is no Graphisoft
+  add-on store: one is on its roadmap, "under research" [3]. Add-ons are sold directly,
+  as this one will be. Graphisoft now sells Archicad in Australia itself, and with the
+  distributor it bought Ci Tools, whose Sites tool checks boundaries and height planes
+  -- next door to Loriini, and a reason to know the people there [2]. If anyone ever
+  resells Loriini, one price per seat per year leaves room for their margin. The
+  service needs one thing for it: a licence whose payer is the reseller and whose
+  holder is the practice.
 - **The terms.** Selling needs a commercial licence agreement of its own, covering:
   - what the numbers may be relied on for, with the prototype notice until the
     validation is done;
@@ -258,7 +287,46 @@ says what is sent and why, and so does `licensing.md`.
 
 ## 8. Price
 
-*Pending: what Archicad, its add-ons and the solar-access tools cost, and what a consultant charges for an ADG report.*
+What comparable things cost, in A$ a seat a year unless said, without GST, converted
+at US$1 = A$1.42 and €1 = A$1.62 on 29 September 2026 [4]:
+
+| | Price | Licence |
+|---|---|---|
+| Archicad Studio / Collaborate | 4,210 / 4,955 | subscription only; Graphisoft ID, named or floating |
+| DL-Light SEPP65, for SketchUp: ADG solar access, the nearest competitor | ≈810 the first year, ≈490 a year after; ≈325 for one month | one person, one computer |
+| archiZone (Architools): zoning compliance inside Archicad | ≈470, or ≈47 a month | per user, one active computer |
+| Shadowmap Studio | ≈850 billed yearly; ≈85 a month on monthly | per user |
+| Autodesk Forma Site Design | ≈995, or ≈120 a month | named user |
+| Enscape | ≈820 to 1,040 | named user, on a Chaos login |
+| Pollination for Rhino / Revit | ≈1,950 / ≈3,900 | concurrent, plus user packs |
+| Ladybug Tools, SunHours, Andrew Marsh's tools | free | -- |
+| A consultant's DA shadow diagrams | 240 to 1,500 a package | -- |
+| A desktop ADG check | from 199 | -- |
+
+What it says:
+- **Bands.** Single-purpose AEC tools sit at A$500 to 1,000 a seat a year, and suites
+  at A$1,600 to 4,500. Loriini is a single-purpose tool that also does a suite's
+  drawing and yield work, inside Archicad, at about a sixth of Archicad's own price.
+- **The nearest competitor.** DL-Light sells ADG solar access on SketchUp at about
+  A$800 and then A$500 a year. It also sells a one-month licence: the DA burst, priced
+  as a product. Nothing found does it inside Archicad.
+- **Monthly premiums.** Monthly plans usually cost about 20% more (Shadowmap,
+  Archistar). The range runs from 10% (Pollination) to 80% (Enscape).
+- **The real competitor.** The free tools are the practice's current chain, Ladybug in
+  Grasshopper. They cost a specialist's time, not a licence.
+- **Consultants.** They price shadow diagrams low, A$240 to 1,500 a package. Apartment
+  ADG studies are quoted per job and never published. Loriini's value is not one
+  report; it is being able to run the study again every time the massing moves.
+
+A starting point, to be tested with the first practices:
+- **Annual: A$600 to 900 a seat,** less per seat from five seats up.
+- **Monthly: a tenth of the annual price a month,** A$60 to 90 a seat. That is 20% more
+  over a year, and a DA month on three seats costs less than one consultant's shadow
+  package.
+- **A founding price while the prototype notice stands.** Selling "not validated for
+  submission" at full price is a hard conversation; a founding price, kept for the
+  first practices through their renewals, is an honest one. Those practices are also
+  the validation.
 
 ## 9. What it changes in the roadmap
 
