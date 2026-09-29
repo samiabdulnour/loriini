@@ -291,6 +291,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: is already the colour of the interface here, so it costs the palette
     #: nothing to say "this one answers".
     style.configure("Link.TLabel", background=SURFACE, foreground=BLUE, font=link)
+    #: The same, on the window's surround: the way from the run's one line to
+    #: its whole transcript.
+    style.configure("ChromeLink.TLabel", background=CHROME, foreground=BLUE, font=link)
 
     #: The window's surround: the project strip at the top, the run bar at the
     #: bottom, the summary down the left.

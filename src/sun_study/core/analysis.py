@@ -30,7 +30,7 @@ in the engine.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from itertools import pairwise
@@ -51,6 +51,7 @@ __all__ = [
     "SunlightResult",
     "Weighting",
     "band_by_area",
+    "candidate_rays",
     "cumulative_minutes",
     "instant_weights",
     "lit_share_per_instant",
@@ -93,10 +94,23 @@ def instant_weights(
     return weights
 
 
+#: Samples cast together by ``sunlit_matrix``. Every (sample, instant) pair
+#: that faces a sun above the horizon becomes a ray -- an origin and a
+#: direction, 48 bytes, and 16 more of index -- and they were once all
+#: gathered before the first was cast. A shadow grid two kilometres across at a
+#: metre, over the three default days, is about a hundred million rays and
+#: nine gigabytes before any work is done, which is how a larger model ran out
+#: of memory (roadmap R1). A block at a time the peak is a block's worth, and
+#: the answer is the same bit for bit: every ray is still cast once, alone.
+SAMPLE_BLOCK = 65_536
+
+
 def sunlit_matrix(
     points: SamplePoints,
     occluder: Occluder,
     sun_vectors: FloatArray,
+    *,
+    progress: Callable[[int, int], None] | None = None,
 ) -> BoolArray:
     """Boolean (n_points, n_instants): did this point see the sun at that instant.
 
@@ -113,6 +127,12 @@ def sunlit_matrix(
     * A point whose normal faces away from the sun is self-shaded by the
       surface it sits on, whatever else is in the scene. Casting that ray would
       ask the wrong question and could return a spurious hit-free result.
+
+    Cast ``SAMPLE_BLOCK`` samples at a time, so memory stays flat however big
+    the grid. ``progress`` is told ``(samples done, samples in all)`` after
+    each block: a cast of an hour is otherwise an hour of silence in a log,
+    and a log that ends in silence cannot say whether the caster was still
+    working when it stopped.
     """
     directions = np.ascontiguousarray(sun_vectors, dtype=np.float64)
     if directions.ndim != 2 or directions.shape[1] != 3:
@@ -124,16 +144,31 @@ def sunlit_matrix(
         return sunlit
 
     above_horizon = directions[:, 2] > 0.0
-    facing = (points.normals @ directions.T) > 0.0
-    candidate = facing & above_horizon[None, :]
-
-    pairs = np.argwhere(candidate)
-    if pairs.size == 0:
-        return sunlit
-
-    blocked = occluder.any_hit(points.positions[pairs[:, 0]], directions[pairs[:, 1]])
-    sunlit[pairs[:, 0], pairs[:, 1]] = ~blocked
+    for begin in range(0, point_count, SAMPLE_BLOCK):
+        end = min(begin + SAMPLE_BLOCK, point_count)
+        facing = (points.normals[begin:end] @ directions.T) > 0.0
+        pairs = np.argwhere(facing & above_horizon[None, :])
+        if pairs.size:
+            rows = pairs[:, 0] + begin
+            blocked = occluder.any_hit(points.positions[rows], directions[pairs[:, 1]])
+            sunlit[rows, pairs[:, 1]] = ~blocked
+        if progress is not None:
+            progress(end, point_count)
     return sunlit
+
+
+def candidate_rays(points: SamplePoints, sun_vectors: FloatArray) -> int:
+    """How many rays ``sunlit_matrix`` would cast: the pairs facing a sun that
+    is up. Counted a block at a time, for the same reason it casts that way."""
+    directions = np.ascontiguousarray(sun_vectors, dtype=np.float64)
+    if directions.ndim != 2 or directions.shape[1] != 3 or not len(points):
+        return 0
+    above_horizon = directions[:, 2] > 0.0
+    total = 0
+    for begin in range(0, len(points), SAMPLE_BLOCK):
+        facing = (points.normals[begin : begin + SAMPLE_BLOCK] @ directions.T) > 0.0
+        total += int(np.count_nonzero(facing & above_horizon[None, :]))
+    return total
 
 
 def reached_by_sun(points: SamplePoints, sun_vectors: FloatArray) -> dict[str, bool]:

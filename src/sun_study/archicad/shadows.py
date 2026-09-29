@@ -46,7 +46,7 @@ from typing import Any
 import numpy as np
 
 from sun_study.archicad import naming
-from sun_study.archicad.connection import ArchicadConnection, ArchicadError
+from sun_study.archicad.connection import ArchicadConnection, ArchicadError, CommandFailedError
 from sun_study.archicad.draw import (
     DRAWING_MINIMUM_TAPIR_VERSION,
     BandStyle,
@@ -418,12 +418,23 @@ class ShadowDrawReport:
     """Said when the fills could not be drawn in the legend's own colours."""
     all_hours: tuple[str, ...] = ()
     """The combinations of the every-hour drawings, one per day, if asked for."""
+    refused: tuple[str, ...] = ()
+    """The fills Archicad would not draw, each said as which and how big.
+    Left out of the drawing and of every total; see ``_create_legend_fills``."""
 
     def describe(self) -> str:
         lines = [
             f"drew {self.fills} shadow fills across {len(self.layers)} layers, "
             f"{len(self.combinations)} layer combinations"
         ]
+        if self.refused:
+            lines.append(
+                f"  Archicad refused {len(self.refused)} fill(s), left out of the drawing -- "
+                "the areas below still count them, so compare the plan with the table:"
+            )
+            lines.extend(f"    {refused}" for refused in self.refused[:12])
+            if len(self.refused) > 12:
+                lines.append(f"    and {len(self.refused) - 12} more")
         if self.cleared:
             lines.append(f"  cleared {self.cleared} fills from an earlier run")
         if self.below_horizon:
@@ -589,38 +600,92 @@ def _as_legend_fill(
     return one
 
 
+#: Fills sent in one ``CreateFills``. The add-on draws a batch as one undo
+#: step and takes all of it back if Archicad refuses any one fill.
+FILL_BATCH = 500
+
+#: How many single fills may be refused before any fill has been drawn at
+#: all, or one after another at any point, before the refusals are taken to
+#: be about every fill -- a layer that is not there, a Fill tool that will not
+#: give its defaults, an Archicad out of memory -- and the run stops rather
+#: than trying the rest one at a time.
+REFUSED_BEFORE_ANY = 3
+REFUSED_IN_A_ROW = 25
+
+
 def _create_legend_fills(
     connection: ArchicadConnection,
     hatches: Sequence[dict[str, Any]],
     colours: Sequence[tuple[int, int, int] | None],
-) -> list[dict[str, Any]]:
-    """Every fill through the add-on, answered in Tapir's shape.
+) -> list[dict[str, Any] | None]:
+    """Every fill through the add-on, answered in Tapir's shape, one answer per
+    fill asked for and ``None`` for a fill Archicad refused.
 
     Re-shaped because ``ids.stamp_in_order`` reads ``elementId`` and the
     add-on answers ``guid``: handed the add-on's shape it would stamp nothing
     and every schedule would total an empty drawing.
+
+    One refusal no longer costs the run. The add-on draws each batch as one
+    undo step and rolls all of it back when Archicad will not take one fill,
+    which is right for an undo and was fatal for a run: on a larger model a
+    single outline Archicad would not draw -- a sliver, a ring that touches
+    itself -- stopped the whole diagram with nothing on the plan and nothing
+    said about which fill it was (roadmap R1). So a refused batch is halved
+    and each half sent again, down to the fill that is refused, which is left
+    out and answered ``None``; everything else is drawn. A refusal of every
+    fill, which is about the run and not about a fill, still stops it.
     """
     solid = attribute_index(connection, "Fill", ("Solid Fill", "Solid", "Foreground"))
-    made: list[dict[str, Any]] = []
-    for start in range(0, len(hatches), 500):
-        batch = [
-            _as_legend_fill(hatch, colour, solid)
-            for hatch, colour in zip(
-                hatches[start : start + 500], colours[start : start + 500], strict=True
-            )
-        ]
-        answer = connection.run_loriini("CreateFills", {"fills": batch})
+    shaped = [
+        _as_legend_fill(hatch, colour, solid)
+        for hatch, colour in zip(hatches, colours, strict=True)
+    ]
+    answers: list[dict[str, Any] | None] = []
+    refused = in_a_row = 0
+
+    def send(start: int, stop: int) -> None:
+        nonlocal refused, in_a_row
+        try:
+            answer = connection.run_loriini("CreateFills", {"fills": shaped[start:stop]})
+        except CommandFailedError as error:
+            if "not have the registered" in str(error):
+                raise
+            if stop - start > 1:
+                middle = (start + stop) // 2
+                send(start, middle)
+                send(middle, stop)
+                return
+            refused += 1
+            in_a_row += 1
+            if (refused >= REFUSED_BEFORE_ANY and not any(answers)) or (
+                in_a_row >= REFUSED_IN_A_ROW
+            ):
+                raise ArchicadError(
+                    f"Archicad refuses every fill, not one in particular: {error}"
+                ) from error
+            answers.append(None)
+            return
+        in_a_row = 0
         elements = answer.get("elements") if isinstance(answer, dict) else None
         if not isinstance(elements, list):
             raise ArchicadError(f"CreateFills returned no element list: {answer!r}")
-        made.extend(
+        made = [
             {"elementId": entry["elementId"]}
             if "elementId" in entry
             else {"elementId": {"guid": entry["guid"]}}
             for entry in elements
             if isinstance(entry, dict) and ("elementId" in entry or "guid" in entry)
-        )
-    return made
+        ]
+        if len(made) != stop - start:
+            raise ArchicadError(
+                f"CreateFills made {len(made)} fills of {stop - start} and did not say "
+                f"which, so none can be matched to what it was drawn for"
+            )
+        answers.extend(made)
+
+    for start in range(0, len(shaped), FILL_BATCH):
+        send(start, min(start + FILL_BATCH, len(shaped)))
+    return answers
 
 
 def _all_hours_elements(
@@ -827,9 +892,10 @@ def draw_shadow_series(
     # add-on too old for CreateFills falls back to it and says so.
     made: list[dict[str, Any]] = []
     note = ""
+    refused: list[str] = []
     if not favourite:
         try:
-            made = _create_legend_fills(connection, fills, colours)
+            answered = _create_legend_fills(connection, fills, colours)
         except ArchicadError as error:
             if "not have the registered" not in str(error):
                 raise
@@ -837,7 +903,21 @@ def draw_shadow_series(
                 "the installed Loriini add-on has no CreateFills, so these are pen "
                 "colours with a contour, not the legend's. Install the current build."
             )
-    if not made:
+        else:
+            # The refused fills leave the lists here, so every list after
+            # this still pairs one element with the ID it was drawn for.
+            refused = [
+                _refused_fill(fills[index], element_ids[index])
+                for index, answer in enumerate(answered)
+                if answer is None
+            ]
+            element_ids = [
+                element_id
+                for element_id, answer in zip(element_ids, answered, strict=True)
+                if answer is not None
+            ]
+            made = [answer for answer in answered if answer is not None]
+    if not made and not refused:
         for start in range(0, len(fills), 500):
             made.extend(
                 create_elements(
@@ -895,7 +975,7 @@ def draw_shadow_series(
         every_hour.append(name)
 
     return ShadowDrawReport(
-        fills=len(fills),
+        fills=len(made),
         sources=series.sources,
         layers=tuple(made_layers),
         combinations=tuple(combinations),
@@ -907,7 +987,21 @@ def draw_shadow_series(
         areas_m2={instant.label: dict(instant.areas_m2) for instant in series.instants},
         note=note,
         all_hours=tuple(every_hour),
+        refused=tuple(refused),
     )
+
+
+def _refused_fill(hatch: Mapping[str, Any], element_id: str | None) -> str:
+    """One refused fill, as the run says it: which it was, and how big."""
+    points = hatch.get("coordinates") or []
+    xs = [float(point["x"]) for point in points if isinstance(point, dict) and "x" in point]
+    ys = [float(point["y"]) for point in points if isinstance(point, dict) and "y" in point]
+    where = (
+        f" around ({(min(xs) + max(xs)) / 2:,.1f}, {(min(ys) + max(ys)) / 2:,.1f})"
+        if xs and ys
+        else ""
+    )
+    return f"{element_id or 'the site boundary'}, {len(points)} corners{where}"
 
 
 def instant_captions(series: ShadowSeries) -> dict[str, str]:

@@ -55,6 +55,30 @@ or only by a person in its settings once, with later documents copying it.
 Then a one-day trial: one shadow 3D Document made by hand in Archicad, to
 see exactly what it shows and what it lacks, before any code.
 
+**Done so far (29 September).** The assisted session has not happened yet,
+so the log was made worth having first. Every run the window starts is
+written to a file as it goes -- `%APPDATA%\Loriini\Logs`, the newest sixty
+kept, *Whole log* beside the line at the foot of the window -- and the
+shadow diagram prints how long each stage took and how much memory the run
+had reached, the size of the grid and any layer that stretched it, and how
+far through a long cast it is ([`larger-models.md`](larger-models.md)).
+Reading the pipeline for what a larger model would break found two of the
+three failures before any session: the caster gathered every ray before
+casting the first -- about nine gigabytes for a grid two kilometres across
+over the three default days -- and now casts a block at a time with the
+same answer; and one fill Archicad refused rolled back its batch of 500 and
+ended the run, where it now costs that fill, named. The export, the third,
+is for the log to show. The 3D Document route is built too. The SDK
+question is answered: a document's shadows are its own, switched on through
+the 3D Document defaults as it is made, with their fill in its model
+display. **Shadow plans** are a document per hour looking straight down,
+with Archicad's sun and shadows, their views pinned and dealt onto sheets by
+day -- from the Shadow diagram tab, `sun-study shadow-plans`, and the
+agent's `shadow_plans` tool ([`shadow-plans.md`](shadow-plans.md)). D123 is
+how. Built against the kit and a scripted Archicad; next is the assisted
+session on the larger model with its log, and one live run of the shadow
+plans to see the shadows come on.
+
 ## R2 — An agent that operates Loriini
 
 **Asked.** Could an AI agent run Loriini natively, for more users? It saves

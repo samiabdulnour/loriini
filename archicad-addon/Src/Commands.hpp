@@ -9,6 +9,7 @@
 //   GetProjection          reads the 3D window's projection, sun included.
 //   SetProjection          points it along a given direction at a given date.
 //   CreateDocumentFrom3D   makes a 3D Document carrying its own projection.
+//   SetDocumentFrom3D      re-aims one already made, and sets its shadow fill.
 //
 // The first is not merely a diagnostic. `API_AxonoPars::tranmat` is a matrix
 // whose row order and signs the documentation does not pin down, so the only
@@ -86,11 +87,15 @@ public:
 // sun it was made at rather than borrowing whatever the 3D window shows now.
 // That is what makes seven of them on one sheet mean seven different hours.
 //
-// The vectorial sun shadow is **not** here, though it looks as though it
-// should be. `vectSunShadow` belongs to `API_3DStyle`, not to the document,
-// and a 3D style is already reachable from outside: Tapir's `SetViewSettings`
-// pins one on a view by name through `d3styleName`. So the office makes the
-// style once, with the shadow settings it wants, and every document uses it.
+// The vectorial sun shadows are here too, since roadmap R1. The first build
+// said they were not, on the grounds that `vectSunShadow` belongs to
+// `API_3DStyle` and a style can be pinned on a view -- true of a view of the
+// 3D window, and not of a document's view, which Tapir refuses a 3D style
+// (the sun views found that). A document's shadows are its own: the "Vectorial
+// Sun Shadows" of its Model Display, which a new document takes from
+// `API_DocumentFrom3DDefaults::vectSunShadow`, with the fill they are drawn in
+// in `attributeOptions`. So `sunShadows` switches the defaults for the one
+// creation and puts them back, and `shadowFill` writes the fill onto both.
 class CreateDocumentFrom3DCommand : public Command {
 public:
 	virtual GS::String						GetName () const override;
@@ -103,6 +108,31 @@ public:
 	}
 
 	virtual bool							IsProcessWindowVisible () const override { return true; }
+
+	virtual GS::ObjectState					Execute (const GS::ObjectState& parameters,
+													 GS::ProcessControl& processControl) const override;
+};
+
+
+// Re-aims a 3D Document this add-on made, sets its sun, and its shadow fill.
+//
+// A 3D Document cannot be deleted through the API -- `APIDb_DeleteDatabaseID`
+// takes details, worksheets and layouts only -- so a second run over the
+// same hours finds the first run's documents under their names. Without this
+// they would keep whatever sun and aim they were made with; with it a rerun
+// is the same as a first run. `effects3D` is copied whole from a document
+// read back with the effects wanted, because which of its bits is the sun
+// shadow the kit does not say.
+class SetDocumentFrom3DCommand : public Command {
+public:
+	virtual GS::String						GetName () const override;
+	virtual GS::Optional<GS::UniString>		GetInputParametersSchema () const override;
+	virtual GS::Optional<GS::UniString>		GetResponseSchema () const override;
+
+	virtual API_AddOnCommandExecutionPolicy	GetExecutionPolicy () const override
+	{
+		return API_AddOnCommandExecutionPolicy::ScheduleForExecutionOnMainThread;
+	}
 
 	virtual GS::ObjectState					Execute (const GS::ObjectState& parameters,
 													 GS::ProcessControl& processControl) const override;

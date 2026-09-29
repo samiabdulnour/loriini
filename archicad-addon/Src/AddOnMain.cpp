@@ -157,6 +157,7 @@ GSErrCode __ACENV_CALL Initialize (void)
 		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::GetProjectionCommand> ()); },
 		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::SetProjectionCommand> ()); },
 		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::CreateDocumentFrom3DCommand> ()); },
+		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::SetDocumentFrom3DCommand> ()); },
 		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::CreateFillsCommand> ()); },
 		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::CreateTextsCommand> ()); },
 		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::PlaceFiguresCommand> ()); },

@@ -83,10 +83,11 @@ from tkinter import font as tkfont
 from typing import ClassVar, Literal
 
 from sun_study import PRODUCT
-from sun_study.app import icons, overlay, preferences, probe, theme
+from sun_study.app import icons, overlay, preferences, probe, run_log, theme
 from sun_study.app.runner import Run
 from sun_study.archicad import naming
 from sun_study.archicad.connection import DEFAULT_TIMEOUT_SECONDS
+from sun_study.archicad.shadow_plans import DEFAULT_COMBINATION as SHADOW_PLAN_COMBINATION
 from sun_study.archicad.sheeting import cells_for, parse_sheet_mode, sheet_chunks, sheet_title
 from sun_study.cli import DEFAULT_SHADOW_HOURS
 from sun_study.core.solar import UnknownTimezoneError, resolve_timezone, solar_position
@@ -145,6 +146,10 @@ FACADE_MODEL = "Facade model"
 APARTMENT_HEAT_MAP = "Apartments, floor heat map"
 COMMUNAL_JOB = "solar analysis: communal open space"
 SHADOW_JOB = "shadow diagram"
+#: The same hours as 3D Documents, with Archicad drawing the shadows
+#: (roadmap R1): the record beside the fills' argument, and the route for a
+#: model too large for Loriini's own caster.
+SHADOW_PLAN_JOB = "shadow plans"
 SUN_EYE_JOB = "sun views"
 SITE_JOB = "site tools"
 #: The area calculation (roadmap R3): the massing slabs' GBA, GFA, NSA, FSR
@@ -162,6 +167,7 @@ CHIPS: dict[str, tuple[str, str]] = {
     PLANS_JOB: ("Apartments", "apartments"),
     COMMUNAL_JOB: ("Communal", "communal"),
     SHADOW_JOB: ("Shadow diagram", "shadow"),
+    SHADOW_PLAN_JOB: ("Shadow plans", "shadow"),
     SUN_EYE_JOB: ("Sun views", "views"),
     SITE_JOB: ("Site analysis", "site_analysis"),
     YIELD_JOB: ("Yield", "yield"),
@@ -2503,6 +2509,11 @@ class Window:
         #: line of it and no more, but a failure has to be readable after the
         #: fact, so the transcript is kept rather than drawn.
         self.lines: list[str] = []
+        #: And written to disk as it comes, so it outlives the window and the
+        #: next run: the file of the run in progress, then of the last one.
+        #: ``None`` before the first run, or where the folder refused a file.
+        self.log: run_log.RunLog | None = None
+        self.last_log: Path | None = None
 
         #: The width under which the sheets panel folds away. At least
         #: ``FOLD_BELOW``, and measured once the tabs exist: see below.
@@ -3748,6 +3759,87 @@ class Window:
         self.shadow_custom_day, _ = self._days_panel(
             outer, 1, self.shadow_day_ticks, study="shadow diagram", year=False
         )
+        self._shadow_plans(outer, 2)
+
+    def _shadow_plans(self, outer: ttk.Frame, at: int) -> None:
+        """The same hours as 3D Documents, with Archicad drawing the shadows.
+
+        Under the diagram and its days because it draws those days and the
+        hours ticked above: the two are one question answered two ways. The
+        fills are Loriini's -- the split between what stands and what the
+        proposal adds, which is the argument -- and the documents are
+        Archicad's own shadows, exact and at any size of model, which is the
+        record. Roadmap R1; ``docs/shadow-plans.md``.
+        """
+        self.do_shadow_plans = tk.BooleanVar(value=False)
+        frame, row = self._panel(outer, at), 0
+        box = ttk.Checkbutton(
+            frame,
+            text="Shadow plans",
+            variable=self.do_shadow_plans,
+            command=self._sync,
+            style="Study.TCheckbutton",
+            **icons.study_options("Shadow diagram"),
+        )
+        self._head(frame, box, SHADOW_PLAN_JOB)
+        Tooltip(
+            box,
+            "The hours and days above as 3D Documents looking straight down, "
+            "each with Archicad's sun for that hour and its own vectorial sun "
+            "shadows, placed on sheets by day. Archicad casts the shadows, so "
+            "a model too large for the diagram's own caster still draws. What "
+            "it cannot show is the split between existing and additional "
+            "shadow: run it once per layer combination, with a set name for "
+            "each, and read the sheets side by side. Needs the current add-on, "
+            "and a floor plan tab in front when it runs.",
+        )
+        row += 1
+        self._caption(
+            frame,
+            row,
+            "The same hours as 3D Documents from overhead: Archicad draws each hour's "
+            "shadows, at any size of model. The record beside the fills' argument.",
+        )
+        row += 1
+        self.shadow_plan_combination, row = self._combo(
+            frame,
+            row,
+            "Layers",
+            "The layer combination the plans show: what casts shadow and what catches it.",
+            "Everything showing casts a shadow and catches one, so the ground "
+            "has to be in it -- a plan with no terrain or site slab under the "
+            "buildings has nothing for the shadows to fall on. The office's "
+            "shadow diagram combination is the usual answer.",
+        )
+        self.shadow_plan_combination.set(SHADOW_PLAN_COMBINATION)
+        self.shadow_plan_label, row = self._entry(
+            frame,
+            row,
+            "Set name",
+            "",
+            "A word in every document and sheet name: Existing, Proposed.",
+            "Two sets side by side are the comparison the documents can make: "
+            "run once with the existing massing's combination named Existing, "
+            "once with the proposal's named Proposed, and the Layout Book holds "
+            "both. Blank names neither.",
+        )
+        self.shadow_plan_pen_set, row = self._combo(
+            frame,
+            row,
+            "Pen set",
+            "The project's pen set the plans use. Blank keeps each view's own.",
+            "The practice's drawing pens, so the sheet prints the way the other DA drawings do.",
+        )
+        self.shadow_plan_pen, row = self._entry(
+            frame,
+            row,
+            "Shadow pen",
+            "",
+            "The pen the shadows are filled in. Blank keeps the project's own.",
+            "A pen number from the project's pen set. The 3D Document's shadow "
+            "fill is otherwise whatever the project's defaults for new 3D "
+            "Documents say.",
+        )
 
     def _sun_eyes(self, frame: ttk.Frame) -> None:
         """The sun eye views: the model seen from the sun, one view per hour.
@@ -4481,10 +4573,28 @@ class Window:
         #: one line and a bar, not a page.
         #:
         #: Nothing is thrown away. Every line is still kept, in ``self.lines``,
-        #: so a run that failed can be read back; it is simply not what the
-        #: bottom of the window is made of.
-        self.note = ttk.Label(base, text="", style="Note.TLabel")
-        self.note.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        #: and in a file, so a run that failed can be read back; it is simply
+        #: not what the bottom of the window is made of.
+        note_row = ttk.Frame(base, style="Chrome.TFrame")
+        note_row.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        note_row.columnconfigure(0, weight=1)
+        self.note = ttk.Label(note_row, text="", style="Note.TLabel")
+        self.note.grid(row=0, column=0, sticky="ew")
+        #: The way to the whole transcript, beside the one line of it. Shown
+        #: once a run has a file to open, and not before: a link to nothing
+        #: is a link somebody clicks once and never trusts again.
+        self.log_link = ttk.Label(
+            note_row, text="Whole log", style="ChromeLink.TLabel", cursor="hand2"
+        )
+        self.log_link.bind("<Button-1>", lambda _event: self._open_log())
+        Tooltip(
+            self.log_link,
+            "Opens the whole transcript of the last run -- every line it printed, "
+            "with the time each stage took -- which is what to send when a run "
+            "goes wrong. Every run is kept, the newest sixty, in the Logs folder "
+            "beside the saved settings.",
+            title="Whole log",
+        )
 
         # The one line of text down here that is not about this run: whose
         # build this is, and until when. The prototype disclaimer is still on
@@ -4863,6 +4973,7 @@ class Window:
             (PLANS_JOB, self.do_plans, self.DIAGRAMS),
             (COMMUNAL_JOB, self.do_communal, self.DIAGRAMS),
             (SHADOW_JOB, self.do_shadows, self.SHADOWS),
+            (SHADOW_PLAN_JOB, self.do_shadow_plans, self.SHADOWS),
             (SUN_EYE_JOB, self.do_sun_eyes, self.EYE),
             (SITE_JOB, self.do_site, self.SITE),
             (YIELD_JOB, self.do_yield, self.YIELD),
@@ -4932,6 +5043,7 @@ class Window:
             "apartments": (self.do_plans, self.DIAGRAMS),
             "communal": (self.do_communal, self.DIAGRAMS),
             "shadow": (self.do_shadows, self.SHADOWS),
+            "shadow plans": (self.do_shadow_plans, self.SHADOWS),
             "views": (self.do_sun_eyes, self.EYE),
             "site": (self.do_site, self.SITE),
         }
@@ -5088,6 +5200,10 @@ class Window:
             "shadow_hours": self.shadow_hours,
             "shadow_storey": self.shadow_storey,
             "shadow_study_subset": self.shadow_study_subset,
+            "shadow_plan_combination": self.shadow_plan_combination,
+            "shadow_plan_label": self.shadow_plan_label,
+            "shadow_plan_pen_set": self.shadow_plan_pen_set,
+            "shadow_plan_pen": self.shadow_plan_pen,
             "eye_pen_set": self.eye_pen_set,
             "eye_override": self.eye_override,
             "eye_base_combination": self.eye_base_combination,
@@ -5135,6 +5251,7 @@ class Window:
             "study_communal": self.do_communal,
             "study_shadows": self.do_shadows,
             "shadow_all_hours": self.do_shadow_all_hours,
+            "study_shadow_plans": self.do_shadow_plans,
             "study_sun_eyes": self.do_sun_eyes,
             "study_site": self.do_site,
             "site_context": self.do_site_context,
@@ -5394,6 +5511,8 @@ class Window:
         if found.overrides:
             self._fill(self.eye_override, ("", *found.overrides), ("Sun Eye",))
         self._fill(self.eye_base_combination, found.combinations, ("Shadow Diagram", "Shadow"))
+        self._fill(self.shadow_plan_combination, found.combinations, ("Shadow Diagram", "Shadow"))
+        self._fill(self.shadow_plan_pen_set, ("", *found.pen_sets), ())
         self._fill(self.shadow_study_subset, found.subsets, ("SHADOW",))
         if not self.subject.get():
             skin = [name for name in found.layers if any(w in name for w in SKIN_WORDS)]
@@ -6120,6 +6239,23 @@ class Window:
                     scale=shadow_scale,
                 )
 
+        if SHADOW_PLAN_JOB in queued:
+            # The diagram's days and hours, drawn by Archicad: the same
+            # instants, dealt by day onto sheets of their own.
+            hours = self._clocks(self.shadow_hours, DEFAULT_SHADOW_HOURS.split(","))
+            for day in self._shadow_days():
+                deal(
+                    SHADOW_PLAN_JOB,
+                    "Shadow plans",
+                    "shadow",
+                    "SP",
+                    "Shadow plan",
+                    day,
+                    hours,
+                    self._sheet_mode("two"),
+                    scale=shadow_scale,
+                )
+
         if SUN_EYE_JOB in queued:
             hours = self._clocks(self.eye_hours, [f"{hour:02d}:00" for hour in range(9, 16)])
             for day in self.chosen_view_days():
@@ -6585,6 +6721,33 @@ class Window:
             args += self._sheet_args()
             made.append(Job(SHADOW_JOB, args))
 
+        if self.do_shadow_plans.get():
+            # The diagram's own days and hours, so the two routes draw the
+            # same instants under the same names.
+            args = [
+                "shadow-plans",
+                "--timezone",
+                TIMEZONE,
+                *common,
+                *self._prefix_flag(self.prefix_shadow),
+                "--shadow-date",
+                ",".join(self._shadow_days()),
+            ]
+            for flag, field in (
+                ("--shadow-hour", self.shadow_hours),
+                ("--layer-combination", self.shadow_plan_combination),
+                ("--label", self.shadow_plan_label),
+                ("--pen-set", self.shadow_plan_pen_set),
+                ("--shadow-pen", self.shadow_plan_pen),
+                ("--subset", self.shadow_study_subset),
+                ("--master-layout", self.master),
+            ):
+                if field.get().strip():
+                    args += [flag, field.get().strip()]
+            args += ["--year", self.year.get().strip() or "2024"]
+            args += self._sheet_args()
+            made.append(Job(SHADOW_PLAN_JOB, args))
+
         if self.do_sun_eyes.get():
             args = [
                 "sun-views",
@@ -6725,6 +6888,7 @@ class Window:
             return
 
         self.lines.clear()
+        self._start_log([job.label for job in queued])
         self.queued = queued
         self.go.config(state="disabled")
         self.cancel.config(state="normal")
@@ -6759,6 +6923,27 @@ class Window:
         self.progress.config(mode="determinate", value=0)
         self.go.config(state="normal")
         self.cancel.config(state="disabled")
+        if self.log is not None:
+            self.log.close()
+            self.log = None
+
+    def _start_log(self, studies: Sequence[str]) -> None:
+        """A transcript file for the run about to start, and the link to it."""
+        if self.log is not None:
+            self.log.close()
+        self.log = run_log.RunLog.start(studies)
+        if self.log is None:
+            return
+        self.last_log = self.log.path
+        self.log_link.grid(row=0, column=1, sticky="e", padx=(8, 0))
+
+    def _open_log(self) -> None:
+        """Open the last run's transcript, or say why it cannot be."""
+        if self.last_log is None or not self.last_log.is_file():
+            self.note.config(text="No log to open yet: the transcript is written from a run.")
+            return
+        if not run_log.open_file(self.last_log):
+            self.note.config(text=f"The log is {self.last_log}")
 
     def _drain(self) -> None:
         """Move the worker's lines into the widget, on the UI thread."""
@@ -6773,6 +6958,10 @@ class Window:
                     self._next()
                 else:
                     self._write(f"[the study stopped, exit code {code}]")
+                    if self.log is not None:
+                        # Said on screen as well as filed: the one line left
+                        # showing is the one that says where the rest is.
+                        self._write(f"The whole run is in {self.log.path}")
                     self.queued.clear()
                     self._finished()
         except queue.Empty:
@@ -6789,6 +6978,8 @@ class Window:
         which is when it has most to say.
         """
         self.lines.append(line)
+        if self.log is not None:
+            self.log.write(line)
         if line.strip(" ─"):
             self.note.config(text=line)
 

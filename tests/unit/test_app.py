@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 else:
     tk = pytest.importorskip("tkinter", reason="this machine has no tkinter")
 
-from sun_study.app import icons, preferences, probe, theme, window
+from sun_study.app import icons, preferences, probe, run_log, theme, window
 from sun_study.app.runner import CLI_MARKER, child_environment, command_prefix
 from sun_study.archicad import naming
 from sun_study.archicad.connection import DEFAULT_TIMEOUT_SECONDS, Instance
@@ -3526,3 +3526,83 @@ def test_pressing_it_twice_raises_the_box_rather_than_making_a_second(
     second = about.show(hidden_window.root)
     assert second is not first
     second._close()
+
+
+# -- the transcript kept on disk (roadmap R1) ------------------------------
+
+
+def test_a_run_is_kept_in_a_log_file_and_the_link_opens_it(
+    hidden_window: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The window shows one line of a run; a failure forty minutes into a
+    larger model has to be readable after the fact, so every line goes to a
+    file as it comes, and the line left on screen says where."""
+    assert hidden_window.log_link.winfo_manager() == "", "no link before there is a log"
+
+    hidden_window._start_log(["shadow diagram"])
+    hidden_window._write("── Shadow diagram ──")
+    hidden_window._write("  timing: exported the model in 3 min 12 s, memory at most 1.2 GB")
+
+    path = hidden_window.last_log
+    assert path is not None
+    assert path.parent == tmp_path / "Loriini" / "Logs"
+    assert "exported the model in 3 min 12 s" in path.read_text(encoding="utf-8")
+    assert hidden_window.log_link.winfo_manager() == "grid"
+
+    hidden_window.incoming.put(("done", 1))
+    hidden_window._drain()
+    assert hidden_window.log is None, "closed with the run"
+    text = path.read_text(encoding="utf-8")
+    assert "[the study stopped, exit code 1]" in text
+    assert f"The whole run is in {path}" in text
+    assert hidden_window.note.cget("text") == f"The whole run is in {path}"
+
+    opened: list[Path] = []
+
+    def opening(where: Path) -> bool:
+        opened.append(where)
+        return True
+
+    monkeypatch.setattr(run_log, "open_file", opening)
+    hidden_window._open_log()
+    assert opened == [path]
+
+
+# -- shadow plans as 3D Documents (roadmap R1) ------------------------------
+
+
+def test_the_shadow_plans_draw_the_diagrams_days_and_hours_as_documents(
+    hidden_window: Any,
+) -> None:
+    """The same instants, a second way: the diagram's own days and hours go
+    with it, what was filled in is sent, and a blank is left to the command."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadow_plans.set(True)
+    for name, lit in hidden_window.shadow_day_ticks.items():
+        lit.set(name in ("winter", "summer"))
+    hidden_window.shadow_plan_label.insert(0, "Proposed")
+    hidden_window.shadow_plan_pen.insert(0, "3")
+
+    (job,) = hidden_window.jobs()
+
+    assert job.label == window.SHADOW_PLAN_JOB
+    assert job.args[:3] == ["shadow-plans", "--timezone", "Australia/Sydney"]
+    assert flag(job.args, "--shadow-date") == ["06-21,12-21"]
+    assert flag(job.args, "--shadow-hour") == [hidden_window.shadow_hours.get().strip()]
+    # The project's own list: this one has no shadow diagram combination.
+    assert flag(job.args, "--layer-combination") == [hidden_window.shadow_plan_combination.get()]
+    assert hidden_window.shadow_plan_combination.get() in (
+        hidden_window.shadow_plan_combination.cget("values")
+    )
+    assert flag(job.args, "--label") == ["Proposed"]
+    assert flag(job.args, "--shadow-pen") == ["3"]
+    assert "--pen-set" not in job.args, "a blank keeps each view's own"
+
+    sheets = hidden_window.planned()
+    assert {sheet.study for sheet in sheets} == {"Shadow plans"}
+    assert {sheet.day for sheet in sheets} == {"21 Jun", "21 Dec"}
+
+    saved = hidden_window.settings()
+    assert saved["study_shadow_plans"] is True
+    assert saved["shadow_plan_label"] == "Proposed"
