@@ -156,7 +156,13 @@ def test_the_tools_are_listed_with_what_they_take(client: Client) -> None:
         "shadow_diagrams",
         "shadow_plans",
         "sun_views",
+        "cos_solar",
     }
+    cos = listed["cos_solar"]["inputSchema"]
+    assert set(cos["required"]) == {"layer_combination", "zone_layer"}, (
+        "the combination is asked for, not defaulted"
+    )
+    assert "Ask the person" in cos["properties"]["layer_combination"]["description"]
     site = listed["site_analysis"]["inputSchema"]
     assert site["required"] == ["address"]
     assert site["additionalProperties"] is False, "a misspelled option is refused, not ignored"
@@ -485,3 +491,39 @@ def test_the_shadow_plans_take_the_diagrams_days_and_hours() -> None:
     assert argv[argv.index("--label") + 1] == "Proposed"
     assert argv[argv.index("--shadow-pen") + 1] == "3"
     assert "--pen-set" not in argv, "left to the command when not given"
+
+
+def test_cos_solar_is_the_windows_communal_job_under_the_combination_asked_for() -> None:
+    """The layer combination is the person's answer, and the export is native."""
+    argv = tools.cos_argv(
+        tools.CosArguments(
+            layer_combination="IFC Export",
+            zone_layer="06 | Zone.SEPP 65",
+            zone_names=["COS"],
+            storeys=["LEVEL 01 (2)", "LEVEL 08 (9)"],
+            storey_to="LIFT OVERRUN",
+            hours=2,
+        ),
+        zone_layers=["06 | Zone.SEPP 65", "06 | Zone.Units", "10 | Calc.GFA"],
+    )
+    assert argv[:3] == ["massing", "--timezone", "Australia/Sydney"]
+    assert argv[argv.index("--export") + 1] == "native"
+    assert argv[argv.index("--layer-combination") + 1] == "IFC Export"
+    assert argv[argv.index("--zone-layer") + 1] == "06 | Zone.SEPP 65"
+    assert [argv[i + 1] for i, v in enumerate(argv) if v == "--zone-storey"] == [
+        "LEVEL 01 (2)",
+        "LEVEL 08 (9)",
+    ]
+    assert [argv[i + 1] for i, v in enumerate(argv) if v == "--require-layer"] == [
+        "06 | Zone.SEPP 65",
+        "06 | Zone.Units",
+    ], "the zone layers, not somebody's area schedule"
+    assert argv[argv.index("--exclude-above-storey") + 1] == "LIFT OVERRUN"
+    assert argv[argv.index("--zone-hours") + 1] == "2"
+    assert {"--zone-sheet", "--zone-stats", "--zone-hourly"} <= set(argv)
+    assert "--date" not in argv, "midwinter keeps the command's own names"
+
+
+def test_cos_solar_without_a_layer_combination_is_refused() -> None:
+    with pytest.raises(protocol.InvalidArgumentsError, match="layer_combination"):
+        tools._validated(tools.CosArguments, {"zone_layer": "06 | Zone.SEPP 65"})

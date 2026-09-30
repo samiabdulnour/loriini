@@ -8,7 +8,7 @@ through ``app.runner``, exactly as the window runs them, and hand back the
 run's last lines with its exit code; each line also goes to the client as
 it is printed, so the agent and its person watch the study go.
 
-The three studies the office runs most have tools of their own, whose
+The studies the office runs most have tools of their own, whose
 arguments are the questions a person is asked on the window's pages, spelled
 onto the command line the way ``Window.jobs`` spells them. Everything else
 the command line offers is reached through ``run_loriini``, with
@@ -56,7 +56,10 @@ INSTRUCTIONS = (
     "messages while it runs, and the answer is the run's last lines with its exit code. Run "
     "one study at a time. loriini_help gives every option of a command, and run_loriini "
     "runs any command line the help describes, for what the named tools do not cover. A run "
-    "changes the person's project: run into it only what they asked for."
+    "changes the person's project: run into it only what they asked for. Before cos_solar, "
+    "ask the person which layer combination to use, offering the ones project_options lists: "
+    "it decides what is exported and so what casts shadow, and a guess brings in temporary "
+    "and no-print geometry."
 )
 
 T = TypeVar("T", bound="Arguments")
@@ -312,6 +315,76 @@ class SunViewArguments(SheetedArguments):
     )
 
 
+class CosArguments(SheetedArguments):
+    layer_combination: str = Field(
+        min_length=1,
+        description=(
+            "The layer combination the model is exported under -- what casts shadow on the "
+            "communal open space. Ask the person which one; never choose it yourself. "
+            "project_options lists them, and the office's is usually its IFC export one."
+        ),
+    )
+    zone_layer: str = Field(
+        min_length=1,
+        description="The layer the communal open space Zones are on, from project_options.",
+    )
+    zone_names: list[str] = Field(
+        default_factory=list,
+        description="Only the Zones with these names, e.g. ['COS']; all on the layer otherwise.",
+    )
+    storeys: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Only the Zones on these storeys, spelled as project_options lists them, e.g. "
+            "['LEVEL 01 (2)']. Everything above still shades them."
+        ),
+    )
+    storey_from: str | None = Field(
+        default=None,
+        description="The storey the building starts at; geometry below it is dropped.",
+    )
+    storey_to: str | None = Field(
+        default=None,
+        description=(
+            "The storey the building ends at, e.g. 'LIFT OVERRUN'; geometry above it -- parked "
+            "hotlink masters -- is dropped."
+        ),
+    )
+    require_layers: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Zone layers forced into the export whatever the combination shows; the project's "
+            "'Zone.' layers otherwise, which is what places the drawing."
+        ),
+    )
+    hours: float | None = Field(
+        default=None,
+        gt=0,
+        description="Also split the Zones at this many hours of sun: 2 in Sydney's metro area.",
+    )
+    hourly: bool = Field(default=True, description="Also draw a plan at each whole hour.")
+    day: str | None = Field(
+        default=None,
+        description="The day: winter, equinox, summer, or MM-DD; the ruleset's own day otherwise.",
+    )
+    zone_height_m: float | None = Field(
+        default=None, ge=0, description="Height above the Zone floor to assess; 1 m otherwise."
+    )
+    zone_grid_m: float | None = Field(
+        default=None, gt=0, description="Grid spacing over the Zones, in metres."
+    )
+    view_combination: str | None = Field(
+        default=None, description="The layer combination the communal sheets are drawn over."
+    )
+    subset: str | None = Field(
+        default=None, description="The Layout Book subset the sheets are filed in."
+    )
+    table: str | None = Field(
+        default=None, description="Write the COS schedules, one per Zone, to this .xlsx."
+    )
+    csv: str | None = Field(default=None, description="Write every area figure to this CSV.")
+
+
 def _validated(model: type[T], arguments: Mapping[str, Any]) -> T:
     try:
         return model.model_validate(dict(arguments))
@@ -458,6 +531,44 @@ def sun_views_argv(arguments: SunViewArguments) -> list[str]:
     return argv
 
 
+def cos_argv(arguments: CosArguments, zone_layers: Sequence[str] = ()) -> list[str]:
+    """The window's communal job. ``zone_layers`` are the project's, forced
+    into the export when the agent names none, as the window forces them."""
+    a = arguments
+    argv = [
+        "massing",
+        "--timezone",
+        TIMEZONE,
+        *_common(a),
+        *_option("--layer-prefix", a.layer_prefix),
+        "--export",
+        "native",
+        "--zone-layer",
+        a.zone_layer,
+    ]
+    for name in a.zone_names:
+        argv += ["--zone-name", name]
+    for storey in a.storeys:
+        argv += ["--zone-storey", storey]
+    for name in a.require_layers or [n for n in zone_layers if "Zone." in n] or zone_layers:
+        argv += ["--require-layer", name]
+    argv += ["--layer-combination", a.layer_combination]
+    argv += _option("--exclude-below-storey", a.storey_from)
+    argv += _option("--exclude-above-storey", a.storey_to)
+    argv += _option("--master-layout", a.master_layout) + _option("--zone-subset", a.subset)
+    argv += _option("--zone-view-combination", a.view_combination)
+    argv += _option("--zone-height", a.zone_height_m) + _option("--zone-grid", a.zone_grid_m)
+    argv += _option("--zone-csv", a.csv) + _option("--zone-table", a.table)
+    argv += _option("--zone-hours", a.hours)
+    # The areas always, as the window: a plan without them invites a figure
+    # read off a colour.
+    argv += ["--zone-sheet", "--zone-stats"]
+    if a.hourly:
+        argv += ["--zone-hourly"]
+    argv += _option("--year", a.year) + _date_args(a.day) + _option("--sheets", a.sheets)
+    return argv
+
+
 # -- running one --------------------------------------------------------------------
 
 
@@ -580,6 +691,12 @@ def sun_views(arguments: Mapping[str, Any], call: Call) -> ToolResult:
     return run_command(sun_views_argv(_validated(SunViewArguments, arguments)), call)
 
 
+def cos_solar(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    a = _validated(CosArguments, arguments)
+    zone_layers = () if a.require_layers else probe.options(a.port).zone_layers
+    return run_command(cos_argv(a, zone_layers), call)
+
+
 TOOLS: tuple[Tool, ...] = (
     Tool(
         "archicad_instances",
@@ -612,8 +729,9 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "run_loriini",
-        "Run any Loriini command line, for what the named tools do not cover: the solar "
-        "analysis (archicad-run, massing), the reports, the checks. It runs into the open "
+        "Run any Loriini command line, for what the named tools do not cover: the apartment "
+        "solar analysis (archicad-run), massing studies, the reports, the checks -- "
+        "communal open space is cos_solar's. It runs into the open "
         "project and takes minutes; its lines are streamed and the last ones returned.",
         RunArguments.model_json_schema(),
         run_loriini,
@@ -656,6 +774,15 @@ TOOLS: tuple[Tool, ...] = (
         SunViewArguments.model_json_schema(),
         sun_views,
         title="Sun views",
+    ),
+    Tool(
+        "cos_solar",
+        "Solar access to communal open space: the Zones asked for, banded by hours of direct "
+        "sun, split at the threshold and drawn at each hour, on layouts with their areas, and "
+        "the COS schedule per Zone. Ask the person which layer combination to use first.",
+        CosArguments.model_json_schema(),
+        cos_solar,
+        title="COS solar",
     ),
 )
 
