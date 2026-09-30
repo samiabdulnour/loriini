@@ -57,9 +57,16 @@ INSTRUCTIONS = (
     "one study at a time. loriini_help gives every option of a command, and run_loriini "
     "runs any command line the help describes, for what the named tools do not cover. A run "
     "changes the person's project: run into it only what they asked for. Before cos_solar, "
-    "ask the person which layer combination to use, offering the ones project_options lists: "
-    "it decides what is exported and so what casts shadow, and a guess brings in temporary "
-    "and no-print geometry."
+    "ask the person two layer combinations and a master layout, offering the ones "
+    "project_options lists: the combination "
+    "the model is exported under, which decides what casts shadow -- a guess brings in "
+    "temporary and no-print geometry -- and the one the diagrams are drawn over, the plan "
+    "the reader sees under the colours, usually the office's DA plans; left to default it "
+    "is the export combination; and the master the sheets are made from, as the project's "
+    "default places them wrong. Before any study, ask the person to close any open dialog "
+    "and put a floor plan in front: Archicad refuses the whole API while a dialog is open, "
+    "and refuses the save a study ends with while the 3D window is in front, which leaves "
+    "the sheets without their tables."
 )
 
 T = TypeVar("T", bound="Arguments")
@@ -316,6 +323,14 @@ class SunViewArguments(SheetedArguments):
 
 
 class CosArguments(SheetedArguments):
+    master_layout: str = Field(
+        min_length=1,
+        description=(
+            "The master layout the sheets are made from, e.g. the office's B1 DA master: the "
+            "project's default puts the drawings in the wrong place. Ask the person which "
+            "one; never choose it yourself. project_options lists them."
+        ),
+    )
     layer_combination: str = Field(
         min_length=1,
         description=(
@@ -373,8 +388,13 @@ class CosArguments(SheetedArguments):
     zone_grid_m: float | None = Field(
         default=None, gt=0, description="Grid spacing over the Zones, in metres."
     )
-    view_combination: str | None = Field(
-        default=None, description="The layer combination the communal sheets are drawn over."
+    view_combination: str = Field(
+        min_length=1,
+        description=(
+            "The layer combination the diagrams are drawn over -- the plan the reader sees "
+            "under the colours, usually the office's DA plans. Ask the person which one; "
+            "never choose it yourself. project_options lists them."
+        ),
     )
     subset: str | None = Field(
         default=None, description="The Layout Book subset the sheets are filed in."
@@ -779,7 +799,9 @@ TOOLS: tuple[Tool, ...] = (
         "cos_solar",
         "Solar access to communal open space: the Zones asked for, banded by hours of direct "
         "sun, split at the threshold and drawn at each hour, on layouts with their areas, and "
-        "the COS schedule per Zone. Ask the person which layer combination to use first.",
+        "the COS schedule per Zone. Ask the person first which layer combination to export "
+        "under, which one to draw the diagrams over and which master layout the sheets go on, "
+        "and to put a floor plan in front.",
         CosArguments.model_json_schema(),
         cos_solar,
         title="COS solar",

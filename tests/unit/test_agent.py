@@ -159,10 +159,15 @@ def test_the_tools_are_listed_with_what_they_take(client: Client) -> None:
         "cos_solar",
     }
     cos = listed["cos_solar"]["inputSchema"]
-    assert set(cos["required"]) == {"layer_combination", "zone_layer"}, (
-        "the combination is asked for, not defaulted"
-    )
+    assert set(cos["required"]) == {
+        "layer_combination",
+        "view_combination",
+        "master_layout",
+        "zone_layer",
+    }, "both combinations and the master are asked for, not defaulted"
     assert "Ask the person" in cos["properties"]["layer_combination"]["description"]
+    assert "Ask the person" in cos["properties"]["view_combination"]["description"]
+    assert "Ask the person" in cos["properties"]["master_layout"]["description"]
     site = listed["site_analysis"]["inputSchema"]
     assert site["required"] == ["address"]
     assert site["additionalProperties"] is False, "a misspelled option is refused, not ignored"
@@ -498,6 +503,8 @@ def test_cos_solar_is_the_windows_communal_job_under_the_combination_asked_for()
     argv = tools.cos_argv(
         tools.CosArguments(
             layer_combination="IFC Export",
+            view_combination="01 | Plans - DA",
+            master_layout="DA B1 - VERTICAL - 1:250",
             zone_layer="06 | Zone.SEPP 65",
             zone_names=["COS"],
             storeys=["LEVEL 01 (2)", "LEVEL 08 (9)"],
@@ -509,6 +516,10 @@ def test_cos_solar_is_the_windows_communal_job_under_the_combination_asked_for()
     assert argv[:3] == ["massing", "--timezone", "Australia/Sydney"]
     assert argv[argv.index("--export") + 1] == "native"
     assert argv[argv.index("--layer-combination") + 1] == "IFC Export"
+    assert argv[argv.index("--zone-view-combination") + 1] == "01 | Plans - DA", (
+        "the diagrams are drawn over the plans asked for, not the export combination"
+    )
+    assert argv[argv.index("--master-layout") + 1] == "DA B1 - VERTICAL - 1:250"
     assert argv[argv.index("--zone-layer") + 1] == "06 | Zone.SEPP 65"
     assert [argv[i + 1] for i, v in enumerate(argv) if v == "--zone-storey"] == [
         "LEVEL 01 (2)",
@@ -526,4 +537,39 @@ def test_cos_solar_is_the_windows_communal_job_under_the_combination_asked_for()
 
 def test_cos_solar_without_a_layer_combination_is_refused() -> None:
     with pytest.raises(protocol.InvalidArgumentsError, match="layer_combination"):
-        tools._validated(tools.CosArguments, {"zone_layer": "06 | Zone.SEPP 65"})
+        tools._validated(
+            tools.CosArguments,
+            {
+                "zone_layer": "06 | Zone.SEPP 65",
+                "view_combination": "01 | Plans - DA",
+                "master_layout": "DA B1 - VERTICAL - 1:250",
+            },
+        )
+
+
+def test_cos_solar_without_a_view_combination_is_refused() -> None:
+    """Left out, the diagrams are drawn over the export combination: on Kogarah
+    that put the colours over IFC export geometry instead of the DA plans."""
+    with pytest.raises(protocol.InvalidArgumentsError, match="view_combination"):
+        tools._validated(
+            tools.CosArguments,
+            {
+                "zone_layer": "06 | Zone.SEPP 65",
+                "layer_combination": "12 | IFC ARCH. EXPORT",
+                "master_layout": "DA B1 - VERTICAL - 1:250",
+            },
+        )
+
+
+def test_cos_solar_without_a_master_layout_is_refused() -> None:
+    """Left out, the sheets are made from the project's default master: on
+    Kogarah that placed them wrong, and they were deleted by hand."""
+    with pytest.raises(protocol.InvalidArgumentsError, match="master_layout"):
+        tools._validated(
+            tools.CosArguments,
+            {
+                "zone_layer": "06 | Zone.SEPP 65",
+                "layer_combination": "12 | IFC ARCH. EXPORT",
+                "view_combination": "01 | Plans - DA",
+            },
+        )
