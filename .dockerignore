@@ -1,0 +1,5 @@
+# Only the licence service is built into a container (deploy/licence-service),
+# and it needs the package's source and nothing else.
+*
+!src/sun_study/
+**/__pycache__

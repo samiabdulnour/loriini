@@ -3,9 +3,14 @@
 *An analysis, 29 September 2026.* What Loriini should sell, for how long, how the
 licence is kept, how it is paid for, and what runs it. It starts from what the product
 is and who buys it, looks at how comparable software is licensed and priced, and ends
-in a recommendation and the decisions only the owner can make. Nothing here is built
-beyond the offline keys of R5 ([`licensing.md`](licensing.md), D124); §9 says what
-building it would change.
+in a recommendation and the decisions only the owner can make.
+
+**Built, 29 September 2026.** The owner took the recommendations, and the online
+part is built (D125): leases, seats, withdrawal and recall; the licence service
+and its Stripe webhook; the vendor's commands. [`licensing.md`](licensing.md) is
+how it is used, and [`licence-service.md`](licence-service.md) is how the
+service is put up. The prices in §8 and the terms in §7 are still the owner's to
+set.
 
 ## The answer
 
@@ -13,7 +18,7 @@ building it would change.
 |---|---|
 | **What is sold** | A practice's subscription, counted in **seats**, where a seat is a computer that has used Loriini in the last fortnight. The key names the practice. |
 | **For how long** | **Annual** as the anchor, paid by invoice or card; **monthly** at a premium, for a practice that needs Loriini for one DA; a **14-day trial**. No perpetual licence. |
-| **How it is kept** | The signed key R5 built, **activated online** once per computer, then kept alive by **short signed leases** the program renews by itself. A new month renews without anyone pasting anything. A withdrawal reaches a computer that is online the same day, and one kept offline within a fortnight. A day offline changes nothing. |
+| **How it is kept** | The signed key R5 built, **activated online** once per computer, then kept alive by **short signed leases** the program renews by itself. A new month renews without anyone pasting anything. A withdrawal reaches a computer that is online at its next daily check, and one kept offline within a fortnight. A day offline changes nothing. |
 | **How it is paid** | **Stripe, directly, in AUD.** Card or BECS for self-serve plans; annual invoices paid by bank transfer for practices that pay that way. Every invoice is a tax invoice carrying the owner's ABN. It costs less than half what a merchant of record takes. |
 | **What runs it** | **A small licence service of our own**: Python and SQLite in one container, on R5's keys, for about A$10 a month. Every service for sale still needs a server of ours for Stripe's webhooks, so buying one adds a vendor without removing the server. Keygen is the fallback if running anything is unwelcome. |
 | **Also** | The licensee is named in what Loriini writes into a project. The build's fixed end date gives way to a minimum version the service can raise: a recall for a build with a known wrong result. Offline keys stay, for an office that cannot go online. |
@@ -228,8 +233,8 @@ what the practice pastes once. The lease is what the program fetches by itself.
   and the lease's notice says what to do in the meantime. R5's week of grace was chosen
   for keys sent by email, and it stays for those.
 - **A refusal is signed too,** so the program believes it and stops at once.
-  Withdrawal is immediate for a computer that is online. Nobody but the vendor can
-  forge a refusal to stop a practice.
+  A withdrawal reaches a computer that is online at its next daily check. Nobody
+  but the vendor can forge a refusal to stop a practice.
 - **The clock.** A lease carries the service's own date. A computer whose clock reads
   earlier than the day its lease was given asks the service again before it believes
   the lease, so winding the clock back gains nothing on a computer that is online.
@@ -249,8 +254,8 @@ It sends:
 - optionally, the Archicad licence's serial.
 
 It sends nothing about projects, files or results. This is a deliberate change from
-R6's stance that the update check sends no identifier. The privacy note on the website
-says what is sent and why, and so does `licensing.md`.
+R6's stance that the update check sends no identifier. The privacy note says what
+is sent and why, and so does `licensing.md`.
 
 ### 4.4 When things go wrong
 
@@ -371,8 +376,9 @@ but name, at the price of replacing R5's keys with Keygen's.
   clause 1: online, so that it receives recalls and notices, but never refused for
   payment, and with more seats than the practice has desks.
 - **Trials.** Fourteen days, three seats, online, with outputs stamped. They are issued
-  by hand at first; the website issues them later (R7). A trial is tied to an email
-  address and a computer, so a second trial on the same computer is visible.
+  by hand at first, and later from a Stripe payment link with a free trial. A trial is
+  tied to an email address and a computer, so a second trial on the same computer is
+  visible.
 - **Education.** Free, later: Archicad's education flag is readable from the add-on,
   and education outputs are stamped too.
 - **Graphisoft, and whoever else sells to these practices.** There is no Graphisoft
@@ -451,7 +457,9 @@ A starting point, to be tested with the first practices:
     `seats`, `release`;
   - the licensee written beside each result, and the trial stamp.
 
-  Four to six days, the service included.
+  Built on 29 September 2026 (D125). The trial stamp on sheets waits for the
+  prototype notice to go, since every sheet says "not validated for submission"
+  until it does.
 - **R6.** The minimum version lives in the lease. The update manifest stays a static
   file, as R6 planned; the lease's notice can point at it.
 - **R7.** The shop's webhook stops emailing a new key every period. It tells the
@@ -478,8 +486,8 @@ Each with what this note recommends:
    with the ABN.
 6. **Build or buy the licence service.** *Recommended: build it,* on R5's keys as
    they are. *Fallback: Keygen Cloud.*
-7. **Where it runs.** A small container host or VPS, and a name for it under the
-   website's domain (R7). The owner opens both accounts.
+7. **Where it runs.** A small container host or VPS, opened by the owner.
+   *Chosen, 29 September: Fly.io, at its own `fly.dev` address.*
 8. **The lease and the grace.** *Recommended: 14 days each.*
 9. **The terms.** A commercial licence agreement and a privacy note, with the
    continuity promise in them, and a lawyer's hour on both.
@@ -487,7 +495,8 @@ Each with what this note recommends:
     1. merge PR #12;
     2. R5's second half: the service, leases, seats and recall, with Fuse and the
        first practices moved to online keys by hand;
-    3. Stripe and the website (R7);
+    3. Stripe. A website was decided against on 29 September: Stripe's hosted
+       checkout sells, and R6 delivers the program;
     4. Graphisoft ID seats, when the add-on moves to Archicad 28 or later.
 
 ## Sources

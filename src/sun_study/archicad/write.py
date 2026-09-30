@@ -766,13 +766,18 @@ def write_assessment(
     *,
     match: ApartmentMatch | None = None,
     run_stamp: str | None = None,
+    licensee: str = "",
 ) -> WriteReport:
     """Write one building assessment onto the project's Zones.
 
     ``match`` is computed if not supplied. Pass the same one used for drawing
-    so both describe the same apartments.
+    so both describe the same apartments. ``licensee`` -- whose licence made
+    the run (``licence.licensee``) -- goes beside the run's time, so every
+    result in a project says which licence made it (D125).
     """
     stamp = run_stamp or dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M UTC")
+    if licensee:
+        stamp = f"{stamp} · {licensee}"
     properties = existing_properties(connection)
     unknown = [spec.name for spec in APARTMENT_PROPERTIES if spec.name not in properties]
     if unknown:

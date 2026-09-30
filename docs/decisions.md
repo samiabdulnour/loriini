@@ -4534,3 +4534,113 @@ email written as an unsent ``.eml`` draft (``X-Unsent: 1``) or sent over SMTP
 with TLS; ``show`` for support. The shop's webhook (R7) will call ``issue``
 with each invoice's paid-through date.
 
+
+### D125 — Online keys, kept in force by signed leases from a licence service of our own
+
+Asked on 29 September 2026: "I think I need something online, for monthly sub or
+revoking the access", then, once docs/licence-model.md had weighed it, "go with
+your recommendations, merge and build the online part".
+
+**A key and a lease.** An online key is an R5 key with a flag set: the licence's
+identity, pasted once, kept while the subscription lasts. On its own it grants
+nothing. What keeps it in force is a *lease* (``sun_study.licence_lease``):
+- what it says: the licence, a one-way hash of the computer, the service's date,
+  the last day it is in force, the paid-to date, the seats and how many are in
+  use, the version it was given to, and a notice;
+- how it is signed: with the same Ed25519 key as the licence keys, under a
+  domain tag of its own, so neither can pass for the other.
+
+A key's last day is the end of the first period paid for, where the service
+starts from. After that Loriini never looks at it. A flag it does not know
+refuses the key as too new rather than reading it as offline.
+
+**Fourteen days, asked once a day.** A lease runs a fortnight past the service's
+date, never past the paid-to date plus the grace, and is in force from the day
+before it was given: the service keeps UTC, and the Americas are a day behind.
+- **When a start asks.** It renews in the background when the lease held was
+  fetched on an earlier day. It waits, up to 15 seconds, only when no lease is
+  in force: the first time, or after a fortnight offline.
+- **How it compares.** Graphisoft's named licences allow 7 days offline, Chaos
+  14, and Adobe, Autodesk and JetBrains 30. The same fortnight is how long a
+  seat stays taken after its computer's last contact.
+
+**A refusal is signed like a grant**, and carries its reason in a sentence:
+withdrawn, lapsed, seats, recalled. Loriini believes it and stops at the next
+contact, and nobody but the vendor can forge one to stop a practice. Anything
+unsigned from the network is only "the service could not be reached", and
+changes nothing.
+
+**Seats are computers used in the last fortnight, with a margin of one.**
+Loriini installs anywhere, and a burst of use rotates the seats. A computer
+that is replaced frees its seat by itself, and ``licence --remove`` frees one
+at once. A computer new to a licence already on as many computers as its
+seats is granted, with a notice that says which seat frees itself when. One
+more is refused, with the names of the computers holding the seats. A computer
+already counted is never refused for seats.
+
+**A recall instead of the fixed term, for online keys.** The service refuses
+versions below a minimum the vendor sets, with the reason and where the
+current one is. A refusal given to another version is ignored, so updating
+lifts it. ``EXPIRES`` keeps binding builds that take no keys, and offline
+keys, where nothing else can reach them. A keyed build with no key is asked
+for one before its term is mentioned.
+
+**The clock.** A computer whose date is earlier than the day before its lease
+was given is told to set its clock right, with the service's date. A clock
+that once ran ahead is never punished afterwards, which was D124's objection
+to remembering dates. Off the network, a clock held inside the fortnight still
+works, as any check made offline would.
+
+**The service is ours** (``sun_study.licence_service``).
+- **What it is.** The standard library, SQLite, a WSGI app behind the host's
+  TLS, one small container (``deploy/licence-service``).
+- **Why ours.** R5's keys and signing were already built and tested, and every
+  service for sale would still need a server of ours for Stripe's webhooks.
+  Its signing key is the trust anchor, pinned in the build, so no third party's
+  outage or certificate can lock a practice out.
+- **The ledger.** It numbers and keeps every licence. A genuine key it has
+  never seen is taken in from what the key says.
+- **The vendor's side.** Behind an admin token: issue, look up, change,
+  withdraw, restore, free a seat, recall, notices, and a backup that is the
+  SQLite file itself.
+- **Kept out of the program.** Nothing Loriini imports reaches it (a test
+  says so), and the bundle leaves it out, as it leaves out ``licence_issue``.
+
+**Stripe, directly, in AUD** (docs/licence-model.md §5).
+- **Webhooks.** Each is checked against the endpoint's secret with a
+  five-minute tolerance, and handled once by event id. What arrives about a
+  subscription before its checkout is noted and taken up when the licence is
+  made.
+- **Checkout.** It makes the licence, issues its online key, and emails it.
+- **Payments.** Only ``invoice.paid`` moves the paid-to date. A subscription
+  starts its next period before the card has paid for it.
+- **A failed payment** puts its date on every lease while Stripe retries.
+- **The grace** is 14 days, Stripe's retry window. A subscription set to end
+  loses it, and gets it back if it is set going again.
+- **Other buyers.** A practice paying by invoice gets ``paid``.
+
+**What the check sends:**
+- the key;
+- the computer's hash: Windows' machine GUID and the user's name, hashed with
+  the product's name, or an identifier made once where there is no GUID;
+- ``user on computer``, so a practice can tell its seats apart;
+- the version.
+
+Nothing about any project is sent. This is a deliberate change from R6's "no
+identifier", and the privacy note says it.
+
+**Whose licence made a result.** The CSV and JSON headers carry a ``licence``
+line, and the Zone property *Solar Analysis Run* carries it beside the time. A
+build that takes no keys writes neither, so its files are unchanged. A trial's
+reads "trial licence".
+
+**Not done, on purpose:**
+- floating seats with heartbeats, and accounts or logins: later, if a large
+  practice asks;
+- seats by Graphisoft ID: once the add-on targets Archicad 28, whose API has
+  the identifiers;
+- obfuscation, which only makes antivirus software more suspicious;
+- rate limiting beyond the host's;
+- a trial stamp drawn on sheets: every sheet already says "not validated for
+  submission" while the prototype notice stands. The stamp is due when that
+  notice goes.

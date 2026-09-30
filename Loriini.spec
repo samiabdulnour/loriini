@@ -31,10 +31,11 @@ datas += collect_data_files('tzdata')
 datas += collect_data_files('sun_study')
 hiddenimports += collect_submodules('typer')
 # The Rhino reader is a dev-only path and drags 6 MB of rhino3dm in. The
-# licence issuer is the vendor's side (scripts/licence.py): Loriini only
-# checks keys, and a program that carried the code that makes them would be
+# licence issuer and the licence service are the vendor's side
+# (scripts/licence.py, deploy/licence-service): Loriini only checks keys and
+# leases, and a program that carried the code that makes them would be
 # advertising where to look.
-hiddenimports += [m for m in collect_submodules('sun_study') if not m.startswith(('sun_study.ingest.rhino', 'sun_study.licence_issue'))]
+hiddenimports += [m for m in collect_submodules('sun_study') if not m.startswith(('sun_study.ingest.rhino', 'sun_study.licence_issue', 'sun_study.licence_service'))]
 # ifcopenshell: the package and its wrapper, without the express rules, the
 # MVD examples and the schema dumps nothing here imports -- 20 MB of the
 # 106 MB it weighs when collected whole.

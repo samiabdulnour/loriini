@@ -194,9 +194,17 @@ class About(tk.Toplevel):
             )
             self._holder.grid(row=row, column=0, sticky="w", pady=(0, 4))
             row += 1
-            ttk.Button(page, text="Enter licence key…", command=self._enter_key, width=20).grid(
-                row=row, column=0, sticky="w", pady=(0, 8)
+            keys = ttk.Frame(page)
+            keys.grid(row=row, column=0, sticky="w", pady=(0, 8))
+            ttk.Button(keys, text="Enter licence key…", command=self._enter_key, width=20).grid(
+                row=0, column=0
             )
+            # An online key can be checked with the licence service on the
+            # spot -- after a payment, or a seat freed elsewhere (D125).
+            self._check = ttk.Button(keys, text="Check now", command=self._check_now, width=12)
+            self._check.grid(row=0, column=1, padx=(6, 0))
+            if not licence.standing().online:
+                self._check.grid_remove()
             row += 1
         for clause in licence.SUMMARY:
             ttk.Label(
@@ -402,7 +410,49 @@ class About(tk.Toplevel):
         from sun_study.app import licence_box
 
         if licence_box.ask(self) is not None:
-            self._holder.configure(text=licence.standing().describe())
+            self._show_standing()
+
+    def _show_standing(self) -> None:
+        found = licence.standing()
+        self._holder.configure(text=found.describe())
+        if found.online:
+            self._check.grid()
+        else:
+            self._check.grid_remove()
+
+    def _check_now(self) -> None:
+        """Ask the licence service now, in the background, and say the answer."""
+        import threading
+
+        done: list[licence.Standing] = []
+        asking = threading.Thread(
+            target=lambda: done.append(licence.renew()), name="licence check", daemon=True
+        )
+        self._holder.configure(text="Checking the licence with the licence service…")
+        self._check.configure(state="disabled")
+        asking.start()
+
+        def answered() -> None:
+            if asking.is_alive():
+                self._waiting = self.after(100, answered)
+                return
+            self._waiting = None
+            self._check.configure(state="normal")
+            found = done[0] if done else licence.standing()
+            self._holder.configure(text=found.describe())
+
+        self._waiting = self.after(100, answered)
+
+    #: The look at a licence check that is due next, while one runs.
+    _waiting: str | None = None
+
+    def destroy(self) -> None:
+        # Closed while a check runs: it finishes on its own, and keeps what
+        # it gets; nothing is left to write into a closed box.
+        if self._waiting is not None:
+            self.after_cancel(self._waiting)
+            self._waiting = None
+        super().destroy()
 
     def _show_the_licence(self) -> None:
         """The whole text, in a window of its own.
