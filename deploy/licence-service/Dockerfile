@@ -4,7 +4,7 @@
 # Built from the repository's root, where .dockerignore lets in src/ alone:
 #
 #   fly deploy . --config deploy/licence-service/fly.toml \
-#       --dockerfile deploy/licence-service/Dockerfile
+#       --dockerfile deploy/licence-service/Dockerfile --ha=false
 #
 # It runs as root inside its container because the host mounts the volume
 # that holds the database as root; the container holds nothing else.
