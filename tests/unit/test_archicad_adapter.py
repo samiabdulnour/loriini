@@ -3345,6 +3345,60 @@ def test_an_open_modal_dialog_is_explained_rather_than_relayed() -> None:
     assert "not a problem with the project or the tool" in message
 
 
+class _HandOnTheMouse:
+    """Archicad while a double-click is still landing: the same code 4001,
+    with Archicad's other words, for ``refusals`` sends, and then the answer."""
+
+    def __init__(self, refusals: int) -> None:
+        self.refusals = refusals
+        self.sent = 0
+
+    def send(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.sent += 1
+        if self.sent <= self.refusals:
+            return {
+                "succeeded": False,
+                "error": {"code": 4001, "message": "Invalid program status (ongoing user input)"},
+            }
+        return {"succeeded": True, "result": {"ok": True}}
+
+
+def test_a_hand_still_on_the_mouse_is_waited_out_rather_than_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run asks the person to double-click a worksheet, sees it in front,
+    and sends its next command while the mouse is still down. Archicad refuses
+    that for a moment with "ongoing user input", which is not a dialog left
+    open: the request is sent again until it goes through."""
+    from sun_study.archicad import connection as module
+
+    paused: list[float] = []
+    monkeypatch.setattr(module, "_sleep", paused.append)
+    monkeypatch.setattr(module, "_clock", lambda: 0.0)
+    transport = _HandOnTheMouse(refusals=3)
+    assert ArchicadConnection(transport).run_official("API.GetProjectInfo") == {"ok": True}
+    assert transport.sent == 4
+    assert paused == [module.INPUT_PAUSE_S] * 3
+
+
+def test_a_hand_that_never_lets_go_is_given_up_on_and_said_in_its_own_words(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sun_study.archicad import connection as module
+
+    ticks = iter(range(0, 1000))
+    monkeypatch.setattr(module, "_sleep", lambda _s: None)
+    monkeypatch.setattr(module, "_clock", lambda: float(next(ticks)))
+    transport = _HandOnTheMouse(refusals=10_000)
+    with pytest.raises(CommandFailedError) as raised:
+        ArchicadConnection(transport).run_official("API.GetProjectInfo")
+    assert transport.sent == int(module.INPUT_WAIT_S) + 1
+    message = str(raised.value)
+    assert "ongoing user input" in message
+    assert "Let go of the mouse" in message
+    assert "Close the dialog" not in message, "there is no dialog to close"
+
+
 def test_other_failures_keep_their_code_for_looking_up() -> None:
     """Only 4001 has a known fix. Everything else needs its number."""
 

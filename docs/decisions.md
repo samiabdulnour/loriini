@@ -4550,3 +4550,29 @@ email written as an unsent ``.eml`` draft (``X-Unsent: 1``) or sent over SMTP
 with TLS; ``show`` for support. The shop's webhook (R7) will call ``issue``
 with each invoice's paid-through date.
 
+### D125 — A refusal for "ongoing user input" is waited out, not failed
+
+Seen on 7 October 2026, on the site tools. The run had made the Context
+Analysis worksheet, asked for it to be double-clicked in the Project Map,
+seen it come to the front, and sent its next command -- and Archicad
+refused it with code 4001, *Invalid program status (ongoing user input)*.
+The connection read every 4001 as a modal dialog left open, told the person
+to close a dialog that was not there, and stopped the run. The person had
+done exactly what was asked; the mouse was still down from the double-click.
+
+**The same code means two things, and Archicad says which.** With *there is
+an open modal dialog: X* the API is refused until a person closes X, and the
+run can only say so and stop. With *ongoing user input* it is refused for as
+long as a hand is on the mouse or a field is being edited, which is a moment.
+So `ArchicadConnection.run_official`, which every add-on command also passes
+through, sends a request refused for ongoing input again every second for up
+to thirty seconds before it gives up, and gives up in words that say what to
+let go of rather than what to close. The dialog case still fails at once:
+waiting on a dialog nobody is told about would look like a hang.
+
+**Thirty seconds, silently.** Long enough for a drag or a rename; short
+enough that a field left mid-edit is reported within the minute. Nothing is
+printed while it waits: the connection is also used in the agent's server
+process, whose stdout is the protocol (D120), so it has nothing to print
+with. The stop file is not watched either; thirty seconds is less than the
+runner's own patience.

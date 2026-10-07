@@ -41,6 +41,7 @@ failure. This module raises instead.
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterable
@@ -297,6 +298,27 @@ def _project_name(probe: HttpTransport) -> str:
 #: reads like a fault in the tool.
 BUSY_STATUS_CODE = 4001
 
+#: The same code with these words is something else: the person is in the
+#: middle of doing something by hand -- a double-click still landing, a drag,
+#: a field being typed in -- and Archicad refuses the API for exactly that
+#: long. It passes in a moment, where a dialog stays open until it is closed.
+#: A run that asks the person to double-click a worksheet, sees it in front,
+#: and sends its next command while the mouse is still down meets this every
+#: time, so the request is retried for a while before it is given up on.
+INPUT_BUSY_WORDS = "ongoing user input"
+INPUT_WAIT_S = 30.0
+INPUT_PAUSE_S = 1.0
+
+#: Replaced by the tests, so that a wait of thirty seconds costs them nothing.
+_sleep = time.sleep
+_clock = time.monotonic
+
+
+def _busy_with_input(error: dict[str, Any]) -> bool:
+    return error.get("code") == BUSY_STATUS_CODE and INPUT_BUSY_WORDS in str(
+        error.get("message", "")
+    )
+
 
 def _not_registered(error: ArchicadError) -> bool:
     """Whether a failure means "nobody registered that", not "that went wrong".
@@ -313,6 +335,15 @@ def _explain(command: str, error: dict[str, Any]) -> str:
     """A failed official command, in words that name the fix where there is one."""
     message = str(error.get("message", "no message"))
     code = error.get("code", "none")
+    if _busy_with_input(error):
+        return (
+            f"Archicad is busy and refused the request: {message}\n"
+            f"Something is still being done in Archicad by hand -- a drag, a "
+            f"double-click, a field being edited -- and Archicad refuses the API "
+            f"while it lasts. The request was retried for {INPUT_WAIT_S:.0f} seconds. "
+            f"Let go of the mouse, finish or cancel the edit, and run this again "
+            f"-- this is not a problem with the project or the tool."
+        )
     if code == BUSY_STATUS_CODE:
         return (
             f"Archicad is busy and refused the request: {message}\n"
@@ -424,13 +455,28 @@ class ArchicadConnection:
 
     # -- raw protocol ----------------------------------------------------
     def run_official(self, command: str, parameters: dict[str, Any] | None = None) -> Any:
-        """Run one of Archicad's own ``API.*`` commands."""
-        response = self._transport.send({"command": command, "parameters": parameters or {}})
+        """Run one of Archicad's own ``API.*`` commands.
 
-        if not response.get("succeeded", False):
+        A refusal for *ongoing user input* is waited out: the request is sent
+        again every ``INPUT_PAUSE_S`` for up to ``INPUT_WAIT_S``, since what
+        refuses it is a hand on the mouse, not a dialog. Everything else
+        fails at once.
+        """
+        payload = {"command": command, "parameters": parameters or {}}
+        give_up_at: float | None = None
+        while True:
+            response = self._transport.send(payload)
+            if response.get("succeeded", False):
+                return response.get("result")
             error = response.get("error") or {}
+            if _busy_with_input(error):
+                now = _clock()
+                if give_up_at is None:
+                    give_up_at = now + INPUT_WAIT_S
+                if now < give_up_at:
+                    _sleep(INPUT_PAUSE_S)
+                    continue
             raise CommandFailedError(_explain(command, error), error.get("code"))
-        return response.get("result")
 
     def run_tapir(self, command: str, parameters: dict[str, Any] | None = None) -> Any:
         """Run one of Tapir's commands, as built into the Loriini add-on.
