@@ -276,6 +276,10 @@ class SiteBundle:
     floor_space_ratio: FeatureCollection = field(default_factory=empty)
     """The LEP's FSR polygons, for the future context; empty in a bundle saved
     before it was fetched, which the envelopes then read as no ratio."""
+    heritage: FeatureCollection = field(default_factory=empty)
+    """The LEP's heritage items and conservation areas, for the model to
+    stand the items' buildings in a surface of their own; empty in a bundle
+    saved before it was fetched, which the model reads as no heritage."""
     contours: tuple[nsw.Contour, ...] = ()
     neighbours: tuple[nsw.Neighbour, ...] = ()
     furniture: osm.Furniture = field(default_factory=osm.Furniture)
@@ -306,7 +310,7 @@ class SiteBundle:
         OpenStreetMap's at once where the inventory stops at the boundary.
         """
         used = [sources.SPATIAL]
-        if self.zoning or self.height_of_building or self.floor_space_ratio:
+        if self.zoning or self.height_of_building or self.floor_space_ratio or self.heritage:
             used.append(sources.EPLANNING)
         if self.aerial is not None and self.aerial.tiles:
             used.append(sources.IMAGERY)
@@ -336,6 +340,7 @@ class SiteBundle:
             "zoning": self.zoning,
             "height_of_building": self.height_of_building,
             "floor_space_ratio": self.floor_space_ratio,
+            "heritage": self.heritage,
             "contours": [c.as_dict() for c in self.contours],
             "neighbours": [n.as_dict() for n in self.neighbours],
             "furniture": self.furniture.as_dict(),
@@ -364,6 +369,7 @@ class SiteBundle:
             zoning=data.get("zoning") or empty(),
             height_of_building=data.get("height_of_building") or empty(),
             floor_space_ratio=data.get("floor_space_ratio") or empty(),
+            heritage=data.get("heritage") or empty(),
             contours=tuple(nsw.Contour.from_dict(c) for c in data.get("contours") or []),
             neighbours=tuple(nsw.Neighbour.from_dict(n) for n in data.get("neighbours") or []),
             furniture=osm.Furniture.from_dict(data.get("furniture") or {}),
@@ -810,7 +816,7 @@ def run_model(
     """What a context model needs, for a square of ``radius_m`` each way
     around the site: the contours, every building footprint, the height
     control, the zoning and the floor-space ratio for the future context,
-    and the site itself. Saved as ``data/model.json``.
+    the heritage items, and the site itself. Saved as ``data/model.json``.
 
     The contours are a council's inside its own area and the state's outside
     it, cut at the boundary (``terrain.model_contours``): a kilometre square
@@ -846,6 +852,8 @@ def run_model(
         # sheet fields stay empty.
         f_zoning = soft.submit("zoning", lambda: nsw.zoning(extent), empty())
         f_fsr = soft.submit("floor space ratio", lambda: nsw.floor_space_ratio(extent), empty())
+        # The heritage items, so the model can stand their buildings apart.
+        f_heritage = soft.submit("heritage", lambda: nsw.heritage(extent), empty())
         f_lots = soft.submit("cadastre", lambda: nsw.all_lots(extent), empty())
         f_buildings = soft.submit(
             "building footprints (OSM)", lambda: osm.buildings(extent, log=say), ()
@@ -864,6 +872,7 @@ def run_model(
             zoning=soft.take(f_zoning),
             height_of_building=soft.take(f_hob),
             floor_space_ratio=soft.take(f_fsr),
+            heritage=soft.take(f_heritage),
             contours=tuple(contours),
             furniture=osm.Furniture(buildings=tuple(footprints)),
         )

@@ -1094,6 +1094,67 @@ def test_the_neighbours_stand_on_the_ground_and_the_sites_own_are_left_out() -> 
     assert "blocks: 0 meshes" in report.describe()
 
 
+def test_a_neighbour_on_a_heritage_item_stands_in_its_own_surface() -> None:
+    """The item's building reads as the item: its three faces in the heritage
+    surface, named and coloured in the request so the add-on can make it,
+    and HERITAGE on its ID. A conservation area is not an item."""
+    from sun_study.archicad.context_model import HERITAGE_SURFACE, model_context
+
+    east = LON + 0.00035
+    west = LON - 0.00035
+    bundle = replace(
+        site_bundle(),
+        heritage=collection(
+            polygon(square(east, LAT, 14.0), LAY_CLASS="Item - General", H_NAME="Terrace"),
+            polygon(square(west, LAT, 14.0), LAY_CLASS="Conservation Area"),
+        ),
+        furniture=osm.Furniture(
+            buildings=(
+                osm.Building(east, LAT, tuple(square(east, LAT, 10.0)), levels=2),
+                osm.Building(west, LAT, tuple(square(west, LAT, 10.0)), levels=2),
+            )
+        ),
+    )
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    connection, transport_ = connect(
+        {
+            "GetAttributesByType": {"attributes": _layer_attributes()},
+            "GetCurrentDatabase": {"databaseId": {"guid": "PLAN"}, "windowType": "FloorPlan"},
+            "GetLayers": {"layers": _layer_states()},
+            "CreateMesh": {"success": True, "guid": "MESH"},
+            "CreateSlabs": {
+                "elements": [{"elementId": {"guid": "SLAB1"}}, {"elementId": {"guid": "SLAB2"}}]
+            },
+            "CreateGroups": {"groupGuids": [{"guid": "GROUP"}]},
+            "GetDetailsOfElements": {"detailsOfElements": [{"layerIndex": 9}]},
+            "GetElementsByType": {"elements": []},
+            "GetStories": {"stories": [{"index": 0, "level": 0.0}]},
+            "GetGeoLocation": {
+                "projectLocation": {
+                    "latitude": LAT,
+                    "longitude": LON,
+                    "altitude": 0.0,
+                    "north": 0.0,
+                }
+            },
+            "SetPropertyValuesOfElements": {"executionResults": [{"success": True}]},
+            "GetAllProperties": {"properties": []},
+            "GetPropertyValuesOfElements": {"propertyValuesForElements": []},
+        }
+    )
+    report = model_context(connection, bundle, frame)
+    slabs = transport_.parameters_for("CreateSlabs")["slabs"]
+    assert len(slabs) == 2 and report.heritage == 1
+    listed, plain = slabs
+    assert listed["elementId"] == "SA NEIGHBOUR 2 STOREY (OSM) HERITAGE"
+    assert listed["surface"]["name"] == HERITAGE_SURFACE
+    colour = listed["surface"]["colour"]
+    assert set(colour) == {"red", "green", "blue"}
+    assert all(0.0 <= v <= 1.0 for v in colour.values()), "the add-on takes 0 to 1"
+    assert plain["elementId"] == "SA NEIGHBOUR 2 STOREY (OSM)" and "surface" not in plain
+    assert "1 on heritage items in the 'LORIINI HERITAGE' surface" in report.describe()
+
+
 def test_the_location_is_the_site_on_the_grid_with_north_kept() -> None:
     from sun_study.archicad.context_model import set_project_location
 
@@ -1727,6 +1788,26 @@ def test_asking_to_be_located_is_enough_on_its_own() -> None:
     assert guards, "the location is never set -- has the branch moved?"
     outer = guards[0]
     assert "set_location" in outer, "asking for the location does not reach it: " + outer
+
+
+def test_anchoring_the_site_at_the_origin_locates_the_project_by_default() -> None:
+    """--anchor site puts the origin on the site and, squared, turns the
+    frame: a project that kept its old location would then stand its model in
+    the wrong place and light it from the wrong side. Found on Darlinghurst,
+    where the squared model went in with the north untouched."""
+    import ast
+    from pathlib import Path as _Path
+
+    source = _Path("src/sun_study/cli.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    guards = [
+        ast.unparse(node.test)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.If) and "set_project_location" in ast.unparse(node)
+    ]
+    assert len(guards) >= 2, "the location's own guard is gone -- has the branch moved?"
+    inner = guards[1]
+    assert "at_origin" in inner, "the anchor does not locate the project by default: " + inner
 
 
 def test_locating_a_project_writes_the_grid_and_leaves_north_alone() -> None:

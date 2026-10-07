@@ -8119,8 +8119,9 @@ def site_analysis(
         typer.Option(
             "--set-location/--keep-location",
             help=(
-                "Set the project location to the site. By default only when the project is "
-                "still on a city preset and the site is anchored at the origin."
+                "Set the project location to the site. By default when the project is still "
+                "on a city preset, when the site was fitted to the boundary drawn in the file, "
+                "and with --anchor site, where the origin is now a point on the site."
             ),
         ),
     ] = None,
@@ -8455,7 +8456,13 @@ def site_analysis(
     # that was told to trust it would be the wrong way round.
     if reference is not None and (anchor == "site" or fit is not None or set_location):
         preset = geo is not None and geo.looks_like_a_city_preset
-        if set_location or (set_location is None and (preset or fit is not None)):
+        # With --anchor site the origin is the site's centre or corner and,
+        # squared, the frame's +Y is the project's north: a project that kept
+        # its old location would then georeference the model to the wrong
+        # place and light it from the wrong side. So the anchor sets it unless
+        # --keep-location says otherwise.
+        at_origin = anchor == "site"
+        if set_location or (set_location is None and (preset or fit is not None or at_origin)):
             ground = (
                 context_model.ground_at_site(site_bundle, frame_and_offset(site_bundle))
                 if site_bundle is not None

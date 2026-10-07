@@ -59,7 +59,7 @@ Options worth knowing:
 | `--from <folder>` | draw the bundles saved in that folder's `data/`; no fetch |
 | `--out <folder>` | where to save; `Documents\Loriini\site-analysis\<address>` by default |
 | `--no-layout` | leave the sheets off the A1 master (`--master-layout` picks another) |
-| `--set-location` | write the site's lat/lon and MGA survey point into Project Location |
+| `--set-location` / `--keep-location` | write the site's lat/lon and MGA survey point into Project Location; the default with `--anchor site`, on a city preset, or after a fit, and `--keep-location` leaves it |
 | `--model` | terrain mesh, street blocks and neighbour slabs, a layer each (below) |
 | `--model-radius 500` | how far each way the model reaches; `0` keeps to the site sheet's extent |
 | `--fit-layer auto` | fit the fetched lot onto the boundary drawn on this layer (below); `none` skips it |
@@ -281,6 +281,14 @@ last run by element ID, not by layer, so a model made on the single
   there is neither. Footprints on the site's own lots are left out.
   Buildings OSM draws as multipolygons -- a block with a courtyard -- are
   fetched with the rest and stood with their courtyards as holes.
+- **Heritage items**: a neighbour whose footprint centre falls on an LEP
+  heritage *item* (not a conservation area, which takes in whole streets)
+  stands in the `LORIINI HERITAGE` surface, the ochre of the context sheet's
+  heritage hatch, every face, with `HERITAGE` on the end of its ID. The
+  surface is made in the project on the first run that needs it and found
+  again after. The add-on's `CreateSlabs` takes it per slab (`surface`: a
+  name and the colour to make it in); Tapir's does not, so an add-on built
+  before it leaves them in the Slab tool's surface and the report says so.
 
 **When buildings are missing.** Three causes were found and closed on 23
 September 2026; what is left is OSM's own coverage.

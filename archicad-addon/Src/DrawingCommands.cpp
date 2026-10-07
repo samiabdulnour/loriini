@@ -3,6 +3,8 @@
 
 // BMAllocateHandle, for the polygon memo handles.
 #include "BM.hpp"
+// The surfaces a CreateSlabs request names, looked up once each.
+#include "HashTable.hpp"
 
 #include <cstring>
 
@@ -1419,6 +1421,54 @@ GSErrCode BuildSlabPolygon (const GS::Array<Contour>& contours, API_SlabType& sl
 	return NoError;
 }
 
+// A Surface by name, made if the project has none by it.
+//
+// The neighbours stand in whatever the Slab tool's defaults give them, and
+// that is right for most of them: they are context. A heritage item is
+// context the reader is meant to find, so it stands in a surface of its own,
+// named here and coloured by the caller. The project keeps the surface as any
+// other attribute; a rerun finds it again rather than making a second one.
+bool FindOrMakeSurface (const GS::UniString& name, const API_RGBColor* colour, API_AttributeIndex& into, GS::UniString& why)
+{
+	API_Attribute attribute = {};
+	attribute.header.typeID = API_MaterialID;
+	GS::UniString held;
+	CopyAttributeName (name, attribute.header, held);
+	if (ACAPI_Attribute_Search (&attribute.header) == NoError) {
+		into = attribute.header.index;
+		return true;
+	}
+
+	attribute = {};
+	attribute.header.typeID = API_MaterialID;
+	CopyAttributeName (name, attribute.header, held);
+	attribute.material.mtype = APIMater_GeneralID;
+	// Matte, so the colour reads as the colour under any light.
+	attribute.material.ambientPc = 70;
+	attribute.material.diffusePc = 85;
+	attribute.material.specularPc = 5;
+	attribute.material.shine = 5;
+	attribute.material.transpPc = 0;
+	attribute.material.transpAtt = 0;
+	attribute.material.emissionAtt = 0;
+	attribute.material.surfaceRGB.f_red = colour != nullptr ? colour->f_red : 0.8;
+	attribute.material.surfaceRGB.f_green = colour != nullptr ? colour->f_green : 0.8;
+	attribute.material.surfaceRGB.f_blue = colour != nullptr ? colour->f_blue : 0.8;
+	attribute.material.specularRGB.f_red = 1.0;
+	attribute.material.specularRGB.f_green = 1.0;
+	attribute.material.specularRGB.f_blue = 1.0;
+	attribute.material.emissionRGB.f_red = 0.0;
+	attribute.material.emissionRGB.f_green = 0.0;
+	attribute.material.emissionRGB.f_blue = 0.0;
+	const GSErrCode err = ACAPI_Attribute_Create (&attribute, nullptr);
+	if (err != NoError) {
+		why = GS::UniString ("Archicad would not make the surface '") + name + "'.";
+		return false;
+	}
+	into = attribute.header.index;
+	return true;
+}
+
 }		// namespace
 
 
@@ -1459,7 +1509,20 @@ GS::Optional<GS::UniString> CreateSlabsCommand::GetInputParametersSchema () cons
 						"referencePlane": { "type": "string", "enum": [ "bottom", "top" ], "description": "Which face the level names. Bottom by default: the slab stands up from the ground it is put on." },
 						"layerIndex": { "type": "integer" },
 						"floorIndex": { "type": "integer" },
-						"elementId": { "type": "string" }
+						"elementId": { "type": "string" },
+						"surface": {
+							"type": "object",
+							"description": "A Surface for every face of the slab, by name; made in the given colour when the project has none by that name.",
+							"properties": {
+								"name": { "type": "string" },
+								"colour": {
+									"type": "object",
+									"properties": { "red": { "type": "number" }, "green": { "type": "number" }, "blue": { "type": "number" } },
+									"required": [ "red", "green", "blue" ]
+								}
+							},
+							"required": [ "name" ]
+						}
 					},
 					"required": [ "contours" ]
 				},
@@ -1498,6 +1561,8 @@ GS::ObjectState CreateSlabsCommand::Execute (const GS::ObjectState& parameters,
 	GS::UniString why;
 	GSErrCode failure = NoError;
 	GS::UniString failureText;
+	// The surfaces this request names, looked up or made once each.
+	GS::HashTable<GS::UniString, API_AttributeIndex> surfaces;
 
 	const GSErrCode err = ACAPI_CallUndoableCommand ("Model the neighbours", [&] () -> GSErrCode {
 		for (const GS::ObjectState& one : wanted) {
@@ -1507,6 +1572,36 @@ GS::ObjectState CreateSlabsCommand::Execute (const GS::ObjectState& parameters,
 				failure = APIERR_BADPARS;
 				failureText = why;
 				return APIERR_BADPARS;
+			}
+
+			bool hasSurface = false;
+			API_AttributeIndex surfaceIndex = {};
+			GS::ObjectState surface;
+			if (one.Get ("surface", surface)) {
+				GS::UniString name;
+				if (!surface.Get ("name", name) || name.IsEmpty ()) {
+					failure = APIERR_BADPARS;
+					failureText = "A slab's surface needs a name.";
+					return APIERR_BADPARS;
+				}
+				if (surfaces.ContainsKey (name)) {
+					surfaceIndex = surfaces[name];
+				} else {
+					API_RGBColor colour = {};
+					const bool coloured = ReadColour (surface, "colour", colour, why);
+					if (!coloured && !why.IsEmpty ()) {
+						failure = APIERR_BADPARS;
+						failureText = why;
+						return APIERR_BADPARS;
+					}
+					if (!FindOrMakeSurface (name, coloured ? &colour : nullptr, surfaceIndex, why)) {
+						failure = APIERR_GENERAL;
+						failureText = why;
+						return APIERR_GENERAL;
+					}
+					surfaces.Add (name, surfaceIndex);
+				}
+				hasSurface = true;
 			}
 
 			API_Element element = {};
@@ -1539,6 +1634,14 @@ GS::ObjectState CreateSlabsCommand::Execute (const GS::ObjectState& parameters,
 			// The slab's own offset from its reference plane, which the tool's
 			// defaults may carry, would move it off the ground it was put on.
 			element.slab.offsetFromTop = 0.0;
+			if (hasSurface) {
+				element.slab.topMat.overridden = true;
+				element.slab.topMat.attributeIndex = surfaceIndex;
+				element.slab.sideMat.overridden = true;
+				element.slab.sideMat.attributeIndex = surfaceIndex;
+				element.slab.botMat.overridden = true;
+				element.slab.botMat.attributeIndex = surfaceIndex;
+			}
 
 			step = BuildSlabPolygon (contours, element.slab, memo);
 			if (step != NoError) {

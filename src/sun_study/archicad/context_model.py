@@ -89,6 +89,14 @@ STOREY_M = 3.1
 #: as holes, and a footpath mesh per block).
 KERB_M = 0.15
 
+#: The surface a heritage item stands in, made in the project on the first
+#: run that needs it: the sheets' heritage ochre, so the reader who saw the
+#: hatch on the context analysis finds the same colour in the model.
+HERITAGE_SURFACE = "LORIINI HERITAGE"
+HERITAGE_RGB = (0.663, 0.482, 0.247)
+#: Every surface the model names, with its colour, by name.
+SURFACES: dict[str, tuple[float, float, float]] = {HERITAGE_SURFACE: HERITAGE_RGB}
+
 #: How far the terrain's skirt drops below its lowest point.
 SKIRT_M = 2.0
 
@@ -113,6 +121,8 @@ class ContextModelReport:
     """Whose contours: ``CITY OF SYDNEY 2020 SURVEY / NSW SPATIAL SERVICES``."""
     terrain_layer: str = ""
     roads_layer: str = ""
+    heritage: int = 0
+    """Neighbours on a heritage item, stood in ``HERITAGE_SURFACE``."""
 
     def describe(self) -> str:
         made = f"one mesh from {self.contours} contours"
@@ -128,7 +138,12 @@ class ContextModelReport:
             + (f" on {self.roads_layer!r}" if self.roads_layer else "")
             + "; the roads are the terrain between them",
             f"  neighbours: {self.buildings} slabs on {self.layer!r}, {self.assumed} with assumed "
-            f"storeys, {self.on_site} footprints on the site left out",
+            f"storeys, {self.on_site} footprints on the site left out"
+            + (
+                f"; {self.heritage} on heritage items in the {HERITAGE_SURFACE!r} surface"
+                if self.heritage
+                else ""
+            ),
         ]
         lines.extend(f"    {note}" for note in self.notes)
         return "\n".join(lines)
@@ -732,6 +747,21 @@ def _elements(response: Any, command: str) -> list[dict[str, Any]]:
     return [e for e in elements if isinstance(e, dict) and "elementId" in e]
 
 
+def _heritage_rings(bundle: SiteBundle, frame: Frame) -> list[list[Point]]:
+    """The heritage items' outlines in the frame: the LEP's items, not its
+    conservation areas, which take in whole streets of ordinary houses. The
+    same reading the context sheet makes of the layer."""
+    rings: list[list[Point]] = []
+    for feature in bundle.heritage.get("features", []):
+        if not str(feature.get("properties", {}).get("LAY_CLASS") or "Item").startswith("Item"):
+            continue
+        for ring in rings_of(feature.get("geometry")):
+            placed = frame.ring(ring)
+            if len(placed) >= 3:
+                rings.append(placed)
+    return rings
+
+
 def model_context(
     connection: ArchicadConnection,
     bundle: SiteBundle,
@@ -801,10 +831,12 @@ def model_context(
     lift = KERB_M if made_blocks else 0.0
 
     site_rings = [frame.ring(ring) for ring in bundle.site_rings]
+    heritage_rings = _heritage_rings(bundle, frame)
     slabs: list[_Slab] = []
     assumed = 0
     on_site = 0
     unusable = 0
+    listed = 0
     if buildings:
         for building in bundle.furniture.buildings:
             ring = _slab_outline(frame.ring(building.ring))
@@ -827,6 +859,8 @@ def model_context(
                 for hole in (_slab_outline(frame.ring(h)) for h in building.holes)
                 if len(hole) >= 3 and abs(ring_area(hole)) >= 1.0
             ]
+            heritage = any(point_in_ring(centre[0], centre[1], r) for r in heritage_rings)
+            listed += int(heritage)
             slabs.append(
                 _Slab(
                     outline=ring,
@@ -835,7 +869,9 @@ def model_context(
                     thickness=storeys * storey_m,
                     identifier=(
                         f"SA NEIGHBOUR {storeys} STOREY ({'ASSUMED' if guessed else 'OSM'})"
+                        + (" HERITAGE" if heritage else "")
                     ),
+                    surface=HERITAGE_SURFACE if heritage else None,
                 )
             )
     if unusable:
@@ -851,6 +887,11 @@ def model_context(
     )
     if outcome is None:
         outcome = _create_slabs(partial(_send_through_tapir, connection), slabs)
+        if listed:
+            notes.append(
+                f"{listed} neighbours on heritage items stand in the default surface: "
+                "Tapir's CreateSlabs takes no surface, and the add-on predates its own."
+            )
         if outcome is not None and outcome.made:
             elements = [element for element, _ in outcome.made]
             moved = move_to_layer(connection, elements, layer.index)
@@ -866,7 +907,10 @@ def model_context(
         _grouped(connection, [(block_meshes, "street blocks"), (made, "neighbouring buildings")])
     )
     if say:
-        say(f"  {len(made)} neighbours as slabs, {assumed} with assumed storeys")
+        say(
+            f"  {len(made)} neighbours as slabs, {assumed} with assumed storeys"
+            + (f", {listed} on heritage items" if listed else "")
+        )
     described = whose_contours(bundle.contours)
     return ContextModelReport(
         terrain=made_terrain,
@@ -881,6 +925,7 @@ def model_context(
         contour_source=described[1] if described else "",
         terrain_layer=ground_layer.name if ground_layer is not None else "",
         roads_layer=roads_layer.name if roads_layer is not None else "",
+        heritage=listed,
     )
 
 
@@ -922,6 +967,9 @@ class _Slab:
     level: float
     thickness: float
     identifier: str
+    surface: str | None = None
+    """A surface for every face, by name -- a key of ``SURFACES`` -- or the
+    Slab tool's own."""
 
     def simpler(self) -> list[_Slab]:
         """What to try when Archicad will not take this one as drawn.
@@ -1019,6 +1067,13 @@ def _create_slabs(
     return done
 
 
+def _surface_request(name: str) -> dict[str, Any]:
+    """The surface as ``CreateSlabs`` takes it: its name, and the colour to
+    make it in when the project has none by that name."""
+    red, green, blue = SURFACES[name]
+    return {"name": name, "colour": {"red": red, "green": green, "blue": blue}}
+
+
 def _send_through_the_addon(
     connection: ArchicadConnection,
     layer_index: int,
@@ -1038,6 +1093,7 @@ def _send_through_the_addon(
             "layerIndex": layer_index,
             "floorIndex": floor_index,
             "elementId": slab.identifier[:255],
+            **({"surface": _surface_request(slab.surface)} if slab.surface else {}),
         }
         for slab in chunk
     ]
