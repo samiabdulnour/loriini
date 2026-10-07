@@ -48,8 +48,13 @@ fly secrets set --app loriini-licences LORIINI_SMTP_HOST=smtp.office365.com ^
 Then deploy:
 
 ```
-fly deploy . --config deploy/licence-service/fly.toml --dockerfile deploy/licence-service/Dockerfile
+fly deploy . --config deploy/licence-service/fly.toml --dockerfile deploy/licence-service/Dockerfile --ha=false
 ```
+
+`--ha=false` keeps it to the one machine on the one volume. Without it, Fly's
+first deploy adds a spare machine for availability, with a volume of its own,
+and the two would keep two databases that never meet: a licence issued through
+one would be unknown to the other.
 
 A name of your own, whenever wanted:
 `fly certs add licence.example.com.au --app loriini-licences` prints the DNS
