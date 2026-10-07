@@ -19,7 +19,7 @@ set.
 | **What is sold** | A practice's subscription, counted in **seats**, where a seat is a computer that has used Loriini in the last fortnight. The key names the practice. |
 | **For how long** | **Annual** as the anchor, paid by invoice or card; **monthly** at a premium, for a practice that needs Loriini for one DA; a **14-day trial**. No perpetual licence. |
 | **How it is kept** | The signed key R5 built, **activated online** once per computer, then kept alive by **short signed leases** the program renews by itself. A new month renews without anyone pasting anything. A withdrawal reaches a computer that is online at its next daily check, and one kept offline within a fortnight. A day offline changes nothing. |
-| **How it is paid** | **Stripe, directly, in AUD.** Card or BECS for self-serve plans; annual invoices paid by bank transfer for practices that pay that way. Every invoice is a tax invoice carrying the owner's ABN. It costs less than half what a merchant of record takes. |
+| **How it is paid** | **Stripe, directly, in AUD.** Card or BECS for self-serve plans; annual invoices paid by bank transfer for practices that pay that way. Every invoice is in the owner's own name, a Czech company selling to businesses abroad, so it carries neither GST nor VAT. It costs less than half what a merchant of record takes. |
 | **What runs it** | **A small licence service of our own**: Python and SQLite in one container, on R5's keys, for about A$10 a month. Every service for sale still needs a server of ours for Stripe's webhooks, so buying one adds a vendor without removing the server. Keygen is the fallback if running anything is unwelcome. |
 | **Also** | The licensee is named in what Loriini writes into a project. The build's fixed end date gives way to a minimum version the service can raise: a recall for a build with a known wrong result. Offline keys stay, for an office that cannot go online. |
 
@@ -280,20 +280,20 @@ is sent and why, and so does `licensing.md`.
 ## 5. How it is paid
 
 The buyers are Australian practices that pay in AUD, many of them against an
-invoice, and each needs a tax invoice it can claim GST on. That decides most of it [5]:
+invoice, and the seller is a Czech business. That decides most of it [5]:
 
 | | Stripe, direct | Stripe Managed Payments | Paddle | Lemon Squeezy | Polar |
 |---|---|---|---|---|---|
-| Who sells to the practice | the owner, with the ABN on every invoice | Link, LLC | Paddle (UK) | Lemon Squeezy (US) | Polar (US) |
+| Who sells to the practice | the owner, named on every invoice | Link, LLC | Paddle (UK) | Lemon Squeezy (US) | Polar (US) |
 | On an Australian card subscription | ≈2.35% + A$0.30 (card 1.65% from 1 October 2026, Billing 0.7%) | ≈5.85% + A$0.30 | 5% + 50¢ | ≈8% + 50¢ | ≈6.5% + 50¢, plus payout fees |
 | An annual invoice paid by bank transfer, in AUD | yes: bank details on the invoice, marked paid when the money arrives; or BECS direct debit at 1%, capped at A$3.50 | no | only in USD, EUR or GBP | no | not documented |
-| A tax invoice with the owner's ABN | yes | no | no | no | no |
+| An invoice in the owner's own name | yes | no | no | no | no |
 | Licence keys | none | none | none | built in | built in |
-| Worth knowing | the owner carries GST, disputes and support | new in April 2026; Stripe may refund within 60 days | invoices come from a foreign company | being wound down towards Managed Payments | young; changed its prices in 2026 |
+| Worth knowing | the owner carries disputes and support | new in April 2026; Stripe may refund within 60 days | invoices come from a foreign company | being wound down towards Managed Payments | young; changed its prices in 2026 |
 
 **Recommended: Stripe, directly, in AUD.**
-- **Invoices and EFT.** Of the five, it is the only one that gives every practice a
-  tax invoice under the owner's ABN. It is also the only one that lets an annual
+- **Invoices and EFT.** Of the five, it is the only one that gives every practice an
+  invoice in the owner's own name. It is also the only one that lets an annual
   invoice be paid by bank transfer in AUD, which is how many practices pay.
 - **Cost.** It costs less than half as much: about 2.35% + A$0.30 on an Australian
   card from 1 October 2026, against 5% to 8% for a merchant of record.
@@ -305,21 +305,22 @@ invoice, and each needs a tax invoice it can claim GST on. That decides most of 
   changes, since the licence service only needs to be told *paid to*.
 
 **What the owner needs to set up:**
-- **GST registration** is compulsory from A$75,000 a year. Below that it is
-  voluntary, and only a registered business can issue a tax invoice, so a practice
-  buying from an unregistered seller has no GST to claim. Many practices will ask for
-  one, which argues for registering from the start.
-- **Invoices.** In Stripe, a manual 10% GST rate (Stripe Tax is not needed for sales
-  in Australia), and "Tax invoice" with the ABN on every invoice.
+- **Tax.** The seller is a Czech business, not an Australian one. Australian GST
+  reaches a non-resident seller's sales to Australian *consumers*, from A$75,000 a
+  year; a sale of software to an Australian business is outside it. A service sold
+  to a business outside the EU carries no Czech VAT. So: no ABN, no GST
+  registration, no tax line on the invoice. Collect the practice's ABN at checkout,
+  so that every invoice shows a sale to a business.
+- **Invoices.** The company's details and VAT number on every invoice, from
+  Stripe's business settings. Nothing else to set.
 - **Surcharges** on eftpos, Mastercard and Visa cards are banned from 1 October 2026,
   so the card fee is part of the price.
-- **An accountant's hour.** A ruling from July 2025 (GSTR 2025/1) bears on software
-  sold to Australians through an overseas merchant of record. That is one more reason
-  to sell directly, and worth confirming with an accountant either way.
+- **An accountant's hour**, to confirm the two tax points above and whether the
+  sales touch the company's Czech VAT standing.
 
 **How it is set up:**
 - **Plans.** One product with two prices per seat, annual and monthly, in AUD, quoted
-  without GST as practices expect.
+  before tax as practices expect.
 - **Checkout** takes a card or BECS. The 14-day trial needs no card.
 - **The Customer Portal** lets a practice change its card and its seats and download
   its invoices.
@@ -404,7 +405,7 @@ but name, at the price of replacing R5's keys with Keygen's.
 
 ## 8. Price
 
-What comparable things cost, in A$ a seat a year unless said, without GST, converted
+What comparable things cost, in A$ a seat a year unless said, before tax, converted
 at US$1 = A$1.42 and €1 = A$1.62 on 29 September 2026 [4]:
 
 | | Price | Licence |
@@ -480,10 +481,11 @@ Each with what this note recommends:
    adjustable per licence.*
 3. **The price.** *Suggested: A$600 to 900 a seat a year, a tenth of that a month, and
    a founding price for the first practices.* Test it with them before it is printed.
-4. **GST.** *Recommended: register from the start, so that every invoice is a tax
-   invoice.* An accountant's hour on it, and on GSTR 2025/1.
-5. **Payments.** *Recommended: Stripe, directly, in AUD.* The owner opens the account,
-   with the ABN.
+4. **Tax.** *The seller is a Czech business: no ABN, no GST registration, no tax on
+   the invoice; the practice's ABN collected at checkout.* An accountant's hour to
+   confirm it.
+5. **Payments.** *Recommended: Stripe, directly, in AUD.* The owner opens the account
+   as the Czech company.
 6. **Build or buy the licence service.** *Recommended: build it,* on R5's keys as
    they are. *Fallback: Keygen Cloud.*
 7. **Where it runs.** A small container host or VPS, opened by the owner.
@@ -527,7 +529,7 @@ search engines index them, and the text says *reportedly* where it leans on one.
    - [Andrew Marsh](https://andrewmarsh.com/software/)
    - Autodesk Forma, from Autodesk's page as indexed
    - Consultants: [WeShadow](https://www.weshadow.au/), [Amores](https://www.amores.au/product-page/shadow-diagram), [Feasly's guide](https://www.feasly.com.au/guides/shadow-diagrams-solar-access-australia-developer-guide) and [Town Planning Online](https://www.townplanning.com.au/nsw/adg-check)
-5. Payments and GST:
+5. Payments and tax:
    - Stripe:
      - [Australian pricing](https://stripe.com/au/pricing)
      - [card pricing from October 2026](https://support.stripe.com/questions/updates-to-card-pricing-in-australia-from-october-2026)
@@ -540,10 +542,7 @@ search engines index them, and the text says *reportedly* where it leans on one.
    - Paddle: [pricing](https://www.paddle.com/pricing) and [invoices](https://developer.paddle.com/build/invoices/create-issue-invoices)
    - Lemon Squeezy: [2026 update](https://www.lemonsqueezy.com/blog/2026-update) and [fees](https://docs.lemonsqueezy.com/help/getting-started/fees)
    - Polar: [fees](https://polar.sh/docs/merchant-of-record/fees) and [licence keys](https://polar.sh/docs/features/benefits/license-keys)
-   - GST:
-     - [registering for GST](https://business.gov.au/registrations/register-for-taxes/register-for-goods-and-services-tax-gst)
-     - [GSTR 2025/1](https://www.ato.gov.au/law/view/document?DocID=GST%2FGSTR20251%2FNAT%2FATO%2F00001)
-     - [the RBA on surcharges](https://www.rba.gov.au/payments-and-infrastructure/review-of-retail-payments-regulation/2026-03/conclusions-paper/faqs/)
+   - [the RBA on surcharges](https://www.rba.gov.au/payments-and-infrastructure/review-of-retail-payments-regulation/2026-03/conclusions-paper/faqs/)
 6. Licensing services and practice:
    - Keygen: [pricing](https://keygen.sh/pricing/), [Keygen and Stripe](https://keygen.sh/integrate/stripe/) and [security](https://keygen.sh/docs/api/security/)
    - [Cryptlex pricing](https://cryptlex.com/pricing)

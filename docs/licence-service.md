@@ -80,12 +80,16 @@ uv run python scripts/licence.py service https://loriini-licences.fly.dev
 ## Stripe
 
 1. **The product.** One product, Loriini, with two recurring prices per seat,
-   monthly and yearly, in AUD and exclusive of tax. In the tax settings, a 10%
-   GST rate, and the ABN and "Tax invoice" on every invoice.
+   monthly and yearly, in AUD and exclusive of tax. The seller is a Czech
+   business, so a sale to an Australian practice carries neither GST nor VAT
+   (docs/licence-model.md, §5): no tax rate, no ABN. In Settings → Business,
+   the company's details and VAT number, which every invoice then carries.
 2. **The checkout.** A payment link or Checkout session for each price:
    - let the quantity (the seats) be adjusted;
    - add a custom text field with the key `practice`, labelled *Practice
      name*, since it becomes the licence's holder;
+   - collect the buyer's tax ID, which for a practice is its ABN, so that
+     every invoice shows a sale to a business;
    - set a trial period there if wanted.
 3. **The webhook.** In Developers → Webhooks, add an endpoint:
    - **address:** `https://loriini-licences.fly.dev/v1/stripe`;
