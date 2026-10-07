@@ -21,10 +21,19 @@ import sys
 import pytest
 from typer.testing import CliRunner
 
-from sun_study import AUTHOR, licence
+from sun_study import AUTHOR, licence, licence_public_key
 from sun_study.cli import app
 
 runner = CliRunner()
+
+
+# The build now carries a public key (licence_public_key.py), and a keyed build
+# asks for its key before the term applies -- test_licence_keys covers that.
+# These tests are about the term itself, so they run as the build without keys.
+@pytest.fixture(autouse=True)
+def _a_build_without_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(licence_public_key, "PUBLIC_KEY", None)
+    monkeypatch.setattr(licence_public_key, "SERVICE", None)
 
 
 # Two of the tests below reach the window, and reaching it imports tkinter,
@@ -108,7 +117,10 @@ def test_the_expiry_is_not_advertised_in_any_command_help() -> None:
 # ---------------------------------------------------------------------------
 EXPIRED_CLOCK = """
 import datetime as dt
-from sun_study import licence
+from sun_study import licence, licence_public_key
+
+licence_public_key.PUBLIC_KEY = None
+licence_public_key.SERVICE = None
 
 class Frozen(dt.date):
     @classmethod
