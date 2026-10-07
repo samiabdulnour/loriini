@@ -99,6 +99,17 @@ DIAGRAMS* in 8 s. Archicad refused two of the existing shadow's fills, of
 a fill over some hundreds of corners is the fix, and the second thing to
 do here.
 
+**The shadow plans ran live (8 October),** on the same project under its
+own `04 | Shadow Diagrams` combination: three 3D Documents for 9, 12 and 3
+on 21 June, the sun at 19.0, 32.7 and 18.1 degrees, the storey filter
+taken off each, and two sheets under *SHADOW DIAGRAMS*, in 7.4 s against
+the fills' ten minutes. What is left to see on screen, since Archicad
+draws a document's shadows when it is opened: that the shadows are on and
+fall where the fills say, and that the ground is in the combination so
+they have something to fall on. The office asked (8 October) for the two
+routes side by side, the documents where the fills' edges on a building
+are too coarse, and the fills for the areas and the split.
+
 ## R2 — An agent that operates Loriini
 
 **Asked.** Could an AI agent run Loriini natively, for more users? It saves
