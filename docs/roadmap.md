@@ -79,6 +79,26 @@ how. Built against the kit and a scripted Archicad; next is the assisted
 session on the larger model with its log, and one live run of the shadow
 plans to see the shadows come on.
 
+**Measured (7 October).** The shadow diagram on the Redfern project, a
+kilometre of context on `03 | Site Context.Buildings` (32,600 triangles),
+the proposal's slabs on `01 | Floor.Structural`, and the terrain named from
+`03 | Site Context.Terrain` and `03 | Site.Mesh`: the export takes 20 s and
+the figures come out -- 180,000 to 370,000 m² of existing shadow at 9, 12
+and 3 on 21 June, the proposal adding about 2,000 m² at each. Without a
+terrain layer named the window's run draped onto nothing and left 83% of
+the grid undrawn; with one, 48%. The cast is the cost: 9 min 31 s for 1.96
+million samples at 1 m over three instants, where a twelfth of the rays (2
+m, one instant) took 12 s -- four times slower per ray at full size, at
+536 MB. Where the time goes at that size is unread, and is the first thing
+to profile; the window's progress line is what shows it on a workstation.
+Drawn from the kept model (`--ifc-in`) with `--draw --sheet`: 8,224 fills
+on three layers in 14 s, three views and two sheets under *SHADOW
+DIAGRAMS* in 8 s. Archicad refused two of the existing shadow's fills, of
+760 and 1,157 corners -- the big merged shadow of a whole block at 9 and
+12 -- so the plan is short of them while the table counts them; splitting
+a fill over some hundreds of corners is the fix, and the second thing to
+do here.
+
 ## R2 — An agent that operates Loriini
 
 **Asked.** Could an AI agent run Loriini natively, for more users? It saves
