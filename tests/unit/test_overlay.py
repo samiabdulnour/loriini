@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -48,14 +49,16 @@ from sun_study.app.overlay import (
 
 
 def test_a_picture_fits_inside_the_frame_with_its_shape_kept() -> None:
-    """A wide picture in a square frame is letterboxed; a tall one is
-    pillarboxed. Either way it is centred and its shape is the picture's."""
+    """A wide picture in a square frame leaves the room below it; a tall
+    one leaves it to the right. Either way it sits in the frame's top-left
+    corner -- so that sizing the frame by its bottom-right corner leaves what
+    was lined up where it was -- and its shape is the picture's."""
     wide = fitted((1600, 900), (800, 800))
     assert (wide.width, wide.height) == (800, 450)
-    assert (wide.x, wide.y) == (0, 175)
+    assert (wide.x, wide.y) == (0, 0)
     tall = fitted((900, 1600), (800, 800))
     assert (tall.width, tall.height) == (450, 800)
-    assert (tall.x, tall.y) == (175, 0)
+    assert (tall.x, tall.y) == (0, 0)
 
 
 def test_a_frame_of_the_pictures_own_shape_is_filled_exactly() -> None:
@@ -164,15 +167,15 @@ def test_a_picture_is_read_named_and_shown(palette: Any, root: Any, photograph: 
 def test_the_picture_sits_fitted_in_its_frame_and_then_stretched_to_it(
     palette: Any, root: Any, photograph: Path
 ) -> None:
-    """The frame is square; the wide picture is letterboxed inside it, and
-    Stretch pulls it to the whole frame. 802 is 800 inside the one-pixel
-    blue edge an unlocked frame wears."""
+    """The frame is square; the wide picture sits at the top of it with the
+    room below, and Stretch pulls it to the whole frame. 802 is 800 inside
+    the one-pixel blue edge an unlocked frame wears."""
     palette.take(photograph)
     palette.overlay.place_at(Placement(0, 0, 802, 802))
     settled(root)
     face = palette.overlay.face
     assert (face.winfo_width(), face.winfo_height()) == (800, 450)
-    assert (face.winfo_x(), face.winfo_y()) == (1, 176)
+    assert (face.winfo_x(), face.winfo_y()) == (1, 1)
     palette._mode(STRETCH)
     root.update()
     assert (face.winfo_width(), face.winfo_height()) == (800, 800)
@@ -193,18 +196,92 @@ def test_the_picture_sits_fitted_in_its_frame_and_then_stretched_to_it(
 
 
 def test_the_first_frame_is_the_middle_of_the_screen_at_the_pictures_shape(
-    palette: Any, root: Any, photograph: Path
+    palette: Any, root: Any, photograph: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With no Archicad window to lay it over -- none here -- the picture
-    opens centred, three fifths of the screen wide, its shape kept."""
+    """With no Archicad window to lay it over, the picture opens centred,
+    three fifths of the screen wide, its shape kept, with the strip of
+    controls standing on its top edge. Where the strip would stand off the
+    top of the screen, it is kept on it and the picture hangs that much
+    lower. No Archicad window is *made sure of*: on a workstation with one
+    open, the picture is laid over it instead, which is the feature."""
+    monkeypatch.setattr(overlay, "archicad_windows", lambda: [])
     palette.take(photograph)
     where = palette.overlay.placement
     wide, tall = root.winfo_screenwidth(), root.winfo_screenheight()
     expected = fitted((1600, 900), (wide * 3 // 5, tall * 3 // 5))
     assert (where.width, where.height) == (expected.width, expected.height)
     assert where.x == (wide - expected.width) // 2
-    assert where.y == (tall - expected.height) // 2
+    assert where.x == palette.winfo_rootx()
+    foot = palette.winfo_rooty() + palette.winfo_height()
+    assert where.y == foot
+    top = Placement.parse(palette.geometry()).y
+    assert top == max(0, (tall - expected.height) // 2 - (foot - top))
     assert palette.overlay.placed
+
+
+def pointer(x: int, y: int) -> Any:
+    """What a mouse event says about where the pointer is on the screen."""
+    return SimpleNamespace(x_root=x, y_root=y)
+
+
+def test_the_picture_hangs_from_the_strip_and_follows_it(
+    palette: Any, root: Any, photograph: Path
+) -> None:
+    """One palette: move the strip by its title bar and the picture goes
+    with it, under its foot, as wide as it."""
+    palette.take(photograph)
+    root.update()
+    palette.geometry("+100+120")
+    root.update()
+    where = palette.overlay.placement
+    assert where.x == palette.winfo_rootx()
+    assert where.y == palette.winfo_rooty() + palette.winfo_height()
+    assert where.width == palette.winfo_width()
+
+
+def test_dragging_the_picture_brings_the_strip_along(
+    palette: Any, root: Any, photograph: Path
+) -> None:
+    palette.take(photograph)
+    root.update()
+    palette.lay(Placement(300, 300, 900, 500))
+    root.update()
+    before = palette.overlay.placement
+    palette.overlay._grab(pointer(before.x + 40, before.y + 40))
+    palette.overlay._drag(pointer(before.x + 90, before.y + 70))
+    root.update()
+    after = palette.overlay.placement
+    assert (after.x, after.y) == (before.x + 50, before.y + 30)
+    assert after.x == palette.winfo_rootx()
+    assert after.y == palette.winfo_rooty() + palette.winfo_height()
+
+
+def test_the_corner_sizes_the_picture_from_its_top_left_and_widens_the_strip(
+    palette: Any, root: Any, photograph: Path
+) -> None:
+    """Pull the corner out and the top-left corner stays put, the picture
+    keeps its top-left in the frame, and the strip is as wide as the frame.
+    Push it in and the frame stops at the strip's own width."""
+    palette.take(photograph)
+    root.update()
+    palette.lay(Placement(200, 200, 900, 500))
+    settled(root)
+    before = palette.overlay.placement
+    palette.overlay._grab_corner(pointer(before.x + before.width, before.y + before.height))
+    palette.overlay._resize(pointer(before.x + before.width + 300, before.y + before.height + 100))
+    settled(root)
+    after = palette.overlay.placement
+    assert (after.x, after.y) == (before.x, before.y)
+    assert (after.width, after.height) == (before.width + 300, before.height + 100)
+    assert palette.winfo_width() == after.width
+    assert palette.winfo_rootx() == after.x
+    face = palette.overlay.face
+    assert (face.winfo_x(), face.winfo_y()) == (1, 1)
+    palette.overlay._resize(pointer(before.x + 10, before.y + before.height))
+    settled(root)
+    narrow = palette.overlay.placement
+    assert narrow.width == palette.least_width
+    assert palette.winfo_width() == palette.least_width
 
 
 def test_the_slider_sets_how_much_shows_and_says_it_in_percent(palette: Any) -> None:

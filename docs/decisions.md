@@ -4293,6 +4293,22 @@ small toplevel that stays on top with the picture; the picture itself has
 two states, placed (dragged, sized by its corner) and locked (the corner
 gone, the mouse through it).
 
+*Changed on 7 October 2026: one palette to the eye, two windows
+underneath.* The office asked for the picture to be part of the palette,
+as Archicad's own palettes are one floating thing, and for the corner to
+size it from its top-left. The two toplevels stay, for the reason above,
+but are glued: the strip of controls stands on the picture's top edge and
+is as wide as it, moving the strip by its title bar moves the picture,
+dragging the picture moves the strip, and dragging the corner widens the
+strip with the picture while both keep their top-left corner. A single
+toplevel was weighed and refused: ``WS_EX_TRANSPARENT`` is a property of
+the whole window, so a strip in the same window would let the mouse
+through too and nothing could unlock it; and ``HTTRANSPARENT`` from a
+hit-test, which could exempt a region, only passes the mouse to windows
+of the same thread, never to Archicad. *Fit* now keeps the picture in the
+frame's top-left corner rather than centred, so that pulling the corner
+out leaves what was lined up on the model where it was.
+
 **Fit's margins are a colour key.** A picture kept in its own shape inside
 a frame of another shape has margins, and margins over a model have to be
 see-through. Tk's ``-transparentcolor`` asks Windows to leave one colour

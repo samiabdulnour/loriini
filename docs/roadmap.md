@@ -214,6 +214,16 @@ workstation over Archicad, where the colour key and the click-through are
 the two things to check first. [`overlay.md`](overlay.md) is how to use
 it; D121 is how it is built, and why Pillow came into the bundle for it.
 
+**Changed (7 October).** The office asked for the picture to be part of the
+palette, and for the corner to size it from its top-left corner. It is one
+palette now, the way Archicad's own float: the strip of controls stands on
+the picture's top edge, as wide as it, and the two move together by the
+title bar or by the picture; the corner grows the picture with its top-left
+corner fixed, and *Fit* keeps the picture in that corner rather than
+centred, so what was lined up stays lined up. Underneath it is still two
+windows, so that the locked picture lets the mouse through while the strip
+does not; D121 says so.
+
 ## R5 — Licence keys sent by mail
 
 **Asked.** Licensing that sends a licence code to the buyer's email, so
