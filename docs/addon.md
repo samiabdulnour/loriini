@@ -253,9 +253,9 @@ and the one the 3D export already uses to bring the 3D window to the front --
 and moves the database after. It is for the worksheet the API just made,
 which refuses the plain move until a person has opened it once ([D95](decisions.md));
 the site tools try the plain move, then this, and only then wait for the
-person. The answer carries `opened`. Written against the kit's documentation
-and not yet run against Archicad: whether a fresh worksheet's window opens
-this way is the first thing the next live run of the site tools tells.
+person. The answer carries `opened`. Measured on the Redfern project the same
+evening: Archicad opens a fresh worksheet's window this way, the move then
+takes, and the sheet draws with nobody touching the Project Map.
 
 ### `Loriini.CreateWorksheet`
 

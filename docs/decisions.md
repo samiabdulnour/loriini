@@ -3029,6 +3029,14 @@ If Archicad opens a fresh worksheet's window this way, the waiting ends; if
 it refuses that too, the first route — the sheets on layouts, as the Summary
 of Controls is — is what is left, and it is certain.
 
+*Measured the same evening, on the Redfern project with the rebuilt add-on.*
+It works. The Site Analysis worksheet did not exist; the run made it, the
+plain move was refused as always, the open call took it, and the sheet drew
+with nobody touching the Project Map. **The waiting is over**: a worksheet
+made through the API is entered by opening its window, which is what a
+double-click was doing all along. D84's wait stays in the code as the
+fallback behind both tries, and should never be seen again.
+
 
 ### D96 — A worksheet already in the project enters without help; only one the run made is refused
 
