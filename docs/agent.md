@@ -46,7 +46,13 @@ claude mcp add loriini -- "C:\Loriini\Loriini.exe" mcp
 
 The client shows the tools once it has connected, and asks the person
 before a tool that changes the project runs; the listings are marked
-read-only and run without asking.
+read-only and run without asking. A client that shows an icon beside a
+server's name is sent the bird for it.
+
+**On another machine**, the same block with that machine's paths: the
+handover folder's `Loriini.exe` with the one argument `mcp`, or a checkout
+through `uv`. Nothing is shared between machines; each client reads its
+own file at start.
 
 ## What the agent can do
 

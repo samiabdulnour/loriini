@@ -22,6 +22,7 @@ import sys
 import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any, BinaryIO, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -809,8 +810,28 @@ TOOLS: tuple[Tool, ...] = (
 )
 
 
+#: The server's icon: the bird, as the window's own icon is, for the client
+#: to show beside the server's name. The 256-pixel PNG, under two kilobytes.
+ICON_NAME = "loriini-icon-256.png"
+
+
+def icon() -> bytes | None:
+    """The bytes of the bird, or nothing where the file is not to be found:
+    a server without an icon is still a server. The bundle carries it under
+    ``assets`` beside the window's icons (``Loriini.spec``); a checkout has
+    it in ``assets`` at the top."""
+    bundled = getattr(sys, "_MEIPASS", None)
+    root = Path(bundled) if bundled else Path(__file__).resolve().parents[3]
+    try:
+        return (root / "assets" / ICON_NAME).read_bytes()
+    except OSError:
+        return None
+
+
 def build() -> Server:
-    return Server(name=PRODUCT, version=__version__, tools=TOOLS, instructions=INSTRUCTIONS)
+    return Server(
+        name=PRODUCT, version=__version__, tools=TOOLS, instructions=INSTRUCTIONS, icon=icon()
+    )
 
 
 def serve() -> None:

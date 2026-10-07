@@ -132,6 +132,12 @@ def test_the_handshake_names_the_server_and_speaks_the_clients_version(client: C
     result = response["result"]
     assert result["protocolVersion"] == "2025-06-18"
     assert result["serverInfo"]["name"] == "Loriini"
+    assert result["serverInfo"]["title"] == "Loriini"
+    # The bird, for the client to show beside the name: the 256-pixel PNG
+    # from the checkout's assets, as a data URI.
+    (shown,) = result["serverInfo"]["icons"]
+    assert shown["mimeType"] == "image/png"
+    assert shown["src"].startswith("data:image/png;base64,iVBORw0KGgo")
     assert "tools" in result["capabilities"] and "logging" in result["capabilities"]
     assert "archicad_instances" in result["instructions"]
     client.notify("notifications/initialized")

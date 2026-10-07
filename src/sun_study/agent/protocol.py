@@ -28,6 +28,7 @@ protocol asks.
 
 from __future__ import annotations
 
+import base64
 import json
 import threading
 from collections.abc import Callable, Mapping, Sequence
@@ -163,11 +164,24 @@ class Server:
     """The tool server: answers one client for as long as its stream lasts."""
 
     def __init__(
-        self, *, name: str, version: str, tools: Sequence[Tool], instructions: str = ""
+        self,
+        *,
+        name: str,
+        version: str,
+        tools: Sequence[Tool],
+        instructions: str = "",
+        icon: bytes | None = None,
+        icon_type: str = "image/png",
     ) -> None:
         self.name = name
         self.version = version
         self.instructions = instructions
+        #: The server's icon, for a client that shows one beside the server's
+        #: name (the 2025-11-25 protocol's ``icons`` on ``serverInfo``, sent
+        #: whatever version the client asked for, since an older client
+        #: ignores a field it does not know). The bytes of a PNG, or nothing.
+        self.icon = icon
+        self.icon_type = icon_type
         self._tools = {tool.name: tool for tool in tools}
         self._out: BinaryIO | None = None
         self._write_lock = threading.Lock()
@@ -254,10 +268,16 @@ class Server:
     def _initialize(self, params: Mapping[str, Any]) -> dict[str, Any]:
         asked = params.get("protocolVersion")
         self.protocol_version = asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0]
+        info: dict[str, Any] = {"name": self.name, "title": self.name, "version": self.version}
+        if self.icon is not None:
+            encoded = base64.b64encode(self.icon).decode("ascii")
+            info["icons"] = [
+                {"src": f"data:{self.icon_type};base64,{encoded}", "mimeType": self.icon_type}
+            ]
         return {
             "protocolVersion": self.protocol_version,
             "capabilities": {"tools": {"listChanged": False}, "logging": {}},
-            "serverInfo": {"name": self.name, "version": self.version},
+            "serverInfo": info,
             "instructions": self.instructions,
         }
 
