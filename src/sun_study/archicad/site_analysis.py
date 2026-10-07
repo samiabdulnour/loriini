@@ -159,6 +159,8 @@ WIND_BLUE = "#2f9fd6"
 SUN_YELLOW = "#feefab"
 CADASTRE_GREY = "#6f6f6f"
 ROAD_GREY = "#8a8a8a"
+#: The neighbouring buildings on the site sheet, filled so they read as masses.
+BUILDING_GREY = "#d9d9d9"
 #: The future context: what the controls would allow next door, drawn in a
 #: colour nothing existing is drawn in.
 FUTURE_MAGENTA = "#c2189a"
@@ -348,6 +350,54 @@ def fit_frame(frame: Frame, site_rings: Sequence[Sequence[Point]], drawn: Sequen
         residual_m=residual,
         drawn_points=len(theirs),
     )
+
+
+#: Where the project origin may be put on the site: its centre, or one of
+#: its corners as the drawing reads them, bottom-left being south-west on a
+#: north-up frame and the left end of the long boundary on a squared one.
+ORIGIN_CHOICES: tuple[str, ...] = ("centre", "bottom-left", "bottom-right", "top-left", "top-right")
+
+
+def placed_frame(
+    frame: Frame,
+    site_rings: Sequence[Sequence[Point]],
+    *,
+    square: bool = False,
+    origin_at: str = "centre",
+) -> Frame:
+    """The site-anchored frame, turned and moved the way the office sets a
+    site up: ``square`` turns it so the site's longest boundary runs along
+    +X, and ``origin_at`` names the corner of the site that is the project
+    origin, the centre being where ``frame_for`` already put it.
+
+    Asked for on 8 October 2026: a model is drawn with its long frontage
+    level on the screen and its origin on a corner of the site, not on an
+    address's centroid, and the context should come in to match. The turn
+    is the one the boundary fit makes (``fit_frame``), applied to the site's
+    own convex hull; a corner is the hull's vertex furthest that way, taken
+    after the turn so "bottom-left" means what the drawing shows.
+
+    The project's north follows the turn: ``plus_y_bearing_deg`` is the
+    bearing to write into Project Location, or the sun is wrong by the turn.
+    """
+    if origin_at not in ORIGIN_CHOICES:
+        raise ValueError(f"origin_at must be one of {ORIGIN_CHOICES}, not {origin_at!r}")
+    placed = frame
+    hull = convex_hull(p for ring in site_rings for p in placed.ring(ring))
+    if square and len(hull) >= 2:
+        delta = -((_edge_bearing(hull) + 90.0) % 180.0 - 90.0)
+        placed = placed.turned_and_moved(delta, (0.0, 0.0))
+        hull = convex_hull(p for ring in site_rings for p in placed.ring(ring))
+    if origin_at != "centre" and hull:
+        furthest: dict[str, Callable[[Point], float]] = {
+            "bottom-left": lambda p: p[0] + p[1],
+            "bottom-right": lambda p: p[1] - p[0],
+            "top-left": lambda p: p[0] - p[1],
+            "top-right": lambda p: -p[0] - p[1],
+        }
+        corner = min(hull, key=furthest[origin_at])
+        placed = placed.turned_and_moved(0.0, (-corner[0], -corner[1]))
+    return placed
 
 
 def frame_for(
@@ -1625,6 +1675,18 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
             contour="#c9bb00",
         )
 
+    # The neighbours as masses: a solid grey over the aerial, edged in the
+    # road grey, so the built form reads at a glance and the site's red
+    # boundary and the tree canopies, drawn after, sit over it.
+    for building in bundle.furniture.buildings:
+        if len(building.ring) >= 3:
+            drawing.fill(
+                "Buildings",
+                [frame.ring(building.ring)],
+                BUILDING_GREY,
+                contour=ROAD_GREY,
+                weight_mm=0.18,
+            )
     # Trees at the size of their canopy, on the ground. A size somebody
     # recorded -- the council's inventory, or a mapper's measurement -- has a
     # solid edge; the nominal canopy of a tree nobody measured is dashed, so the
@@ -1676,9 +1738,6 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
                 ],
                 colour="#a8860b",
             )
-    for building in bundle.furniture.buildings:
-        if len(building.ring) >= 3:
-            drawing.line("Buildings", frame.ring(building.ring), colour=ROAD_GREY, closed=True)
     # The future context: the lowest tier's footprint, which is the largest,
     # and the upper tiers inside it where the envelope steps.
     for envelope in future:
@@ -1994,7 +2053,7 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
     if bundle.bus_stops:
         rows.append(("text", "B", None, "BUS STOPS"))
     if bundle.furniture.buildings:
-        rows.append(("line", ROAD_GREY, None, "BUILDING FOOTPRINTS (OSM)"))
+        rows.append(("fill", BUILDING_GREY, ROAD_GREY, "BUILDING FOOTPRINTS (OSM)"))
     if future:
         rows.append(("dashed", FUTURE_MAGENTA, None, "FUTURE CONTEXT: LEP + ADG 3F ENVELOPE"))
     rows.append(("line", NOISE_BLUE, None, "NOISE SOURCE"))

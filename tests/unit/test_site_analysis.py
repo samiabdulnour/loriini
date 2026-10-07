@@ -170,6 +170,38 @@ def test_anchoring_at_the_site_puts_its_centre_at_the_origin_and_keeps_north() -
         frame_for(None, site_centre=(LON, LAT), anchor="location")
 
 
+def test_the_site_can_be_squared_to_its_long_boundary_and_set_on_a_corner() -> None:
+    """Asked for on 8 October 2026: the model is set out with its long
+    frontage level and its origin on a corner of the lot, and the context
+    should come in to match. Squared, the site's longest boundary runs along
+    +X and the frame's +Y bearing has turned with it, which is the north to
+    write; cornered, the corner named is (0, 0)."""
+    from sun_study.archicad import site_analysis as sd
+
+    rings = site_bundle().site_rings
+    base = frame_for(None, site_centre=(LON, LAT), anchor="site")
+    assert sd.placed_frame(base, rings) == base, "centre and unsquared is the frame as it was"
+
+    squared = sd.placed_frame(base, rings, square=True)
+    hull = sd.convex_hull(p for ring in rings for p in squared.ring(ring))
+    angle = sd._edge_bearing(hull)
+    assert min(angle, 180.0 - angle) == pytest.approx(0.0, abs=1e-6), "the long side is level"
+    turn = (squared.plus_y_bearing_deg - base.plus_y_bearing_deg + 180.0) % 360.0 - 180.0
+    assert turn != 0.0 and abs(turn) <= 90.0, "turned the short way, and north went with it"
+
+    cornered = sd.placed_frame(base, rings, square=True, origin_at="bottom-left")
+    hull = sd.convex_hull(p for ring in rings for p in cornered.ring(ring))
+    corner = min(hull, key=lambda p: p[0] + p[1])
+    assert corner == pytest.approx((0.0, 0.0), abs=1e-6)
+    assert cornered.plus_y_bearing_deg == pytest.approx(squared.plus_y_bearing_deg)
+    top_right = sd.placed_frame(base, rings, origin_at="top-right")
+    hull = sd.convex_hull(p for ring in rings for p in top_right.ring(ring))
+    assert max(hull, key=lambda p: p[0] + p[1]) == pytest.approx((0.0, 0.0), abs=1e-6)
+
+    with pytest.raises(ValueError, match="origin_at"):
+        sd.placed_frame(base, rings, origin_at="middle")
+
+
 def test_the_context_drawing_carries_the_legends_colours_and_the_site_on_top() -> None:
     bundle = context_bundle()
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
@@ -251,6 +283,24 @@ def site_bundle() -> SiteBundle:
             buildings=(osm.Building(east, LAT, tuple(square(east, LAT, 10.0)), levels=2),),
             driveways=(((LON, LAT), (LON, LAT + 0.0003)),),
         ),
+    )
+
+
+def test_the_site_drawing_fills_the_neighbouring_buildings() -> None:
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    drawing = site_drawing(site_bundle(), frame)
+    masses = [
+        f for f in drawing.fills if f.layer.endswith(".Context") and f.element_id == "SA BUILDINGS"
+    ]
+    assert len(masses) == 1, "one neighbour, one solid footprint on the Context layer"
+    assert masses[0].wash is False and masses[0].contour is not None
+    footprint = masses[0].rings[0]
+    assert not any(
+        line.points[0] == footprint[0] and line.points[-1] == footprint[0] for line in drawing.lines
+    ), "the footprint is a fill, not a closed outline"
+    trees = [f for f in drawing.fills if f.wash and f.element_id.startswith("SA TREE")]
+    assert drawing.fills.index(masses[0]) < drawing.fills.index(trees[0]), (
+        "canopies over the masses"
     )
 
 

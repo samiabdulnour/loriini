@@ -404,6 +404,17 @@ def test_the_site_analysis_is_spelled_as_the_window_spells_it() -> None:
     ]
 
 
+def test_the_site_tool_can_set_the_origin_on_a_corner_and_square_the_site() -> None:
+    argv = tools.site_argv(
+        tools.SiteArguments(
+            address="1 Test St", anchor="site", origin_at="bottom-left", square_to_site=True
+        )
+    )
+    assert argv[argv.index("--origin-at") + 1] == "bottom-left"
+    assert "--square-to-site" in argv
+    assert "--square-to-site" not in tools.site_argv(tools.SiteArguments(address="1 Test St"))
+
+
 def test_the_shadow_diagrams_take_their_rows_days_and_hours() -> None:
     argv = tools.shadow_argv(
         tools.ShadowArguments(

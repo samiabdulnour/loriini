@@ -37,7 +37,7 @@ from sun_study.archicad import naming
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError
 from sun_study.archicad.draw import ensure_layer, move_to_layer
 from sun_study.archicad.ids import group_by_value, stamp_in_order
-from sun_study.archicad.read import GeoLocation, read_geo_location
+from sun_study.archicad.read import GeoLocation, north_radians_from_bearing, read_geo_location
 from sun_study.archicad.site_analysis import Frame, _clean_ring, _map_rectangle
 from sun_study.site.arcgis import rings_of
 from sun_study.site.geo import (
@@ -143,19 +143,26 @@ def set_project_location(
     site_centre: tuple[float, float],
     *,
     ground_m: float | None = None,
+    north_bearing_deg: float | None = None,
 ) -> GeoLocation:
     """Put the project at the site: ``SetGeoLocation`` with the centre's
     longitude and latitude and the survey point on the MGA2020 grid.
 
-    North is kept as the project has it. It is a design decision and turning
-    it would move nothing already modelled; only the sun and the georeference
-    follow the location. Returns what was set.
+    North is kept as the project has it unless ``north_bearing_deg`` says
+    otherwise. Keeping it is a design decision -- turning it would move
+    nothing already modelled; only the sun and the georeference follow the
+    location. The one caller that gives a bearing is the site tools squaring
+    an empty project to the site, whose frame *is* the project's new north,
+    and the sun would be wrong by the turn without it. Returns what was set.
     """
     lon, lat = site_centre
     zone = mga_zone(lon)
     east, north = lonlat_to_mga(lon, lat, zone)
     altitude = ground_m if ground_m is not None else (geo.altitude_m if geo else 0.0)
-    north_rad = geo.north_radians if geo else 0.0
+    if north_bearing_deg is not None:
+        north_rad = north_radians_from_bearing(north_bearing_deg)
+    else:
+        north_rad = geo.north_radians if geo else 0.0
     response = connection.run_tapir(
         "SetGeoLocation",
         {

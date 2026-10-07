@@ -108,6 +108,23 @@ HINT = theme.HINT
 #: rest of the session.
 STUDY_FLAG = "--study"
 
+#: The site page's words for where the project origin goes on the site, and
+#: the keyword the command takes for each; the first is the default.
+ORIGIN_WORDS: dict[str, str] = {
+    "Site centre": "centre",
+    "Bottom-left corner": "bottom-left",
+    "Bottom-right corner": "bottom-right",
+    "Top-left corner": "top-left",
+    "Top-right corner": "top-right",
+}
+
+#: Whether the site is turned so its long boundary runs level; the first is
+#: the default.
+TURN_WORDS: dict[str, bool] = {
+    "To the project's north": False,
+    "Long boundary level": True,
+}
+
 #: The timezone every study runs in. Named once here rather than five
 #: times down in ``jobs``, because the sheets panel has to work out the
 #: sun for the same instants the run will use, and two spellings of
@@ -4164,6 +4181,34 @@ class Window:
             "location is still the Sydney preset.",
         )
         self.site_anchor.set("Project location")
+        # Where on the site the origin goes, and whether the site is turned
+        # to run level: both only mean something when the site is placed at
+        # the project origin, since with the project location the project
+        # already says where the site is and which way it faces.
+        self.site_origin, row = self._combo(
+            frame,
+            row,
+            "Origin at",
+            "Which point of the site is the project origin. Only with 'Project origin'.",
+            "'Site centre' is the address's centroid. A corner puts the project "
+            "origin on that corner of the site, as the plan reads it after any "
+            "turn -- the way a model is usually set out, from a corner of the "
+            "lot rather than from the middle of it.",
+        )
+        self.site_origin.configure(values=list(ORIGIN_WORDS), state="readonly")
+        self.site_origin.set(next(iter(ORIGIN_WORDS)))
+        self.site_turn, row = self._combo(
+            frame,
+            row,
+            "Site turned",
+            "Whether the site is turned so its long boundary runs level. With 'Project origin'.",
+            "'To the project's north' keeps the project's north angle, north up "
+            "on a project that has none. 'Long boundary level' turns the site so "
+            "its longest boundary runs across the plan, and writes the project's "
+            "north to match, so the sun studies stay right.",
+        )
+        self.site_turn.configure(values=list(TURN_WORDS), state="readonly")
+        self.site_turn.set(next(iter(TURN_WORDS)))
         self.site_radius, row = self._entry(
             frame,
             row,
@@ -5220,6 +5265,8 @@ class Window:
             "site_address": self.site_address,
             "site_scale": self.site_scale,
             "site_anchor": self.site_anchor,
+            "site_origin": self.site_origin,
+            "site_turn": self.site_turn,
             "site_out": self.site_out,
             "site_radius": self.site_radius,
             "site_future_reach": self.site_future_reach,
@@ -6818,10 +6865,14 @@ class Window:
             if self.site_scale.get().strip():
                 args += ["--scale", self.site_scale.get().strip()]
             # The combobox says it in words; the command takes a keyword.
-            args += [
-                "--anchor",
-                "site" if "origin" in self.site_anchor.get().lower() else "location",
-            ]
+            at_origin = "origin" in self.site_anchor.get().lower()
+            args += ["--anchor", "site" if at_origin else "location"]
+            if at_origin:
+                corner = ORIGIN_WORDS.get(self.site_origin.get(), "centre")
+                if corner != "centre":
+                    args += ["--origin-at", corner]
+                if TURN_WORDS.get(self.site_turn.get(), False):
+                    args += ["--square-to-site"]
             if self.site_out.get().strip():
                 args += ["--out", self.site_out.get().strip()]
             made.append(Job(SITE_JOB, args))

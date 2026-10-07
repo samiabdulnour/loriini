@@ -52,6 +52,8 @@ Options worth knowing:
 | `--scale 2000` | the context sheet's scale; sets how much neighbourhood is fetched |
 | `--site-scale 300` | pin the site sheet's scale instead of fitting |
 | `--anchor site` | put the site's centre at the project origin (see below) |
+| `--origin-at bottom-left` | with `--anchor site`: that corner of the site is the origin, not its centre (`bottom-right`, `top-left`, `top-right` likewise) |
+| `--square-to-site` | with `--anchor site`: turn the site so its longest boundary runs level, and write the project's north to match |
 | `--no-aerial` | leave the SIX orthophoto out; by default it is fetched, placed under both sheets and saved as JPEG tiles with world files |
 | `--fetch-only` | fetch and save; touch nothing in Archicad |
 | `--from <folder>` | draw the bundles saved in that folder's `data/`; no fetch |
@@ -113,6 +115,18 @@ run warns when the location looks like a preset (`archicad-info` does the
 same), and `--anchor site` puts the site's centre at the origin instead,
 north-up unless the project has a north angle. That is the right choice for
 a project that has nothing in it yet.
+
+Two more for that empty project, since a model is usually set out from a
+corner of the lot with its long frontage level rather than from the
+address's centroid north-up (asked 8 October 2026). `--origin-at
+bottom-left` makes that corner of the site the project origin -- the corner
+as the plan reads it, so `bottom-left` is south-west on a north-up frame and
+the left end of the long boundary on a squared one -- and `--square-to-site`
+turns the site so its longest boundary runs along +X. The turn is written
+into Project Location as the project's north, so the sun studies stay right;
+the corner moves only the origin, and the north is kept. Both are on the
+window's Site page beside *Site lands at*. A boundary already drawn in the
+file still wins: with a fit, neither is applied.
 
 ## The data
 

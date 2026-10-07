@@ -7904,6 +7904,27 @@ def site_analysis(
             ),
         ),
     ] = "location",
+    origin_at: Annotated[
+        str,
+        typer.Option(
+            "--origin-at",
+            help=(
+                "With --anchor site: which point of the site is the project origin -- "
+                "'centre', or 'bottom-left', 'bottom-right', 'top-left', 'top-right' as the "
+                "plan reads them."
+            ),
+        ),
+    ] = "centre",
+    square_to_site: Annotated[
+        bool,
+        typer.Option(
+            "--square-to-site/--no-square-to-site",
+            help=(
+                "With --anchor site: turn the site so its longest boundary runs level across "
+                "the plan, and write the project's north to match, so the sun is right."
+            ),
+        ),
+    ] = False,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -8100,6 +8121,22 @@ def site_analysis(
     if anchor not in ("location", "site"):
         typer.secho("  --anchor takes 'location' or 'site'.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2)
+    if origin_at not in site_drawing.ORIGIN_CHOICES:
+        typer.secho(
+            f"  --origin-at takes one of {', '.join(site_drawing.ORIGIN_CHOICES)}.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    placing = square_to_site or origin_at != "centre"
+    if placing and anchor != "site":
+        typer.secho(
+            "  --square-to-site and --origin-at place the site in a frame of Loriini's own, "
+            "which is --anchor site; with --anchor location the project says where the site is.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
     if from_dir is None and not (address or "").strip():
         typer.secho(
             "  Give an address, or --from a folder of saved bundles.", fg=typer.colors.RED, err=True
@@ -8265,12 +8302,24 @@ def site_analysis(
                 fg=typer.colors.YELLOW,
             )
 
-    def frame_and_offset(bundle: Any) -> site_drawing.Frame:
+    if fit is not None and placing:
+        typer.echo(
+            "  the boundary drawn in the file places the site; --square-to-site and "
+            "--origin-at are not applied over it."
+        )
+
+    def frame_and_offset(bundle: Any, *, quiet: bool = False) -> site_drawing.Frame:
         if fit is not None:
             return fit.frame
         frame = site_drawing.frame_for(
             geo, site_centre=bundle.centre_lonlat, anchor=anchor, north=north
         )
+        if anchor == "site" and placing and reference is not None:
+            frame = site_drawing.placed_frame(
+                frame, reference.site_rings, square=square_to_site, origin_at=origin_at
+            )
+        if quiet:
+            return frame
         x, y = frame.project(*bundle.centre_lonlat)
         distance = math.hypot(x, y)
         typer.echo(
@@ -8343,11 +8392,18 @@ def site_analysis(
                 if site_bundle is not None
                 else None
             )
-            # With a fit the origin is wherever the drawn boundary put it;
-            # without one the site's centre is the origin by construction.
-            origin = fit.frame.unproject(0.0, 0.0) if fit is not None else reference.centre_lonlat
+            # The origin is wherever the frame put it: the drawn boundary with
+            # a fit, the corner asked for with --origin-at, and the site's
+            # centre otherwise. The north is written only when the site was
+            # squared: the frame's +Y is then the project's new north, and
+            # the sun would be wrong by the turn without it.
+            placed = frame_and_offset(reference, quiet=True)
+            origin = placed.unproject(0.0, 0.0)
+            turned = placed.plus_y_bearing_deg if fit is None and square_to_site else None
             try:
-                geo = context_model.set_project_location(connection, geo, origin, ground_m=ground)
+                geo = context_model.set_project_location(
+                    connection, geo, origin, ground_m=ground, north_bearing_deg=turned
+                )
                 typer.echo(f"  project location set to the site: {geo.describe()}")
             except ArchicadError as error:
                 typer.secho(f"  the project location was not set: {error}", fg=typer.colors.YELLOW)

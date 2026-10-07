@@ -196,6 +196,22 @@ class SiteArguments(StudyArguments):
             "the project origin."
         ),
     )
+    origin_at: Literal["centre", "bottom-left", "bottom-right", "top-left", "top-right"] | None = (
+        Field(
+            default=None,
+            description=(
+                "With anchor 'site': which point of the site is the project origin, its "
+                "centre or one of its corners as the plan reads them."
+            ),
+        )
+    )
+    square_to_site: bool = Field(
+        default=False,
+        description=(
+            "With anchor 'site': turn the site so its longest boundary runs level across "
+            "the plan, and set the project's north to match."
+        ),
+    )
     context_prefix: str | None = Field(
         default=None,
         description="The number the context analysis is filed under, when not the site's.",
@@ -482,8 +498,11 @@ def site_argv(arguments: SiteArguments) -> list[str]:
         argv += ["--future", *_option("--future-reach", a.future_reach_m)]
     if not a.set_location:
         argv += ["--keep-location"]
-    argv += _option("--scale", a.scale) + _option("--anchor", a.anchor) + _option("--out", a.out)
-    argv += _option("--master-layout", a.master_layout)
+    argv += _option("--scale", a.scale) + _option("--anchor", a.anchor)
+    argv += _option("--origin-at", a.origin_at)
+    if a.square_to_site:
+        argv += ["--square-to-site"]
+    argv += _option("--out", a.out) + _option("--master-layout", a.master_layout)
     return argv
 
 

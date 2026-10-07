@@ -2791,6 +2791,30 @@ def test_the_site_analysis_runs_from_an_address_and_names_its_sheets(hidden_wind
     assert "--model" in site.args and "--keep-location" in site.args
 
 
+def test_the_site_can_be_set_on_a_corner_and_turned_level_from_the_page(
+    hidden_window: Any,
+) -> None:
+    """Two words on the page, two flags on the command line, and neither
+    sent unless the site is placed at the project origin, where they mean
+    something."""
+    hidden_window.do_facade.set(False)
+    hidden_window.do_site.set(True)
+    hidden_window.site_address.insert(0, "59 Great Buckingham St, Redfern NSW 2016")
+    hidden_window.site_anchor.set("Project origin")
+    hidden_window.site_origin.set("Bottom-left corner")
+    hidden_window.site_turn.set("Long boundary level")
+    (site,) = hidden_window.jobs()
+    assert flag(site.args, "--anchor") == ["site"]
+    assert flag(site.args, "--origin-at") == ["bottom-left"]
+    assert "--square-to-site" in site.args
+    hidden_window.site_anchor.set("Project location")
+    (site,) = hidden_window.jobs()
+    assert "--origin-at" not in site.args and "--square-to-site" not in site.args
+    saved = hidden_window.settings()
+    assert saved["site_origin"] == "Bottom-left corner"
+    assert saved["site_turn"] == "Long boundary level"
+
+
 def test_the_site_analysis_waits_for_an_address(hidden_window: Any) -> None:
     """Ticked with nothing typed, there is no job: the address is the study."""
     hidden_window.do_facade.set(False)
