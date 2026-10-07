@@ -103,12 +103,17 @@ do here.
 own `04 | Shadow Diagrams` combination: three 3D Documents for 9, 12 and 3
 on 21 June, the sun at 19.0, 32.7 and 18.1 degrees, the storey filter
 taken off each, and two sheets under *SHADOW DIAGRAMS*, in 7.4 s against
-the fills' ten minutes. What is left to see on screen, since Archicad
-draws a document's shadows when it is opened: that the shadows are on and
-fall where the fills say, and that the ground is in the combination so
-they have something to fall on. The office asked (8 October) for the two
-routes side by side, the documents where the fills' edges on a building
-are too coarse, and the fills for the areas and the split.
+the fills' ten minutes. Opened, they showed the proposal's slab and no
+shadow, and the office's own hour documents on the Kogarah file said why:
+the combination hides every layer the site tools draw the context on, so
+there was no ground and no neighbour; and the project's 3D Document
+default gave the shadows a brick hatch on the mark-up pen where the
+office draws them in the `50 %` fill. Both are in the run now: the plans
+pin `15 | Shadow Plans`, the named combination with the site tools' four
+context layers on, and take the `50 %` fill when the project has it
+([`shadow-plans.md`](shadow-plans.md)). The office asked (8 October) for
+the two routes side by side, the documents where the fills' edges on a
+building are too coarse, and the fills for the areas and the split.
 
 ## R2 — An agent that operates Loriini
 

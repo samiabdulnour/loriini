@@ -57,7 +57,7 @@ from sun_study.archicad.draw import (
     match_pens,
     pen_table,
 )
-from sun_study.archicad.layers import export_state
+from sun_study.archicad.layers import combination_states, export_state, read_layers
 from sun_study.archicad.layout import (
     DEFAULT_LAYOUT_SCALE,
     NavigatorItem,
@@ -124,11 +124,14 @@ from sun_study.archicad.shadow_plans import (
     DEFAULT_COMBINATION as SHADOW_PLAN_COMBINATION,
 )
 from sun_study.archicad.shadow_plans import (
+    DEFAULT_SHADOW_FILL,
     PLAN_SCALE,
     ShadowPlanSettings,
+    hidden_among,
     make_shadow_plan_sheets,
     make_shadow_plans,
     shadow_plans,
+    site_context_layers,
 )
 from sun_study.archicad.shadows import (
     DEFAULT_SHEETS as SHADOW_SHEETS,
@@ -7594,6 +7597,27 @@ def shadow_plan_documents(
             ),
         ),
     ] = SHADOW_PLAN_COMBINATION,
+    require_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--require-layer",
+            help=(
+                "A layer to show on top of the combination, whatever it says. Repeatable. "
+                "The plans then pin a combination of their own, the named one with these on."
+            ),
+        ),
+    ] = None,
+    site_context: Annotated[
+        bool,
+        typer.Option(
+            "--site-context/--no-site-context",
+            help=(
+                "Show the context the site tools drew -- terrain, roads, neighbours, future "
+                "neighbours -- when the project has those layers and the combination hides "
+                "them. On by default: a plan with no ground has nothing to catch a shadow."
+            ),
+        ),
+    ] = True,
     set_label: Annotated[
         str,
         typer.Option(
@@ -7624,7 +7648,11 @@ def shadow_plan_documents(
         str | None,
         typer.Option(
             "--shadow-fill",
-            help="Fill type the shadows are drawn in, by name. Blank keeps the project's.",
+            help=(
+                "Fill type the shadows are drawn in, by name. Left out, the office's '50 %' "
+                "when the project has it, as its own shadow documents are drawn; 'none' keeps "
+                "the project's 3D Document default."
+            ),
         ),
     ] = None,
     shadow_pen: Annotated[
@@ -7722,7 +7750,15 @@ def shadow_plan_documents(
         typer.secho(f"  {trouble}", fg=typer.colors.YELLOW)
 
     fill: dict[str, int] = {}
-    if shadow_fill:
+    if shadow_fill is None:
+        # The office draws its shadow documents in "50 %" (read off the
+        # Kogarah file, 8 October 2026); a project's 3D Document default was
+        # a brick hatch on the mark-up pen, which showed as no shadow at all.
+        index = site_drawing.attribute_index(connection, "Fill", (DEFAULT_SHADOW_FILL,))
+        if index is not None:
+            fill["fillIndex"] = index
+            typer.echo(f"  shadows drawn in the {DEFAULT_SHADOW_FILL!r} fill")
+    elif shadow_fill.strip().casefold() != "none":
         index = site_drawing.attribute_index(connection, "Fill", (shadow_fill,))
         if index is None:
             typer.secho(
@@ -7748,9 +7784,38 @@ def shadow_plan_documents(
         shadow_fill=fill,
         shadow_contours=shadow_contours,
     )
+    # What the combination hides that the plans need: the context the site
+    # tools drew, and whatever --require-layer names. Shown through a
+    # combination of the plans' own, the named one with those on, since a
+    # view pins a combination and nothing else.
+    wanted = list(require_layer or [])
+    if site_context:
+        states = combination_states(connection, layer_combination)
+        if states is None:
+            typer.secho(
+                f"  no layer combination named {layer_combination!r} in this project.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        names = {state.identifier: state.name for state in read_layers(connection)}
+        wanted += [n for n in hidden_among(site_context_layers(), names, states) if n not in wanted]
+    if wanted:
+        pinned = ensure_layer_combination(
+            connection,
+            f"{naming.prefix()} Shadow Plans",
+            show=wanted,
+            hide=(),
+            base=layer_combination,
+        )
+        settings = replace(settings, layer_combination=pinned)
+        typer.echo(
+            f"  {layer_combination!r} hides what the plans need; views on {pinned!r} "
+            f"instead, which is that combination with {', '.join(repr(n) for n in wanted)} on"
+        )
     typer.echo(
         f"  {len(plans)} plans, overhead with north up, each with Archicad's sun and "
-        f"shadows; views on {layer_combination!r} at 1:{scale:g}"
+        f"shadows; views on {settings.layer_combination!r} at 1:{scale:g}"
         + ("" if guid else ", no renovation filter pinned (no view carries one)")
     )
 
@@ -8327,6 +8392,10 @@ def site_analysis(
             f"{distance / 1000:.2f} km from the origin; MGA zone {frame.zone}, "
             f"project +Y at bearing {frame.plus_y_bearing_deg:.2f}"
         )
+        if anchor == "site" and square_to_site:
+            typer.echo("    turned so the site's longest boundary runs level across the plan")
+        if anchor == "site" and origin_at != "centre":
+            typer.echo(f"    the site's {origin_at} corner is the project origin")
         if distance > 5000.0:
             typer.secho(
                 "  that is a long way from the model. If the project location is not this "

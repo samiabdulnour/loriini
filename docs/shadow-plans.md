@@ -45,8 +45,22 @@ document after, since a document keeps the filter it was made under (D98).
 **The ground must be in the layer combination.** Everything the plan shows
 casts a shadow and catches one; with no terrain mesh or site slab under the
 buildings, the shadows have nothing to fall on and the plan shows roofs on a
-blank page. Loriini's context model puts the terrain on
-`03 | Site Context.Terrain`.
+blank page. The first live run (Redfern, 8 October 2026) showed exactly that:
+the office's `04 | Shadow Diagrams` hides the layers the site tools draw the
+context on, so the documents held the proposal's slab and nothing else. So
+the run looks: when the project has the site tools' context layers --
+`03 | Site Context.Terrain`, `.Roads`, `.Buildings`, `.Future buildings` --
+and the combination hides any of them, the plans pin a combination of their
+own, `15 | Shadow Plans`, which is the named one with those switched on, and
+the log says so. `--no-site-context` leaves the combination alone;
+`--require-layer` adds any other layer the same way.
+
+**The shadows' fill** is the office's `50 %` when the project has it, which
+is what its own hour documents are drawn in; the project's 3D Document
+default on the same file was a brick hatch on the mark-up pen, which showed
+as no shadow at all. `--shadow-fill` names another, `--shadow-fill none`
+keeps the project's default, and `--shadow-pen` and `--shadow-background-pen`
+set the pens.
 
 ## The comparison: two sets
 

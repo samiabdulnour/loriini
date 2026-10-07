@@ -26,9 +26,11 @@ from sun_study.archicad.shadow_plans import (
     MadePlan,
     ShadowPlan,
     ShadowPlanSettings,
+    hidden_among,
     make_shadow_plans,
     plan_sheet_groups,
     shadow_plans,
+    site_context_layers,
 )
 from sun_study.archicad.views import StoreyView
 
@@ -73,6 +75,10 @@ class PlanTransport:
     def _answer(self, command: str, given: dict[str, Any]) -> dict[str, Any]:
         if command == "GetCurrentWindowType":
             return {"currentWindowType": "FloorPlan"}
+        if command == "GetAttributesByType":
+            # A project with no fill called "50 %": the shadows keep the pen
+            # asked for and nothing else.
+            return {"attributes": []}
         if command == "GetNavigatorItemTree":
             children: list[dict[str, Any]] = []
             if given.get("navigatorMapId") == "ProjectMap":
@@ -352,6 +358,9 @@ def test_the_command_draws_the_hours_the_sun_is_up_and_mends_what_it_made(
     monkeypatch.setattr(cli, "mend_document_filters", mend)
     monkeypatch.setattr(cli, "planned_renovation_filter", lambda *a, **k: "PLANNED")
     monkeypatch.setattr(cli, "make_shadow_plan_sheets", place)
+    # The command sets the global layer prefix to the shadow diagram's; put
+    # it back after, so the site tests that follow see their own.
+    monkeypatch.setattr(naming, "_prefix", naming.prefix())
 
     result = CliRunner().invoke(
         cli.app,
@@ -365,6 +374,9 @@ def test_the_command_draws_the_hours_the_sun_is_up_and_mends_what_it_made(
             "3",
             "--label",
             "Proposed",
+            # The combination is taken as it is: what it hides is the live
+            # project's business, and the scripted one has no layers to read.
+            "--no-site-context",
         ],
     )
 
@@ -380,3 +392,22 @@ def test_the_command_draws_the_hours_the_sun_is_up_and_mends_what_it_made(
     assert kwargs["set_label"] == "Proposed"
     assert "timing: made the documents in" in result.output
     assert "timing: the whole run took" in result.output
+
+
+def test_the_context_the_site_tools_drew_is_shown_when_the_combination_hides_it() -> None:
+    """Redfern, 8 October 2026: the office's combination hid every layer the
+    site tools had drawn the context on, and the plans held the proposal's
+    slab on a blank page. What the project has and the combination hides is
+    what the plans switch on; a layer the project lacks is nobody's."""
+    wanted = site_context_layers()
+    assert [w.split(" | ")[1] for w in wanted] == [
+        "Site Context.Terrain",
+        "Site Context.Roads",
+        "Site Context.Buildings",
+        "Site Context.Future buildings",
+    ]
+    names = {"t": wanted[0], "b": wanted[2], "s": "01 | Floor.Structural"}
+    hidden = {"t": True, "b": False, "s": False}
+    assert hidden_among(wanted, names, hidden) == [wanted[0]]
+    assert hidden_among(wanted, names, {"t": False, "b": False}) == []
+    assert hidden_among(("01 | Floor.Structural",), names, {"s": True}) == ["01 | Floor.Structural"]

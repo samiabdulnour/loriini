@@ -38,7 +38,7 @@ it, so a second run leaves the same documents a first run would.
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -84,6 +84,42 @@ PLAN_SCALE = 1000.0
 #: The office's own layer combination for its shadow diagrams, which the sun
 #: views start from too.
 DEFAULT_COMBINATION = "04 | Shadow Diagrams"
+
+#: The fill the office draws its shadow documents in, read off the Kogarah
+#: file on 8 October 2026 (fill 200, "50 %", on nine of its hour documents).
+#: A project's own 3D Document default was "zz Fire Brick" on the mark-up
+#: pen, which on the first live plans showed as no shadow at all.
+DEFAULT_SHADOW_FILL = "50 %"
+
+
+def site_context_layers() -> tuple[str, ...]:
+    """The layers the site tools draw the context on: what a shadow plan
+    needs showing to have a ground and neighbours at all."""
+    return (
+        naming.terrain_layer(),
+        naming.roads_layer(),
+        naming.buildings_layer(),
+        naming.future_layer(),
+    )
+
+
+def hidden_among(
+    wanted: Iterable[str], names_by_guid: Mapping[str, str], hidden_by_guid: Mapping[str, bool]
+) -> list[str]:
+    """Which of ``wanted`` the project has and the combination hides.
+
+    The first live run (Redfern, 8 October 2026): the office's combination
+    hid every layer the site tools had drawn the context on, so the plans
+    held the proposal's slab on a blank page. A layer the project does not
+    have is nobody's to show, and one already showing needs nothing.
+    """
+    hidden = {
+        " ".join(name.split()).casefold()
+        for guid, name in names_by_guid.items()
+        if hidden_by_guid.get(guid, False)
+    }
+    return [name for name in wanted if " ".join(name.split()).casefold() in hidden]
+
 
 #: Straight down. The add-on snaps anything within a hundredth of a degree of
 #: it to an exact top view with the project's +Y up the page, which is how
