@@ -1844,11 +1844,18 @@ def render_svg(icon: Icon, size: int, ink: float | None = None) -> str:
         for shape in icon.shapes
         if not (shape.detail and not keep_detail) and not (shape.coarse and keep_detail)
     )
+    # An XML comment may not hold "--", and the kit's resource converter
+    # refuses the whole icon when one does (the reference icon's caption,
+    # 7 October 2026: "a block -- the reference image", which failed the
+    # add-on build as "an error was occured during conversion of icon").
+    caption = f"{icon.name}: {icon.says}"
+    while "--" in caption:
+        caption = caption.replace("--", "-")
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
         f'<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
         f'width="{size}" height="{size}" viewBox="0 0 {BOX} {BOX}">\n'
-        f"  <!-- {icon.name}: {icon.says} -->\n"
+        f"  <!-- {caption} -->\n"
         f"  {body}\n"
         "</svg>\n"
     )
