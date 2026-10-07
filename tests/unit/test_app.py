@@ -3216,6 +3216,22 @@ def test_a_palette_button_ticks_its_study_and_opens_its_section(
     assert showing == section, f"{asked} opened {showing} rather than {section}"
 
 
+def test_the_palettes_last_button_opens_the_reference_image(hidden_window: Any) -> None:
+    """Not a study: the add-on's eighth button starts the window with the
+    reference-image palette already up, so the next click is Open picture."""
+    from sun_study.app import overlay
+
+    assert overlay._open is None
+    try:
+        assert hidden_window.ask_for("reference") is True
+        assert overlay._open is not None
+        assert overlay._open.winfo_exists()
+    finally:
+        if overlay._open is not None:
+            overlay._open.close()
+            hidden_window.root.update()
+
+
 def test_a_study_nobody_has_heard_of_leaves_the_window_alone(hidden_window: Any) -> None:
     """A misspelt environment variable must not stop the window opening."""
     before = {name: box.get() for name, box in hidden_window._ticks().items()}

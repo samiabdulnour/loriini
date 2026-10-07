@@ -522,6 +522,14 @@ Manager, and on these workstations that is a folder under Documents. A missing
 .exe says so in a report dialog rather than doing nothing, because a menu item
 that silently does nothing reads as a broken add-on.
 
+The palette (`LoriiniPalette.cpp`) is the same thing as a strip of buttons:
+one per study, each starting the app with that study ticked, and since
+7 October 2026 an eighth that is not a study -- it starts the app with the
+reference image over the 3D window already open ([overlay.md](overlay.md)),
+which is the one thing a person reaches for while standing in Archicad. The
+button's name travels as `--study reference`, and `Window.ask_for` opens the
+palette rather than ticking anything.
+
 ## Building it
 
 **Nobody in the office builds this.** Compiling an Archicad add-on needs Visual

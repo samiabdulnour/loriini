@@ -18,9 +18,10 @@ is built.
 ## Using it
 
 1. **Press *Reference image***, beside the project picker at the top of
-   the window. A palette opens at the top right of the screen and stays on
-   top: a strip of controls, the way Archicad's own palettes float, that
-   the picture will hang from.
+   the window -- or the last button on Loriini's palette in Archicad, which
+   starts the window with this already open. A palette opens at the top
+   right of the screen and stays on top: a strip of controls, the way
+   Archicad's own palettes float, that the picture will hang from.
 2. **Open a picture**: PNG, JPEG, TIFF, BMP, GIF or WebP. A phone's
    photograph is turned the way its orientation tag says. The picture
    appears at half opacity under the strip, over the Archicad window that

@@ -1866,6 +1866,9 @@ PALETTE_BUTTONS: dict[str, str] = {
     "shadow": "LoriiniShadow",
     "views": "LoriiniViews",
     "site": "LoriiniSite",
+    # Not a study: the reference image over the 3D window, the same drawing
+    # the window's own button wears.
+    "reference": "LoriiniReference",
 }
 
 #: What the palette draws its buttons at. Tapir's are 24, and a palette row is

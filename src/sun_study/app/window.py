@@ -5038,6 +5038,12 @@ class Window:
         than refusing to start, for the same reason a settings file edited
         into nonsense costs one setting and not the whole page.
         """
+        asked = study.strip().casefold()
+        if asked == "reference":
+            # Not a study: the palette's last button opens the reference
+            # image over the 3D window, so the next click is "Open picture".
+            self._reference()
+            return True
         wanted = {
             "facade": (self.do_facade, self.FACADE),
             "apartments": (self.do_plans, self.DIAGRAMS),
@@ -5047,7 +5053,7 @@ class Window:
             "views": (self.do_sun_eyes, self.EYE),
             "site": (self.do_site, self.SITE),
         }
-        found = wanted.get(study.strip().casefold())
+        found = wanted.get(asked)
         if found is None:
             return False
         tick, section = found

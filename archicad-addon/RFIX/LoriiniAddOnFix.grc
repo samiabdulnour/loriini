@@ -40,6 +40,10 @@
 	"LoriiniSite"
 }
 
+'GICN' ID_ICON_REFERENCE "LoriiniReference" {
+	"LoriiniReference"
+}
+
 // Tapir's shared schema definitions, which every Tapir command built into
 // this add-on validates its parameters against. See Tapir/README.md.
 
