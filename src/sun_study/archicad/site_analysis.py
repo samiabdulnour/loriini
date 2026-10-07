@@ -2382,14 +2382,23 @@ def _standing_in(connection: ArchicadConnection) -> tuple[str, str, str]:
 
 
 def _enter(connection: ArchicadConnection, database_id: str) -> bool:
-    """Try to make the worksheet current through the add-on. False if refused."""
-    try:
-        moved = connection.run_loriini(
-            "SetCurrentDatabase", {"databaseId": {"guid": database_id}, "windowType": "Worksheet"}
-        )
-    except ArchicadError:
-        return False
-    return isinstance(moved, dict) and bool(moved.get("success"))
+    """Try to make the worksheet current through the add-on. False if refused.
+
+    Two tries. The plain move first, which enters any worksheet a person has
+    ever opened (D96). Then the move with the window opened first -- the
+    add-on's ``open``, the call a double-click makes -- which is the one
+    route D95 left unread for a worksheet nobody has opened; an older add-on
+    refuses the unknown parameter, which reads as refused and costs nothing.
+    """
+    where = {"databaseId": {"guid": database_id}, "windowType": "Worksheet"}
+    for parameters in (where, {**where, "open": True}):
+        try:
+            moved = connection.run_loriini("SetCurrentDatabase", parameters)
+        except ArchicadError:
+            continue
+        if isinstance(moved, dict) and bool(moved.get("success")):
+            return True
+    return False
 
 
 def _wait_until_in_front(

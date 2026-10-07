@@ -588,6 +588,42 @@ def test_a_refused_creation_falls_back_to_tapir_and_a_refused_entry_says_what_to
         ]
     }
     assert transport_.all_parameters_for("SetCurrentDatabase")[0]["databaseId"] == {"guid": "NEW"}
+    # The plain move, then the move with the window opened first, before any
+    # waiting: the second is the route D95 left unread, and an add-on that
+    # refuses both leaves the person to open it as before.
+    tried = [p.get("open") for p in transport_.all_parameters_for("SetCurrentDatabase")]
+    assert tried[:2] == [None, True]
+
+
+def test_a_fresh_worksheet_entered_by_opening_its_window_needs_nobody() -> None:
+    """The add-on's ``open`` -- the call a double-click makes -- taken where
+    the plain move is refused. The worksheet is read back as current, so the
+    run draws at once and never asks for the Project Map."""
+    from sun_study.archicad.site_analysis import ensure_worksheet
+
+    connection, transport_ = connect(
+        {
+            # Standing on the plan before the move, on the worksheet after.
+            "GetCurrentDatabase": Sequential(
+                {"databaseId": {"guid": "PLAN"}, "windowType": "FloorPlan"},
+                {"databaseId": {"guid": "NEW"}, "windowType": "Worksheet"},
+            ),
+            "GetNavigatorItemTree": navigator_tree(),
+            "CreateWorksheet": {"error": {"code": -2130312312, "message": "Failed to create"}},
+            "CreateWorksheets": {"databases": [{"databaseId": {"guid": "NEW"}}]},
+            "SetCurrentDatabase": Sequential(
+                {"error": {"code": -2130313110, "message": "refused to move"}},
+                {"success": True, "opened": True},
+            ),
+        }
+    )
+    database_id, _, reused = ensure_worksheet(connection, f"{SS} Context Analysis", wait_s=0.0)
+    assert database_id == "NEW"
+    assert not reused
+    assert [p.get("open") for p in transport_.all_parameters_for("SetCurrentDatabase")] == [
+        None,
+        True,
+    ]
 
 
 def test_a_worksheet_the_refused_creation_left_behind_is_found_rather_than_made_twice() -> None:

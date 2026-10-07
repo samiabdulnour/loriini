@@ -3016,6 +3016,19 @@ opens a navigator item, which is not the same call as changing the current
 database, and Loriini only ever tries the latter. Whether AC26's API exposes
 the former is unread — the kit is not on this workstation.
 
+*Taken up on 7 October 2026, after the wait tripped again on the site tools.*
+The second route is built, blind. The kit does expose opening a window:
+`APIDo_ChangeWindowID` through `ACAPI_Automate`, which `ModelCommands.cpp`
+already uses to bring the 3D window to the front before an export. The
+add-on's `SetCurrentDatabase` takes `open: true` and makes that call on the
+worksheet's own window before the database move, and `_enter` in
+`site_analysis.py` tries the plain move, then the open one, and only then
+waits for the person. Tapir's `ChangeWindow` never reached this call for a
+fresh worksheet: it changes the database first and returns on that refusal.
+If Archicad opens a fresh worksheet's window this way, the waiting ends; if
+it refuses that too, the first route — the sheets on layouts, as the Summary
+of Controls is — is what is left, and it is certain.
+
 
 ### D96 — A worksheet already in the project enters without help; only one the run made is refused
 

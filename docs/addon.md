@@ -247,6 +247,16 @@ and does not move. On Archicad 26, Tapir's `ChangeWindow` answers
 and with a floor plan's own `databaseId`. A replacement that trusted its own
 write would be the same trap wearing a different name.
 
+`open: true` (7 October 2026) opens the database's window first, through
+`APIDo_ChangeWindowID` -- the call a double-click in the Project Map makes,
+and the one the 3D export already uses to bring the 3D window to the front --
+and moves the database after. It is for the worksheet the API just made,
+which refuses the plain move until a person has opened it once ([D95](decisions.md));
+the site tools try the plain move, then this, and only then wait for the
+person. The answer carries `opened`. Written against the kit's documentation
+and not yet run against Archicad: whether a fresh worksheet's window opens
+this way is the first thing the next live run of the site tools tells.
+
 ### `Loriini.CreateWorksheet`
 
 The same wall from the other side. Tapir's `CreateWorksheets` works, and
