@@ -2168,6 +2168,21 @@ def summary_rows(bundle: SummaryBundle) -> list[tuple[str, str, list[str]]]:
 #: 3.9 mm on paper is 0.39 m on the worksheet and the rows step by 0.52 m.
 SUMMARY_SCALE = 100.0
 
+#: Where the controls column starts, in paper millimetres, and the most
+#: characters of a row's label that fit before it. The column was 60.4 mm
+#: and the labels ran into the controls (the Redfern sheet, 7 October 2026:
+#: "3F. VISUAL PRIVACY / BUILDING SEPARATION" over "6 to 12 m between
+#: habitable rooms"); Archicad's capitals at 3.9 mm run about 0.72 of the
+#: height each, so 80 mm less the margins holds 27 of them. A longer label
+#: is wrapped at a word onto as many lines as it needs, and the row grows.
+SUMMARY_LABEL_MM = 80.0
+SUMMARY_LABEL_CHARS = 27
+
+
+def summary_label_lines(label: str) -> list[str]:
+    """A row's label on as many lines as fit the label column."""
+    return textwrap.wrap(label, SUMMARY_LABEL_CHARS) or [label]
+
 
 def summary_drawing(bundle: SummaryBundle, scale: float = SUMMARY_SCALE) -> Drawing:
     """The planning-controls table, as texts and rules.
@@ -2179,7 +2194,7 @@ def summary_drawing(bundle: SummaryBundle, scale: float = SUMMARY_SCALE) -> Draw
     mm = drawing.mm
     body, lead, pad = 3.9, mm(5.2), mm(5.2)
     left, right = 0.0, mm(372)
-    label_x, controls_x = mm(0.7), mm(60.4)
+    label_x, controls_x = mm(0.7), mm(SUMMARY_LABEL_MM)
     y = 0.0
     drawing.text(
         "Table", "SUMMARY OF CONTROLS", (label_x, y + mm(2)), height_mm=8.2, justification="Left"
@@ -2187,7 +2202,8 @@ def summary_drawing(bundle: SummaryBundle, scale: float = SUMMARY_SCALE) -> Draw
     y -= mm(6.3)
     drawing.line("Table", [(left, y), (right, y)], colour=INK)
     for kind, label, controls in summary_rows(bundle):
-        lines = max(len(controls), 1)
+        names = summary_label_lines(label) if kind == "row" else [label]
+        lines = max(len(controls), len(names), 1)
         height = mm(9.6) if kind == "section" else max(mm(7.6), pad + (lines - 1) * lead + mm(2.4))
         base = y - pad
         if kind == "section":
@@ -2197,7 +2213,10 @@ def summary_drawing(bundle: SummaryBundle, scale: float = SUMMARY_SCALE) -> Draw
                 "Table", "CONTROLS", (controls_x, base), height_mm=body, justification="Left"
             )
         else:
-            drawing.text("Table", label, (label_x, base), height_mm=body, justification="Left")
+            for i, name in enumerate(names):
+                drawing.text(
+                    "Table", name, (label_x, base - i * lead), height_mm=body, justification="Left"
+                )
             for i, line in enumerate(controls):
                 drawing.text(
                     "Table",

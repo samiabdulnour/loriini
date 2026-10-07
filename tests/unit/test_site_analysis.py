@@ -319,6 +319,58 @@ def test_the_summary_table_fills_what_is_published_and_rules_up_the_rest() -> No
     assert len(drawing.lines) == len(rows) + 1, "a rule under every row and one above"
 
 
+def test_a_long_label_wraps_inside_its_column_rather_than_over_the_controls() -> None:
+    """The Redfern sheet, 7 October 2026: "3F. VISUAL PRIVACY / BUILDING
+    SEPARATION" ran across the controls column. Labels now wrap at a word to
+    the column's width, the row grows with them, and nothing in the label
+    column starts where the controls do."""
+    from sun_study.archicad.site_analysis import (
+        SUMMARY_LABEL_CHARS,
+        SUMMARY_LABEL_MM,
+        summary_label_lines,
+    )
+
+    assert summary_label_lines("3F. VISUAL PRIVACY / BUILDING SEPARATION") == [
+        "3F. VISUAL PRIVACY /",
+        "BUILDING SEPARATION",
+    ]
+    assert summary_label_lines("4A. SOLAR AND DAYLIGHT ACCESS") == [
+        "4A. SOLAR AND DAYLIGHT",
+        "ACCESS",
+    ]
+    assert summary_label_lines("GROSS FLOOR AREA (sqm)") == ["GROSS FLOOR AREA (sqm)"]
+    assert summary_label_lines("") == [""]
+
+    bundle = SummaryBundle(
+        address="1 Test St",
+        site_address="1 TEST STREET KOGARAH",
+        lot_description="LOT 1 - DP 1",
+        site_area_m2=1000.0,
+        controls=nsw.SiteControls(
+            epi_name="Georges River Local Environmental Plan 2021",
+            lga_name="GEORGES RIVER",
+            zone_code="R3",
+            zone_purpose="Medium Density Residential",
+            max_height_m=12.0,
+            fsr=0.55,
+            heritage=(("Cottage", "Local"),),
+        ),
+    )
+    drawing = summary_drawing(bundle)
+    controls_x = drawing.mm(SUMMARY_LABEL_MM)
+    by_text = {t.text: t for t in drawing.texts}
+    for kind, label, _ in summary_rows(bundle):
+        if kind != "row":
+            continue
+        for line in summary_label_lines(label):
+            assert len(line) <= SUMMARY_LABEL_CHARS or " " not in line, line
+            assert by_text[line].at[0] < controls_x, f"{line!r} sits in the controls column"
+    # The wrapped label's second line sits one lead under its first.
+    first, second = by_text["3F. VISUAL PRIVACY /"], by_text["BUILDING SEPARATION"]
+    assert first.at[0] == second.at[0]
+    assert first.at[1] - second.at[1] == pytest.approx(drawing.mm(5.2))
+
+
 def test_the_bundles_survive_a_round_trip_through_json(tmp_path: Path) -> None:
     context = context_bundle()
     path = save(context, tmp_path / "data" / "context.json")
