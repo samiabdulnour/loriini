@@ -226,6 +226,7 @@ from sun_study.core.shadow import (
     cast_shadows,
     drape_onto_terrain,
     ground_plane_grid,
+    receiving_samples,
 )
 from sun_study.core.shadow import (
     DEFAULT_MARGIN_M as SHADOW_MARGIN_M,
@@ -7065,15 +7066,26 @@ def _shadow_report(
             draped = drape_onto_terrain(grid, receiver, floor_m=terrain_floor)
         except MemoryError as error:
             _out_of_memory(f"draping {len(grid):,} samples onto the ground", error)
-        grid, receiving = draped.grid, draped.on_terrain
-        typer.echo(
-            f"  draped onto {scene.terrain.triangle_count:,} terrain and "
-            f"{receiver.triangle_count - scene.terrain.triangle_count:,} building "
-            f"triangles; "
-            f"{draped.off_terrain_share:.0%} of the grid reaches past the survey and "
-            f"is left undrawn"
-        )
-        if not receiving.any():
+        grid = draped.grid
+        receiving = receiving_samples(draped, bool(scene.terrain.triangle_count))
+        buildings = receiver.triangle_count - scene.terrain.triangle_count
+        if receiving is None:
+            # No ground named: the datum plane is the ground, and the roofs
+            # stand on it. Said, because a flat ground under a sloping site
+            # is the thing to know about the drawing (D72).
+            typer.echo(
+                f"  no terrain layer named: the shadows land on the flat datum at "
+                f"{datum:g} m across the whole grid, and on the roofs of "
+                f"{buildings:,} building triangles"
+            )
+        else:
+            typer.echo(
+                f"  draped onto {scene.terrain.triangle_count:,} terrain and "
+                f"{buildings:,} building triangles; "
+                f"{draped.off_terrain_share:.0%} of the grid reaches past the survey "
+                f"and is left undrawn"
+            )
+        if receiving is not None and not receiving.any():
             typer.secho(
                 "  no sample found any ground, so nothing would be drawn. Check the "
                 "terrain view covers the site.",

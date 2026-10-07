@@ -98,6 +98,7 @@ __all__ = [
     "default_sources",
     "drape_onto_terrain",
     "ground_plane_grid",
+    "receiving_samples",
 ]
 
 #: The default three fills, in the order they are drawn and legended. Keys
@@ -322,6 +323,20 @@ class Draped:
     @property
     def off_terrain_share(self) -> float:
         return float(1.0 - self.on_terrain.mean()) if len(self.on_terrain) else 0.0
+
+
+def receiving_samples(draped: Draped, terrain_named: bool) -> BoolArray | None:
+    """Which samples the fills are drawn on, or ``None`` for all of them.
+
+    With a terrain named, the samples that found it or a roof: past the
+    survey there is no ground, and a shadow drawn there would be drawn on
+    nothing real. With no terrain named, every sample: the datum plane *is*
+    the ground, the whole grid over, and the buildings' roofs stand on it.
+    Before this the roofs alone received when no terrain was named -- the
+    Redfern run of 7 October 2026 drew 17% of its grid, the footprints of
+    the neighbours, and nothing on the ground between them.
+    """
+    return draped.on_terrain if terrain_named else None
 
 
 def drape_onto_terrain(
