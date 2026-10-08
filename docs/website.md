@@ -31,8 +31,8 @@ beside it:
 1. **The payment links** under *Price* are Stripe's **test** links. Swap them
    for the live ones once the Stripe account is activated and the live
    product exists.
-2. **The company's details** in the footer and on both legal pages: name,
-   registered address, IČO and DIČ.
+2. ~~The company's details~~ Filled in on 8 October: Žofia Kosová, trading as
+   Loriini.app, IČO 19785283, DIČ CZ0154024321, as on the Stripe account.
 3. **The prices** are the placeholders from licence-model.md §8, A$75 a seat
    a month and A$750 a year; change them with the Stripe prices.
 
