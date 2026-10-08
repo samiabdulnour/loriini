@@ -14,4 +14,4 @@ from __future__ import annotations
 PUBLIC_KEY: str | None = "8e492b9f33f4c72b836e2dff7f08238b68d7b5564f35dd7ed80311081d2b48a8"
 
 #: The licence service's address, ``https://...``, or ``None``.
-SERVICE: str | None = "https://loriini-licences.fly.dev"
+SERVICE: str | None = "https://licence.loriini.app"

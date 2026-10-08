@@ -9,8 +9,9 @@ links; the key still comes from the licence service
 ([`licence-service.md`](licence-service.md)).
 
 It is four static files and the current build, served by nginx, on Fly.io
-beside the licence service: `https://loriini-site.fly.dev`. No script, no
-cookies, no analytics, nothing to keep running.
+beside the licence service, at `https://loriini.app` (and `www.loriini.app`;
+the `loriini-site.fly.dev` address keeps working). No script, no cookies, no
+analytics, nothing to keep running.
 
 ## What is where
 
@@ -51,15 +52,19 @@ sha256sum site/download/Loriini_AC26_Win.zip
 fly deploy . --config deploy/site/fly.toml --dockerfile deploy/site/Dockerfile --ha=false
 ```
 
-The first deploy made the app with `fly apps create loriini-site`. A name of
-your own: `fly certs add www.example.com --app loriini-site` prints the DNS
-record to add, and the `fly.dev` address keeps working beside it.
+The first deploy made the app with `fly apps create loriini-site`. The
+domain, `loriini.app`, is at Namecheap: A and AAAA records for `@` and `www`
+point at the site's Fly addresses (`fly ips list --app loriini-site`), and
+`licence` at the licence service's, with certificates from `fly certs add`.
+The mailbox the keys come from, `sami@loriini.app`, is Namecheap's Private
+Email (`mail.privateemail.com`, port 587, STARTTLS), set on the service with
+`fly secrets set`.
 
 Once the site serves the build, tell the licence service where it is, so a
 recall's notice can point there:
 
 ```
-uv run python scripts/licence.py set download=https://loriini-site.fly.dev/download/Loriini_AC26_Win.zip
+uv run python scripts/licence.py set download=https://loriini.app/download/Loriini_AC26_Win.zip
 ```
 
 ## What it costs
