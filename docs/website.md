@@ -1,0 +1,69 @@
+# The website: the front on the shop and the download
+
+R7 was decided against on 29 September (nothing in selling Loriini needed a
+site) and taken up again on 8 October: a practice looking for Loriini needs
+one page that says what it makes, what it costs, where the download is, and
+the terms and privacy pages Stripe asks a seller to link to. That is all the
+site is. Buying still happens on Stripe's own pages, reached by the payment
+links; the key still comes from the licence service
+([`licence-service.md`](licence-service.md)).
+
+It is four static files and the current build, served by nginx, on Fly.io
+beside the licence service: `https://loriini-site.fly.dev`. No script, no
+cookies, no analytics, nothing to keep running.
+
+## What is where
+
+| | |
+|---|---|
+| `site/index.html` | The page: what it makes, how it works, price, download, contact. |
+| `site/terms.html`, `site/privacy.html` | The licence terms and the privacy note, **drafts for a lawyer's hour** (licence-model.md §7). |
+| `site/style.css` | The one stylesheet, in the lorikeet's colours. |
+| `site/download/` | The current build's zip, put there at deploy time and never committed. |
+| `deploy/site/` | The Dockerfile, nginx's config, and `fly.toml` for the `loriini-site` app. |
+
+## Before it goes live
+
+Three things on the page are placeholders, each marked with an HTML comment
+beside it:
+
+1. **The payment links** under *Price* are Stripe's **test** links. Swap them
+   for the live ones once the Stripe account is activated and the live
+   product exists.
+2. **The company's details** in the footer and on both legal pages: name,
+   registered address, IČO and DIČ.
+3. **The prices** are the placeholders from licence-model.md §8, A$75 a seat
+   a month and A$750 a year; change them with the Stripe prices.
+
+And the two drafts want a lawyer's hour before a practice is asked to accept
+them.
+
+## Deploying it
+
+From the repository's root, signed in to Fly. The current build is the
+`Loriini_AC26_Win` artifact of the newest successful *Archicad add-on*
+workflow run; download it from the run's page and put it in
+`site/download/Loriini_AC26_Win.zip`, then update the version, date, size
+and SHA-256 under *Download* on the page:
+
+```
+sha256sum site/download/Loriini_AC26_Win.zip
+fly deploy . --config deploy/site/fly.toml --dockerfile deploy/site/Dockerfile --ha=false
+```
+
+The first deploy made the app with `fly apps create loriini-site`. A name of
+your own: `fly certs add www.example.com --app loriini-site` prints the DNS
+record to add, and the `fly.dev` address keeps working beside it.
+
+Once the site serves the build, tell the licence service where it is, so a
+recall's notice can point there:
+
+```
+uv run python scripts/licence.py set download=https://loriini-site.fly.dev/download/Loriini_AC26_Win.zip
+```
+
+## What it costs
+
+A shared machine that stops when idle, started by the next visitor: cents a
+month. The 65 MB download is inside the image, so a visitor's download comes
+from Fly's edge in Sydney.

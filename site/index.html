@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loriini</title>
+<meta name="description" content="Sun studies from Archicad, for a NSW development application: solar access hours, shadow diagrams, site and context analysis and yield, drawn into the Archicad project as native sheets and schedules.">
+<link rel="icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="icon-256.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="stripe"></div>
+<div class="wrap">
+
+<header class="top">
+  <a class="brand" href="/"><img src="icon-256.png" alt=""> Loriini</a>
+  <nav class="main">
+    <a href="#makes">What it makes</a>
+    <a href="#works">How it works</a>
+    <a href="#price">Price</a>
+    <a href="#download">Download</a>
+    <a href="#contact">Contact</a>
+  </nav>
+</header>
+
+<div class="hero">
+  <div>
+    <h1>Sun studies from Archicad, for a NSW DA.</h1>
+    <p class="lead">Solar access hours against the Apartment Design Guide, shadow diagrams, site and context analysis and the area calculation, drawn straight into your Archicad project as native sheets, fills and schedules. No export to another program, no hand-typed table.</p>
+    <div class="actions">
+      <a class="button primary" href="#price">Buy a subscription</a>
+      <!-- A trial is a 14-day key the vendor issues by hand: no card. -->
+      <a class="button sun" href="mailto:hi@samiabdulnour.com?subject=Loriini%20trial&body=Practice%20name%3A%0AHow%20many%20computers%3A%0A">Request a 14-day trial</a>
+      <a class="button" href="#download">Download</a>
+    </div>
+  </div>
+  <img src="icon-1024.png" alt="Loriini's lorikeet">
+</div>
+
+<div class="notice">
+  <strong>Prototype, not validated for submission.</strong> Loriini is for design-stage iteration. Its figures have not yet been validated against a reference implementation on a real project, and must not be used as a compliance figure in a DA submission. A DA submission rests on a consultant's report. This notice stays until the validation is done.
+</div>
+
+<section id="makes">
+  <div class="kicker">What it makes</div>
+  <h2>The sheets a DA needs, inside the project they belong to.</h2>
+  <p>Loriini is a Windows program and an Archicad 26 add-on. It reads the open project, works out the sun, and writes what it finds back into Archicad as the things Archicad already knows: Zone properties, fills, worksheets, 3D Documents, layouts.</p>
+  <div class="cards">
+    <div class="card">
+      <h3>Solar access, by apartment</h3>
+      <p>Hours of direct sun on each apartment's living room windows and private open space on 21 June between 09:00 and 15:00, assessed against the NSW Apartment Design Guide's 2-hour and 3-hour criteria, written onto the Zones so the ADG table is a native Archicad schedule.</p>
+      <p class="tag">Pure astronomy from latitude, longitude and time. No weather file.</p>
+    </div>
+    <div class="card">
+      <h3>Shadow diagrams and shadow plans</h3>
+      <p>The hourly shadows cast by the model, drawn as fills in the legend's own colours, with what stands and what the proposal adds told apart. Or the same hours as one 3D Document each, with Archicad's own vectorial shadows, on sheets by day.</p>
+    </div>
+    <div class="card">
+      <h3>Site and context analysis</h3>
+      <p>Give it a NSW street address and it draws the context analysis, the site analysis and the summary of controls from open data: NSW cadastre, ePlanning, topography, Transport for NSW, OpenStreetMap, and inside the City of Sydney the council's own contours and trees. Each sheet credits the publishers whose data reached it.</p>
+    </div>
+    <div class="card">
+      <h3>The area calculation</h3>
+      <p>GBA, GFA, FSR and the yield from the massing slabs, before there are any apartments, worked the way the office's own calculation does it. And a massing mode that reports the share of facade and ground reaching two hours of sun, the metric a massing optimisation maximises.</p>
+    </div>
+    <div class="card">
+      <h3>A reference image over the 3D window</h3>
+      <p>Set a view up from the corner a photograph was taken at, or match an earlier rendering, by laying the picture over Archicad's 3D window while the view is adjusted under it.</p>
+    </div>
+    <div class="card">
+      <h3>Driven by an agent, if you like</h3>
+      <p>Every study is also a tool an AI agent can run. Claude Desktop, Claude Code or any client of the Model Context Protocol starts <code>Loriini.exe mcp</code> and works the open project through it.</p>
+    </div>
+  </div>
+</section>
+
+<section id="works" class="alt">
+  <div class="kicker">How it works</div>
+  <h2>A folder, no administrator rights, three steps.</h2>
+  <div class="two">
+    <div>
+      <ol class="steps">
+        <li><strong>Download the folder.</strong> It holds <code>Loriini.exe</code>, the add-on <code>LoriiniAddOn_AC26_Win.apx</code>, an install note and the licence.</li>
+        <li><strong>Put both files in one folder of your own</strong>, for instance <code>Documents\Loriini\Add-Ons</code>. The menu item looks for the program beside the add-on.</li>
+        <li><strong>In Archicad: Options › Add-On Manager</strong>, add that folder, restart. A Loriini menu appears, and starts the program.</li>
+      </ol>
+    </div>
+    <div>
+      <h3>The licence</h3>
+      <p>A subscription is counted in <strong>seats</strong>: a seat is a computer that has used Loriini in the last fortnight. One key per practice, pasted once on each computer. Loriini checks in with the licence service by itself and works for a fortnight without a connection. A computer that stops using Loriini frees its seat after a fortnight, or at once with <code>Loriini.exe licence --remove</code>.</p>
+      <h3>Needs</h3>
+      <p>Windows 10 or 11, Archicad 26. Loriini talks to Archicad on the same computer; nothing about a project leaves it.</p>
+    </div>
+  </div>
+</section>
+
+<section id="price">
+  <div class="kicker">Price</div>
+  <h2>Per seat, monthly or yearly.</h2>
+  <p>Prices in Australian dollars, before tax. The number of seats is chosen at checkout and can be changed any time in the customer portal, along with the card.</p>
+  <!-- The two payment links below are Stripe's TEST links. Swap them for the live
+       ones once the Stripe account is activated (docs/website.md). -->
+  <div class="prices">
+    <div class="price">
+      <div class="amount">A$75 <small>a seat a month</small></div>
+      <p class="fine">For a practice that needs Loriini for one DA. Cancel any time; the subscription runs to the end of the month paid.</p>
+      <a class="button primary" href="https://buy.stripe.com/test_5kQ5kCdCW3Ysg6kgmB8N200">Subscribe monthly</a>
+    </div>
+    <div class="price featured">
+      <div class="amount">A$750 <small>a seat a year</small></div>
+      <p class="fine">Two months free against the monthly price. Paid by card, with a tax invoice from the vendor.</p>
+      <a class="button primary" href="https://buy.stripe.com/test_00w4gy2Yi9iMbQ46M18N201">Subscribe yearly</a>
+    </div>
+  </div>
+  <p style="margin-top:1.5rem"><strong>Trying it first.</strong> A 14-day trial key needs no card: <a href="mailto:hi@samiabdulnour.com?subject=Loriini%20trial&body=Practice%20name%3A%0AHow%20many%20computers%3A%0A">ask for one</a> with the practice's name and the number of computers. The key arrives by email.</p>
+  <p><strong>Paying by invoice.</strong> A practice that pays annual invoices by bank transfer can <a href="mailto:hi@samiabdulnour.com?subject=Loriini%20invoice">ask for an invoice</a> instead.</p>
+</section>
+
+<section id="download" class="alt">
+  <div class="kicker">Download</div>
+  <h2>The current build.</h2>
+  <div class="download-box">
+    <a class="button primary" href="download/Loriini_AC26_Win.zip">Download Loriini for Windows, Archicad 26</a>
+    <dl>
+      <dt>Version</dt><dd>0.0.1, built 7 October 2026</dd>
+      <dt>Contents</dt><dd>Loriini.exe, LoriiniAddOn_AC26_Win.apx, How to install.txt, LICENSE.txt</dd>
+      <dt>Size</dt><dd>65 MB</dd>
+      <dt>SHA-256</dt><dd>fd702656e020319e36e5c11822ea9c88ecac9cb2da51c690fa7fa7970fdd108e</dd>
+    </dl>
+  </div>
+  <p style="margin-top:1rem">The program asks for a licence key the first time it opens. Without one it still lists its rulesets and reads a model, and touches nothing. The same download serves a trial key and a subscription.</p>
+</section>
+
+<section id="contact">
+  <div class="kicker">Contact</div>
+  <h2>One address for everything.</h2>
+  <p>Trials, invoices, a key that did not arrive, a question about a figure: <a href="mailto:hi@samiabdulnour.com">hi@samiabdulnour.com</a>. Loriini is made by Sami Abdulnour, an architect, for the practices he has worked in.</p>
+</section>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <strong>Loriini</strong><br>
+        <!-- Fill in the company's registered details before the site goes live. -->
+        [Company name], [registered address], Czech Republic<br>
+        IČO [number] · DIČ [VAT number]
+      </div>
+      <div>
+        <a href="terms.html">Licence terms</a><br>
+        <a href="privacy.html">Privacy</a><br>
+        <a href="mailto:hi@samiabdulnour.com">hi@samiabdulnour.com</a>
+      </div>
+      <div>
+        Loriini runs on Windows with Archicad 26. Archicad is a trademark of Graphisoft SE. Site and context sheets draw on open data whose publishers each sheet credits.
+      </div>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

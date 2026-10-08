@@ -348,3 +348,13 @@ one.
 
 What stays of R7 is the brand: the name, the bird and the icon. The
 licence service runs on Fly.io, at its own `fly.dev` address.
+
+**Taken up again, 8 October: one page after all.** A practice looking for
+Loriini needs somewhere that says what it makes, what it costs and where the
+download is, and Stripe asks a seller to link to its terms and privacy. So:
+four static files and the current build, served by nginx on Fly.io beside
+the licence service, at `https://loriini-site.fly.dev`; buying still goes
+through Stripe's payment links and the key still comes from the licence
+service. [`docs/website.md`](website.md) is the page, its placeholders, and
+how it is deployed. The terms and the privacy note on it are drafts for a
+lawyer's hour (licence-model.md §7).

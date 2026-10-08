@@ -1,5 +1,8 @@
-# Only the licence service is built into a container (deploy/licence-service),
-# and it needs the package's source and nothing else.
+# Two containers are built from here: the licence service (deploy/licence-service),
+# which needs the package's source, and the website (deploy/site), which needs
+# site/ and its nginx config. Nothing else goes in.
 *
 !src/sun_study/
+!site/
+!deploy/site/
 **/__pycache__
