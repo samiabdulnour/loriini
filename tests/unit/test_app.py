@@ -1104,7 +1104,7 @@ def test_the_reference_image_opens_one_palette_for_the_chosen_project(
 
 
 def only_yield(hidden_window: Any) -> None:
-    """The area calculation ticked on its own."""
+    """The yield analysis ticked on its own."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
     hidden_window.do_yield.set(True)
@@ -1114,12 +1114,19 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     hidden_window: Any, tmp_path: Path
 ) -> None:
     only_yield(hidden_window)
+    hidden_window.yield_option.delete(0, "end")
+    hidden_window.yield_option.insert(0, "Option 02")
     hidden_window.yield_residential.insert(0, "01 | Wall.External")
-    hidden_window.yield_other.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_retail.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_massing.insert(0, "01 | Massing - Main Building.3D OPT2")
+    hidden_window.yield_retail_levels.insert(0, "Ground")
+    hidden_window.yield_commercial_levels.insert(0, "Level 01, Level 02")
     hidden_window.yield_renovation.set(True)
     hidden_window.yield_site_area.insert(0, "1386.78")
-    hidden_window.yield_target_fsr.insert(0, "8")
-    hidden_window.yield_target_units.insert(0, "110")
+    hidden_window.yield_fsr_residential.insert(0, "2.8")
+    hidden_window.yield_fsr_retail.insert(0, "0.4")
+    hidden_window.yield_affordable_share.delete(0, "end")
+    hidden_window.yield_affordable_share.insert(0, "15")
     hidden_window.yield_view.insert(0, "Yield Axo")
     hidden_window.tables.delete(0, "end")
     hidden_window.tables.insert(0, str(tmp_path))
@@ -1128,16 +1135,31 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     args = job.args
     assert job.label == window.YIELD_JOB
     assert args[0] == "yield"
+    assert flag(args, "--option") == ["Option 02"]
     assert flag(args, "--residential-layer") == ["01 | Wall.External"]
-    assert flag(args, "--non-residential-layer") == ["01 | Floor.Structural"]
+    assert flag(args, "--retail-layer") == ["01 | Floor.Structural"]
+    assert flag(args, "--massing-layer") == ["01 | Massing - Main Building.3D OPT2"]
+    assert flag(args, "--retail-level") == ["Ground"]
+    assert flag(args, "--commercial-level") == ["Level 01", "Level 02"]
     assert "--renovation-filter" in args
-    assert flag(args, "--gfa-residential") == ["0.75"]
-    assert flag(args, "--nsa-non-residential") == ["0.9"]
+    assert flag(args, "--gfa-residential") == ["0.725"]
+    assert flag(args, "--gfa-retail") == ["0.95"]
+    assert flag(args, "--nla-commercial") == ["0.9"]
+    assert flag(args, "--affordable-share") == ["15"]
+    assert flag(args, "--sqm-per-space") == ["40"]
+    assert flag(args, "--basement-site-ratio") == ["0.4"]
     assert flag(args, "--site-area") == ["1386.78"]
-    assert flag(args, "--target-fsr") == ["8"] and flag(args, "--target-units") == ["110"]
-    assert "--address" not in args, "the site and the FSR are both typed"
-    # The studio is in the list at nothing, so it is not in the mix.
-    assert flag(args, "--unit") == ["1 Bedroom=15,55", "2 Bedroom=70,75", "3 Bedroom=15,95"]
+    assert flag(args, "--fsr-residential") == ["2.8"] and flag(args, "--fsr-retail") == ["0.4"]
+    assert "--fsr-commercial" not in args
+    assert "--address" not in args, "the site and the permissible FSR are both typed"
+    # Every type goes, the two at nothing included: the sheet keeps their rows.
+    assert flag(args, "--unit") == [
+        "Studio=0,35",
+        "1-bed=20,50",
+        "2-bed=70,75",
+        "3-bed=10,100",
+        "4-bed=0,120",
+    ]
     assert flag(args, "--view") == ["Yield Axo"]
     assert flag(args, "--xlsx") == [str(tmp_path / window.AREA_TABLE)]
     assert flag(args, "--port") == ["19723"]
@@ -1152,6 +1174,7 @@ def test_what_the_yield_page_does_not_say_about_the_site_is_read_at_the_address(
     assert flag(job.args, "--address") == ["1 Example Street"]
     assert "--renovation-filter" not in job.args
     assert "--residential-layer" not in job.args, "empty counts what is showing"
+    assert flag(job.args, "--option") == ["Option 01"]
 
 
 def test_a_studio_given_a_share_joins_the_mix_at_its_size(hidden_window: Any) -> None:
@@ -1161,10 +1184,10 @@ def test_a_studio_given_a_share_joins_the_mix_at_its_size(hidden_window: Any) ->
     share.insert(0, "10%")
     size.delete(0, "end")
     (job,) = hidden_window.jobs()
-    assert flag(job.args, "--unit")[0] == "Studio=10,38", "a blank size is the row's own"
+    assert flag(job.args, "--unit")[0] == "Studio=10,35", "a blank size is the row's own"
 
 
-def test_the_area_calculation_is_one_sheet_in_the_panel(hidden_window: Any) -> None:
+def test_the_yield_analysis_is_one_sheet_in_the_panel(hidden_window: Any) -> None:
     only_yield(hidden_window)
     (sheet,) = hidden_window.planned()
     assert (sheet.study, sheet.number, sheet.kind) == ("Yield", "AC.01", window.AREA_SHEET)
@@ -1174,13 +1197,15 @@ def test_the_area_calculation_is_one_sheet_in_the_panel(hidden_window: Any) -> N
 
 def test_the_yield_page_is_saved_and_restored(hidden_window: Any) -> None:
     only_yield(hidden_window)
-    hidden_window.yield_other.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_commercial.insert(0, "01 | Floor.Structural")
     hidden_window.yield_gfa_residential.delete(0, "end")
     hidden_window.yield_gfa_residential.insert(0, "0.8")
     saved = hidden_window.settings()
     assert saved["study_yield"] is True
     assert saved["yield_gfa_residential"] == "0.8"
-    assert saved["yield_mix_2_bedroom_share"] == "70"
+    assert saved["yield_commercial_layers"] == "01 | Floor.Structural"
+    assert saved["yield_mix_2-bed_share"] == "70"
+    assert saved["yield_option"] == "Option 01"
     hidden_window.apply({**saved, "yield_gfa_residential": "0.7", "yield_renovation": True})
     assert hidden_window.yield_gfa_residential.get() == "0.7"
     assert hidden_window.yield_renovation.get() is True

@@ -169,11 +169,11 @@ SHADOW_JOB = "shadow diagram"
 SHADOW_PLAN_JOB = "shadow plans"
 SUN_EYE_JOB = "sun views"
 SITE_JOB = "site tools"
-#: The area calculation (roadmap R3): the massing slabs' GBA, GFA, NSA, FSR
-#: and yield, on one sheet of its own.
+#: The yield analysis (roadmap R3): the office's feasibility sheet from the
+#: massing slabs, an option a sheet of its own.
 YIELD_JOB = "area and yield"
 #: That sheet, as the panel draws it: a table beside the massing.
-AREA_SHEET = "Area Calculation"
+AREA_SHEET = "Yield Analysis"
 
 #: What a queued study is called on a chip in the run bar and in the summary,
 #: and which icon it wears. Keyed on the job name so the chips, the tab ticks
@@ -677,17 +677,17 @@ class LayerChooser(tk.Toplevel):
 APARTMENTS_TABLE = "Apartments.csv"
 COS_AREAS_TABLE = "COS areas.csv"
 COS_SCHEDULE_TABLE = "COS schedule.xlsx"
-AREA_TABLE = "Area calculation.xlsx"
+AREA_TABLE = "Preliminary Yield Analysis.xlsx"
 
 #: The unit types the Yield page offers, with the share of the units and the
-#: net saleable area each opens with. The three with a share are the office's
-#: sheet, fifteen, seventy and fifteen per cent at an average of 75 m²; the
-#: studio is there at nothing, for a scheme that has them.
+#: net lettable area each opens with: the office's feasibility sheet's five,
+#: two of them at nothing, an average NLA of 72.5 m².
 MIX_ROWS: tuple[tuple[str, str, str], ...] = (
-    ("Studio", "0", "38"),
-    ("1 Bedroom", "15", "55"),
-    ("2 Bedroom", "70", "75"),
-    ("3 Bedroom", "15", "95"),
+    ("Studio", "0", "35"),
+    ("1-bed", "20", "50"),
+    ("2-bed", "70", "75"),
+    ("3-bed", "10", "100"),
+    ("4-bed", "0", "120"),
 )
 
 #: The shadow diagram's legend, one row each: the short name the run is given
@@ -2629,8 +2629,8 @@ class Window:
             "the sheets they are dealt onto."
         ),
         YIELD: (
-            "GBA, GFA, NSA and FSR from the massing slabs, and the units they hold: "
-            "the area calculation on a sheet of its own, and a live workbook."
+            "The office's feasibility sheet from the massing slabs: BEA, GFA, NLA and "
+            "FSR by use, the units, the parking -- a sheet an option, and a live workbook."
         ),
     }
     #: The facade study lives in the Solar analysis section now; the name
@@ -4243,18 +4243,20 @@ class Window:
         )
 
     def _yield(self, frame: ttk.Frame) -> None:
-        """The area calculation: GBA, GFA, NSA, FSR and yield from the massing.
+        """The yield analysis: the office's feasibility sheet from the massing.
 
         Roadmap R3. A massing is modelled in slabs, a floor each, and the
-        question is what it comes to: the areas the controls are measured in
-        and the units it holds. Which slabs are the massing is said the two
-        ways the office asked for -- by layer, the residential floors and the
-        rest, and by the renovation filter -- or, with no layer named, by what
-        is showing: every slab on a layer that is shown counts, as residential.
+        question is what it comes to: the areas the controls are measured in,
+        the units it holds, the parking they need. Which slabs are the massing
+        is said by layer -- a layer per use, or one massing layer with the use
+        told by level -- and by the renovation filter; or, with no layer
+        named, by what is showing.
 
-        Two boxes. The study's own says what is measured and against what; the
-        second holds the office's factors and the mix, which are set once for
-        the practice and kept with Save as default.
+        Two boxes. The study's own says what is measured, what it is called
+        and against what; the second holds the office's efficiencies, the
+        mix and the parking figures, which are set once for the practice and
+        kept with Save as default. Every one of them is also an input cell in
+        the workbook the run writes, so a what-if is typed into Excel.
         """
         row = 0
         self.do_yield = tk.BooleanVar(value=False)
@@ -4263,7 +4265,7 @@ class Window:
         frame, row = self._panel(outer, row), 0
         box = ttk.Checkbutton(
             frame,
-            text="Area and yield",
+            text="Yield analysis",
             variable=self.do_yield,
             command=self._sync,
             style="Study.TCheckbutton",
@@ -4273,18 +4275,28 @@ class Window:
         Tooltip(
             box,
             "Measures the massing slabs to their edges -- arcs and holes and "
-            "all -- and works the office's area calculation from them: GBA, "
-            "GFA and NSA for each use, the FSR over the site, and the units "
-            "the residential floors hold at the mix below. Drawn as the Area "
-            "Calculation sheet, and written to the tables folder as a workbook "
-            "whose figures recalculate when a factor is changed.",
+            "all -- gathers them into levels by height, and works the office's "
+            "feasibility sheet from them: BEA, GFA and NLA for each use, the FSR "
+            "against the permissible, the units at the mix below, the parking and "
+            "the basements. Drawn as the Yield Analysis sheet, and written to the "
+            "tables folder as the office's template, one sheet per option, whose "
+            "figures recalculate when an input is changed.",
         )
         row += 1
+        self.yield_option, row = self._entry(
+            frame,
+            row,
+            "Option",
+            "Option 01",
+            "What this massing is called: its sheet in the workbook and its layout.",
+            "A run with the same name replaces that option's sheet in the workbook and "
+            "its layout; another name adds an option beside the ones already there.",
+        )
         self._caption(
             frame,
             row,
-            "The slabs on the layers named below, measured and added up. Leave both empty "
-            "to count every slab showing, as residential.",
+            "The slabs on the layers named below, measured and added up. Leave them all empty "
+            "to count every slab showing.",
         )
         row += 1
         self.yield_residential, row = self._picker(
@@ -4292,17 +4304,50 @@ class Window:
             row,
             "Residential layers",
             "The layers whose slabs are residential floor.",
-            "Each slab on these layers is a residential floor: its area is residential GBA, "
-            "and its NSA is what the yield is worked from. A slab on a layer named for "
-            "neither use is not counted, and the run says which layers those were.",
+            "Each slab on these layers is a residential floor: its area is residential BEA, "
+            "and its GFA is what the units are worked from. A slab on a layer named for "
+            "nothing is not counted, and the run says which layers those were.",
         )
-        self.yield_other, row = self._picker(
+        self.yield_commercial, row = self._picker(
             frame,
             row,
-            "Non-residential layers",
-            "The layers whose slabs are any other floor: retail, office, a podium.",
-            "Counted in the GBA, GFA and FSR at the non-residential factors, and left out "
-            "of the yield. A layer cannot be both; the run refuses one named twice.",
+            "Commercial layers",
+            "The layers whose slabs are commercial floor: offices, a podium.",
+            "Counted at the commercial efficiencies, and left out of the units.",
+        )
+        self.yield_retail, row = self._picker(
+            frame,
+            row,
+            "Retail layers",
+            "The layers whose slabs are retail floor.",
+            "Counted at the retail efficiencies, and left out of the units.",
+        )
+        self.yield_massing, row = self._picker(
+            frame,
+            row,
+            "Massing layers",
+            "Layers that hold a whole option; the use of each slab is told by its level.",
+            "For a massing modelled on one layer -- a podium with a tower on it. The "
+            "levels named below are retail or commercial; every other level on these "
+            "layers is residential. A layer cannot be named twice; the run refuses one "
+            "that is.",
+        )
+        self.yield_retail_levels, row = self._entry(
+            frame,
+            row,
+            "Retail levels",
+            "",
+            "Levels of the massing layers that are retail: Ground, Level 01, B 01. Commas between.",
+            "The levels are counted up from the ground -- the level nearest the project's "
+            "ground storey -- as the run names them in its log.",
+        )
+        self.yield_commercial_levels, row = self._entry(
+            frame,
+            row,
+            "Commercial levels",
+            "",
+            "Levels of the massing layers that are commercial. Commas between.",
+            "A level can be retail or commercial, not both.",
         )
         renovation = ttk.Checkbutton(
             frame,
@@ -4329,22 +4374,30 @@ class Window:
             "The FSR is the GFA over this. From the address it is the cadastral lots' own "
             "area, which is the figure to confirm against the survey.",
         )
-        self.yield_target_fsr, row = self._entry(
+        self.yield_fsr_residential, row = self._entry(
             frame,
             row,
-            "Target FSR",
+            "Permissible FSR, residential",
             "",
-            "Blank reads the LEP's control at the address, when one is typed.",
-            "The FSR the massing is measured against. Its GFA -- the FSR times the site -- "
-            "is the Target beside the proposed total GFA.",
+            "The sheet splits the permissible FSR by use. Blank everywhere reads the LEP's.",
+            "The LEP's one FSR, read at the address, goes on the residential row with a "
+            "note; split it here, or in the workbook.",
         )
-        self.yield_target_units, row = self._entry(
+        self.yield_fsr_commercial, row = self._entry(
             frame,
             row,
-            "Target units",
+            "Permissible FSR, commercial",
             "",
-            "The unit count the brief asks for, beside the yield. Blank leaves it out.",
-            "Only said beside the yield; it changes nothing the run works out.",
+            "",
+            "The part of the permissible FSR that is commercial floor.",
+        )
+        self.yield_fsr_retail, row = self._entry(
+            frame,
+            row,
+            "Permissible FSR, retail",
+            "",
+            "",
+            "The part of the permissible FSR that is retail floor.",
         )
         self.yield_view, row = self._entry(
             frame,
@@ -4357,44 +4410,88 @@ class Window:
             "name the View Map does not have costs the picture, not the sheet.",
         )
 
-        frame, row = self._panel(outer, 1, title="Factors and mix"), 0
+        frame, row = self._panel(outer, 1, title="Efficiencies, mix and parking"), 0
         self.yield_gfa_residential, row = self._entry(
             frame,
             row,
-            "GBA to GFA, residential",
-            "0.75",
-            "The share of the residential GBA that is GFA.",
+            "BEA to GFA, residential",
+            "0.725",
+            "The share of the residential BEA that is GFA.",
             "What the walls, the cores, the plant and the circulation take out of a "
-            "residential floor, as the LEP's definition of GFA does. The office's 0.75.",
+            "residential floor, as the LEP's definition of GFA does. The sheet's 0.725.",
         )
-        self.yield_gfa_other, row = self._entry(
+        self.yield_gfa_commercial, row = self._entry(
             frame,
             row,
-            "GBA to GFA, other",
-            "0.9",
-            "The share of the non-residential GBA that is GFA.",
-            "A retail or office floor loses less to cores and circulation. The office's 0.9.",
-        )
-        self.yield_nsa_residential, row = self._entry(
-            frame,
-            row,
-            "GFA to NSA, residential",
+            "BEA to GFA, commercial",
             "0.85",
-            "The share of the residential GFA that is net saleable.",
-            "The yield is worked from this: the residential NSA over the mix's average unit.",
+            "The share of the commercial BEA that is GFA.",
+            "An office floor loses less to cores and circulation. The sheet's 0.85.",
         )
-        self.yield_nsa_other, row = self._entry(
+        self.yield_gfa_retail, row = self._entry(
             frame,
             row,
-            "GFA to NSA, other",
+            "BEA to GFA, retail",
+            "0.95",
+            "The share of the retail BEA that is GFA.",
+            "A shop floor is nearly all floor. The sheet's 0.95.",
+        )
+        self.yield_nla_residential, row = self._entry(
+            frame,
+            row,
+            "GFA to NLA, residential",
+            "0.85",
+            "The share of the residential GFA that is net lettable.",
+            "The units are worked from this: the mix's average NLA over it is the GFA "
+            "one unit costs.",
+        )
+        self.yield_nla_commercial, row = self._entry(
+            frame,
+            row,
+            "GFA to NLA, commercial",
             "0.9",
-            "The share of the non-residential GFA that is net saleable or lettable.",
+            "The share of the commercial GFA that is net lettable.",
             "Said on the sheet; nothing else is worked from it.",
+        )
+        self.yield_nla_retail, row = self._entry(
+            frame,
+            row,
+            "GFA to NLA, retail",
+            "0.9",
+            "The share of the retail GFA that is net lettable.",
+            "Said on the sheet; nothing else is worked from it.",
+        )
+        self.yield_affordable_share, row = self._entry(
+            frame,
+            row,
+            "Affordable share (%)",
+            "0",
+            "The share of the residential GFA that is affordable housing.",
+            "The affordable units take the sheet's own mix -- the same shares, a smaller "
+            "three-bedroom -- and their own parking rates; both are inputs in the workbook.",
         )
         self.yield_mix: dict[str, tuple[ttk.Entry, ttk.Entry]] = {}
         for name, share, size in MIX_ROWS:
             share_box, size_box, row = self._mix_row(frame, row, name, share, size)
             self.yield_mix[name] = (share_box, size_box)
+        self.yield_sqm_per_space, row = self._entry(
+            frame,
+            row,
+            "m² per parking space",
+            "40",
+            "Basement floor a space takes, with its aisle.",
+            "The parking the sheet counts, at this, is so much basement; over the share of "
+            "the site below, so many basement levels.",
+        )
+        self.yield_basement_ratio, row = self._entry(
+            frame,
+            row,
+            "Basement site ratio",
+            "0.4",
+            "The share of the site a basement level may take, 0.4 for forty per cent.",
+            "The rates per unit type and per m² of commercial and retail floor are the "
+            "sheet's, and are inputs in the workbook.",
+        )
 
     def _mix_row(
         self, parent: ttk.Frame, row: int, name: str, share: str, size: str
@@ -4413,15 +4510,15 @@ class Window:
         size_box = ttk.Entry(cells, width=6)
         size_box.insert(0, size)
         size_box.grid(row=0, column=2)
-        ttk.Label(cells, text="m² NSA each", foreground=HINT).grid(row=0, column=3, padx=(6, 0))
+        ttk.Label(cells, text="m² NLA each", foreground=HINT).grid(row=0, column=3, padx=(6, 0))
         for target in (label, share_box, size_box):
             Tooltip(
                 target,
                 f"How many of the units are {name.lower()} apartments, as a share of them "
-                "all, and the net saleable area of one. The shares come to 100; a type at "
-                "nothing is not in the mix. "
-                "The yield is the residential NSA over the average these make, rounded "
-                "down, and split into the mix so the types add back up.",
+                "all, and the net lettable area of one. The shares come to 100; a type at "
+                "nothing keeps its row on the sheet. "
+                "The units are the residential GFA over the average GFA these make, "
+                "shared into the mix; the sheet does not round, and nor does the run.",
                 title=f"{name} in the mix",
             )
         return share_box, size_box, row + 1
@@ -5278,16 +5375,27 @@ class Window:
             "context_site_group": self.prefix_context,
             "archicad_wait_minutes": self.wait_min,
             "skin_grid": self.grid_m,
+            "yield_option": self.yield_option,
             "yield_residential_layers": self.yield_residential,
-            "yield_other_layers": self.yield_other,
+            "yield_commercial_layers": self.yield_commercial,
+            "yield_retail_layers": self.yield_retail,
+            "yield_massing_layers": self.yield_massing,
+            "yield_retail_levels": self.yield_retail_levels,
+            "yield_commercial_levels": self.yield_commercial_levels,
             "yield_site_area": self.yield_site_area,
-            "yield_target_fsr": self.yield_target_fsr,
-            "yield_target_units": self.yield_target_units,
+            "yield_fsr_residential": self.yield_fsr_residential,
+            "yield_fsr_commercial": self.yield_fsr_commercial,
+            "yield_fsr_retail": self.yield_fsr_retail,
             "yield_view": self.yield_view,
             "yield_gfa_residential": self.yield_gfa_residential,
-            "yield_gfa_other": self.yield_gfa_other,
-            "yield_nsa_residential": self.yield_nsa_residential,
-            "yield_nsa_other": self.yield_nsa_other,
+            "yield_gfa_commercial": self.yield_gfa_commercial,
+            "yield_gfa_retail": self.yield_gfa_retail,
+            "yield_nla_residential": self.yield_nla_residential,
+            "yield_nla_commercial": self.yield_nla_commercial,
+            "yield_nla_retail": self.yield_nla_retail,
+            "yield_affordable_share": self.yield_affordable_share,
+            "yield_sqm_per_space": self.yield_sqm_per_space,
+            "yield_basement_ratio": self.yield_basement_ratio,
             **{
                 f"yield_mix_{name.lower().replace(' ', '_')}_{part}": box
                 for name, (share, size) in self.yield_mix.items()
@@ -6883,41 +6991,61 @@ class Window:
         return made
 
     def _yield_args(self, common: list[str]) -> list[str]:
-        """The area calculation's command line, from the Yield page."""
+        """The yield analysis's command line, from the Yield page."""
         args = ["yield", *common]
-        for name in self._listed(self.yield_residential):
-            args += ["--residential-layer", name]
-        for name in self._listed(self.yield_other):
-            args += ["--non-residential-layer", name]
+        for flag, box in (
+            ("--residential-layer", self.yield_residential),
+            ("--commercial-layer", self.yield_commercial),
+            ("--retail-layer", self.yield_retail),
+            ("--massing-layer", self.yield_massing),
+        ):
+            for name in self._listed(box):
+                args += [flag, name]
+        for flag, entry in (
+            ("--retail-level", self.yield_retail_levels),
+            ("--commercial-level", self.yield_commercial_levels),
+        ):
+            for name in self._listed(entry):
+                args += [flag, name]
         if self.yield_renovation.get():
             args.append("--renovation-filter")
-        for flag, box in (
+        for flag, typed in (
+            ("--option", self.yield_option),
             ("--gfa-residential", self.yield_gfa_residential),
-            ("--gfa-non-residential", self.yield_gfa_other),
-            ("--nsa-residential", self.yield_nsa_residential),
-            ("--nsa-non-residential", self.yield_nsa_other),
+            ("--gfa-commercial", self.yield_gfa_commercial),
+            ("--gfa-retail", self.yield_gfa_retail),
+            ("--nla-residential", self.yield_nla_residential),
+            ("--nla-commercial", self.yield_nla_commercial),
+            ("--nla-retail", self.yield_nla_retail),
+            ("--affordable-share", self.yield_affordable_share),
+            ("--sqm-per-space", self.yield_sqm_per_space),
+            ("--basement-site-ratio", self.yield_basement_ratio),
             ("--site-area", self.yield_site_area),
-            ("--target-fsr", self.yield_target_fsr),
-            ("--target-units", self.yield_target_units),
+            ("--fsr-residential", self.yield_fsr_residential),
+            ("--fsr-commercial", self.yield_fsr_commercial),
+            ("--fsr-retail", self.yield_fsr_retail),
         ):
-            args += self._flag(flag, box)
+            args += self._flag(flag, typed)
         # Whatever the page does not say about the site is read at the
         # address the Site analysis page has, when it has one.
         address = self.site_address.get().strip()
-        if address and not (
-            self.yield_site_area.get().strip() and self.yield_target_fsr.get().strip()
-        ):
+        permissible = any(
+            box.get().strip()
+            for box in (
+                self.yield_fsr_residential,
+                self.yield_fsr_commercial,
+                self.yield_fsr_retail,
+            )
+        )
+        if address and not (self.yield_site_area.get().strip() and permissible):
             args += ["--address", address]
+        # Every type goes, a share of nothing included: the sheet shows the
+        # type on its own row either way.
         defaults = {name: size for name, _share, size in MIX_ROWS}
         for name, (share_box, size_box) in self.yield_mix.items():
-            share = share_box.get().strip().rstrip("%").strip()
-            try:
-                counted = float(share) > 0
-            except ValueError:
-                counted = bool(share)
-            if counted:
-                size = size_box.get().strip() or defaults.get(name, "")
-                args += ["--unit", f"{name}={share},{size}"]
+            share = share_box.get().strip().rstrip("%").strip() or "0"
+            size = size_box.get().strip() or defaults.get(name, "")
+            args += ["--unit", f"{name}={share},{size}"]
         if self.yield_view.get().strip():
             args += ["--view", self.yield_view.get().strip()]
         if self.master.get():

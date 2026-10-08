@@ -1,29 +1,39 @@
-"""The massing slabs, read out of the open project for the area calculation.
+"""The massing slabs, read out of the open project for the yield analysis.
 
-A massing is modelled in slabs, one per floor, and the area calculation
-(roadmap R3, ``rules.area_yield``) is their areas added up. Which slabs are
-the massing is the person's to say, in the two ways the office asked for:
+A massing is modelled in slabs, one per floor, and the yield analysis
+(roadmap R3, ``rules.area_yield``) is their areas added up by level and by
+use. Which slabs are the massing, and what each is, is the person's to say:
 
-* **by layer** -- the slabs on the layers named as residential, and on the
-  layers named as non-residential. The layer is also what says a slab's use.
+* **by layer** -- the slabs on the layers named as residential, as
+  commercial and as retail. The layer is also what says a slab's use.
+* **by layer and level** -- the slabs on the layers named as *massing*,
+  whose use is told by the level they stand on: the ground floor retail,
+  the levels named commercial, everything else residential. An option
+  modelled on one layer -- a podium with a tower on it -- is read this way.
 * **by the renovation filter** -- only the slabs the floor plan's renovation
   filter shows, so that a massing modelled as *New* over an existing
   building counts the new and not the old. Archicad decides what the filter
   shows (Tapir's ``IsVisibleByRenovation``), whichever filter is set.
 
-With no layer named at all, every slab on a layer that is showing counts,
-as residential: the quick answer to "what is the GBA of what I am looking
-at", which is the third way it was asked for.
+With no layer named at all, every slab on a layer that is showing counts as
+massing: the quick answer to "what is the yield of what I am looking at".
 
 What comes back from Archicad
 -----------------------------
 ``GetElementsByType`` finds the slabs, with the filters; ``GetDetailsOfElements``
 gives each one's outline, holes and arcs in project metres, its storey and
-its layer (``docs/archicad.md``). The outline is the slab's own polygon --
-its reference line, which on a massing slab is its edge -- and its area is
-worked here, arcs and holes and all (``core.plan_area``), not read back as
-one of Archicad's properties: those arrive as display strings in the
-project's own units and language.
+its layer, and where it is in height (``docs/archicad.md``). The outline is
+the slab's own polygon -- its reference line, which on a massing slab is its
+edge -- and its area is worked here, arcs and holes and all
+(``core.plan_area``), not read back as one of Archicad's properties: those
+arrive as display strings in the project's own units and language.
+
+Where a slab is in height is its own, not its storey's. A massing's slabs
+are commonly homed on the ground storey and offset up, and a storey-thick
+slab stands for the whole floor; so each slab's underside is worked from
+its reference plane (``zCoordinate``), the offset of its top from that plane
+and its thickness, and the levels are told from the undersides
+(``rules.area_yield.levels_from``).
 
 Loriini's own slabs are never counted: the context model's neighbours and
 the future context carry IDs that start ``SA``, and a GBA that included the
@@ -32,6 +42,7 @@ street would be a GBA of the suburb.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -39,9 +50,18 @@ from typing import Any
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError
 from sun_study.archicad.read import layer_names
 from sun_study.core.plan_area import Arc, Ring, floor_area
-from sun_study.rules.area_yield import NON_RESIDENTIAL, RESIDENTIAL, Floor, Use
+from sun_study.rules.area_yield import (
+    COMMERCIAL,
+    RESIDENTIAL,
+    RETAIL,
+    Floor,
+    Use,
+    level_index,
+    level_name,
+)
 
 __all__ = [
+    "BY_LEVEL",
     "OWN_ID_PREFIX",
     "Assignment",
     "MassingSlab",
@@ -60,6 +80,12 @@ OWN_ID_PREFIX = "SA "
 #: outlines is one wait against one timeout.
 BATCH = 300
 
+#: What a massing layer's use is said to be in the run's listing.
+BY_LEVEL = "by level"
+
+#: A storey called one of these is the ground, from which the levels count.
+_GROUND = re.compile(r"^(?:ground(?: floor)?|gf|g|level 0+|l0+|0+)$", re.IGNORECASE)
+
 
 @dataclass(frozen=True)
 class MassingSlab:
@@ -70,8 +96,12 @@ class MassingSlab:
     layer: str
     storey: str
     level_m: float
+    """The home storey's level."""
     outline: Ring
     holes: tuple[Ring, ...] = ()
+    bottom_m: float = 0.0
+    """The elevation of the slab's underside."""
+    thickness_m: float = 0.0
 
     @property
     def area_m2(self) -> float:
@@ -88,6 +118,8 @@ class SlabReading:
     """Loriini's own slabs, left out."""
     unreadable: tuple[str, ...] = field(default_factory=tuple)
     """Slabs Archicad would not describe, or that had no outline, by guid."""
+    ground_m: float | None = None
+    """The level of the project's ground storey, when one is named for it."""
 
 
 def ring_from(points: Any, arcs: Any = None) -> Ring | None:
@@ -146,13 +178,43 @@ def _storeys(connection: ArchicadConnection) -> dict[int, tuple[str, float]]:
     return found
 
 
+def _ground_of(storeys: Mapping[int, tuple[str, float]]) -> float | None:
+    """The level of the storey named as the ground, if one is."""
+    for _index, (name, level) in sorted(storeys.items()):
+        if _GROUND.match(name.strip()):
+            return level
+    return None
+
+
+def _number(value: Any) -> float | None:
+    return float(value) if isinstance(value, int | float) else None
+
+
+def _height_of(detail: Mapping[str, Any], storey_level: float) -> tuple[float, float]:
+    """A slab's underside and thickness, from its details.
+
+    Tapir gives the reference plane's absolute height (``zCoordinate``), the
+    offset of the slab's top from that plane (``offsetFromTop``) and the
+    thickness; the top is the plane plus the offset and the underside is
+    the thickness below it. Without them -- an older add-on -- the slab's
+    ``level`` above its storey stands in, and it has no thickness.
+    """
+    thickness = _number(detail.get("thickness")) or 0.0
+    plane = _number(detail.get("zCoordinate"))
+    if plane is None:
+        offset = _number(detail.get("level")) or 0.0
+        return storey_level + offset, thickness
+    top = plane + (_number(detail.get("offsetFromTop")) or 0.0)
+    return top - thickness, thickness
+
+
 def read_slabs(
     connection: ArchicadConnection,
     *,
     renovation: bool = False,
     shown_layers_only: bool = False,
 ) -> SlabReading:
-    """Every slab in the floor plan, with its outline, storey and layer.
+    """Every slab in the floor plan, with its outline, storey, layer and height.
 
     ``renovation`` keeps only what the floor plan's renovation filter shows;
     ``shown_layers_only`` only what is on a layer that is showing. Both are
@@ -223,8 +285,11 @@ def read_slabs(
             if isinstance(layer_index, int | float)
             else ""
         )
-        slabs.append(MassingSlab(guid, element_id, layer, storey, level, outline, holes))
-    return SlabReading(tuple(slabs), tuple(filters), own, tuple(unreadable))
+        bottom, thickness = _height_of(detail, level)
+        slabs.append(
+            MassingSlab(guid, element_id, layer, storey, level, outline, holes, bottom, thickness)
+        )
+    return SlabReading(tuple(slabs), tuple(filters), own, tuple(unreadable), _ground_of(storeys))
 
 
 def _tidy(name: str) -> str:
@@ -238,57 +303,110 @@ class Assignment:
     """The slabs' floors, and what the layers came to."""
 
     floors: tuple[Floor, ...]
-    by_layer: Mapping[str, tuple[Use, int, float]]
-    """Each counted layer: its use, how many slabs, their area."""
+    by_layer: Mapping[str, tuple[str, int, float]]
+    """Each counted layer: its use (or ``BY_LEVEL``), how many slabs, their area."""
     passed_over: Mapping[str, int]
-    """Layers with slabs on them that were named as neither use."""
+    """Layers with slabs on them that were named for nothing."""
     missing: tuple[str, ...]
     """Layers named that no slab stands on."""
+    levels_used: Mapping[str, str] = field(default_factory=dict)
+    """For the massing layers: each level's name and the use its slabs took."""
 
 
 def floors_from(
     slabs: Iterable[MassingSlab],
     residential: Sequence[str] = (),
-    non_residential: Sequence[str] = (),
+    commercial: Sequence[str] = (),
+    retail: Sequence[str] = (),
+    massing: Sequence[str] = (),
+    *,
+    retail_levels: Sequence[int] = (),
+    commercial_levels: Sequence[int] = (),
+    ground_m: float | None = None,
 ) -> Assignment:
-    """Each slab's floor, its use told by its layer.
+    """Each slab's floor, its use told by its layer, or by its level on a
+    massing layer.
 
-    With no layer named for either use, every slab counts as residential:
-    the quick GBA of what is showing. A layer named for both is refused,
-    since one slab cannot be two uses.
+    With no layer named at all, every slab counts as massing, its use by
+    level: the quick yield of what is showing. A layer named for two things
+    is refused, since one slab cannot be two uses.
     """
-    homes = {_tidy(name) for name in residential if name.strip()}
-    other = {_tidy(name) for name in non_residential if name.strip()}
-    both = homes & other
-    if both:
-        named = sorted(name for name in [*residential, *non_residential] if _tidy(name) in both)
-        raise ValueError(
-            f"{named[0]!r} is named as both residential and non-residential; "
-            "a slab on it can only be one."
-        )
-    everything = not homes and not other
-    floors: list[Floor] = []
-    by_layer: dict[str, tuple[Use, int, float]] = {}
+    named: dict[str, set[str]] = {
+        RESIDENTIAL: {_tidy(name) for name in residential if name.strip()},
+        COMMERCIAL: {_tidy(name) for name in commercial if name.strip()},
+        RETAIL: {_tidy(name) for name in retail if name.strip()},
+        BY_LEVEL: {_tidy(name) for name in massing if name.strip()},
+    }
+    words = {
+        RESIDENTIAL: "residential",
+        COMMERCIAL: "commercial",
+        RETAIL: "retail",
+        BY_LEVEL: "massing",
+    }
+    kinds = list(named)
+    for i, first in enumerate(kinds):
+        for second in kinds[i + 1 :]:
+            both = named[first] & named[second]
+            if both:
+                layer = sorted(both)[0]
+                raise ValueError(
+                    f"{layer!r} is named as both {words[first]} and {words[second]}; "
+                    "a slab on it can only be one."
+                )
+    everything = not any(named.values())
+    listed = list(slabs)
+    kept: list[tuple[MassingSlab, str]] = []
     passed_over: dict[str, int] = {}
     seen: set[str] = set()
-    for slab in slabs:
+    for slab in listed:
         key = _tidy(slab.layer)
         seen.add(key)
-        use: Use
-        if everything or key in homes:
-            use = RESIDENTIAL
-        elif key in other:
-            use = NON_RESIDENTIAL
+        if everything or key in named[BY_LEVEL]:
+            kept.append((slab, BY_LEVEL))
+        elif key in named[RESIDENTIAL]:
+            kept.append((slab, RESIDENTIAL))
+        elif key in named[COMMERCIAL]:
+            kept.append((slab, COMMERCIAL))
+        elif key in named[RETAIL]:
+            kept.append((slab, RETAIL))
         else:
             passed_over[slab.layer] = passed_over.get(slab.layer, 0) + 1
-            continue
+
+    # The levels are told across every counted slab, so a level is the same
+    # level whichever layer its slabs are on.
+    indices = level_index([slab.bottom_m for slab, _ in kept], ground_m)
+    floors: list[Floor] = []
+    by_layer: dict[str, tuple[str, int, float]] = {}
+    levels_used: dict[str, str] = {}
+    for (slab, kind), index in zip(kept, indices, strict=True):
+        use: Use
+        if kind == BY_LEVEL:
+            if index in retail_levels:
+                use = RETAIL
+            elif index in commercial_levels:
+                use = COMMERCIAL
+            else:
+                use = RESIDENTIAL
+            levels_used[level_name(index)] = use
+        else:
+            use = kind  # type: ignore[assignment]
         area = slab.area_m2
-        floors.append(Floor(slab.storey, use, area, slab.level_m))
-        _, count, total = by_layer.get(slab.layer, (use, 0, 0.0))
-        by_layer[slab.layer] = (use, count + 1, total + area)
+        floors.append(Floor(use, area, slab.bottom_m, slab.thickness_m, slab.storey))
+        _, count, total = by_layer.get(slab.layer, (kind, 0, 0.0))
+        by_layer[slab.layer] = (kind, count + 1, total + area)
     missing = tuple(
         name
-        for name in [*residential, *non_residential]
+        for name in [*residential, *commercial, *retail, *massing]
         if name.strip() and _tidy(name) not in seen
     )
-    return Assignment(tuple(floors), by_layer, passed_over, missing)
+    ordered = dict(sorted(levels_used.items(), key=lambda item: _level_order(item[0])))
+    return Assignment(tuple(floors), by_layer, passed_over, missing, ordered)
+
+
+def _level_order(name: str) -> tuple[int, str]:
+    """Levels in height order: basements, the ground, the floors above."""
+    if name.startswith("B "):
+        return (-int(name[2:]), name)
+    if name.startswith("Level "):
+        return (int(name[6:]), name)
+    return (0, name)

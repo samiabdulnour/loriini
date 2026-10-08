@@ -4597,3 +4597,70 @@ printed while it waits: the connection is also used in the agent's server
 process, whose stdout is the protocol (D120), so it has nothing to print
 with. The stop file is not watched either; thirty seconds is less than the
 runner's own patience.
+
+### D126 — The yield analysis is the office's feasibility template, cell for cell, with its efficiencies as the rule
+
+Asked on 8 October 2026 (roadmap R3): the office put its *Feasibility
+template* -- *Preliminary Yield Analysis*, an .xlsx with a sheet per
+option -- in the project folder and asked for the yield study to produce
+that table, for two massing options in the open project, and to follow
+the template's efficiencies strictly.
+
+**The template's arithmetic replaces the earlier sheet's.** The area
+calculation of D122 had two uses at 0.75/0.9 and 0.85/0.9 and a yield
+rounded down and split by the largest remainder. The template has three
+uses -- residential, commercial, retail -- at *BEA to GFA* 0.725, 0.85 and
+0.95 and *GFA to NLA* 0.85, 0.9 and 0.9, a permissible FSR split by use,
+and units that are the residential GFA over the mix's *average GFA* (the
+average NLA over the residential GFA-to-NLA), shared into the mix by its
+shares and between a market and an affordable mix by a share of the GFA,
+*not rounded*: 220.575 units is what the sheet says. Parking is each type's
+units by a rate under the SEPP and under the DCP, visitors over every unit,
+commercial and retail GFA by a space per so many square metres, and the
+basements at 40 m² a space over the share of the site a basement may take.
+``rules.area_yield`` is that, with the template's every figure as a
+default and a setting; the template's own *Option 01* is the test fixture
+and comes out to the cent. The earlier rounding was a view the tool took;
+the office's sheet is the office's view, and it is the one asked for.
+
+**The workbook is the template, filled, not a table of Loriini's own.**
+Somebody who knows the template finds the site in C6, the permissible FSR
+in C10:C12, the units in D29:E33, the efficiencies in C86:E88 and the
+storey table from J113, with the inputs in red as the template has them and
+everything else a formula (``report.area_table``). A mix of other than five
+types moves the rows below it down; the storey table takes as many rows as
+the massing has levels. The columns the office fills by hand -- units per
+level, the ADG counts -- are left empty with their formulas in place. One
+sheet per option: the workbook keeps each option's data as JSON on a hidden
+sheet, so a run reads the options already there and writes them all back
+with its own added or replaced (``report.xlsx`` grew several sheets, a
+hidden one, and a reader for one cell). A workbook without that sheet is
+one Loriini did not write, and is refused rather than overwritten: the
+office's template lives in the same folder.
+
+**A slab stands where its height says, not where its storey does.** The
+Darlinghurst options are stacks of storey-thick slabs -- 4.3 m for the
+ground, 3 m above -- every one homed on the GROUND storey and offset up, so
+a table by home storey would be one row. Tapir gives a slab's reference
+plane (``zCoordinate``), the offset of its top from it and its thickness;
+the underside is worked from those, undersides within half a metre are one
+level, and the levels are named up from the one nearest the project's
+storey called Ground (``rules.area_yield.levels_from``). The floor-to-floor
+is the rise to the level above, and the top level's its own thickness when
+the slabs are storey-thick.
+
+**An option on one layer has its use told by level.** Each Darlinghurst
+option is one layer, podium and tower together, so a layer per use could
+not say what was retail. A *massing* layer's slabs take their use from the
+level they stand on -- the levels named retail, the levels named
+commercial, the rest residential -- beside the layer-per-use way, which
+stays. Which levels are which is the office's to say; a level moved from
+one use to another is also one number moved between columns in the
+workbook's storey table, and the formulas follow.
+
+**What was assumed for the two options.** The office did not say which
+podium levels are retail or commercial. The two sheets were run with the
+ground floor retail, the first level commercial and the rest residential,
+the LEP's one FSR read at the address and written on the residential row
+with a note; the run's log says so, and both are one flag or one cell to
+change.

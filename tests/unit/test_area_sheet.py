@@ -1,4 +1,4 @@
-"""The area calculation's sheet and workbook.
+"""The yield analysis's sheet and workbook.
 
 The drawing is tested pure, as the other sheets are; drawing it onto a
 layout is tested against a scripted Archicad; and the workbook's formulas
@@ -8,6 +8,7 @@ from nothing, so that what Excel shows after an edit is what Loriini said.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -18,92 +19,114 @@ from typing import Any
 import pytest
 
 from sun_study.archicad import naming
-from sun_study.archicad.area_sheet import AREA_WORD, area_drawing, draw_area_sheet, view_frame
-from sun_study.archicad.layout import LayoutSheet
-from sun_study.report.area_table import notes, rows, text_lines, write_workbook
-from sun_study.rules.area_yield import (
-    NON_RESIDENTIAL,
-    RESIDENTIAL,
-    AreaSchedule,
-    Floor,
-    Targets,
-    UnitType,
-    schedule,
+from sun_study.archicad.area_sheet import (
+    AREA_WORD,
+    area_drawing,
+    draw_area_sheet,
+    sheet_word,
+    view_frame,
 )
+from sun_study.archicad.layout import LayoutSheet
+from sun_study.report import xlsx
+from sun_study.report.area_table import (
+    DATA_SHEET,
+    feasibility_from_dict,
+    feasibility_to_dict,
+    notes,
+    options_in,
+    rows,
+    text_lines,
+    write_workbook,
+)
+from sun_study.rules.area_yield import RESIDENTIAL, Feasibility, Floor, feasibility
 from tests.unit.test_archicad_adapter import connect
-
-
-def office() -> AreaSchedule:
-    floors = [
-        Floor("Level 01", NON_RESIDENTIAL, 1387.68, 0.0),
-        *(Floor(f"Level {n:02d}", RESIDENTIAL, 13219.56 / 12, 3.1 * n) for n in range(2, 14)),
-    ]
-    return schedule(floors, site_area_m2=1386.78, targets=Targets(fsr=8.0, units=110))
-
+from tests.unit.test_area_yield import template, template_floors
 
 # -- the rows -------------------------------------------------------------------
 
 
 def test_the_rows_are_the_office_sheets_in_its_order_and_words() -> None:
-    labelled = [(row.label, row.count, row.proposed, row.target) for row in rows(office())]
-    figures = [entry for entry in labelled if entry[0] or entry[1]]
-    assert figures[:4] == [
-        ("Total GBA", "", "14607.24 m²", ""),
-        ("Non resi. GBA", "", "1387.68 m²", ""),
-        ("Resi. GBA", "", "13219.56 m²", ""),
-        ("Total GFA", "", "11163.58 m²", "11094.24 m²"),
-    ]
-    by_label = {entry[0]: entry for entry in labelled if entry[0]}
-    assert by_label["Total FSR"][2:] == ("8.05", "8.00")
-    assert by_label["Resi. FSR"][2] == "7.15"
-    assert by_label["2 Bedroom"] == ("2 Bedroom", "78 units", "70 %", "70 %")
-    assert by_label["GFA/unit"][2] == "88.52 m²"
-    assert ("", "112 units", "Mix", "110 units") in labelled
+    listed = rows(template())
+    sections = [row.label for row in listed if row.kind == "section"]
+    assert sections == [
+        "Site Area",
+        "FSR",
+        "GFA",
+        "Residential GFA Split",
+        "Market Unit Mix",
+        "Number of Storeys",
+        "Parking Requirements",
+    ], "no affordable block without an affordable share"
+    # The same label serves two blocks -- a unit type in the mix and in the
+    # parking -- so the rows are read in order, the first of each name first.
+    first = {}
+    for row in listed:
+        if row.label and row.label not in first:
+            first[row.label] = row.cells
+    assert first["Site Area"] == ("6,704 m²", "", "")
+    assert first["Residential FSR"] == ("2.80", "2.81", "+0.01")
+    assert first["Total FSR"] == ("3.40", "3.39", "-0.01")
+    assert first["Residential GFA"] == ("18,771 m²", "18,814 m²", "+43 m²")
+    assert first["Total GFA"] == ("22,794 m²", "22,749 m²", "-45 m²")
+    assert first["2-bed"] == ("75 m² / 70 %", "154.1", "154.4")
+    assert first["Residential"] == ("15", "", "")
+    assert first["Visitors"] == ("0.1 / 0 a unit", "22.1", "0.0")
+    assert first["Total Parking"] == ("", "333.0", "208.4")
+    assert first["Total Basements"] == ("", "5.0", "3.1")
+    parking = [row.cells for row in listed if row.label == "2-bed"][1]
+    assert parking == ("1 / 1 a unit", "154.4", "154.4")
 
 
-def test_the_notes_say_the_factors_the_site_and_the_sizes() -> None:
-    said = notes(office(), ["Measured from 13 slabs."])
-    assert said[:4] == [
-        "GBA to GFA (Residential) : 0.75",
-        "GBA to GFA (Non-Residential) : 0.9",
-        "GFA to NSA (Residential) : 0.85",
-        "GFA to NSA (Non-Residential) : 0.9",
-    ]
-    assert "Site area : 1386.78 m²" in said
-    assert any(line.startswith("Unit sizes (NSA) : 1 Bedroom 55 m²") for line in said)
-    assert said[-1] == "Measured from 13 slabs."
+def test_the_notes_say_the_efficiencies_the_averages_and_the_source() -> None:
+    said = notes(template())
+    assert said[0] == (
+        "Building efficiencies (BEA to GFA / GFA to NLA) : Residential 0.725 / 0.85, "
+        "Commercial 0.85 / 0.9, Retail 0.95 / 0.9"
+    )
+    assert said[1] == "Market units : average NLA 72.5 m², average GFA 85.3 m²"
+    assert "Parking : 40 m² a space, basement over 40 % of the site" in said
+    assert said[-1] == "BEA : 19 slabs"
+    assert notes(template(), ["Measured from 13 slabs."])[-1] == "Measured from 13 slabs."
 
 
 def test_the_printed_table_lines_up() -> None:
-    printed = text_lines(office())
-    assert any(line.startswith("  Total GBA") and "14607.24 m²" in line for line in printed)
-    assert any("17 units" in line and "15 %" in line for line in printed)
+    printed = text_lines(template())
+    assert any(line.startswith("  Total GFA") and "22,749 m²" in line for line in printed)
+    assert any(line.startswith("  1-bed") and "44.1" in line for line in printed)
+    assert any(line.startswith("  PARKING REQUIREMENTS") for line in printed)
 
 
 # -- the sheet ---------------------------------------------------------------------
 
 
 def test_the_sheet_carries_the_title_the_table_the_notes_and_the_legend() -> None:
-    drawing = area_drawing(office(), ["Measured from 13 slabs."])
+    drawing = area_drawing(template(), ["Measured from 19 slabs."])
     said = [text.text for text in drawing.texts]
-    assert said[:2] == ["AREA CALCULATION", "GFA + Yield"]
-    for expected in ("Total GBA", "14607.24 m²", "YIELD", "Notes:", "Legend", "Residential"):
+    assert said[:2] == ["PRELIMINARY YIELD ANALYSIS", "Option 01"]
+    for expected in ("FSR", "Total GFA", "22,749 m²", "PARKING REQUIREMENTS", "Notes:", "Legend"):
         assert expected in said
-    assert "Measured from 13 slabs." in said
+    assert {"Residential", "Commercial", "Retail"} <= set(said)
+    assert "Measured from 19 slabs." in said
     assert all(text.at[1] <= 0.0 for text in drawing.texts), "it hangs down from its corner"
-    assert all(text.at[0] < 0.15 for text in drawing.texts), "and stays in its column"
-    # Two swatches, each a box of close lines in its colour.
+    assert all(text.at[0] <= 0.2 for text in drawing.texts), "and stays in its columns"
+    # Three swatches, each a box of close lines in its colour.
     colours = {line.colour for line in drawing.lines}
-    assert {"#FFF4A8", "#B894F2"} <= colours
+    assert {"#FFF4A8", "#B894F2", "#F6B8C8"} <= colours
 
 
 def test_the_view_goes_right_of_the_table_and_left_of_the_title_block() -> None:
     a1 = LayoutSheet(841.0, 594.0, 10.0, 10.0, 10.0, 10.0)
     x0, y0, x1, y1 = view_frame(a1) or (0, 0, 0, 0)
-    assert x0 == pytest.approx((10 + 15 + 150 + 15) / 1000)
+    assert x0 == pytest.approx((10 + 15 + 200 + 15) / 1000)
     assert x1 == pytest.approx((841 - 10 - 100 - 15) / 1000)
     assert (y0, y1) == pytest.approx((0.025, 0.569))
     assert view_frame(LayoutSheet(297.0, 210.0, 10.0, 10.0, 10.0, 10.0)) is None, "no room on A4"
+
+
+def test_the_sheet_is_named_for_its_option() -> None:
+    assert sheet_word("Option 01") == f"{AREA_WORD} - Option 01"
+    assert sheet_word("  Tower  B ") == f"{AREA_WORD} - Tower B"
+    assert sheet_word("") == AREA_WORD
 
 
 def layout_book(*extra: dict[str, Any]) -> dict[str, Any]:
@@ -154,12 +177,12 @@ def test_the_sheet_is_drawn_straight_onto_a_layout_of_its_own() -> None:
             "CreateTexts": {"success": True, "elements": [{"guid": "T"}]},
         }
     )
-    report = draw_area_sheet(connection, office(), master_layout="A1 no scale")
-    assert report.name == naming.named(AREA_WORD) and report.database_id == "LAY"
+    report = draw_area_sheet(connection, template(), master_layout="A1 no scale")
+    assert report.name == naming.named(sheet_word("Option 01")) and report.database_id == "LAY"
     assert report.master == "A1 no scale" and report.view == ""
-    assert report.texts > 30 and report.lines > 30
+    assert report.texts > 60 and report.lines > 30
     texts = transport.parameters_for("CreateTexts")["texts"]
-    title = next(t for t in texts if t["text"] == "AREA CALCULATION")
+    title = next(t for t in texts if t["text"] == "PRELIMINARY YIELD ANALYSIS")
     assert 0.02 < title["coordinate"]["x"] < 0.03 and 0.55 < title["coordinate"]["y"] < 0.58
     assert all(0.0 < t["coordinate"]["y"] < 0.58 for t in texts), "everything on the sheet"
     assert "CreateDrawings" not in transport.commands(), "no view was asked for"
@@ -195,12 +218,14 @@ def test_a_named_view_is_placed_beside_the_table_and_framed() -> None:
             "ArrangeDrawings": {"success": True, "arranged": 1},
         }
     )
-    report = draw_area_sheet(connection, office(), view=" yield axo ", master_layout="A1 no scale")
+    report = draw_area_sheet(
+        connection, template(), view=" yield axo ", master_layout="A1 no scale"
+    )
     assert report.view == "Yield Axo", report.notes
     arranged = transport.parameters_for("ArrangeDrawings")
     frame = arranged["drawings"][0]["frame"]
     assert arranged["drawings"][0]["guid"] == "D1"
-    assert frame["xMin"] == pytest.approx(0.19) and frame["xMax"] == pytest.approx(0.716)
+    assert frame["xMin"] == pytest.approx(0.24) and frame["xMax"] == pytest.approx(0.716)
 
 
 def test_a_view_nobody_has_costs_the_picture_and_not_the_sheet() -> None:
@@ -217,58 +242,99 @@ def test_a_view_nobody_has_costs_the_picture_and_not_the_sheet() -> None:
             "CreateTexts": {"success": True, "elements": [{"guid": "T"}]},
         }
     )
-    report = draw_area_sheet(connection, office(), view="Nothing Like It")
-    assert report.view == "" and report.texts > 30
+    report = draw_area_sheet(connection, template(), view="Nothing Like It")
+    assert report.view == "" and report.texts > 60
     assert any("no view called 'Nothing Like It'" in note for note in report.notes)
 
 
 # -- the workbook ------------------------------------------------------------------
 
 
-def cells(path: Path) -> dict[str, tuple[str, str]]:
-    """Every cell of the sheet: its formula, or empty, and its value."""
+def cells(path: Path, part: str = "xl/worksheets/sheet1.xml") -> dict[str, tuple[str, str]]:
+    """Every cell of a sheet: its formula, or empty, and its value."""
     with zipfile.ZipFile(path) as package:
-        xml = package.read("xl/worksheets/sheet1.xml").decode()
+        xml = package.read(part).decode()
     found: dict[str, tuple[str, str]] = {}
     for ref, body in re.findall(r'<c r="([A-Z]+\d+)"[^>]*?(?:/>|>(.*?)</c>)', xml):
         formula = re.search(r"<f>(.*?)</f>", body or "")
         value = re.search(r"<v>(.*?)</v>|<t[^>]*>(.*?)</t>", body or "")
         found[ref] = (
-            formula.group(1) if formula else "",
+            formula.group(1).replace("&gt;", ">").replace("&lt;", "<") if formula else "",
             (value.group(1) or value.group(2) or "") if value else "",
         )
     return found
 
 
-def row_of(table: dict[str, tuple[str, str]], label: str) -> int:
-    return next(
-        int(ref[1:]) for ref, (_, value) in table.items() if ref[0] == "A" and value == label
-    )
-
-
 def test_every_part_of_the_workbook_is_well_formed(tmp_path: Path) -> None:
     import xml.dom.minidom
 
-    path = write_workbook(tmp_path / "area.xlsx", office(), note="Kogarah")
+    path = write_workbook(tmp_path / "yield.xlsx", template(), note="Darlinghurst")
     with zipfile.ZipFile(path) as package:
         for name in package.namelist():
             xml.dom.minidom.parseString(package.read(name))
+    assert xlsx.sheet_names(path) == ["Option 01", DATA_SHEET]
 
 
-def test_the_workbook_works_from_its_inputs(tmp_path: Path) -> None:
-    table = cells(write_workbook(tmp_path / "area.xlsx", office()))
-    site = row_of(table, "Site area (m²)")
-    factor = row_of(table, "GBA to GFA (Residential)")
-    gba = row_of(table, "Resi. GBA")
-    gfa = row_of(table, "Resi. GFA")
-    assert table[f"B{site}"] == ("", "1386.78")
-    assert table[f"B{gfa}"][0] == f"B{gba}*$B${factor}", "GFA is the GBA by the factor cell"
-    assert float(table[f"B{gfa}"][1]) == pytest.approx(9914.67)
-    total_fsr = row_of(table, "Total FSR")
-    assert "/$B$" in table[f"B{total_fsr}"][0]
-    storey_total = row_of(table, "Total")
-    assert table[f"B{gba}"][0] == f"B{storey_total}", "the GBA is the storeys' measured sum"
-    assert table[f"B{storey_total}"][0].startswith("SUM(")
+def test_the_workbook_is_the_template_cell_for_cell(tmp_path: Path) -> None:
+    """The office's addresses, for a five-type mix: the site in C6, the
+    permissible FSR in C10:C12, the proposed GFA in D17:D19 from the storey
+    table's totals, the units in D29:E33, the efficiencies in C86:E88."""
+    table = cells(write_workbook(tmp_path / "yield.xlsx", template()))
+    assert table["A1"][1] == "Preliminary Yield Analysis" and table["A3"][1] == "Option 01"
+    assert table["C6"] == ("", "6704.0")
+    assert table["C10"] == ("", "2.8") and table["C11"] == ("", "0.2")
+    assert table["D10"][0] == 'IF($C$6>0,D17/$C$6,"")'
+    assert float(table["D10"][1]) == pytest.approx(2.80634696)
+    assert table["C17"][0] == 'IF(C10<>"",$C$6*C10,"")'
+    assert table["D17"][0] == "Q133", "the storey table's residential GFA total"
+    assert float(table["D17"][1]) == pytest.approx(18813.75)
+    assert table["E30"][0] == "$D$17/$C$96*C30*$C$23"
+    assert float(table["E30"][1]) == pytest.approx(44.115)
+    assert table["C96"][0] == "C95/$E$86" and float(table["C96"][1]) == pytest.approx(85.2941176)
+    assert table["C86"] == ("", "0.725") and table["E88"] == ("", "0.9")
+    assert table["D65"][0] == "E30*B65" and table["D79"][0] == "B79*$D$18"
+    assert table["D82"][0] == 'IF($C$6>0,D81*C106/($C$6*C107),"")'
+    assert float(table["D82"][1]) == pytest.approx(4.96748832)
+    assert table["C56"][0] == 'COUNTIF(M115:M132,">0")' and table["C56"][1] == "15.0"
+    # The storey table: the top level first, the ground at the foot, totals under.
+    assert table["J115"][1] == "Level 17" and table["J132"][1] == "Ground Floor"
+    assert table["M132"] == ("", "50.0") and table["O132"] == ("", "2800.0")
+    assert table["Q115"][0] == "M115*$C$86" and table["U115"][0] == "Q115*$E$86"
+    assert table["M133"][0] == "SUM(M115:M132)" and float(table["M133"][1]) == 25950.0
+    assert table["L115"][0] == "L116+K115", "heights add up from the ground"
+
+
+def test_a_second_option_is_added_beside_the_first_and_read_back(tmp_path: Path) -> None:
+    path = tmp_path / "yield.xlsx"
+    write_workbook(path, template())
+    second = feasibility(template_floors()[:5], option="Option 02", site_area_m2=6704.0)
+    write_workbook(path, second)
+    assert xlsx.sheet_names(path) == ["Option 01", "Option 02", DATA_SHEET]
+    kept = options_in(path)
+    assert [option.option for option in kept] == ["Option 01", "Option 02"]
+    assert kept[0].gfa(RESIDENTIAL) == pytest.approx(18813.75)
+    assert kept[0].permissible.retail == 0.4 and kept[0].source == ("BEA : 19 slabs",)
+    assert cells(path, "xl/worksheets/sheet2.xml")["A3"][1] == "Option 02"
+    # The same name again replaces its sheet rather than adding a third.
+    write_workbook(path, feasibility(template_floors()[:3], option="option 01"))
+    assert [option.option for option in options_in(path)] == ["Option 02", "option 01"]
+
+
+def test_the_options_data_round_trips() -> None:
+    sheet = feasibility(template_floors(), site_area_m2=6704.0, affordable_share=0.2)
+    back = feasibility_from_dict(json.loads(json.dumps(feasibility_to_dict(sheet))))
+    assert back == sheet
+
+
+def test_a_workbook_loriini_did_not_write_is_left_alone(tmp_path: Path) -> None:
+    theirs = tmp_path / "Feasibility template.xlsx"
+    book = xlsx.Workbook()
+    book.sheet("Option 01").text(1, 1, "theirs")
+    book.write(theirs)
+    with pytest.raises(FileExistsError, match="did not write"):
+        write_workbook(theirs, template())
+    assert cells(theirs)["A1"][1] == "theirs"
+    assert options_in(theirs) == []
 
 
 def _calc_available() -> bool:
@@ -277,22 +343,19 @@ def _calc_available() -> bool:
 
 def test_libreoffice_calc_works_the_same_numbers_out_from_nothing(tmp_path: Path) -> None:
     """The workbook with every cached value taken out, recalculated by Calc:
-    its figures are Loriini's. Skipped where Calc is not installed -- the CI
-    runners have none."""
+    its figures are the template's. Skipped where Calc is not installed --
+    the CI runners have none."""
     if not _calc_available():
         pytest.skip("no LibreOffice here")
-    thirds = [UnitType("A", 1 / 3, 60.0), UnitType("B", 1 / 3, 80.0), UnitType("C", 1 / 3, 100.0)]
-    cases = {"office": office(), "thirds": schedule(office_floors(), mix=thirds)}
-    for name, sch in cases.items():
-        path = write_workbook(tmp_path / f"{name}.xlsx", sch)
-        with zipfile.ZipFile(path) as package:
-            parts = {part: package.read(part) for part in package.namelist()}
-        sheet_xml = parts["xl/worksheets/sheet1.xml"].decode()
-        bare = re.sub(r'( t="str")?>(<f>[^<]*</f>)<v>[^<]*</v></c>', r">\2</c>", sheet_xml)
-        parts["xl/worksheets/sheet1.xml"] = bare.encode()
-        with zipfile.ZipFile(tmp_path / f"{name}-bare.xlsx", "w") as package:
-            for part, data in parts.items():
-                package.writestr(part, data)
+    path = write_workbook(tmp_path / "yield.xlsx", template())
+    with zipfile.ZipFile(path) as package:
+        parts = {part: package.read(part) for part in package.namelist()}
+    sheet_xml = parts["xl/worksheets/sheet1.xml"].decode()
+    bare = re.sub(r'( t="str")?>(<f>[^<]*</f>)<v>[^<]*</v></c>', r">\2</c>", sheet_xml)
+    parts["xl/worksheets/sheet1.xml"] = bare.encode()
+    with zipfile.ZipFile(tmp_path / "bare.xlsx", "w") as package:
+        for part, data in parts.items():
+            package.writestr(part, data)
     run = subprocess.run(
         [
             "soffice",
@@ -302,43 +365,21 @@ def test_libreoffice_calc_works_the_same_numbers_out_from_nothing(tmp_path: Path
             "csv",
             "--outdir",
             str(tmp_path),
-            str(tmp_path / "office-bare.xlsx"),
-            str(tmp_path / "thirds-bare.xlsx"),
+            str(tmp_path / "bare.xlsx"),
         ],
         capture_output=True,
         text=True,
         timeout=240,
         check=False,
     )
-    if not (tmp_path / "office-bare.csv").exists():
+    if not (tmp_path / "bare.csv").exists():
         pytest.skip(f"LibreOffice here cannot open a spreadsheet: {run.stdout} {run.stderr}")
-    office_rows = {
-        line.split(",")[0]: line.split(",")
-        for line in (tmp_path / "office-bare.csv").read_text().splitlines()
-    }
-    assert float(office_rows["Total GFA"][1]) == pytest.approx(11163.58, abs=0.01)
-    assert float(office_rows["Total GFA"][2]) == pytest.approx(8.0 * 1386.78)
-    assert float(office_rows["Total FSR"][1]) == pytest.approx(8.05, abs=0.005)
-    assert office_rows["Units"][1] == "112"
-    assert [office_rows[name][1] for name in ("1 Bedroom", "2 Bedroom", "3 Bedroom")] == [
-        "17",
-        "78",
-        "17",
-    ]
-    thirds_rows = {
-        line.split(",")[0]: line.split(",")
-        for line in (tmp_path / "thirds-bare.csv").read_text().splitlines()
-    }
-    expected = schedule(office_floors(), mix=thirds).homes
-    assert thirds_rows["Units"][1] == str(expected.units)
-    assert [thirds_rows[name][1] for name in "ABC"] == [str(c.count) for c in expected.counts]
-
-
-def office_floors() -> list[Floor]:
-    return [
-        Floor("Level 01", NON_RESIDENTIAL, 1387.68, 0.0),
-        *(Floor(f"Level {n:02d}", RESIDENTIAL, 13219.56 / 12, 3.1 * n) for n in range(2, 14)),
-    ]
+    lines = (tmp_path / "bare.csv").read_text().splitlines()
+    fields = [line.split(",") for line in lines]
+    assert float(fields[16][3]) == pytest.approx(18813.75), "D17, the residential GFA"
+    assert float(fields[29][4]) == pytest.approx(44.115, abs=0.01), "E30, the 1-bed units"
+    assert float(fields[80][3]) == pytest.approx(333.02, abs=0.01), "D81, the SEPP parking"
+    assert float(fields[81][3]) == pytest.approx(4.97, abs=0.01), "D82, the basements"
 
 
 # -- the command -------------------------------------------------------------------
@@ -395,22 +436,26 @@ def test_the_command_prints_the_table_and_writes_the_workbook(
 
     connection, transport = scripted_project(connect)
     monkeypatch.setattr(cli, "_connect", lambda *a, **k: connection)
-    workbook = tmp_path / "area.xlsx"
+    workbook = tmp_path / "yield.xlsx"
     result = CliRunner().invoke(
         cli.app,
         [
             "yield",
+            "--option",
+            "Scheme A",
             "--residential-layer",
             "05 | Mass.Residential",
-            "--non-residential-layer",
+            "--retail-layer",
             "05 | Mass.Retail",
             "--renovation-filter",
             "--site-area",
             "100",
+            "--fsr-residential",
+            "2",
             "--unit",
-            "1 Bedroom=50,50",
+            "1-bed=50,50",
             "--unit",
-            "2 Bedroom=50,100",
+            "2-bed=50,100",
             "--xlsx",
             str(workbook),
             "--no-sheet",
@@ -423,14 +468,41 @@ def test_the_command_prints_the_table_and_writes_the_workbook(
     }
     out = result.output
     assert "05 | Mass.Residential: 1 slab, 200.00 m², residential" in out
-    assert "05 | Mass.Retail: 1 slab, 100.00 m², non-residential" in out
-    # 200 m² GBA residential -> 150 GFA -> 127.5 NSA; at an average of 75 m²,
-    # one unit. Total GFA 150 + 90 over a 100 m² site is an FSR of 2.4.
-    assert "Total GFA" in out and "240.00 m²" in out
+    assert "05 | Mass.Retail: 1 slab, 100.00 m², retail" in out
+    assert "Scheme A" in out
+    # 200 m² of residential BEA -> 145 GFA; 100 m² of retail -> 95; 240 over a
+    # 100 m² site is an FSR of 2.40. At an average NLA of 75 m², an average
+    # GFA of 88.2 m², the homes come to 1.6 units.
+    assert "Total GFA" in out and "240 m²" in out
     assert "2.40" in out
-    assert "1 unit " in out
-    assert workbook.is_file()
+    assert "1.6" in out
+    assert [option.option for option in options_in(workbook)] == ["Scheme A"]
     assert "CreateLayout" not in transport.commands(), "--no-sheet draws nothing"
+
+
+def test_a_massing_layers_levels_are_told_in_the_log(monkeypatch: pytest.MonkeyPatch) -> None:
+    from typer.testing import CliRunner
+
+    import sun_study.cli as cli
+
+    connection, _ = scripted_project(connect)
+    monkeypatch.setattr(cli, "_connect", lambda *a, **k: connection)
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "yield",
+            "--massing-layer",
+            "05 | Mass.Residential",
+            "--massing-layer",
+            "05 | Mass.Retail",
+            "--retail-level",
+            "Ground",
+            "--no-sheet",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Ground Floor: retail" in result.output and "Level 01: residential" in result.output
+    assert "by level" in result.output
 
 
 def test_the_command_says_when_nothing_was_counted(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -456,15 +528,19 @@ def test_a_mix_that_does_not_add_up_is_refused_before_archicad_is_asked(
     import sun_study.cli as cli
 
     monkeypatch.setattr(cli, "_connect", lambda *a, **k: pytest.fail("Archicad was asked"))
-    result = CliRunner().invoke(cli.app, ["yield", "--unit", "2 Bedroom=90,75"])
+    result = CliRunner().invoke(cli.app, ["yield", "--unit", "2-bed=90,75"])
     assert result.exit_code == 2
     assert "come to 90%" in result.output
+    clash = CliRunner().invoke(
+        cli.app, ["yield", "--retail-level", "Ground", "--commercial-level", "0"]
+    )
+    assert clash.exit_code == 2 and "both retail and commercial" in clash.output
 
 
 def test_a_site_that_cannot_be_read_costs_the_fsr_and_not_the_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The public services are slow and sometimes down; the area calculation
+    """The public services are slow and sometimes down; the yield analysis
     does not need them for anything but the FSR."""
     from typer.testing import CliRunner
 
@@ -479,8 +555,51 @@ def test_a_site_that_cannot_be_read_costs_the_fsr_and_not_the_run(
     monkeypatch.setattr(cli, "_connect", lambda *a, **k: connection)
     monkeypatch.setattr(site_pipeline, "run_summary", unreachable)
     result = CliRunner().invoke(
-        cli.app, ["yield", "--address", "1 Example Street, Kogarah NSW", "--no-sheet"]
+        cli.app,
+        [
+            "yield",
+            "--residential-layer",
+            "05 | Mass.Residential",
+            "--address",
+            "1 Example St",
+            "--no-sheet",
+        ],
     )
     assert result.exit_code == 0, result.output
-    assert "the site could not be read (NSW cadastre -> HTTP 503)" in result.output
-    assert "Total GBA" in result.output
+    assert "the site could not be read" in result.output
+    assert "Total GFA" in result.output
+
+
+def test_the_leps_one_fsr_goes_on_the_residential_row_with_a_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from typer.testing import CliRunner
+
+    import sun_study.cli as cli
+
+    connection, _ = scripted_project(connect)
+    monkeypatch.setattr(cli, "_connect", lambda *a, **k: connection)
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "yield",
+            "--residential-layer",
+            "05 | Mass.Residential",
+            "--site-area",
+            "100",
+            "--target-fsr",
+            "3",
+            "--no-sheet",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Permissible FSR : the LEP's 3:1 is one figure" in result.output
+    assert any(
+        line.startswith("  Residential FSR") and "3.00" in line
+        for line in result.output.splitlines()
+    )
+
+
+def office_feasibility() -> Feasibility:
+    """A small scheme, for tests that need any sheet at all."""
+    return feasibility([Floor(RESIDENTIAL, 1000.0, 0.0, 3.0)], site_area_m2=500.0)

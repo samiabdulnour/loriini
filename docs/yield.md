@@ -1,143 +1,190 @@
-# The area calculation: GBA, GFA and yield from the massing slabs
+# The yield analysis: the office's feasibility sheet from the massing slabs
 
 A massing is modelled in slabs, one per floor, and the first question asked
 of it is what it comes to: the areas the planning controls are measured in,
-and the number of apartments it holds. Loriini measures the slabs and works
-the office's own area calculation from them -- *Area calculation, GFA +
-Yield* -- as a sheet in the project, a live workbook, and a table printed in
-the run's log. This is roadmap item R3; D122 records how it is built.
+the apartments it holds, the parking they need. Loriini measures the slabs
+and works the office's own feasibility sheet from them -- *Preliminary
+Yield Analysis*, the *Feasibility template* -- as a sheet in the project, a
+live workbook in the template's own cells, and a table printed in the run's
+log. One option, one sheet; the workbook holds every option side by side.
+This is roadmap item R3; D122 and D126 record how it is built.
 
-## Which slabs count
+## Which slabs count, and what they are
 
-The slabs that are the massing are chosen the ways the office asked for:
+The slabs that are the massing are chosen by layer, the ways the office
+asked for:
 
-- **By layer.** The slabs on the layers named *residential* are residential
-  floor; the slabs on the layers named *non-residential* are any other floor
-  (retail, office, a podium). A layer named for both is refused. A slab on a
-  layer named for neither is not counted, and the run lists those layers so
-  that a forgotten one is seen.
+- **A layer per use.** The slabs on the layers named *residential*,
+  *commercial* and *retail* are that kind of floor. A layer named for two
+  things is refused. A slab on a layer named for nothing is not counted,
+  and the run lists those layers so that a forgotten one is seen.
+- **A massing layer, the use by level.** An option modelled on one layer --
+  a podium with a tower on it, `01 | Massing - Main Building.3D OPT1` -- is
+  named as a *massing* layer, and each slab's use is told by the level it
+  stands on: the levels named *retail* are retail, the levels named
+  *commercial* are commercial, and every other level is residential. The
+  run prints which level took which use.
 - **By the renovation filter.** With *Only the slabs the renovation filter
   shows* ticked, only what the floor plan's renovation filter shows is
-  counted: a massing modelled as *New* over a building that stays counts the
-  new floors and not the old. Archicad decides what the filter shows; set it
-  on the floor plan before pressing Run.
-- **By what is showing.** With no layer named for either use, every slab on
-  a layer that is showing counts, as residential: the quick GBA of what is on
-  screen. The run says so in yellow, because a structural floor slab on a
-  showing layer is counted too.
+  counted. Archicad decides what the filter shows; set it on the floor plan
+  before pressing Run.
+- **By what is showing.** With no layer named, every slab on a layer that
+  is showing counts, as massing. The run says so in yellow, because a
+  structural floor slab on a showing layer is counted too.
 
 Loriini's own slabs -- the context model's neighbours and the future
 context -- are never counted.
+
+## Levels
+
+The sheet's storey table is by level, and a massing's slabs say where they
+are by their height, not by their home storey: a stack of storey-thick
+slabs is usually homed on the ground storey and offset up. So each slab's
+underside is worked from its reference plane, the offset of its top and its
+thickness, and slabs whose undersides are within half a metre of each other
+are one level. The levels are named up from the ground -- *Ground Floor*,
+*Level 01*, *Level 02*; *B 01* below it -- the ground being the level
+nearest the project's storey called *Ground* (or *GF*, or *Level 00*), or
+the lowest level when no storey is named so; the run says which. A level's
+floor-to-floor is the rise to the level above; the top level's is its own
+slab's thickness when the slabs are storey-thick, and otherwise the rise
+below it.
+
+The *Retail levels* and *Commercial levels* are typed as the run names
+them: `Ground`, `Level 01`, `L2`, `3`, `B 01`.
 
 ## The arithmetic
 
 Each slab is measured to its edge, the way a massing slab is drawn to the
 building's outside face: its outline, less its holes, with every arc counted
-as the curve it is, not as the straight line between its ends.
+as the curve it is. That is its **BEA**, the built envelope area. From it,
+by the template's *Building Efficiencies*, which the run follows to the
+letter and keeps as its defaults:
 
-| | Residential | Non-residential |
-|---|---|---|
-| GBA | the slabs | the slabs |
-| GFA | GBA × 0.75 | GBA × 0.9 |
-| NSA | GFA × 0.85 | GFA × 0.9 |
-| FSR | GFA ÷ site area | GFA ÷ site area |
+| | Residential | Commercial | Retail |
+|---|---|---|---|
+| BEA to GFA | 0.725 | 0.85 | 0.95 |
+| GFA to NLA | 0.85 | 0.9 | 0.9 |
 
-The four factors are the office's, from its sheet, and every one is a
-setting (*Factors and mix* on the Yield page, `--gfa-residential` and the
-others on the command line).
+- **GFA** is the BEA by *BEA to GFA*; **NLA** is the GFA by *GFA to NLA*.
+- **FSR** is each use's GFA over the site, against the permissible FSR the
+  sheet splits by use, and the difference. The permissible is typed per use
+  (*Permissible FSR, residential* and the others, `--fsr-residential`); left
+  blank, the LEP's one FSR is read at the address and written on the
+  residential row with a note, to be split in the workbook.
+- **Units.** The residential GFA over the *average GFA* of a unit: the
+  mix's average NLA -- its sizes by their shares, plus *common areas per
+  unit* and a *unit size tolerance* -- over the residential GFA to NLA. The
+  units are shared into the mix by its shares, market and affordable apart
+  by the *affordable share* of the residential GFA. The sheet does not
+  round -- 44.1 units is what it says -- and nor does the run. The units
+  the *permissible* residential GFA would hold stand beside them.
+- **Parking.** Each type's units by its spaces per unit under the SEPP and
+  the DCP, the visitors over every unit, the commercial and retail GFA by a
+  space per so many square metres; the total, and the **basements** it
+  takes at so many square metres a space over the share of the site a
+  basement may cover.
+- **Storeys.** The levels with residential floor on them, and the levels
+  with floor and none of it residential (the podium).
 
-The **yield** is the residential NSA over the mix's average unit, rounded
-down -- a part of a unit is not a unit -- and split into the mix by the
-largest remainder, so that the types always add back up to the total. The
-defaults are the office's sheet: 15, 70 and 15 per cent of 1, 2 and 3
-bedrooms, at 55, 75 and 95 m² NSA, an average of 75 m². A studio row is on
-the page at nothing, for a scheme that has them.
+The mix the sheet opens with is the template's: Studio, 1-bed, 2-bed,
+3-bed and 4-bed at 0, 20, 70, 10 and 0 per cent of 35, 50, 75, 100 and 120
+m² NLA (the affordable 3-bed at 95), an average NLA of 72.5 m². The parking
+rates are the template's too: 0.5, 0.5, 1, 1.5 and 1.5 spaces a unit under
+the SEPP, 0.5, 0.5, 1, 1 and 1 under the DCP, 0.1 a unit for visitors, one
+space per 100 m² of commercial GFA and per 30 m² of retail under the SEPP
+and per 400 m² under the DCP, 40 m² a space, a basement over 40 per cent of
+the site. Every one is a setting, on the Yield page or the command line,
+and every one is an input cell in the workbook.
 
-The **site area** and the **target FSR** are typed, or read at the address
-on the Site analysis page -- the cadastral lots' area and the LEP's FSR
-control -- when they are left blank and an address is there. The target GFA
-beside the proposed total is the FSR times the site. The target unit count
-is only said beside the yield.
-
-The office's example sheet is reproduced exactly by these defaults, from its
-own two GBAs and its site: 112 units, 17, 78 and 17. One thing about that
-sheet is worth knowing: its *Non resi.* and *Resi.* rows are the wrong way
-round. The rows it labels non-residential were worked with the residential
-factors, 0.75 and 0.85, and measure the tower -- the yellow, residential
-bulk. Loriini's sheet puts each use's figures on its own row.
+The template's own *Option 01* is reproduced exactly by these defaults from
+its storey table and its site: 18,813.75 m² of residential GFA, 220.575
+units at 44.1, 154.4 and 22.1, 333.0 parking spaces and 4.97 basements.
 
 ## What comes out
 
-**The Area Calculation sheet**, `18 | Area Calculation` in the Layout Book,
-on the master chosen in General: the title in two lines, the table of
-proposed and target figures, the yield, the notes that say which factors
-and sizes the figures were worked with, and a legend. It is remade on every
-run.
+**The Yield Analysis sheet**, `18 | Yield Analysis - Option 01` in the
+Layout Book, on the master chosen in General: the title and the option's
+name, the site, the FSR and GFA by use against the permissible, the unit
+mix, the storeys, the parking, the notes that say which efficiencies the
+figures were worked with, and a legend. Each option has a sheet of its own;
+a run of the same option remakes it.
 
 **The massing beside it.** Name a view in the View Map -- the office's own
 3D view of the massing in axonometric, coloured by use with its graphic
 override -- in *View beside the table* (`--view`) and it is placed on the
 sheet and framed to the page right of the table. A name the View Map does
-not have costs the picture and not the sheet; the run says so. The legend's
-colours are the office's yellow and lilac, which the override should match.
+not have costs the picture and not the sheet; the run says so.
 
-**The workbook**, `Area calculation.xlsx` in the tables folder (`--xlsx`).
-It is live: the site, the targets, the factors and the mix are input cells,
-the storeys' measured GBA is the one measured figure, and every other number
-is a formula over them. Changing a factor or a share in Excel recalculates
-the areas, the FSR and the yield exactly as Loriini would -- the split into
-the mix is written out beside it in working columns. This was checked by
-LibreOffice Calc recalculating the workbook from nothing (a test does it
-wherever Calc is installed).
+**The workbook**, `Preliminary Yield Analysis.xlsx` in the tables folder
+(`--xlsx`), is the office's template, filled: the site in C6, the
+permissible FSR in C10:C12, the proposed GFA in D17:D19, the unit mixes in
+rows 29 to 43, the parking from row 60, the efficiencies in C86:E88, and
+the storey table from J113 -- with the levels' BEA by use in red as the
+template has its inputs, and every other figure a formula over them, so a
+what-if on an efficiency, a share, a rate or a level's use is typed into
+Excel rather than rerun. The columns the template fills by hand -- the
+units per level, the ADG cross-ventilation and solar counts -- are left
+empty for the office to fill. One sheet per option: a run adds its option
+beside the ones already in the workbook (it keeps each option's data on a
+hidden sheet to do so), and a run of the same option name replaces that
+sheet. A workbook Loriini did not write is left alone, and the run says so.
 
-**The log** prints the slabs counted per layer, what was passed over, the
-table and the notes.
+**The log** prints the slabs counted per layer, the levels and their uses,
+what was passed over, the storey table, the sheet's table and the notes.
 
 ## Running it
 
-From the window: the **Yield** tab, tick *Area and yield*, name the layers,
-press Run.
+From the window: the **Yield** tab, tick *Yield analysis*, name the option
+and the layers, press Run. Run again with another option name and the
+other option's layers for the second sheet.
 
-From a command line:
+From a command line, the Darlinghurst options on 8 October 2026:
 
 ```
-sun-study yield --residential-layer "05 | Mass.Residential" ^
-  --non-residential-layer "05 | Mass.Retail" --renovation-filter ^
-  --site-area 1386.78 --target-fsr 8 --target-units 110 ^
-  --xlsx "Area calculation.xlsx" --view "Yield Axo"
+sun-study yield --option "Option 01" ^
+  --massing-layer "01 | Massing - Main Building.3D OPT1" ^
+  --retail-level Ground --commercial-level "Level 01" ^
+  --address "91-109 Riley St, Darlinghurst NSW 2010" ^
+  --xlsx "Preliminary Yield Analysis.xlsx" --master-layout "DA A1 - VERTICAL - No Scale"
+sun-study yield --option "Option 02" ^
+  --massing-layer "01 | Massing - Main Building.3D OPT2" ^
+  --retail-level Ground --commercial-level "Level 01" ^
+  --address "91-109 Riley St, Darlinghurst NSW 2010" ^
+  --xlsx "Preliminary Yield Analysis.xlsx" --master-layout "DA A1 - VERTICAL - No Scale"
 ```
 
-An agent connected to `Loriini.exe mcp` runs the same command through
-`run_loriini`.
+`--residential-layer`, `--commercial-layer` and `--retail-layer` name a
+layer per use instead; `--fsr-residential`, `--fsr-commercial` and
+`--fsr-retail` split the permissible FSR; `--unit` and `--affordable-unit`
+set the mixes, `--affordable-share` the split, `--common-area` and
+`--size-tolerance` the allowances on the average; `--parking-rate`,
+`--affordable-parking-rate`, `--sqm-per-space` and `--basement-site-ratio`
+the parking. An agent connected to `Loriini.exe mcp` runs the same command
+through `run_loriini`.
 
 ## What to check first on a workstation
 
-The study has been run against a scripted Archicad and the arithmetic
-against the office's sheet, not yet against a live project. The first
-things to look at:
-
 1. **A curved slab.** Arcs are counted with Archicad's documented sense --
    an arc angle positive counter-clockwise. Draw a slab with a rounded
-   corner (or a circle) and compare the area the run reports with the slab's
-   own area in its settings. If they differ by twice the curved part, the
-   sense is the other way and it is one sign to change.
-2. **The renovation filter.** Tick the box with the floor plan's filter set
-   to show the new construction, and check that the slabs counted are the
-   new ones.
-3. **The view beside the table.** That it is placed, and framed right of the
-   table, on the office's own master.
-4. **The legend's swatches** are drawn as close lines in the nearest pen to
-   the colour; check that they print as the colour on the office's pen set.
+   corner and compare the area the run reports with the slab's own area in
+   its settings.
+2. **The levels.** That the run's levels are the massing's floors, named
+   as the office would name them, and that the ground is the right level:
+   a massing whose ground floor sits well below the project's ground storey
+   is still the ground, being the level nearest it.
+3. **The use by level.** That the levels named retail and commercial are
+   the ones meant; a level moved from one use to another is also one number
+   moved between columns in the workbook's storey table.
+4. **The view beside the table.** That it is placed, and framed right of
+   the table, on the office's own master.
 
 ## What is not here yet
 
-- **Per building.** The GFA is per use and per storey (the workbook has the
-  storeys), not per building; a slab's ID could tell buildings apart.
-- **Parking** and any rate-based figure.
-- **The external-wall deduction** the LEP's GFA definition implies is inside
-  the 0.75 and 0.9 factors, not measured.
-- **The Summary of Controls'** PROJECT SUMMARY rows -- residential mix,
-  commercial area -- are still left for a person, and could be filled from
-  this.
-- **Later stages.** When the apartments are Zones, the yield could be
-  counted from them rather than worked out from the area.
+- **Per building.** A level's BEA is the sum of every slab on it; two
+  towers on one level are one row.
+- **The units per level, and the ADG counts** -- the *proof of concept*
+  columns the template fills by hand -- are left for a person, as they are
+  in the template; when the apartments are Zones they could be counted.
+- **Height controls.** The storey table's heights are tallied but not yet
+  set against the LEP's height of buildings.

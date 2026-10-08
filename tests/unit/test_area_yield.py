@@ -1,9 +1,10 @@
-"""The area calculation: slab areas with arcs and holes, and the office's
-arithmetic from GBA to yield.
+"""The yield analysis: slab areas with arcs and holes, the floors gathered
+into levels, and the office's feasibility sheet worked from them.
 
-The office's own sheet is the fixture. Its numbers are reproduced here from
-its two GBAs and its site, with its two rows the right way round: the bulk
-it calls non-residential was worked with the residential factors.
+The office's template is the fixture. Its *Option 01* -- a 6,704 m² site,
+fourteen tower floors of 1,850 m² over a commercial level and a retail
+ground floor -- is reproduced here to the cent: its GFA by use, its FSR,
+its 220.575 units, its 333.02 parking spaces and its 4.97 basements.
 """
 
 from __future__ import annotations
@@ -14,18 +15,27 @@ import pytest
 
 from sun_study.core.plan_area import Arc, Ring, floor_area, ring_area, segment_area, signed_area
 from sun_study.rules.area_yield import (
+    AFFORDABLE_MIX,
+    COMMERCIAL,
     DEFAULT_MIX,
-    NON_RESIDENTIAL,
     RESIDENTIAL,
-    AreaSchedule,
+    RETAIL,
+    Efficiencies,
+    Feasibility,
     Floor,
-    Ratios,
-    Targets,
+    Mix,
+    ParkingRates,
+    Permissible,
+    UnitRates,
     UnitType,
     checked_mix,
-    homes_for,
+    feasibility,
+    level_index,
+    level_name,
+    levels_from,
+    parse_level,
+    parse_rates,
     parse_unit,
-    schedule,
     unit_text,
 )
 
@@ -78,125 +88,237 @@ def test_a_hole_is_not_floor() -> None:
 
 def test_a_straight_arc_and_an_arc_off_the_ring_add_nothing() -> None:
     assert segment_area(5.0, 0.0) == 0.0
-    square = Ring(((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)), (Arc(7, 8, 1.0),))
-    assert ring_area(square) == pytest.approx(1.0)
 
 
 # -- the unit mix ------------------------------------------------------------------
 
 
 def test_a_unit_type_is_written_as_name_share_and_size() -> None:
-    assert parse_unit("2 Bedroom=70,75") == UnitType("2 Bedroom", 0.70, 75.0)
+    assert parse_unit("2-bed=70,75") == UnitType("2-bed", 0.70, 75.0)
     assert parse_unit(" Studio = 10% ; 38.5 m2 ") == UnitType("Studio", 0.10, 38.5)
-    assert unit_text(UnitType("2 Bedroom", 0.70, 75.0)) == "2 Bedroom=70,75"
-    with pytest.raises(ValueError, match="like '2 Bedroom=70,75'"):
+    assert unit_text(UnitType("2-bed", 0.70, 75.0)) == "2-bed=70,75"
+    with pytest.raises(ValueError, match="like '2-bed=70,75'"):
         parse_unit("2 Bedroom 70 75")
 
 
-def test_a_mix_has_to_come_to_a_hundred_per_cent() -> None:
+def test_a_mix_has_to_come_to_a_hundred_per_cent_and_keeps_a_type_at_nothing() -> None:
     with pytest.raises(ValueError, match="come to 90%"):
-        checked_mix([UnitType("1 Bedroom", 0.2, 50), UnitType("2 Bedroom", 0.7, 75)])
+        checked_mix([UnitType("1-bed", 0.2, 50), UnitType("2-bed", 0.7, 75)])
     with pytest.raises(ValueError, match="twice"):
-        checked_mix([UnitType("2 Bedroom", 0.5, 75), UnitType("2 bedroom", 0.5, 75)])
+        checked_mix([UnitType("2-bed", 0.5, 75), UnitType("2-Bed", 0.5, 75)])
     with pytest.raises(ValueError, match="no size"):
         checked_mix([UnitType("Studio", 1.0, 0.0)])
-    # A type with no share is simply not in the mix.
-    kept = checked_mix([UnitType("Studio", 0.0, 35), *DEFAULT_MIX])
-    assert [unit.name for unit in kept] == ["1 Bedroom", "2 Bedroom", "3 Bedroom"]
+    with pytest.raises(ValueError, match="no unit types"):
+        checked_mix([UnitType("Studio", 0.0, 35.0)])
+    # The sheet shows a type at nothing on its own row, so it stays.
+    kept = checked_mix(DEFAULT_MIX)
+    assert [unit.name for unit in kept] == ["Studio", "1-bed", "2-bed", "3-bed", "4-bed"]
 
 
-def test_the_split_always_adds_back_up_to_the_count() -> None:
-    thirds = [UnitType(name, 1 / 3, 70.0) for name in ("A", "B", "C")]
-    homes = homes_for(100 * 70.0, thirds)
-    assert homes.units == 100
-    assert [count.count for count in homes.counts] == [34, 33, 33], "the first-listed first"
-    fifths = [UnitType(str(i), 0.2, 50.0) for i in range(5)]
-    assert sum(c.count for c in homes_for(3 * 50.0, fifths).counts) == 3
+def test_the_mixs_averages_are_the_sheets() -> None:
+    market = Mix(DEFAULT_MIX)
+    assert market.average_nla_m2 == pytest.approx(72.5)
+    assert market.average_gfa_m2(Efficiencies()) == pytest.approx(85.294117647)
+    assert Mix(AFFORDABLE_MIX).average_nla_m2 == pytest.approx(72.0)
+    padded = Mix(DEFAULT_MIX, common_m2=5.0, tolerance_m2=2.5)
+    assert padded.average_nla_m2 == pytest.approx(80.0)
 
 
-def test_a_part_unit_is_not_a_unit() -> None:
-    assert homes_for(74.9 * 1, [UnitType("2 Bedroom", 1.0, 75.0)]).units == 0
-    assert homes_for(75.0 * 1, [UnitType("2 Bedroom", 1.0, 75.0)]).units == 1
-    assert homes_for(0.0, DEFAULT_MIX).units == 0
+# -- the levels --------------------------------------------------------------------
 
 
-# -- the office's own sheet --------------------------------------------------------
+def test_floors_within_half_a_metre_are_one_level_counted_from_the_ground() -> None:
+    bottoms = [8.61, 8.62, 13.11, 16.31, 5.61]
+    assert level_index(bottoms) == [1, 1, 2, 3, 0], "the lowest is the ground when none is known"
+    assert level_index(bottoms, ground_m=10.11) == [0, 0, 1, 2, -1], "the nearest to the storey"
+    assert level_index([]) == []
 
-#: Read off the sheet: the two GBAs and the site its FSR implies.
-TOWER_GBA = 13219.56
-PODIUM_GBA = 1387.68
-SITE = 1386.78
+
+def test_levels_are_named_as_the_sheet_names_them() -> None:
+    assert [level_name(i) for i in (-2, -1, 0, 1, 12)] == [
+        "B 02",
+        "B 01",
+        "Ground Floor",
+        "Level 01",
+        "Level 12",
+    ]
+    assert [parse_level(t) for t in ("Ground", "ground floor", "GF", "0", "Level 01", "L3")] == [
+        0,
+        0,
+        0,
+        0,
+        1,
+        3,
+    ]
+    assert [parse_level(t) for t in ("7", "B 01", "basement 2", "-3")] == [7, -1, -2, -3]
+    with pytest.raises(ValueError, match="not a level"):
+        parse_level("Mezzanine")
 
 
-def office_sheet() -> AreaSchedule:
+def test_a_levels_rise_is_to_the_one_above_and_the_tops_is_its_own_slab() -> None:
     floors = [
-        Floor("Level 01", NON_RESIDENTIAL, PODIUM_GBA, 0.0),
-        *(Floor(f"Level {n:02d}", RESIDENTIAL, TOWER_GBA / 12, 3.1 * n) for n in range(2, 14)),
+        Floor(RETAIL, 1500.0, 8.61, 4.3),
+        Floor(COMMERCIAL, 1500.0, 13.11, 3.0),
+        Floor(RESIDENTIAL, 900.0, 16.31, 3.0),
+        Floor(RESIDENTIAL, 300.0, 16.35, 3.0),
     ]
-    return schedule(floors, site_area_m2=SITE, targets=Targets(fsr=8.0, units=110))
+    levels = levels_from(floors, ground_m=10.11)
+    assert [level.name for level in levels] == ["Ground Floor", "Level 01", "Level 02"]
+    assert [level.floor_to_floor_m for level in levels] == pytest.approx([4.5, 3.2, 3.0])
+    assert levels[2].residential_m2 == pytest.approx(1200.0), "two slabs on one level add up"
+    assert (levels[0].retail_m2, levels[1].commercial_m2) == (1500.0, 1500.0)
+    # Thin slabs with air between: the top one takes the rise below it.
+    thin = levels_from([Floor(RESIDENTIAL, 100.0, 0.0, 0.2), Floor(RESIDENTIAL, 100.0, 3.1, 0.2)])
+    assert [level.floor_to_floor_m for level in thin] == pytest.approx([3.1, 3.1])
 
 
-def test_the_office_sheet_comes_out_of_its_own_gba() -> None:
-    result = office_sheet()
-    assert result.total.gba_m2 == pytest.approx(14607.24)
-    assert result.residential.gfa_m2 == pytest.approx(9914.67, abs=0.01)
-    assert result.non_residential.gfa_m2 == pytest.approx(1248.91, abs=0.01)
-    assert result.total.gfa_m2 == pytest.approx(11163.58, abs=0.01)
-    assert result.residential.nsa_m2 == pytest.approx(8427.47, abs=0.01)
-    assert result.non_residential.nsa_m2 == pytest.approx(1124.02, abs=0.01)
-    assert result.total.nsa_m2 == pytest.approx(9551.49, abs=0.01)
-    assert result.fsr(result.total) == pytest.approx(8.05, abs=0.005)
-    assert result.fsr(result.residential) == pytest.approx(7.15, abs=0.005)
-    assert result.fsr(result.non_residential) == pytest.approx(0.90, abs=0.005)
+# -- the office's template, Option 01 -----------------------------------------------
+
+SITE = 6704.0
 
 
-def test_the_office_sheets_yield_is_112_units_at_17_78_and_17() -> None:
-    result = office_sheet()
-    assert result.homes.average_m2 == pytest.approx(75.0)
-    assert result.homes.units == 112
-    assert [(c.unit.name, c.count) for c in result.homes.counts] == [
-        ("1 Bedroom", 17),
-        ("2 Bedroom", 78),
-        ("3 Bedroom", 17),
+def template_floors() -> list[Floor]:
+    """The template's storey table: a 5 m retail ground floor with 50 m² of
+    residential lobby, a 3.8 m commercial level, two empty levels, and
+    fourteen 3.2 m tower floors of 1,850 m²."""
+    floors = [
+        Floor(RETAIL, 2800.0, 0.0, 5.0),
+        Floor(RESIDENTIAL, 50.0, 0.0, 5.0),
+        Floor(COMMERCIAL, 1500.0, 5.0, 3.8),
+        Floor(RESIDENTIAL, 0.0, 8.8, 3.8),
+        Floor(RESIDENTIAL, 0.0, 12.6, 3.8),
     ]
-    assert result.gfa_per_unit_m2 == pytest.approx(9914.67 / 112, abs=0.01)
+    bottom = 16.4
+    for _ in range(14):
+        floors.append(Floor(RESIDENTIAL, 1850.0, bottom, 3.2))
+        bottom += 3.2
+    return floors
 
 
-def test_the_targets_are_the_control_on_this_site() -> None:
-    result = office_sheet()
-    assert result.target_gfa_m2 == pytest.approx(8.0 * SITE)
-    assert result.targets.units == 110
+def template() -> Feasibility:
+    return feasibility(
+        template_floors(),
+        site_area_m2=SITE,
+        permissible=Permissible(2.8, 0.2, 0.4),
+        source=["BEA : 19 slabs"],
+    )
 
 
-def test_the_storeys_are_in_level_order_with_their_uses_apart() -> None:
-    result = office_sheet()
-    assert [row.storey for row in result.storeys][:3] == ["Level 01", "Level 02", "Level 03"]
-    assert result.storeys[0].non_residential_m2 == pytest.approx(PODIUM_GBA)
-    assert result.storeys[0].residential_m2 == 0.0
-    assert sum(row.total_m2 for row in result.storeys) == pytest.approx(14607.24)
+def test_the_templates_areas_come_out_of_its_bea() -> None:
+    sheet = template()
+    assert sheet.bea(RESIDENTIAL) == pytest.approx(25950.0)
+    assert (sheet.bea(COMMERCIAL), sheet.bea(RETAIL)) == (1500.0, 2800.0)
+    assert sheet.gfa(RESIDENTIAL) == pytest.approx(18813.75)
+    assert sheet.gfa(COMMERCIAL) == pytest.approx(1275.0)
+    assert sheet.gfa(RETAIL) == pytest.approx(2660.0)
+    assert sheet.total_gfa_m2 == pytest.approx(22748.75)
+    assert sheet.nla(RESIDENTIAL) == pytest.approx(15991.6875)
+    assert sheet.nla(COMMERCIAL) == pytest.approx(1147.5)
+    assert sheet.nla(RETAIL) == pytest.approx(2394.0)
 
 
-def test_without_a_site_there_is_no_fsr_and_no_target_gfa() -> None:
-    result = schedule([Floor("L1", RESIDENTIAL, 1000.0)], targets=Targets(fsr=3.0))
-    assert result.fsr(result.total) is None
-    assert result.target_gfa_m2 is None
+def test_the_templates_fsr_is_against_the_permissible_by_use() -> None:
+    sheet = template()
+    assert sheet.fsr(RESIDENTIAL) == pytest.approx(2.80634696)
+    assert sheet.fsr(COMMERCIAL) == pytest.approx(0.19018496)
+    assert sheet.fsr(RETAIL) == pytest.approx(0.39677804)
+    assert sheet.total_fsr == pytest.approx(3.39330996)
+    assert sheet.permissible.total == pytest.approx(3.4)
+    assert sheet.permissible_gfa(RESIDENTIAL) == pytest.approx(18771.2)
+    assert sheet.total_permissible_gfa_m2 == pytest.approx(22793.6)
+
+
+def test_the_templates_units_are_not_rounded() -> None:
+    sheet = template()
+    assert sheet.market_units == pytest.approx((0.0, 44.115, 154.4025, 22.0575, 0.0))
+    assert sheet.total_units == pytest.approx(220.575)
+    assert sheet.permissible_market_units == pytest.approx(
+        (0.0, 44.0152276, 154.0532966, 22.0076138, 0.0)
+    )
+    assert sheet.affordable_units == (0.0,) * 5, "no affordable share, no affordable units"
+
+
+def test_the_templates_parking_and_basements() -> None:
+    sheet = template()
+    sepp, dcp = sheet.parking_spaces("sepp"), sheet.parking_spaces("dcp")
+    assert sepp["market 1-bed"] == pytest.approx(22.0575)
+    assert sepp["market 3-bed"] == pytest.approx(33.08625)
+    assert dcp["market 3-bed"] == pytest.approx(22.0575)
+    assert sepp["visitors"] == pytest.approx(22.0575) and dcp["visitors"] == 0.0
+    assert sepp["residential"] == pytest.approx(231.60375)
+    assert (sepp["commercial"], sepp["retail"]) == pytest.approx((12.75, 88.6666667))
+    assert (dcp["commercial"], dcp["retail"]) == pytest.approx((3.1875, 6.65))
+    assert sepp["total"] == pytest.approx(333.0204167)
+    assert dcp["total"] == pytest.approx(208.355)
+    assert sheet.basements("sepp") == pytest.approx(4.96748832)
+    assert sheet.basements("dcp") == pytest.approx(3.10792064)
+
+
+def test_the_storeys_are_counted_from_the_levels() -> None:
+    sheet = template()
+    assert [level.name for level in sheet.levels[:3]] == ["Ground Floor", "Level 01", "Level 02"]
+    assert sheet.levels[-1].name == "Level 17"
+    assert sheet.residential_storeys == 15, "fourteen tower floors and the lobby"
+    assert sheet.podium_storeys == 1, "the commercial level; empty levels are not storeys"
+
+
+def test_an_affordable_share_splits_the_units_between_the_two_mixes() -> None:
+    sheet = feasibility(template_floors(), site_area_m2=SITE, affordable_share=0.25)
+    assert sum(sheet.market_units) == pytest.approx(220.575 * 0.75)
+    affordable_average = Mix(AFFORDABLE_MIX).average_gfa_m2(Efficiencies())
+    assert sum(sheet.affordable_units) == pytest.approx(18813.75 / affordable_average * 0.25)
+    sepp = sheet.parking_spaces("sepp")
+    assert sepp["affordable 1-bed"] == pytest.approx(sheet.affordable_units[1] * 0.4)
+
+
+def test_without_a_site_there_is_no_fsr_and_nothing_permissible() -> None:
+    sheet = feasibility([Floor(RESIDENTIAL, 1000.0)], permissible=Permissible(3.0))
+    assert sheet.fsr(RESIDENTIAL) is None and sheet.total_fsr is None
+    assert sheet.permissible_gfa(RESIDENTIAL) is None
+    assert sheet.permissible_market_units is None
+    assert sheet.basements("sepp") is None
+    assert sheet.gfa(RESIDENTIAL) == pytest.approx(725.0)
+
+
+# -- the settings ------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
         ({"site_area_m2": 0.0}, "site area"),
-        ({"targets": Targets(fsr=-1.0)}, "target FSR"),
-        ({"targets": Targets(units=-3)}, "target unit count"),
+        ({"affordable_share": 1.5}, "affordable share"),
+        ({"market": Mix((UnitType("2-bed", 0.9, 75.0),))}, "come to 90%"),
     ],
 )
 def test_a_setting_that_cannot_be_right_is_said(kwargs: dict[str, object], message: str) -> None:
     with pytest.raises(ValueError, match=message):
-        schedule([Floor("L1", RESIDENTIAL, 100.0)], **kwargs)  # type: ignore[arg-type]
+        feasibility([Floor(RESIDENTIAL, 100.0)], **kwargs)  # type: ignore[arg-type]
 
 
-def test_a_factor_outside_nothing_to_one_is_refused() -> None:
-    with pytest.raises(ValueError, match=r"GBA to GFA \(residential\)"):
-        Ratios(gfa_residential=1.2)
-    with pytest.raises(ValueError, match="GFA to NSA"):
-        Ratios(nsa_non_residential=0.0)
+def test_an_efficiency_outside_nothing_to_one_is_refused() -> None:
+    with pytest.raises(ValueError, match=r"BEA to GFA \(Residential\)"):
+        Efficiencies(gfa_residential=1.2)
+    with pytest.raises(ValueError, match="permissible retail FSR"):
+        Permissible(retail=-1.0)
+
+
+def test_parking_rates_are_the_sheets_unless_named() -> None:
+    rates = ParkingRates()
+    assert rates.market[2] == UnitRates(1.0, 1.0) and rates.affordable[1] == UnitRates(0.4, 0.5)
+    assert parse_rates("2-bed=1.5,1") == ("2-bed", UnitRates(1.5, 1.0))
+    with pytest.raises(ValueError, match="like '2-bed=1,1'"):
+        parse_rates("2-bed 1 1")
+    changed = rates.for_mixes(DEFAULT_MIX, AFFORDABLE_MIX, {"2 Bedroom": UnitRates(0.8, 0.8)})
+    assert changed.market[2] == UnitRates(0.8, 0.8), "'2 Bedroom' is the sheet's '2-bed'"
+    assert changed.market[1] == UnitRates(0.5, 0.5)
+    with pytest.raises(ValueError, match="not in the market mix"):
+        rates.for_mixes(DEFAULT_MIX, AFFORDABLE_MIX, {"Penthouse": UnitRates(2.0, 2.0)})
+    with pytest.raises(ValueError, match="basement site ratio"):
+        ParkingRates(basement_site_ratio=0.0)
+    # A mix of other types gets a space a unit where the sheet has no rate.
+    odd = feasibility(
+        [Floor(RESIDENTIAL, 1000.0)],
+        market=Mix((UnitType("Loft", 1.0, 60.0),)),
+    )
+    assert odd.parking.market == (UnitRates(1.0, 1.0),)

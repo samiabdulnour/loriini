@@ -271,9 +271,20 @@ from sun_study.report.cos_table import write_workbook, zone_tables
 from sun_study.report.csv_out import write_csv
 from sun_study.report.header import build_header
 from sun_study.report.json_out import write_json
-from sun_study.rules.area_yield import DEFAULT_MIX, Ratios, checked_mix, parse_unit
-from sun_study.rules.area_yield import Targets as AreaTargets
-from sun_study.rules.area_yield import schedule as area_schedule
+from sun_study.rules.area_yield import (
+    AFFORDABLE_MIX,
+    DEFAULT_MIX,
+    Efficiencies,
+    Mix,
+    ParkingRates,
+    Permissible,
+    checked_mix,
+    feasibility,
+    level_name,
+    parse_level,
+    parse_rates,
+    parse_unit,
+)
 from sun_study.rules.days import DAY_HELP, day_tag, day_title, parse_day, with_day
 from sun_study.rules.ruleset import BUILTIN_RULESETS, Ruleset, RulesetError, load_ruleset
 from sun_study.site import pipeline as site_pipeline
@@ -8588,6 +8599,16 @@ def area_yield(
     timeout: Annotated[
         float, typer.Option("--timeout", help="Seconds to wait for one Archicad command.")
     ] = DEFAULT_TIMEOUT_SECONDS,
+    option: Annotated[
+        str,
+        typer.Option(
+            "--option",
+            help=(
+                "What this massing option is called: its sheet in the workbook and its "
+                "layout. A run with the same name replaces that option's sheet."
+            ),
+        ),
+    ] = "Option 01",
     residential_layer: Annotated[
         list[str] | None,
         typer.Option(
@@ -8595,14 +8616,46 @@ def area_yield(
             help="A layer whose slabs are residential floor. Repeat for more.",
         ),
     ] = None,
-    non_residential_layer: Annotated[
+    commercial_layer: Annotated[
         list[str] | None,
         typer.Option(
+            "--commercial-layer",
             "--non-residential-layer",
+            help="A layer whose slabs are commercial floor: offices, a podium. Repeat for more.",
+        ),
+    ] = None,
+    retail_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--retail-layer", help="A layer whose slabs are retail floor. Repeat for more."
+        ),
+    ] = None,
+    massing_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--massing-layer",
             help=(
-                "A layer whose slabs are any other floor: retail, office, a podium. "
+                "A layer whose slabs are the whole massing, the use of each told by its level: "
+                "the levels named --retail-level are retail, --commercial-level commercial, "
+                "the rest residential. Repeat for more."
+            ),
+        ),
+    ] = None,
+    retail_level: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--retail-level",
+            help=(
+                "A level whose massing-layer slabs are retail: 'Ground', 'Level 01', 'B 01'. "
                 "Repeat for more."
             ),
+        ),
+    ] = None,
+    commercial_level: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--commercial-level",
+            help="A level whose massing-layer slabs are commercial. Repeat for more.",
         ),
     ] = None,
     renovation_filter: Annotated[
@@ -8616,36 +8669,104 @@ def area_yield(
         ),
     ] = False,
     gfa_residential: Annotated[
-        float, typer.Option("--gfa-residential", help="GBA to GFA, residential.")
-    ] = 0.75,
-    gfa_non_residential: Annotated[
-        float, typer.Option("--gfa-non-residential", help="GBA to GFA, non-residential.")
-    ] = 0.90,
-    nsa_residential: Annotated[
-        float, typer.Option("--nsa-residential", help="GFA to NSA, residential.")
+        float, typer.Option("--gfa-residential", help="BEA to GFA, residential.")
+    ] = 0.725,
+    gfa_commercial: Annotated[
+        float, typer.Option("--gfa-commercial", help="BEA to GFA, commercial.")
     ] = 0.85,
-    nsa_non_residential: Annotated[
-        float, typer.Option("--nsa-non-residential", help="GFA to NSA, non-residential.")
+    gfa_retail: Annotated[float, typer.Option("--gfa-retail", help="BEA to GFA, retail.")] = 0.95,
+    nla_residential: Annotated[
+        float, typer.Option("--nla-residential", help="GFA to NLA, residential.")
+    ] = 0.85,
+    nla_commercial: Annotated[
+        float, typer.Option("--nla-commercial", help="GFA to NLA, commercial.")
     ] = 0.90,
+    nla_retail: Annotated[float, typer.Option("--nla-retail", help="GFA to NLA, retail.")] = 0.90,
     unit: Annotated[
         list[str] | None,
         typer.Option(
             "--unit",
             help=(
-                "One type in the mix: its name, its share in per cent and its size in m² NSA, "
-                "as '2 Bedroom=70,75'. Repeat for each; the shares come to 100. "
-                "15/70/15 per cent of 55/75/95 m² by default."
+                "One type in the market mix: its name, its share in per cent and its size in m² "
+                "NLA, as '2-bed=70,75'. Repeat for each; the shares come to 100. The sheet's "
+                "five types -- Studio, 1-bed, 2-bed, 3-bed, 4-bed at 0/20/70/10/0 per cent of "
+                "35/50/75/100/120 m² -- by default."
             ),
         ),
     ] = None,
+    affordable_unit: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--affordable-unit",
+            help="One type in the affordable mix, as --unit. The sheet's five by default.",
+        ),
+    ] = None,
+    affordable_share: Annotated[
+        float,
+        typer.Option(
+            "--affordable-share",
+            help="The share of the residential GFA that is affordable housing, in per cent.",
+        ),
+    ] = 0.0,
+    common_area: Annotated[
+        float,
+        typer.Option("--common-area", help="Common areas per unit, m² NLA, added to the average."),
+    ] = 0.0,
+    size_tolerance: Annotated[
+        float,
+        typer.Option("--size-tolerance", help="Unit size tolerance, m² NLA, added to the average."),
+    ] = 0.0,
+    parking_rate: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--parking-rate",
+            help=(
+                "A market type's spaces per unit under the SEPP and the DCP, as '2-bed=1,1'. "
+                "The sheet's rates for the rest."
+            ),
+        ),
+    ] = None,
+    affordable_parking_rate: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--affordable-parking-rate",
+            help="An affordable type's spaces per unit, SEPP and DCP, as '2-bed=0.5,1'.",
+        ),
+    ] = None,
+    sqm_per_space: Annotated[
+        float,
+        typer.Option("--sqm-per-space", help="Square metres of basement a parking space takes."),
+    ] = 40.0,
+    basement_site_ratio: Annotated[
+        float,
+        typer.Option(
+            "--basement-site-ratio",
+            help="The share of the site a basement level may take, 0.4 for forty per cent.",
+        ),
+    ] = 0.4,
     site_area: Annotated[
         float | None, typer.Option("--site-area", help="The site's area in m², for the FSR.")
     ] = None,
-    target_fsr: Annotated[
-        float | None, typer.Option("--target-fsr", help="The FSR the massing is measured against.")
+    fsr_residential: Annotated[
+        float | None,
+        typer.Option("--fsr-residential", help="The permissible FSR for residential floor."),
     ] = None,
-    target_units: Annotated[
-        int | None, typer.Option("--target-units", help="The unit count the brief asks for.")
+    fsr_commercial: Annotated[
+        float | None,
+        typer.Option("--fsr-commercial", help="The permissible FSR for commercial floor."),
+    ] = None,
+    fsr_retail: Annotated[
+        float | None, typer.Option("--fsr-retail", help="The permissible FSR for retail floor.")
+    ] = None,
+    target_fsr: Annotated[
+        float | None,
+        typer.Option(
+            "--target-fsr",
+            help=(
+                "The LEP's one FSR, when it is not split by use: written on the residential "
+                "row, to be split in the workbook."
+            ),
+        ),
     ] = None,
     address: Annotated[
         str | None,
@@ -8653,17 +8774,23 @@ def area_yield(
             "--address",
             help=(
                 "The site's address: the site area and the LEP's FSR are read at it, for "
-                "whichever of --site-area and --target-fsr is not given. NSW only."
+                "whichever of --site-area and the permissible FSR is not given. NSW only."
             ),
         ),
     ] = None,
     xlsx_out: Annotated[
         Path | None,
-        typer.Option("--xlsx", help="Write the calculation as a live workbook, here."),
+        typer.Option(
+            "--xlsx",
+            help=(
+                "Write the analysis as a live workbook in the office's template, here: one "
+                "sheet per option, this option added beside the ones the workbook has."
+            ),
+        ),
     ] = None,
     sheet: Annotated[
         bool,
-        typer.Option("--sheet/--no-sheet", help="Draw the Area Calculation sheet on a layout."),
+        typer.Option("--sheet/--no-sheet", help="Draw the Yield Analysis sheet on a layout."),
     ] = True,
     view: Annotated[
         str | None,
@@ -8685,23 +8812,56 @@ def area_yield(
         ),
     ] = None,
 ) -> None:
-    """The area calculation from the massing slabs: GBA, GFA, NSA, FSR and yield.
+    """The preliminary yield analysis from the massing slabs, as the office's
+    feasibility sheet works it.
 
-    The slabs on the residential and non-residential layers are measured to
-    their edges, arcs and holes and all; the GBA of each use goes to GFA and
-    NSA by the office's factors, over the site to an FSR, and the
-    residential NSA over the mix's average unit to a yield. With no layer
-    named, every slab on a layer that is showing counts, as residential.
-    Printed, drawn on a sheet of its own, and written as a live workbook.
+    The slabs on the layers named are measured to their edges, arcs and
+    holes and all, and gathered into levels by their height; each use's BEA
+    goes to GFA and NLA by the sheet's efficiencies, over the site to an FSR
+    against the permissible, and the residential GFA over the mix's average
+    unit to the units, the parking and the basements. With no layer named,
+    every slab on a layer that is showing counts, as residential. Printed,
+    drawn on a sheet of its own, and written as a live workbook, one sheet
+    per option.
     """
     banner()
     naming.set_prefix(layer_prefix, default=naming.YIELD_PREFIX)
     residential = [name for name in residential_layer or [] if name.strip()]
-    non_residential = [name for name in non_residential_layer or [] if name.strip()]
+    commercial = [name for name in commercial_layer or [] if name.strip()]
+    retail = [name for name in retail_layer or [] if name.strip()]
+    massing = [name for name in massing_layer or [] if name.strip()]
     try:
-        mix = [parse_unit(text) for text in unit] if unit else list(DEFAULT_MIX)
-        checked_mix(mix)
-        ratios = Ratios(gfa_residential, gfa_non_residential, nsa_residential, nsa_non_residential)
+        market = Mix(
+            tuple(parse_unit(text) for text in unit) if unit else DEFAULT_MIX,
+            common_area,
+            size_tolerance,
+        )
+        affordable = Mix(
+            tuple(parse_unit(text) for text in affordable_unit)
+            if affordable_unit
+            else AFFORDABLE_MIX
+        )
+        checked_mix(market.types)
+        checked_mix(affordable.types)
+        efficiencies = Efficiencies(
+            gfa_residential, gfa_commercial, gfa_retail, nla_residential, nla_commercial, nla_retail
+        )
+        rates = ParkingRates(
+            sqm_per_space=sqm_per_space, basement_site_ratio=basement_site_ratio
+        ).for_mixes(
+            market.types,
+            affordable.types,
+            dict(parse_rates(text) for text in parking_rate or []),
+            dict(parse_rates(text) for text in affordable_parking_rate or []),
+        )
+        retail_levels = [parse_level(text) for text in retail_level or []]
+        commercial_levels = [parse_level(text) for text in commercial_level or []]
+        both = sorted(set(retail_levels) & set(commercial_levels))
+        if both:
+            raise ValueError(
+                f"{level_name(both[0])} is named as both retail and commercial; "
+                "a level can only be one."
+            )
     except ValueError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
@@ -8709,7 +8869,8 @@ def area_yield(
     def say(line: str) -> None:
         typer.echo(line)
 
-    if address and (site_area is None or target_fsr is None):
+    permissible_given = any(v is not None for v in (fsr_residential, fsr_commercial, fsr_retail))
+    if address and (site_area is None or not (permissible_given or target_fsr is not None)):
         typer.echo(f"reading the site and its controls at {address}...")
         try:
             found = site_pipeline.run_summary(address, log=say)
@@ -8722,27 +8883,47 @@ def area_yield(
             if site_area is None and found.site_area_m2:
                 site_area = found.site_area_m2
                 typer.echo(f"  site area {site_area:.2f} m² (the cadastral lots)")
-            if target_fsr is None and found.controls.fsr:
+            if not permissible_given and target_fsr is None and found.controls.fsr:
                 target_fsr = found.controls.fsr
                 typer.echo(f"  FSR control {target_fsr:g}:1")
+    notes_: list[str] = []
+    if permissible_given:
+        permissible = Permissible(fsr_residential, fsr_commercial, fsr_retail)
+    elif target_fsr is not None:
+        permissible = Permissible(residential=target_fsr)
+        notes_.append(
+            f"Permissible FSR : the LEP's {target_fsr:g}:1 is one figure, written on the "
+            "residential row; split it by use in the workbook."
+        )
+    else:
+        permissible = Permissible()
 
     connection = _connect(port, timeout)
     try:
         reading = read_slabs(
             connection,
             renovation=renovation_filter,
-            shown_layers_only=not (residential or non_residential),
+            shown_layers_only=not (residential or commercial or retail or massing),
         )
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
     try:
-        assignment = floors_from(reading.slabs, residential, non_residential)
+        assignment = floors_from(
+            reading.slabs,
+            residential,
+            commercial,
+            retail,
+            massing,
+            retail_levels=retail_levels,
+            commercial_levels=commercial_levels,
+            ground_m=reading.ground_m,
+        )
     except ValueError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
 
-    everything = not (residential or non_residential)
+    everything = not (residential or commercial or retail or massing)
     typer.echo(
         f"read {_slabs(len(reading.slabs))}"
         + (", only those the renovation filter shows" if renovation_filter else "")
@@ -8750,8 +8931,10 @@ def area_yield(
     )
     for layer, (use, count, area) in sorted(assignment.by_layer.items()):
         typer.echo(f"  {layer.strip()}: {_slabs(count)}, {area:.2f} m², {use}")
+    for level_named, use in assignment.levels_used.items():
+        typer.echo(f"    {level_named}: {use}")
     for layer, count in sorted(assignment.passed_over.items()):
-        typer.echo(f"  {layer.strip()}: {_slabs(count)}, not counted -- named for neither use")
+        typer.echo(f"  {layer.strip()}: {_slabs(count)}, not counted -- named for nothing")
     for layer in assignment.missing:
         typer.secho(f"  {layer.strip()}: named, and no slab stands on it", fg=typer.colors.YELLOW)
     if reading.own:
@@ -8763,9 +8946,12 @@ def area_yield(
         )
     if everything:
         typer.secho(
-            "  No layer named for either use: every slab showing is counted as residential.",
+            "  No layer named: every slab showing is counted as massing, residential unless "
+            "its level is named retail or commercial.",
             fg=typer.colors.YELLOW,
         )
+    if reading.ground_m is None:
+        typer.echo("  no storey is named as the ground; the lowest level is the ground floor")
     if not assignment.floors:
         typer.secho(
             "No slab was counted. Name the layers the massing slabs are on, or show them.",
@@ -8774,40 +8960,55 @@ def area_yield(
         )
         raise typer.Exit(code=1)
 
+    counted = sum(count for _use, count, _area in assignment.by_layer.values())
+    source = [
+        f"BEA : {_slabs(counted)}, measured to their edges"
+        + (", as the renovation filter shows them" if renovation_filter else ""),
+        *notes_,
+    ]
     try:
-        result = area_schedule(
+        result = feasibility(
             assignment.floors,
-            ratios=ratios,
-            mix=mix,
+            option=option,
             site_area_m2=site_area,
-            targets=AreaTargets(fsr=target_fsr, units=target_units),
+            permissible=permissible,
+            efficiencies=efficiencies,
+            market=market,
+            affordable=affordable,
+            affordable_share=affordable_share / 100.0,
+            parking=rates,
+            ground_m=reading.ground_m,
+            source=source,
         )
     except ValueError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
 
-    counted = sum(count for _use, count, _area in assignment.by_layer.values())
-    source = [
-        f"GBA : {_slabs(counted)}, measured to their edges"
-        + (", as the renovation filter shows them" if renovation_filter else "")
-    ]
+    typer.echo("")
+    typer.echo(f"  {result.option}")
+    typer.echo("  Level             F to F     Resi BEA     Comm BEA   Retail BEA")
+    for level in reversed(result.levels):
+        typer.echo(
+            f"  {level.name:<16}{level.floor_to_floor_m:>8.2f}"
+            f"{level.residential_m2:>13.2f}{level.commercial_m2:>13.2f}{level.retail_m2:>13.2f}"
+        )
     typer.echo("")
     for line in area_text_lines(result):
         typer.echo(line)
     typer.echo("")
-    for line in area_notes(result, source):
+    for line in area_notes(result):
         typer.echo(f"  {line}")
 
     if xlsx_out is not None:
         try:
-            written = write_area_workbook(xlsx_out, result, note=source[0])
-        except OSError as error:
+            written = write_area_workbook(xlsx_out, result)
+        except (OSError, FileExistsError) as error:
             typer.secho(f"  the workbook was not written: {error}", fg=typer.colors.RED, err=True)
         else:
             typer.echo(f"\nwrote {written}")
 
     if sheet:
-        typer.echo("\ndrawing the area calculation sheet...")
+        typer.echo("\ndrawing the yield analysis sheet...")
         try:
             report = draw_area_sheet(
                 connection,

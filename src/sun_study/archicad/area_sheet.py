@@ -1,18 +1,19 @@
-"""The area calculation drawn on a layout: the office's own sheet.
+"""The yield analysis drawn on a layout: the office's own sheet, an option a sheet.
 
-*Area calculation, GFA + Yield* -- the title in two lines, the table of
-proposed and target figures, the yield, the notes that say which factors
-the figures were worked with, and a legend -- drawn straight onto a layout
-of its own, the way the Summary of Controls is (``site_analysis.draw_summary``):
-texts and lines on the sheet, no worksheet, no view of it to keep.
+*Preliminary Yield Analysis* -- the title and the option's name, the table
+of permissible and proposed figures, the unit mixes, the storeys, the
+parking, the notes that say which efficiencies the figures were worked
+with, and a legend -- drawn straight onto a layout of its own, the way the
+Summary of Controls is (``site_analysis.draw_summary``): texts and lines on
+the sheet, no worksheet, no view of it to keep.
 
 Beside the table the office's sheet has the massing, in an axonometric
-where the residential floors are yellow. That picture is the project's own:
-a 3D view the office sets up once, with the graphic override that colours
-the massing by use. Named, it is placed on the sheet beside the table and
-framed to the rest of the page; the legend's colours are the office's
-yellow and lilac, which the override should match. Unnamed, the sheet is
-the table, and the view can be dragged onto it from the View Map.
+coloured by use. That picture is the project's own: a 3D view the office
+sets up once, with the graphic override that colours the massing. Named, it
+is placed on the sheet beside the table and framed to the rest of the page;
+the legend's colours are the three the massing is coloured in, which the
+override should match. Unnamed, the sheet is the table, and the view can be
+dragged onto it from the View Map.
 """
 
 from __future__ import annotations
@@ -43,31 +44,35 @@ from sun_study.archicad.site_analysis import (
 )
 from sun_study.archicad.sun_eyes import TITLE_BLOCK_MM, arrange_drawings
 from sun_study.archicad.views import _by_name
-from sun_study.report.area_table import SUBTITLE, TITLE, notes, rows
-from sun_study.rules.area_yield import AreaSchedule
+from sun_study.report.area_table import TITLE, notes, rows
+from sun_study.rules.area_yield import COMMERCIAL, LABELS, RESIDENTIAL, RETAIL, Feasibility
 
 __all__ = [
     "AREA_WORD",
-    "NON_RESIDENTIAL_COLOUR",
-    "RESIDENTIAL_COLOUR",
+    "COLOURS",
     "AreaSheetReport",
     "area_drawing",
     "draw_area_sheet",
+    "sheet_word",
     "view_frame",
 ]
 
-#: What the sheet is called, after the prefix.
-AREA_WORD = "Area Calculation"
+#: What the sheet is called, after the prefix and before the option's name.
+AREA_WORD = "Yield Analysis"
 
-#: The legend's two colours, off the office's sheet.
-RESIDENTIAL_COLOUR = "#FFF4A8"
-NON_RESIDENTIAL_COLOUR = "#B894F2"
+#: The legend's colours, one a use: the office's yellow for the homes, its
+#: lilac for the commercial floors, and a blush for the shops.
+COLOURS: dict[str, str] = {
+    RESIDENTIAL: "#FFF4A8",
+    COMMERCIAL: "#B894F2",
+    RETAIL: "#F6B8C8",
+}
 
 #: Paper millimetres from the sheet's usable corner to the table's.
 MARGIN_MM = 15.0
 
 #: How wide the table and its notes run, and the gap between them and the view.
-TABLE_WIDTH_MM = 150.0
+TABLE_WIDTH_MM = 200.0
 GAP_MM = 15.0
 
 #: The narrowest a view is placed at: less than this is a stamp, not a picture.
@@ -75,54 +80,78 @@ LEAST_VIEW_MM = 80.0
 
 # The table, in paper millimetres: the columns, the step between rows, and
 # the text. Read off the office's sheet, where the table is set at 3.5 mm.
-_LABEL_X, _COUNT_X, _PROPOSED_X, _TARGET_X = 0.0, 32.0, 56.0, 98.0
-_BODY_MM, _STEP_MM, _GAP_ROW_MM = 3.5, 5.2, 2.6
-_TITLE_MM, _NOTE_MM, _LEGEND_MM = 9.0, 3.2, 5.0
-
-#: How far apart the lines that fill a legend swatch are, and how heavy, so
-#: that on paper they read as the colour and not as stripes.
-_SWATCH_PITCH_MM, _SWATCH_PEN_MM = 0.35, 0.35
+_LABEL_X, _A_X, _B_X, _C_X = 0.0, 60.0, 110.0, 156.0
+_BODY_MM, _STEP_MM, _GAP_ROW_MM = 3.5, 5.2, 3.0
+_TITLE_MM, _NOTE_MM, _LEGEND_MM, _SECTION_MM = 9.0, 3.2, 5.0, 4.5
 
 
-def area_drawing(schedule: AreaSchedule, source: Sequence[str] = ()) -> Drawing:
+def sheet_word(option: str) -> str:
+    """The sheet's name after the prefix: ``Yield Analysis - Option 01``."""
+    tidy = " ".join(option.split())
+    return f"{AREA_WORD} - {tidy}" if tidy else AREA_WORD
+
+
+def area_drawing(sheet: Feasibility, source: Sequence[str] = ()) -> Drawing:
     """The sheet's table, notes and legend, in paper metres, hanging down
     from ``(0, 0)`` at its top-left corner."""
     drawing = Drawing(1.0, AREA_WORD)
     mm = drawing.mm
     part = "Table"
 
-    def text(value: str, x_mm: float, y_mm: float, height_mm: float = _BODY_MM) -> None:
-        drawing.text(part, value, (mm(x_mm), mm(y_mm)), height_mm=height_mm, justification="Left")
+    def text(
+        value: str, x_mm: float, y_mm: float, height_mm: float = _BODY_MM, right: bool = False
+    ) -> None:
+        drawing.text(
+            part,
+            value,
+            (mm(x_mm), mm(y_mm)),
+            height_mm=height_mm,
+            justification="Right" if right else "Left",
+        )
 
     text(TITLE, 0.0, 0.0, _TITLE_MM)
-    text(SUBTITLE, 0.0, -_TITLE_MM * 1.25, _TITLE_MM)
+    text(sheet.option, 0.0, -_TITLE_MM * 1.25, _TITLE_MM)
     y = -34.0
-    for row in rows(schedule):
+    for row in rows(sheet):
         if row.kind == "gap":
             y -= _GAP_ROW_MM
             continue
+        a, b, c = row.cells
+        if row.kind == "section":
+            text(row.label.upper(), _LABEL_X, y, _SECTION_MM)
+            text(a, _A_X + 40.0, y, _SECTION_MM, right=True)
+            drawing.line(
+                part,
+                [(mm(0.0), mm(y - 1.5)), (mm(TABLE_WIDTH_MM), mm(y - 1.5))],
+                colour=INK,
+                weight_mm=0.25,
+            )
+            y -= _STEP_MM * 1.2
+            continue
         text(row.label, _LABEL_X, y)
-        text(row.count, _COUNT_X, y)
-        text(row.proposed, _PROPOSED_X, y)
-        text(row.target, _TARGET_X, y)
+        text(a, _A_X + 40.0, y, right=True)
+        text(b, _B_X + 40.0, y, right=True)
+        text(c, _C_X + 40.0, y, right=True)
         y -= _STEP_MM
 
     y -= 10.0
     text("Notes:", 0.0, y, _NOTE_MM)
-    for line in notes(schedule, source):
+    for line in notes(sheet, source):
         y -= _NOTE_MM * 1.55
         text(line, 0.0, y, _NOTE_MM)
 
     y -= 14.0
     text("Legend", 0.0, y, _LEGEND_MM)
-    for label, colour in (
-        ("Residential", RESIDENTIAL_COLOUR),
-        ("Non-Residential", NON_RESIDENTIAL_COLOUR),
-    ):
+    for use, colour in COLOURS.items():
         y -= 9.0
         _swatch(drawing, part, 0.0, y - 1.0, 8.0, 6.5, colour)
-        text(label, 12.0, y + 0.8)
+        text(LABELS[use], 12.0, y + 0.8)
     return drawing
+
+
+#: How far apart the lines that fill a legend swatch are, and how heavy, so
+#: that on paper they read as the colour and not as stripes.
+_SWATCH_PITCH_MM, _SWATCH_PEN_MM = 0.35, 0.35
 
 
 def _swatch(
@@ -208,7 +237,7 @@ class AreaSheetReport:
 
 def draw_area_sheet(
     connection: ArchicadConnection,
-    schedule: AreaSchedule,
+    sheet_data: Feasibility,
     *,
     source: Sequence[str] = (),
     master_layout: str | None = None,
@@ -216,13 +245,14 @@ def draw_area_sheet(
     title_block_mm: float = TITLE_BLOCK_MM,
     say: Callable[[str], None] | None = None,
 ) -> AreaSheetReport:
-    """The area calculation on a layout of its own, remade on every run.
+    """The yield analysis on a layout of its own, one an option, remade on
+    every run of that option.
 
     ``view`` names a 3D view (or any view) in the View Map to place beside
     the table. A view that is not there, or will not place, costs the
     picture and not the sheet: the run says so and the table is drawn.
     """
-    name = naming.named(AREA_WORD)
+    name = naming.named(sheet_word(sheet_data.option))
     said: list[str] = []
     _remove_layout(connection, name)
     master = _master_named(master_layouts(connection), master_layout or A1_MASTER)
@@ -256,7 +286,7 @@ def draw_area_sheet(
     left, top, _width, _height = sheet.usable
     x0 = (left + MARGIN_MM) / MM_PER_M
     y0 = (sheet.height_mm - top - MARGIN_MM) / MM_PER_M
-    drawing = area_drawing(schedule, source).moved(x0, y0)
+    drawing = area_drawing(sheet_data, source).moved(x0, y0)
     attributes = _attributes(connection)
     if not attributes.pens:
         said.append("the pen table could not be read; lines take the tool's current pen.")

@@ -213,6 +213,24 @@ the first things to check. [`yield.md`](yield.md) is how to use it; D122 is
 how it is built. Per-building figures, parking and the Summary of Controls'
 project rows are next.
 
+**The office's feasibility template (8 October).** The office put its
+*Feasibility template* in the folder -- *Preliminary Yield Analysis*, one
+sheet per option -- and asked for the study to produce that table and to
+follow its efficiencies to the letter. It does now: three uses (residential,
+commercial, retail) at the template's *BEA to GFA* 0.725, 0.85 and 0.95 and
+*GFA to NLA* 0.85, 0.9 and 0.9; the permissible FSR split by use against
+the proposed, and the difference; the units as the template works them --
+the residential GFA over the mix's average GFA, shared into the mix, market
+and affordable apart, not rounded; the parking at its SEPP and DCP rates and
+the basements; the storey table by level. The workbook is the template
+filled, cell for cell, the inputs in red, every other figure a formula, and
+it holds a sheet per option. The slabs are placed by their own height, not
+their home storey, since an option's massing is storey-thick slabs homed on
+the ground and offset up; and an option on one layer has its use told by
+level (`--massing-layer`, `--retail-level`, `--commercial-level`). Run live
+on the Darlinghurst project's two options, OPT1 and OPT2, into one workbook
+and two sheets. [`yield.md`](yield.md) is how to use it; D126 is how.
+
 ## R4 — A reference image over the 3D window
 
 **Asked.** Sometimes a view has to be set up from the same angle as a

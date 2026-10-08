@@ -1,4 +1,4 @@
-"""A one-sheet ``.xlsx`` from the standard library: cells, formulas, a few styles.
+"""An ``.xlsx`` from the standard library: sheets, cells, formulas, a few styles.
 
 An ``.xlsx`` is a zip of a handful of XML parts, and a table that is a
 deliverable -- bold headings, percentages formatted as percentages, a formula
@@ -10,6 +10,10 @@ the same way, with the parts spelled out in place.
 Every formula carries its value as well, so a previewer that never
 calculates shows the right number, and the workbook asks to be recalculated
 when it is opened, so Excel and LibreOffice show their own.
+
+A workbook may hold several sheets, one of them hidden: the yield workbook
+keeps a sheet per option and, hidden, the data each was made from, so a run
+can add an option beside the ones already there (``read_text``).
 """
 
 from __future__ import annotations
@@ -18,9 +22,10 @@ import zipfile
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from xml.etree import ElementTree
 from xml.sax.saxutils import escape
 
-__all__ = ["PLAIN", "Format", "Sheet", "column", "write"]
+__all__ = ["PLAIN", "Format", "Sheet", "Workbook", "column", "read_text", "sheet_names", "write"]
 
 _DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
 _MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -30,6 +35,10 @@ _OFFICE_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml"
 #: A number format sits in a double-quoted attribute, and its own literal
 #: text -- the ``" m²"`` after an area -- is double-quoted inside it.
 _QUOTE = {'"': "&quot;"}
+
+#: The pale fill of an input cell, and the grey of a note.
+SHADE = "FFF6D5"
+GREY = "595959"
 
 
 def column(index: int) -> str:
@@ -55,6 +64,18 @@ class Format:
     shaded: bool = False
     """A pale fill: an input somebody is meant to change."""
     align: str = ""
+    colour: str = ""
+    """The text's colour as six hex digits, ``FF0000``; empty is the default."""
+    fill: str = ""
+    """A fill colour as six hex digits; ``shaded`` is the pale one."""
+
+    @property
+    def font_colour(self) -> str:
+        return self.colour or (GREY if self.grey else "")
+
+    @property
+    def fill_colour(self) -> str:
+        return self.fill or (SHADE if self.shaded else "")
 
 
 #: The look of a cell nobody styled.
@@ -68,6 +89,8 @@ class Sheet:
     name: str
     widths: Sequence[float] = ()
     formats: list[Format] = field(default_factory=lambda: [PLAIN])
+    """Shared with the workbook's other sheets, so one style table serves all."""
+    hidden: bool = False
     _rows: dict[int, dict[int, str]] = field(default_factory=dict)
     _merges: list[str] = field(default_factory=list)
 
@@ -88,6 +111,11 @@ class Sheet:
     def number(self, row: int, col: int, value: float, look: Format = PLAIN) -> None:
         ref = f"{column(col)}{row}"
         self._put(row, col, f'<c r="{ref}" s="{self.style(look)}"><v>{value!r}</v></c>')
+
+    def blank(self, row: int, col: int, look: Format = PLAIN) -> None:
+        """An empty cell with a look: an input left for somebody to fill."""
+        ref = f"{column(col)}{row}"
+        self._put(row, col, f'<c r="{ref}" s="{self.style(look)}"/>')
 
     def formula(
         self, row: int, col: int, formula: str, value: float | str, look: Format = PLAIN
@@ -132,19 +160,42 @@ class Sheet:
         )
 
 
+@dataclass
+class Workbook:
+    """Several sheets sharing one style table."""
+
+    formats: list[Format] = field(default_factory=lambda: [PLAIN])
+    sheets: list[Sheet] = field(default_factory=list)
+
+    def sheet(self, name: str, widths: Sequence[float] = (), *, hidden: bool = False) -> Sheet:
+        """A new sheet at the end of the book. A name over 31 characters,
+        Excel's limit, is cut to it."""
+        made = Sheet(name[:31], widths, self.formats, hidden)
+        self.sheets.append(made)
+        return made
+
+    def write(self, destination: Path) -> Path:
+        """The workbook at ``destination``; its folder is made."""
+        if not self.sheets:
+            raise ValueError("a workbook needs at least one sheet")
+        return _write(destination, self.sheets, self.formats)
+
+
 def _styles(formats: Sequence[Format]) -> str:
     codes = sorted({look.number for look in formats if look.number})
     number_ids = {code: 164 + i for i, code in enumerate(codes)}
-    fonts = sorted({(f.size, f.bold, f.italic, f.grey) for f in formats})
+    fonts = sorted({(f.size, f.bold, f.italic, f.font_colour) for f in formats})
     font_ids = {font: i for i, font in enumerate(fonts)}
+    fill_colours = sorted({f.fill_colour for f in formats if f.fill_colour})
+    fill_ids = {colour: 2 + i for i, colour in enumerate(fill_colours)}
 
-    def font(size: int, bold: bool, italic: bool, grey: bool) -> str:
+    def font(size: int, bold: bool, italic: bool, colour: str) -> str:
         return (
             "<font>"
             + ("<b/>" if bold else "")
             + ("<i/>" if italic else "")
             + f'<sz val="{size}"/>'
-            + ('<color rgb="FF595959"/>' if grey else "")
+            + (f'<color rgb="FF{colour}"/>' if colour else "")
             + '<name val="Arial"/><family val="2"/></font>'
         )
 
@@ -155,19 +206,29 @@ def _styles(formats: Sequence[Format]) -> str:
     cells = []
     for look in formats:
         number = number_ids.get(look.number, 0)
-        font_id = font_ids[(look.size, look.bold, look.italic, look.grey)]
+        font_id = font_ids[(look.size, look.bold, look.italic, look.font_colour)]
+        fill_id = fill_ids.get(look.fill_colour, 0)
         head = (
             f'<xf numFmtId="{number}" fontId="{font_id}"'
-            f' fillId="{2 if look.shaded else 0}" borderId="{1 if look.boxed else 0}" xfId="0"'
+            f' fillId="{fill_id}" borderId="{1 if look.boxed else 0}" xfId="0"'
             + (' applyNumberFormat="1"' if number else "")
             + ' applyFont="1"'
-            + (' applyFill="1"' if look.shaded else "")
+            + (' applyFill="1"' if fill_id else "")
             + (' applyBorder="1"' if look.boxed else "")
         )
         if look.align:
             cells.append(f'{head} applyAlignment="1"><alignment horizontal="{look.align}"/></xf>')
         else:
             cells.append(f"{head}/>")
+    fills = (
+        '<fill><patternFill patternType="none"/></fill>'
+        '<fill><patternFill patternType="gray125"/></fill>'
+        + "".join(
+            f'<fill><patternFill patternType="solid"><fgColor rgb="FF{colour}"/>'
+            '<bgColor indexed="64"/></patternFill></fill>'
+            for colour in fill_colours
+        )
+    )
     return (
         _DECLARATION
         + f'<styleSheet xmlns="{_MAIN}">'
@@ -184,10 +245,7 @@ def _styles(formats: Sequence[Format]) -> str:
         + f'<fonts count="{len(fonts)}">'
         + "".join(font(*f) for f in fonts)
         + "</fonts>"
-        + '<fills count="3"><fill><patternFill patternType="none"/></fill>'
-        + '<fill><patternFill patternType="gray125"/></fill>'
-        + '<fill><patternFill patternType="solid"><fgColor rgb="FFFFF6D5"/>'
-        + '<bgColor indexed="64"/></patternFill></fill></fills>'
+        + f'<fills count="{2 + len(fill_colours)}">{fills}</fills>'
         + '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>'
         + f"<border>{box}<diagonal/></border></borders>"
         + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>'
@@ -210,13 +268,17 @@ def _relationships(*targets: tuple[str, str]) -> str:
     )
 
 
-def write(destination: Path, sheet: Sheet) -> Path:
-    """The workbook, one sheet, at ``destination``; its folder is made."""
-    name = escape(sheet.name[:31], _QUOTE)
+def _write(destination: Path, sheets: Sequence[Sheet], formats: Sequence[Format]) -> Path:
+    listed = "".join(
+        f'<sheet name="{escape(sheet.name, _QUOTE)}" sheetId="{index}"'
+        + (' state="hidden"' if sheet.hidden else "")
+        + f' r:id="rId{index}"/>'
+        for index, sheet in enumerate(sheets, start=1)
+    )
     workbook = (
         _DECLARATION
         + f'<workbook xmlns="{_MAIN}" xmlns:r="{_DOC_RELS}">'
-        + f'<sheets><sheet name="{name}" sheetId="1" r:id="rId1"/></sheets>'
+        + f"<sheets>{listed}</sheets>"
         + '<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>\n'
     )
     content_types = (
@@ -226,8 +288,11 @@ def write(destination: Path, sheet: Sheet) -> Path:
         + 'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
         + '<Default Extension="xml" ContentType="application/xml"/>'
         + f'<Override PartName="/xl/workbook.xml" ContentType="{_OFFICE_TYPE}.sheet.main+xml"/>'
-        + '<Override PartName="/xl/worksheets/sheet1.xml" '
-        + f'ContentType="{_OFFICE_TYPE}.worksheet+xml"/>'
+        + "".join(
+            f'<Override PartName="/xl/worksheets/sheet{index}.xml" '
+            f'ContentType="{_OFFICE_TYPE}.worksheet+xml"/>'
+            for index in range(1, len(sheets) + 1)
+        )
         + f'<Override PartName="/xl/styles.xml" ContentType="{_OFFICE_TYPE}.styles+xml"/>'
         + "</Types>\n"
     )
@@ -238,8 +303,93 @@ def write(destination: Path, sheet: Sheet) -> Path:
         package.writestr("xl/workbook.xml", workbook)
         package.writestr(
             "xl/_rels/workbook.xml.rels",
-            _relationships(("worksheet", "worksheets/sheet1.xml"), ("styles", "styles.xml")),
+            _relationships(
+                *(
+                    ("worksheet", f"worksheets/sheet{index}.xml")
+                    for index in range(1, len(sheets) + 1)
+                ),
+                ("styles", "styles.xml"),
+            ),
         )
-        package.writestr("xl/worksheets/sheet1.xml", sheet.xml())
-        package.writestr("xl/styles.xml", _styles(sheet.formats))
+        for index, sheet in enumerate(sheets, start=1):
+            package.writestr(f"xl/worksheets/sheet{index}.xml", sheet.xml())
+        package.writestr("xl/styles.xml", _styles(formats))
     return destination
+
+
+def write(destination: Path, sheet: Sheet) -> Path:
+    """A workbook of one sheet, at ``destination``; its folder is made."""
+    return _write(destination, [sheet], sheet.formats)
+
+
+# -- reading one cell back ---------------------------------------------------------------
+
+_NS = {"m": _MAIN, "r": _DOC_RELS, "p": _PACKAGE_RELS}
+
+
+def _sheet_parts(package: zipfile.ZipFile) -> dict[str, str]:
+    """Sheet name -> its part's path inside the package."""
+    book = ElementTree.fromstring(package.read("xl/workbook.xml"))
+    rels = ElementTree.fromstring(package.read("xl/_rels/workbook.xml.rels"))
+    targets = {
+        rel.get("Id"): rel.get("Target", "")
+        for rel in rels.findall("p:Relationship", _NS)
+        if rel.get("Id")
+    }
+    parts: dict[str, str] = {}
+    for sheet in book.findall("m:sheets/m:sheet", _NS):
+        name = sheet.get("name")
+        target = targets.get(sheet.get(f"{{{_DOC_RELS}}}id", ""), "")
+        if not name or not target:
+            continue
+        parts[name] = target.lstrip("/") if target.startswith("/") else f"xl/{target}"
+    return parts
+
+
+def sheet_names(path: Path) -> list[str]:
+    """The sheets of a workbook, in order; empty for a file that is not one."""
+    try:
+        with zipfile.ZipFile(path) as package:
+            return list(_sheet_parts(package))
+    except (zipfile.BadZipFile, KeyError, ElementTree.ParseError, OSError):
+        return []
+
+
+def read_text(path: Path, sheet_name: str, ref: str) -> str | None:
+    """The text in one cell of a workbook -- written here as an inline string,
+    or by Excel afterwards as a shared one -- or ``None`` when the sheet or
+    the cell is not there."""
+    try:
+        with zipfile.ZipFile(path) as package:
+            part = _sheet_parts(package).get(sheet_name)
+            if part is None or part not in package.namelist():
+                return None
+            sheet = ElementTree.fromstring(package.read(part))
+            shared: list[str] = []
+            if "xl/sharedStrings.xml" in package.namelist():
+                strings = ElementTree.fromstring(package.read("xl/sharedStrings.xml"))
+                shared = [
+                    "".join(t.text or "" for t in item.iter(f"{{{_MAIN}}}t"))
+                    for item in strings.findall("m:si", _NS)
+                ]
+    except (zipfile.BadZipFile, KeyError, ElementTree.ParseError, OSError):
+        return None
+    for cell in sheet.iter(f"{{{_MAIN}}}c"):
+        if cell.get("r") != ref:
+            continue
+        kind = cell.get("t", "")
+        if kind == "inlineStr":
+            return "".join(t.text or "" for t in cell.iter(f"{{{_MAIN}}}t"))
+        value = cell.find("m:v", _NS)
+        if value is None:
+            return None
+        if kind == "s":
+            index = int(value.text or "0")
+            return shared[index] if 0 <= index < len(shared) else None
+        return value.text
+    return None
+
+
+def ref_of(row: int, col: int) -> str:
+    """``(3, 2)`` as ``B3``."""
+    return f"{column(col)}{row}"
