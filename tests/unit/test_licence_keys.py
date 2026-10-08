@@ -113,6 +113,32 @@ def test_a_key_in_a_later_format_asks_for_the_current_build(
         licence_key.read(newer, PUBLIC)
 
 
+def test_an_online_key_and_a_trial_say_what_they_are(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D125: the flag is signed with the rest, and read back as it was made."""
+    online = LicenceKey(**{**FUSE.__dict__, "online": True})
+    trial = LicenceKey(**{**FUSE.__dict__, "online": True, "trial": True, "seats": 3})
+    assert licence_key.read(licence_key.make(online, SEED), PUBLIC) == online
+    assert licence_key.read(licence_key.make(trial, SEED), PUBLIC) == trial
+    assert online.describe() == (
+        "licence 0042, Fuse Architects (office@fuse.example), 12 seats, renewed online"
+    )
+    assert trial.describe() == (
+        "trial licence 0042, Fuse Architects (office@fuse.example), 3 seats, "
+        "until 28 September 2027"
+    )
+
+
+def test_a_key_of_a_kind_this_loriini_does_not_know_is_too_new(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Read as what it knows, an online key would pass for an offline one."""
+    monkeypatch.setattr(licence_key, "FLAG_TRIAL", 0x80)
+    stranger = licence_key.make(LicenceKey(**{**FUSE.__dict__, "trial": True}), SEED)
+    monkeypatch.undo()
+    with pytest.raises(KeyTooNewError, match="newer Loriini"):
+        licence_key.read(stranger, PUBLIC)
+
+
 def test_a_key_runs_to_the_end_of_its_last_day_and_not_past_it() -> None:
     assert FUSE.good_on(dt.date(2027, 9, 28))
     assert not FUSE.good_on(dt.date(2027, 9, 29))

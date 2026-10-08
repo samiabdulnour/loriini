@@ -426,6 +426,26 @@ def test_header_is_deterministic(reported: tuple[Any, dict[str, Any]]) -> None:
     assert render_json(assessment, header) == render_json(assessment, header)
 
 
+def test_the_header_names_the_licence_a_result_was_made_under(
+    adg: Ruleset, reported: tuple[Any, dict[str, Any]]
+) -> None:
+    """Whose licence made a file travels with it (D125) -- and a build that
+    takes no keys writes no licence line at all, so its files are as before."""
+    assessment, header = reported
+    assert "licence" not in header
+    licensed = build_header(
+        assessment=assessment,
+        ruleset=adg,
+        site_description=header["site"],
+        scene_provenance=header["provenance"],
+        scene_config_description=header["scene"],
+        generated_at=header["generated_at"],
+        licensee="licence 0042, Fuse Architects",
+    )
+    assert licensed["licence"] == "licence 0042, Fuse Architects"
+    assert "# licence: licence 0042, Fuse Architects" in render_csv(assessment, licensed)
+
+
 def test_a_sunless_flat_the_sun_never_reaches_is_marked_apart(adg: Ruleset) -> None:
     """Zero minutes has two causes and only one of them has a remedy.
 

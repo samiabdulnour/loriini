@@ -75,3 +75,6 @@ archicad-addon/Build/
 
 # The one spec that builds Loriini.exe is tracked; PyInstaller scratch specs are not.
 !Loriini.spec
+
+# The current build, put in site/download/ at deploy time (docs/website.md).
+site/download/*.zip

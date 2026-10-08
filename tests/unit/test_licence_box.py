@@ -8,6 +8,7 @@ is a temporary one, so nothing here reads or writes a real licence.
 from __future__ import annotations
 
 import datetime as dt
+import gc
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -53,6 +54,12 @@ def root() -> Any:
     window.withdraw()
     yield window
     window.destroy()
+    # Finalised here, on the thread that made it: Tcl aborts the process if an
+    # interpreter is deleted from another thread, and the tests below run a
+    # licence service on one -- whose garbage collection would otherwise be
+    # the one that reaches this root.
+    del window
+    gc.collect()
 
 
 def _paste(box: licence_box.LicenceBox, text: str) -> None:
@@ -139,6 +146,108 @@ def test_a_build_holding_a_good_key_opens_straight_away(
         pytest.skip("no display for Tk")
 
     assert not asked
+
+
+# -- online keys (D125) -------------------------------------------------------------------
+
+
+def _settle(root: Any, box: Any, seconds: float = 15.0) -> None:
+    """Let the box run until it closes, or its check is answered."""
+    import time
+
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        root.update()
+        if not box.winfo_exists():
+            return
+        if box.checking is None and box.says.cget("text") != licence_box.CHECKING:
+            return
+        time.sleep(0.02)
+
+
+def test_an_online_key_is_checked_with_the_service_before_the_box_closes(
+    root: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from tests.unit.licence_service_helpers import online
+
+    with online(monkeypatch, tmp_path) as service:
+        issued = service.issue(seats=3)
+        box = licence_box.LicenceBox(root, first=True)
+        _paste(box, issued.key)
+        assert "Loriini checks it with the licence service" in box.says.cget("text")
+        box._use()
+        assert box.says.cget("text") == licence_box.CHECKING
+        _settle(root, box)
+
+        assert not box.winfo_exists(), "granted: the box closed"
+        assert box.result is not None and box.result.serial == issued.serial
+        assert licence.standing().usable
+
+
+def test_a_refusal_is_said_in_red_and_can_be_asked_again(
+    root: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from tests.unit.licence_service_helpers import online
+
+    with online(monkeypatch, tmp_path) as service:
+        issued = service.issue()
+        row = service.store.licence(issued.serial)
+        service.store.save(type(row)(**{**row.__dict__, "withdrawn": "unpaid"}))
+        box = licence_box.LicenceBox(root, first=True)
+        try:
+            _paste(box, issued.key)
+            box._use()
+            _settle(root, box)
+            assert box.winfo_exists()
+            assert "has been withdrawn: unpaid" in box.says.cget("text")
+            assert str(box.says.cget("style")) == "Refused.TLabel"
+            assert box.again.winfo_ismapped() or box.again.grid_info()
+
+            service.store.save(type(row)(**{**row.__dict__, "withdrawn": None}))
+            box.try_again()
+            _settle(root, box)
+            assert not box.winfo_exists(), "restored: asked again, granted, closed"
+        finally:
+            if box.winfo_exists():
+                box.destroy()
+
+
+def test_a_start_with_an_online_key_and_no_lease_opens_the_box_already_asking(
+    root: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from tests.unit.licence_service_helpers import online
+
+    with online(monkeypatch, tmp_path) as service:
+        licence.install(service.issue().key)
+        box = licence_box.LicenceBox(root, first=True)
+        _settle(root, box)
+        assert not box.winfo_exists(), "the lease was fetched without anything pressed"
+        assert licence.standing().usable
+
+
+def test_the_info_box_checks_an_online_licence_on_the_spot(
+    root: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import time
+
+    from sun_study.app import about, theme
+    from tests.unit.licence_service_helpers import online
+
+    with online(monkeypatch, tmp_path) as service:
+        licence.install(service.issue(seats=4).key)
+        licence.renew()
+        theme.apply(root)
+        box = about.show(root)
+        try:
+            assert box._check.grid_info(), "Check now is there for an online key"
+            box._check_now()
+            deadline = time.monotonic() + 15
+            while box._waiting is not None and time.monotonic() < deadline:
+                root.update()
+                time.sleep(0.02)
+            assert "1 of 4 seats in use" in box._holder.cget("text")
+        finally:
+            box._close()
 
 
 def test_the_info_box_says_whose_licence_in_a_keyed_build(keyed: Path, root: Any) -> None:

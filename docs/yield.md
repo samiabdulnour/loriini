@@ -7,7 +7,7 @@ and works the office's own feasibility sheet from them -- *Preliminary
 Yield Analysis*, the *Feasibility template* -- as a sheet in the project, a
 live workbook in the template's own cells, and a table printed in the run's
 log. One option, one sheet; the workbook holds every option side by side.
-This is roadmap item R3; D122 and D126 record how it is built.
+This is roadmap item R3; D122 and D127 record how it is built.
 
 ## Which slabs count, and what they are
 

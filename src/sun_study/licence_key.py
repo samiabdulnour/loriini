@@ -35,6 +35,20 @@ for anything else can ever read as a licence, and a key made with another
 signing key -- a test key, a key for another product -- is refused as not
 genuine. The version byte comes first so a later key format can be told apart
 and refused politely by an older Loriini, rather than misread.
+
+Offline and online keys
+-----------------------
+A key is one of two kinds, told apart by a flag (D125). An **offline** key is
+the whole licence: it runs to its last day, checked on this machine alone,
+and a renewal brings a new one. An **online** key is the licence's identity --
+pasted once, kept for as long as the subscription lasts -- and never enough
+on its own: Loriini uses it to fetch *leases* from the licence service
+(``licence_lease``), and a lease is what says it is in force. Its last day is
+the end of the first period paid for, which the service takes as its starting
+point the first time it sees the key; after that the service knows better, and
+Loriini does not look at it. A second flag marks a **trial**, whose outputs say
+so. A flag this Loriini does not know refuses the key as too new, rather than
+reading an online key as an offline one.
 """
 
 from __future__ import annotations
@@ -47,6 +61,8 @@ from dataclasses import dataclass
 from sun_study import signing
 
 __all__ = [
+    "FLAG_ONLINE",
+    "FLAG_TRIAL",
     "PREFIX",
     "KeyExpiredError",
     "KeyIncompleteError",
@@ -54,6 +70,8 @@ __all__ = [
     "KeyRefusedError",
     "KeyTooNewError",
     "LicenceKey",
+    "day_from_number",
+    "day_number",
     "lines",
     "make",
     "read",
@@ -81,8 +99,14 @@ VERSION = 1
 #: Dates are days after this, in two bytes: good until 2203.
 _EPOCH = dt.date(2024, 1, 1)
 
-#: version, licence number, issued, expires, seats, flags (none yet).
+#: version, licence number, issued, expires, seats, flags.
 _HEAD = struct.Struct(">BIHHHB")
+
+#: The key is checked online, by leases, rather than by its last day alone.
+FLAG_ONLINE = 0x01
+#: A trial: its outputs say so.
+FLAG_TRIAL = 0x02
+_KNOWN_FLAGS = FLAG_ONLINE | FLAG_TRIAL
 
 #: What is signed is always prefixed with this, so that no Ed25519 signature
 #: made for anything else can be passed off as a licence.
@@ -122,7 +146,11 @@ class LicenceKey:
     seats: int
     issued: dt.date
     expires: dt.date
-    """The last day the key is good for."""
+    """The last day the key is good for. For an online key, the end of the first
+    period paid for: where the licence service starts, not what Loriini checks."""
+    online: bool = False
+    """Kept in force by leases from the licence service, not by ``expires``."""
+    trial: bool = False
 
     @property
     def number(self) -> str:
@@ -145,6 +173,10 @@ class LicenceKey:
 
     def describe(self) -> str:
         seats = "1 seat" if self.seats == 1 else f"{self.seats} seats"
+        if self.trial:
+            return f"trial licence {self.number}, {self.whose}, {seats}, until {_day(self.expires)}"
+        if self.online:
+            return f"licence {self.number}, {self.whose}, {seats}, renewed online"
         return f"licence {self.number}, {self.whose}, {seats}, until {_day(self.expires)}"
 
 
@@ -152,11 +184,17 @@ def _day(when: dt.date) -> str:
     return f"{when.day} {when:%B %Y}"
 
 
-def _days(when: dt.date) -> int:
+def day_number(when: dt.date) -> int:
+    """A date as the two bytes keys and leases carry: days after 1 January 2024."""
     days = (when - _EPOCH).days
     if not 0 <= days < 2**16:
         raise ValueError(f"{when} is outside the dates a key can carry")
     return days
+
+
+def day_from_number(days: int) -> dt.date:
+    """The date ``day_number`` wrote."""
+    return _EPOCH + dt.timedelta(days=days)
 
 
 def _field(text: str) -> bytes:
@@ -210,8 +248,16 @@ def make(key: LicenceKey, seed: bytes) -> str:
         raise ValueError("a key cannot end before it is issued")
     if "@" not in key.email:
         raise ValueError(f"{key.email!r} is not an email address")
+    flags = (FLAG_ONLINE if key.online else 0) | (FLAG_TRIAL if key.trial else 0)
     payload = (
-        _HEAD.pack(VERSION, key.serial, _days(key.issued), _days(key.expires), key.seats, 0)
+        _HEAD.pack(
+            VERSION,
+            key.serial,
+            day_number(key.issued),
+            day_number(key.expires),
+            key.seats,
+            flags,
+        )
         + _field(key.email.strip())
         + _field(key.holder.strip())
     )
@@ -265,7 +311,7 @@ def read(text: str, public: bytes) -> LicenceKey:
         raise KeyIncompleteError(_INCOMPLETE)
 
     payload, signature = body[: -signing.SIGNATURE_BYTES], body[-signing.SIGNATURE_BYTES :]
-    version, serial, issued, expires, seats, _flags = _HEAD.unpack_from(payload)
+    version, serial, issued, expires, seats, flags = _HEAD.unpack_from(payload)
     if version > VERSION:
         raise KeyTooNewError(
             "This key is for a newer Loriini than this one. Install the current build, "
@@ -275,6 +321,13 @@ def read(text: str, public: bytes) -> LicenceKey:
         raise KeyNotGenuineError(
             "This is not a licence key for this Loriini. It is complete, but it was not "
             "issued for this build -- check it is the key from your licence email."
+        )
+    if flags & ~_KNOWN_FLAGS:
+        # Genuine, and of a kind this Loriini does not know: read as what it
+        # knows, an online key would pass for an offline one.
+        raise KeyTooNewError(
+            "This key is for a newer Loriini than this one. Install the current build, "
+            "then paste the key again."
         )
 
     fields: list[str] = []
@@ -288,6 +341,8 @@ def read(text: str, public: bytes) -> LicenceKey:
         email=fields[0],
         holder=fields[1],
         seats=seats,
-        issued=_EPOCH + dt.timedelta(days=issued),
-        expires=_EPOCH + dt.timedelta(days=expires),
+        issued=day_from_number(issued),
+        expires=day_from_number(expires),
+        online=bool(flags & FLAG_ONLINE),
+        trial=bool(flags & FLAG_TRIAL),
     )

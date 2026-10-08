@@ -279,3 +279,226 @@ def test_show_says_what_a_key_is_for_support(
     assert "licence 0042, Fuse Architects" in capsys.readouterr().out
     assert script.main(["show", text[:-5]]) == 1
     assert "not the whole key" in capsys.readouterr().out
+
+
+# -- online keys, and the licence service (D125) --------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("order", "last", "online", "trial"),
+    [
+        ({"paid_to": dt.date(2026, 10, 31)}, dt.date(2026, 11, 7), False, False),
+        ({"paid_to": dt.date(2026, 10, 31), "online": True}, dt.date(2026, 10, 31), True, False),
+        ({"trial": True}, dt.date(2026, 10, 12), True, True),
+        ({"trial": True, "days": 30}, dt.date(2026, 10, 28), True, True),
+        ({"complimentary": True}, licence_issue.NO_END, True, False),
+    ],
+)
+def test_each_kind_of_key_ends_where_its_kind_says(
+    order: dict[str, Any], last: dt.date, online: bool, trial: bool
+) -> None:
+    """Offline: the period and the grace. Online: the period alone, where the
+    service starts from. A trial: its last day. Complimentary: no end."""
+    issued, text = licence_issue.issue(
+        licence_issue.Order(email="a@b.example", **order),
+        bytes(range(32)),
+        serial=1,
+        today=dt.date(2026, 9, 29),
+    )
+    assert (issued.expires, issued.online, issued.trial) == (last, online, trial)
+    public = signing.public_key(bytes(range(32)))
+    assert licence_key.read(text, public) == issued
+
+
+def test_an_online_keys_email_says_there_is_no_new_key_to_come() -> None:
+    issued, text = licence_issue.issue(
+        licence_issue.Order(email="office@fuse.example", holder="Fuse", online=True),
+        bytes(range(32)),
+        serial=5,
+        today=dt.date(2026, 9, 29),
+    )
+    body = licence_issue.email(issued, text, sender="sami@example.com").get_content()
+    assert "for as long as the subscription runs" in body
+    assert "there is no new key" in body
+    assert "a new key comes by email" not in body
+
+
+def _vendor(monkeypatch: pytest.MonkeyPatch, running: Any, *arguments: str) -> tuple[int, str, str]:
+    """The vendor's script, run against the service with its admin token."""
+    from tests.unit.licence_service_helpers import TOKEN
+
+    monkeypatch.setenv("LORIINI_ADMIN_TOKEN", TOKEN)
+    capsys = running.capsys
+    code = _script().main(list(arguments))
+    said = capsys.readouterr()
+    return code, said.out, said.err
+
+
+@pytest.fixture
+def served(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> Any:
+    from tests.unit.licence_service_helpers import online
+
+    with online(monkeypatch, tmp_path, mail=True) as running:
+        running.capsys = capsys  # type: ignore[attr-defined]
+        yield running
+
+
+def test_the_vendor_issues_through_the_service_and_looks_it_up(
+    served: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    draft = tmp_path / "welcome.eml"
+    code, out, err = _vendor(
+        monkeypatch,
+        served,
+        "issue",
+        "--email",
+        "office@fuse.example",
+        "--holder",
+        "Fuse Architects",
+        "--seats",
+        "12",
+        "--online",
+        "--paid-to",
+        "2026-10-31",
+        "--send",
+        "--eml",
+        str(draft),
+    )
+    assert code == 0, err
+    assert (
+        "Issued licence 0001, Fuse Architects (office@fuse.example), 12 seats, renewed online."
+        in out
+    )
+    assert "Emailed by the service." in out
+    assert len(served.sent) == 1
+    assert b"X-Unsent: 1" in draft.read_bytes()
+
+    code, out, _err = _vendor(monkeypatch, served, "status")
+    assert code == 0
+    assert out.startswith("0001  Fuse Architects")
+    assert "12 seats" in out and "paid to 2026-10-31" in out
+
+    code, out, _err = _vendor(monkeypatch, served, "status", "1")
+    assert "Leases run to 14 November 2026 (14 days' grace past what is paid)." in out
+    assert "Key:" in out and "LORIINI-" in out
+
+
+def test_the_vendor_changes_withdraws_restores_and_frees(
+    served: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    served.issue(seats=2)
+    served.store.seen(1, "ab" * 16, "amy on PC-1", "1.0", dt.date.today())
+    assert (
+        _vendor(monkeypatch, served, "paid", "1", "--to", "2026-12-31")[1].count(
+            "paid to 2026-12-31"
+        )
+        == 1
+    )
+    assert " 5 seats" in _vendor(monkeypatch, served, "seats", "1", "5")[1]
+    assert (
+        "withdrawn (refunded)"
+        in _vendor(monkeypatch, served, "withdraw", "1", "--reason", "refunded")[1]
+    )
+    assert "withdrawn" not in _vendor(monkeypatch, served, "restore", "1")[1]
+    assert _vendor(monkeypatch, served, "free", "1", "amy on PC-1")[1] == "Freed 1 seat.\n"
+    assert _vendor(monkeypatch, served, "free", "1", "nobody")[0] == 1
+    assert _vendor(monkeypatch, served, "send", "1")[1] == "Emailed.\n"
+
+
+def test_the_vendor_recalls_a_version_and_speaks_to_everyone(
+    served: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    code, out, _err = _vendor(
+        monkeypatch,
+        served,
+        "recall",
+        "--below",
+        "1.2.1",
+        "--reason",
+        "wrong north",
+        "--download",
+        "https://loriini.example/download",
+    )
+    assert code == 0
+    assert "minimum_build = 1.2.1" in out and "recall_reason = wrong north" in out
+    assert (
+        "notice = Loriini 1.3 is out."
+        in _vendor(monkeypatch, served, "notice", "Loriini", "1.3", "is", "out.")[1]
+    )
+    assert (
+        "portal = https://billing.example/p"
+        in _vendor(monkeypatch, served, "set", "portal=https://billing.example/p")[1]
+    )
+    out = _vendor(monkeypatch, served, "recall", "--clear")[1]
+    assert "minimum_build" not in out
+    assert served.store.settings()["notice"] == "Loriini 1.3 is out."
+
+
+def test_the_old_ledger_is_taken_in_and_the_numbers_follow_on(
+    served: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ledger = tmp_path / "licences.csv"
+    for serial in (1, 2, 9):
+        issued, text = licence_issue.issue(
+            licence_issue.Order(email=f"buyer{serial}@example.com"), bytes(range(32)), serial=serial
+        )
+        licence_issue.record(ledger, issued, text)
+    code, out, err = _vendor(monkeypatch, served, "register", "--ledger", str(ledger))
+    assert code == 0, err
+    assert [line[:4] for line in out.splitlines()] == ["0001", "0002", "0009"]
+    assert served.issue().serial == 10
+
+
+def test_the_vendor_backs_the_service_up(
+    served: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import sqlite3
+
+    served.issue()
+    out = tmp_path / "backups" / "licences.sqlite3"
+    code, said, _err = _vendor(monkeypatch, served, "backup", "--out", str(out))
+    assert code == 0 and "Backed up to" in said
+    copy = sqlite3.connect(out)
+    assert copy.execute("SELECT COUNT(*) FROM licences").fetchone() == (1,)
+    copy.close()
+
+
+def test_the_script_says_what_is_missing_to_reach_the_service(
+    served: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("LORIINI_ADMIN_TOKEN", raising=False)
+    assert _script().main(["status"]) == 1
+    assert "LORIINI_ADMIN_TOKEN" in served.capsys.readouterr().err
+    monkeypatch.setenv("LORIINI_ADMIN_TOKEN", "wrong")
+    assert _script().main(["status"]) == 1
+    assert "not this service's admin token" in served.capsys.readouterr().err
+
+
+def test_the_service_address_is_written_into_the_build_beside_its_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = _script()
+    module = tmp_path / "licence_public_key.py"
+    public = signing.public_key(bytes(range(32)))
+    monkeypatch.setattr(licence_public_key, "PUBLIC_KEY", public.hex())
+    assert script.main(["service", "http://licence.example", "--module", str(module)]) == 1
+    assert "https://" in capsys.readouterr().err
+    assert script.main(["service", "https://licence.example/", "--module", str(module)]) == 0
+    namespace: dict[str, Any] = {}
+    exec(module.read_text(encoding="utf-8"), namespace)
+    assert namespace["PUBLIC_KEY"] == public.hex()
+    assert namespace["SERVICE"] == "https://licence.example"
+
+    # A new key pair keeps the service the build already has.
+    monkeypatch.setattr(licence_public_key, "SERVICE", "https://licence.example")
+    assert (
+        script.main(
+            ["keygen", "--out", str(tmp_path / "k" / "signing.key"), "--module", str(module)]
+        )
+        == 0
+    )
+    namespace = {}
+    exec(module.read_text(encoding="utf-8"), namespace)
+    assert namespace["SERVICE"] == "https://licence.example"

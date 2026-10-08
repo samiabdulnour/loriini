@@ -51,7 +51,9 @@ from sun_study.licence_key import LicenceKey, lines, make
 __all__ = [
     "GRACE_DAYS",
     "LEDGER_FIELDS",
+    "NO_END",
     "PUBLIC_KEY_MODULE",
+    "TRIAL_DAYS",
     "Order",
     "draft",
     "email",
@@ -109,21 +111,31 @@ def read_signing_key(private: Path) -> bytes:
     raise ValueError(f"{private} does not hold a signing key")
 
 
-def public_key_module(public: bytes) -> str:
-    """``licence_public_key.py``, carrying this public key."""
+def public_key_module(public: bytes | None, service: str | None = None) -> str:
+    """``licence_public_key.py``, carrying this public key and this service."""
     return (
-        '"""The public half of the key Loriini\'s licence keys are signed with.\n'
+        '"""The public half of the key Loriini\'s licence keys are signed with,\n'
+        "and where the licence service is.\n"
         "\n"
-        "Written by ``scripts/licence.py keygen``: the private half is kept by the\n"
-        "vendor, outside this repository. A build carrying a key here asks for a\n"
-        "licence key and checks it at every start (docs/licensing.md).\n"
+        "Written by ``scripts/licence.py keygen`` and ``service``: the private half\n"
+        "is kept by the vendor, outside this repository. A build carrying a key\n"
+        "here asks for a licence key and checks it at every start; with a service\n"
+        "as well, it takes the online keys the service keeps in force\n"
+        "(docs/licensing.md).\n"
         '"""\n'
         "\n"
         "from __future__ import annotations\n"
         "\n"
         "#: 32 bytes of Ed25519 public key, as 64 hex digits, or ``None``.\n"
-        f'PUBLIC_KEY: str | None = "{public.hex()}"\n'
+        f"PUBLIC_KEY: str | None = {_literal(public.hex() if public else None)}\n"
+        "\n"
+        "#: The licence service's address, ``https://...``, or ``None``.\n"
+        f"SERVICE: str | None = {_literal(service)}\n"
     )
+
+
+def _literal(value: str | None) -> str:
+    return "None" if value is None else f'"{value}"'
 
 
 # -- a key from an order ---------------------------------------------------------------
@@ -135,9 +147,16 @@ def public_key_module(public: bytes) -> str:
 GRACE_DAYS = 7
 
 
+#: The last day of a complimentary online key: no end the service will reach.
+NO_END = dt.date(2099, 12, 31)
+
+#: A trial's length, in days, when an order does not say.
+TRIAL_DAYS = 14
+
+
 @dataclass(frozen=True)
 class Order:
-    """One paid period of a subscription."""
+    """One paid period of a subscription -- or, online, the first of them."""
 
     email: str
     holder: str = ""
@@ -149,6 +168,13 @@ class Order:
     paid_to: dt.date | None = None
     """The last day paid for, as the shop says it; overrides ``months``."""
     grace_days: int = GRACE_DAYS
+    online: bool = False
+    """An online key: kept in force by the licence service's leases (D125)."""
+    trial: bool = False
+    """A trial, online, for ``days`` days."""
+    days: int = TRIAL_DAYS
+    complimentary: bool = False
+    """Online and never lapsing: the first practice's grant (LICENSE clause 1)."""
 
 
 def term_end(start: dt.date, months: int) -> dt.date:
@@ -179,19 +205,33 @@ def issue(
 ) -> tuple[LicenceKey, str]:
     """The licence and its key, signed with the vendor's private key.
 
-    The key's last day is the period's, plus the grace.
+    An offline key's last day is the period's, plus the grace. An online key's
+    is the period's alone: the day the licence service starts from, which then
+    moves it on as payments arrive (``licence_key``). A trial's is its last
+    day; a complimentary key's is ``NO_END``.
     """
     if order.grace_days < 0:
         raise ValueError("the grace cannot be negative")
+    online = order.online or order.trial or order.complimentary
     starts = order.starts or today or dt.date.today()
-    paid_to = order.paid_to or term_end(starts, order.months)
+    if order.complimentary:
+        last = NO_END
+    elif order.trial:
+        if order.days < 1:
+            raise ValueError("a trial runs at least a day")
+        last = starts + dt.timedelta(days=order.days - 1)
+    else:
+        paid_to = order.paid_to or term_end(starts, order.months)
+        last = paid_to if online else paid_to + dt.timedelta(days=order.grace_days)
     licence = LicenceKey(
         serial=serial,
         email=order.email.strip(),
         holder=order.holder.strip(),
         seats=order.seats,
         issued=starts,
-        expires=paid_to + dt.timedelta(days=order.grace_days),
+        expires=last,
+        online=online,
+        trial=order.trial,
     )
     return licence, make(licence, seed)
 
@@ -226,25 +266,49 @@ def email(licence: LicenceKey, text: str, *, sender: str) -> EmailMessage:
     greeting = f"Hello {licence.holder}," if licence.holder else "Hello,"
     key = "\n".join(f"    {line}" for line in lines(text))
     until = f"{licence.expires.day} {licence.expires:%B %Y}"
+    if licence.trial:
+        opening = f"Thank you for trying {PRODUCT}. Your trial licence key is:"
+        covers = f"It is licence {licence.number}, for {seats}, and the trial runs until {until}."
+        after = (
+            "Everything works during the trial; what it makes says it came from a\n"
+            "trial. A subscription carries on from it without a new install.\n"
+        )
+    elif licence.online and licence.expires >= NO_END:
+        opening = f"Your {PRODUCT} licence key is:"
+        covers = f"It is licence {licence.number}, for {seats}, and it does not lapse."
+        after = _ONLINE_AFTER
+    elif licence.online:
+        opening = f"Thank you for subscribing to {PRODUCT}. Your licence key is:"
+        covers = (
+            f"It is licence {licence.number}, for {seats}, for as long as the subscription runs."
+        )
+        after = _ONLINE_AFTER
+    else:
+        opening = f"Thank you for subscribing to {PRODUCT}. Your licence key is:"
+        covers = f"It is licence {licence.number}, for {seats}, and it works until {until}."
+        after = (
+            "Each time the subscription renews, a new key comes by email before this\n"
+            "one runs out; install it the same way, or from the info box (Enter licence\n"
+            "key).\n"
+        )
     body = (
         f"{greeting}\n"
         "\n"
-        f"Thank you for subscribing to {PRODUCT}. Your licence key is:\n"
+        f"{opening}\n"
         "\n"
         f"{key}\n"
         "\n"
-        f"It is licence {licence.number}, for {seats}, and it works until {until}.\n"
+        f"{covers}\n"
         "\n"
         "To install it, open Loriini. It asks for the key when it opens: paste all\n"
         "of it, from LORIINI to the last group -- the line breaks do not matter --\n"
-        "and press Use this key. Each person using Loriini under this subscription\n"
+        "and press Use this key. Each person using Loriini under this licence\n"
         "does the same on their own machine. On a command line instead:\n"
         "\n"
         "    Loriini.exe licence <the key>\n"
         "\n"
-        "Each time the subscription renews, a new key comes by email before this\n"
-        "one runs out; install it the same way, or from the info box (Enter licence\n"
-        "key). Keep this email: the key is needed again on a new machine.\n"
+        f"{after}"
+        "Keep this email: the key is needed again on a new machine.\n"
         "\n"
         f"{AUTHOR}\n"
     )
@@ -254,6 +318,16 @@ def email(licence: LicenceKey, text: str, *, sender: str) -> EmailMessage:
     message["To"] = licence.email
     message.set_content(body)
     return message
+
+
+#: What an online key's email says about keeping it in force.
+_ONLINE_AFTER = (
+    "Loriini checks the licence online by itself, once a day while it is used,\n"
+    "and works for a fortnight without a connection. Nothing more needs doing\n"
+    "when the subscription renews: there is no new key. A computer that stops\n"
+    "using Loriini frees its seat after a fortnight, or at once with\n"
+    "Loriini.exe licence --remove.\n"
+)
 
 
 def draft(message: EmailMessage) -> bytes:

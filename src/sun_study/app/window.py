@@ -7231,8 +7231,12 @@ def launch(study: str = "") -> None:
     wear_the_icon(root)
     # A build that takes licence keys asks for one before anything else, the
     # first time and whenever the key held cannot be used; closed without
-    # one, nothing opens (roadmap R5).
-    if not licence.standing().usable:
+    # one, nothing opens (roadmap R5). An online key whose lease is in force
+    # is renewed in the background, once a day, and never waited on (D125).
+    found = licence.standing()
+    if found.usable:
+        licence.refresh(found)
+    else:
         root.withdraw()
         if licence_box.ask(root, first=True) is None:
             root.destroy()

@@ -229,7 +229,7 @@ their home storey, since an option's massing is storey-thick slabs homed on
 the ground and offset up; and an option on one layer has its use told by
 level (`--massing-layer`, `--retail-level`, `--commercial-level`). Run live
 on the Darlinghurst project's two options, OPT1 and OPT2, into one workbook
-and two sheets. [`yield.md`](yield.md) is how to use it; D126 is how.
+and two sheets. [`yield.md`](yield.md) is how to use it; D127 is how.
 
 ## R4 — A reference image over the 3D window
 
@@ -332,6 +332,32 @@ adding activation and short signed leases from a small licence service of our
 own, with a seat counted as a computer used in the last fortnight, and Stripe
 for payments. Its §10 lists the decisions that are the owner's to make.
 
+**Done so far (29 September, online).** The recommendations were taken, and
+the online part is built (D125).
+- **Online keys.** A key pasted once is kept in force by signed leases from
+  the licence service. They are renewed once a day in the background and good
+  for a fortnight offline. Seats are computers used in the last fortnight,
+  with a margin of one. A lapse, a withdrawal or a recalled version stops
+  Loriini at the next contact, with the reason in a sentence. The box, the
+  info box (Check now) and `Loriini.exe licence --renew/--remove` all know
+  about them.
+- **The service.** A small container of standard-library Python and SQLite
+  (`sun_study.licence_service`, `deploy/licence-service`). It issues and emails
+  a practice's key when Stripe says it subscribed, and follows every invoice.
+- **The vendor's commands.** `scripts/licence.py` issues, looks up, withdraws,
+  restores, frees seats, recalls a version and backs up.
+- **Results.** Every result records whose licence made it.
+- **The build's term** no longer binds online keys.
+
+[`licensing.md`](licensing.md) is how it is used, and
+[`licence-service.md`](licence-service.md) is how to put the service up.
+
+Next, all the owner's:
+- the Fly.io and Stripe accounts;
+- the prices;
+- the commercial terms;
+- then `keygen`, `service`, and the first keys.
+
 ## R6 — Automatic updates
 
 **Asked.** An update server, so that the programs update themselves.
@@ -374,3 +400,25 @@ serve; the site is the front on them.
 
 **First step.** The domain and the merchant account, both to be opened by
 the owner; then the page.
+
+**Decided, 29 September: no website.** Nothing in selling Loriini needs
+one.
+- **Selling.** Stripe's hosted checkout, reached by a payment link, sells
+  it. The licence service issues and emails the key when it is paid (R5).
+- **The program itself.** It reaches practices through the licence
+  service, which serves its download and its updates (R6).
+- **Terms and privacy.** Stripe asks to link to both, and they can be two
+  plain pages the licence service serves.
+
+What stays of R7 is the brand: the name, the bird and the icon. The
+licence service runs on Fly.io, at its own `fly.dev` address.
+
+**Taken up again, 8 October: one page after all.** A practice looking for
+Loriini needs somewhere that says what it makes, what it costs and where the
+download is, and Stripe asks a seller to link to its terms and privacy. So:
+four static files and the current build, served by nginx on Fly.io beside
+the licence service, at `https://loriini-site.fly.dev`; buying still goes
+through Stripe's payment links and the key still comes from the licence
+service. [`docs/website.md`](website.md) is the page, its placeholders, and
+how it is deployed. The terms and the privacy note on it are drafts for a
+lawyer's hour (licence-model.md §7).
