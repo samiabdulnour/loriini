@@ -74,7 +74,7 @@ To check it:
 Finally, write the address into the build, and commit it:
 
 ```
-uv run python scripts/licence.py service https://loriini-licences.fly.dev
+uv run python scripts/licence.py service https://licence.loriini.app
 ```
 
 ## Stripe
