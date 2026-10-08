@@ -50,8 +50,11 @@ floor-to-floor is the rise to the level above; the top level's is its own
 slab's thickness when the slabs are storey-thick, and otherwise the rise
 below it.
 
-The *Retail levels* and *Commercial levels* are typed as the run names
-them: `Ground`, `Level 01`, `L2`, `3`, `B 01`.
+The *Retail levels* and *Commercial levels* are ticked on the Yield page
+from the levels a massing can have, or typed on the command line as the run
+names them: `Ground`, `Level 01`, `L2`, `3`, `B 01`. Every option in a run
+stands in one grid of levels, so a tower option with no ground floor of its
+own still starts above the podium option's ground.
 
 ## The arithmetic
 
@@ -117,7 +120,11 @@ sheet and framed to the page right of the table. A name the View Map does
 not have costs the picture and not the sheet; the run says so.
 
 **The workbook**, `Preliminary Yield Analysis.xlsx` in the tables folder
-(`--xlsx`), is the office's template, filled: the site in C6, the
+(`--xlsx`), is the office's template, filled, in the template's own look --
+its style table, its theme, its column widths and row heights, its green
+bars and boxed blocks, carried over cell for cell from the template by
+`scripts/extract_feasibility_style.py` into `report/feasibility_style.py`,
+to be run again when the office changes the template -- the site in C6, the
 permissible FSR in C10:C12, the proposed GFA in D17:D19, the unit mixes in
 rows 29 to 43, the parking from row 60, the efficiencies in C86:E88, and
 the storey table from J113 -- with the levels' BEA by use in red as the
@@ -162,6 +169,29 @@ set the mixes, `--affordable-share` the split, `--common-area` and
 `--affordable-parking-rate`, `--sqm-per-space` and `--basement-site-ratio`
 the parking. An agent connected to `Loriini.exe mcp` runs the same command
 through `run_loriini`.
+
+## Several options at once
+
+Each option in the project is usually its own layer. Name them all with
+`--option-layer` -- or tick them in *Option layers* on the Yield page -- and
+one run reads the slabs once and makes every option: a sheet in the
+workbook and a layout each, with the site, the permissible FSR, the
+efficiencies and the levels named retail and commercial shared between
+them, and a line per option at the foot of the log comparing GFA, FSR,
+units and parking. An option is named after its layer's OPT number
+(`...3D OPT1` is *Option 01*), or as `Option 02=<layer>`:
+
+```
+sun-study yield --option-layer "01 | Massing - Main Building.3D OPT1" ^
+  --option-layer "01 | Massing - Main Building.3D OPT2" ^
+  --retail-level Ground --commercial-level "Level 01" ^
+  --address "91-109 Riley St, Darlinghurst NSW 2010" ^
+  --xlsx "Preliminary Yield Analysis.xlsx" --master-layout "DA A1 - VERTICAL - No Scale"
+```
+
+The workbook is ticked on the Yield page (*Excel workbook: Preliminary
+Yield Analysis*) and goes to the tables folder, or to the path typed under
+*Workbook*.
 
 ## What to check first on a workstation
 

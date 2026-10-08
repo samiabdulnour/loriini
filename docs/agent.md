@@ -17,6 +17,14 @@ started. It is roadmap item R2; D120 records how it is built.
 
 ## Connecting a client
 
+**The button.** *Add to Claude*, beside the project picker at the top of
+Loriini's window, does the two things below for the program it is pressed
+in: it writes the server into Claude Desktop's settings file, keeping
+whatever else is there, and runs `claude mcp add` for Claude Code when that
+command is on the path -- and says what it did where, and that Claude
+Desktop wants a restart. Pressed again from another folder, it replaces the
+entry. By hand, the same:
+
 The program is `Loriini.exe` from the handover folder, and its one argument
 is `mcp`. A checkout runs `sun-study mcp` instead.
 

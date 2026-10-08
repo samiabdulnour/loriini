@@ -32,6 +32,10 @@ __version__ = "0.0.1"
 AUTHOR = "Sami Abdulnour"
 PRODUCT = "Loriini"
 
+#: Where a licence key comes from, and where to write for another: the
+#: mailbox the licence service sends from, on the product's own domain.
+SUPPORT_EMAIL = "sami@loriini.app"
+
 #: The copyright line, kept beside the author for the same reason: the window,
 #: the executable's file properties and every sheet must say the same thing.
 #: Clause 2(e) of the licence requires that it not be removed from either the

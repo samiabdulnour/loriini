@@ -462,28 +462,41 @@ def parse_level(text: str) -> int:
     )
 
 
-def level_index(bottoms_m: Sequence[float], ground_m: float | None = None) -> list[int]:
+def level_index(
+    bottoms_m: Sequence[float],
+    ground_m: float | None = None,
+    others_m: Sequence[float] = (),
+) -> list[int]:
     """Each floor's level, by its underside: floors within ``TOGETHER_M`` of
     one another are one level, numbered from the one nearest the ground
-    storey -- or the lowest, when no ground is known."""
+    storey -- or the lowest, when no ground is known.
+
+    ``others_m`` are undersides that are part of the same grid of levels
+    without being asked about: the other options' slabs, so that a tower
+    option with no ground floor of its own still starts at Level 01.
+    """
     if not bottoms_m:
         return []
-    order = sorted(range(len(bottoms_m)), key=lambda i: bottoms_m[i])
-    cluster = [0] * len(bottoms_m)
+    every = [*bottoms_m, *others_m]
+    order = sorted(range(len(every)), key=lambda i: every[i])
+    cluster = [0] * len(every)
     starts: list[float] = []
     for i in order:
-        if not starts or bottoms_m[i] - starts[-1] > TOGETHER_M:
-            starts.append(bottoms_m[i])
+        if not starts or every[i] - starts[-1] > TOGETHER_M:
+            starts.append(every[i])
         cluster[i] = len(starts) - 1
     ground = 0
     if ground_m is not None:
         ground = min(range(len(starts)), key=lambda k: (abs(starts[k] - ground_m), k))
-    return [k - ground for k in cluster]
+    return [k - ground for k in cluster[: len(bottoms_m)]]
 
 
-def levels_from(floors: Sequence[Floor], ground_m: float | None = None) -> tuple[Level, ...]:
-    """The floors gathered into levels, lowest first, their BEA by use."""
-    indices = level_index([floor.bottom_m for floor in floors], ground_m)
+def levels_from(
+    floors: Sequence[Floor], ground_m: float | None = None, others_m: Sequence[float] = ()
+) -> tuple[Level, ...]:
+    """The floors gathered into levels, lowest first, their BEA by use.
+    ``others_m`` is ``level_index``'s: the grid the other options stand in."""
+    indices = level_index([floor.bottom_m for floor in floors], ground_m, others_m)
     gathered: dict[int, list[Floor]] = {}
     for floor, index in zip(floors, indices, strict=True):
         gathered.setdefault(index, []).append(floor)
@@ -730,6 +743,7 @@ def feasibility(
     parking: ParkingRates | None = None,
     ground_m: float | None = None,
     source: Sequence[str] = (),
+    others_m: Sequence[float] = (),
 ) -> Feasibility:
     """The sheet for these floors.
 
@@ -753,7 +767,7 @@ def feasibility(
         rates = rates.for_mixes(market.types, affordable.types)
     return Feasibility(
         option=" ".join(option.split()) or "Option 01",
-        levels=levels_from(list(floors), ground_m),
+        levels=levels_from(list(floors), ground_m, others_m),
         site_area_m2=site_area_m2,
         permissible=permissible or Permissible(),
         efficiencies=efficiencies or Efficiencies(),

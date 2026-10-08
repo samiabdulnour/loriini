@@ -83,7 +83,16 @@ from tkinter import font as tkfont
 from typing import ClassVar, Literal
 
 from sun_study import PRODUCT, licence
-from sun_study.app import icons, licence_box, overlay, preferences, probe, run_log, theme
+from sun_study.app import (
+    claude_mcp,
+    icons,
+    licence_box,
+    overlay,
+    preferences,
+    probe,
+    run_log,
+    theme,
+)
 from sun_study.app.runner import Run
 from sun_study.archicad import naming
 from sun_study.archicad.connection import DEFAULT_TIMEOUT_SECONDS
@@ -678,6 +687,23 @@ APARTMENTS_TABLE = "Apartments.csv"
 COS_AREAS_TABLE = "COS areas.csv"
 COS_SCHEDULE_TABLE = "COS schedule.xlsx"
 AREA_TABLE = "Preliminary Yield Analysis.xlsx"
+
+#: The levels the Yield page offers to tick: as the run names them, counted
+#: from the ground, six basements down and forty floors up.
+LEVEL_CHOICES: tuple[str, ...] = (
+    *(f"B {n:02d}" for n in range(6, 0, -1)),
+    "Ground",
+    *(f"Level {n:02d}" for n in range(1, 41)),
+)
+
+
+def _level_meaning(level: str) -> str:
+    if level == "Ground":
+        return "The level nearest the project's ground storey; the lowest, with none named so."
+    if level.startswith("B "):
+        return f"{int(level[2:])} below the ground."
+    return f"{int(level[6:])} above the ground."
+
 
 #: The unit types the Yield page offers, with the share of the units and the
 #: net lettable area each opens with: the office's feasibility sheet's five,
@@ -2760,6 +2786,26 @@ class Window:
             "see-through as you like, so the model can be orbited under it "
             "until the two line up. Nothing is written into the project.",
         )
+        # Loriini as an MCP server in the Claude a person already has. Up
+        # here with the picker because it is about the program, not a study;
+        # ``claude_mcp`` is the whole of it.
+        claude = ttk.Button(
+            picker,
+            text="Add to Claude",
+            style="Chrome.TButton",
+            command=self._add_to_claude,
+            width=14,
+            **icons.button_options("claude"),
+        )
+        claude.grid(row=0, column=3, padx=(6, 0))
+        Tooltip(
+            claude,
+            "Registers this program as an MCP server with Claude Desktop (in its "
+            "settings file; restart it afterwards) and with Claude Code (through "
+            "claude mcp add, when that command is on the path), so an agent can "
+            "run the studies into the open project. docs/agent.md says what it "
+            "can then do.",
+        )
         tell = ttk.Button(
             picker,
             text="",
@@ -2768,7 +2814,7 @@ class Window:
             width=3,
             **icons.button_options("info"),
         )
-        tell.grid(row=0, column=3, padx=(6, 0))
+        tell.grid(row=0, column=4, padx=(6, 0))
         Tooltip(
             tell,
             "What this program is, the licence it is used under, and the "
@@ -2796,6 +2842,12 @@ class Window:
         # The contour under the project bar: which Archicad is one question,
         # asked once, and everything below it is the study.
         ttk.Frame(self.root, style="Rule.TFrame", height=1).pack(side="top", fill="x")
+
+    def _add_to_claude(self) -> None:
+        """Register the program with Claude Desktop and Claude Code, and say
+        what happened where."""
+        added = claude_mcp.add_to_claude()
+        self._tell("Add to Claude", added.describe())
 
     def _reference(self) -> None:
         """Open the reference-image palette, or raise the one already open.
@@ -4292,6 +4344,17 @@ class Window:
             "A run with the same name replaces that option's sheet in the workbook and "
             "its layout; another name adds an option beside the ones already there.",
         )
+        self.yield_option_layers, row = self._picker(
+            frame,
+            row,
+            "Option layers",
+            "Several options at once: each layer chosen here is one whole option.",
+            "One option a layer, a sheet in the workbook and a layout each, named after "
+            "the layer's OPT number -- '...3D OPT1' is Option 01 -- with the use of each "
+            "slab told by its level, as a massing layer's is. With any chosen, the option "
+            "name and the layers below are not used; the levels, the site and the "
+            "efficiencies are shared.",
+        )
         self._caption(
             frame,
             row,
@@ -4332,22 +4395,20 @@ class Window:
             "layers is residential. A layer cannot be named twice; the run refuses one "
             "that is.",
         )
-        self.yield_retail_levels, row = self._entry(
+        self.yield_retail_levels, row = self._level_picker(
             frame,
             row,
             "Retail levels",
-            "",
-            "Levels of the massing layers that are retail: Ground, Level 01, B 01. Commas between.",
+            "Levels of the option and massing layers that are retail: the ground, usually.",
             "The levels are counted up from the ground -- the level nearest the project's "
-            "ground storey -- as the run names them in its log.",
+            "ground storey -- as the run names them in its log: Ground, Level 01, B 01.",
         )
-        self.yield_commercial_levels, row = self._entry(
+        self.yield_commercial_levels, row = self._level_picker(
             frame,
             row,
             "Commercial levels",
-            "",
-            "Levels of the massing layers that are commercial. Commas between.",
-            "A level can be retail or commercial, not both.",
+            "Levels of the option and massing layers that are commercial.",
+            "A level can be retail or commercial, not both; every other level is residential.",
         )
         renovation = ttk.Checkbutton(
             frame,
@@ -4408,6 +4469,32 @@ class Window:
             "The office's own 3D view of the massing, coloured by use with its graphic "
             "override, placed on the sheet and framed to the page right of the table. A "
             "name the View Map does not have costs the picture, not the sheet.",
+        )
+
+        self.yield_xlsx = tk.BooleanVar(value=True)
+        workbook = ttk.Checkbutton(
+            frame,
+            text="Excel workbook: Preliminary Yield Analysis",
+            variable=self.yield_xlsx,
+            command=self._sync,
+        )
+        workbook.grid(row=row, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        Tooltip(
+            workbook,
+            "Writes the office's feasibility template, filled: one sheet per option, the "
+            "inputs in red and everything else a live formula. An option already in the "
+            "workbook is replaced; the others stay.",
+            title="The workbook",
+        )
+        row += 1
+        self.yield_workbook, row = self._entry(
+            frame,
+            row,
+            "Workbook",
+            "",
+            "Blank writes Preliminary Yield Analysis.xlsx into the tables folder in General.",
+            "A path of its own, for a workbook kept with the project. A workbook Loriini "
+            "did not write is left alone, and the run says so.",
         )
 
         frame, row = self._panel(outer, 1, title="Efficiencies, mix and parking"), 0
@@ -4492,6 +4579,41 @@ class Window:
             "The rates per unit type and per m² of commercial and retail floor are the "
             "sheet's, and are inputs in the workbook.",
         )
+
+    def _level_picker(
+        self, parent: ttk.Frame, row: int, label: str, hint: str, detail: str
+    ) -> tuple[Chips, int]:
+        """A list of levels, ticked out of the ones a massing can have, shown
+        as chips: the same control as a layer list, over the levels the run
+        names rather than the project's storeys, which a massing homed on
+        the ground storey and offset up does not follow."""
+        name = ttk.Label(parent, text=label, **icons.options(label))
+        name.grid(row=row, column=0, sticky="nw", pady=(6, 0))
+        box = Chips(
+            parent,
+            add=lambda: self._choose(
+                box,
+                label,
+                hint,
+                LEVEL_CHOICES,
+                {level: _level_meaning(level) for level in LEVEL_CHOICES},
+                typed=True,
+            ),
+            on_change=self._sync,
+            empty="no levels chosen",
+            label=label,
+        )
+        box.grid(row=row, column=1, sticky="ew", pady=(6, 0))
+        line = self._hint(parent, row + 1, hint)
+        for target in (name, box):
+            Tooltip(
+                target,
+                detail,
+                title=label,
+                short=self._saying(line),
+                state=lambda: self._tally(box),
+            )
+        return box, row + 1
 
     def _mix_row(
         self, parent: ttk.Frame, row: int, name: str, share: str, size: str
@@ -5376,6 +5498,8 @@ class Window:
             "archicad_wait_minutes": self.wait_min,
             "skin_grid": self.grid_m,
             "yield_option": self.yield_option,
+            "yield_option_layers": self.yield_option_layers,
+            "yield_workbook": self.yield_workbook,
             "yield_residential_layers": self.yield_residential,
             "yield_commercial_layers": self.yield_commercial,
             "yield_retail_layers": self.yield_retail,
@@ -5423,6 +5547,7 @@ class Window:
             "site_location": self.do_site_location,
             "study_yield": self.do_yield,
             "yield_renovation": self.yield_renovation,
+            "yield_xlsx": self.yield_xlsx,
             # The three boxes of days, one key per button, so a preset that
             # studies the equinox beside midwinter opens the same way.
             **{f"day_{name}": state for name, state in self.days.items()},
@@ -6998,6 +7123,7 @@ class Window:
             ("--commercial-layer", self.yield_commercial),
             ("--retail-layer", self.yield_retail),
             ("--massing-layer", self.yield_massing),
+            ("--option-layer", self.yield_option_layers),
         ):
             for name in self._listed(box):
                 args += [flag, name]
@@ -7009,7 +7135,7 @@ class Window:
                 args += [flag, name]
         if self.yield_renovation.get():
             args.append("--renovation-filter")
-        for flag, typed in (
+        for flag, control in (
             ("--option", self.yield_option),
             ("--gfa-residential", self.yield_gfa_residential),
             ("--gfa-commercial", self.yield_gfa_commercial),
@@ -7025,7 +7151,7 @@ class Window:
             ("--fsr-commercial", self.yield_fsr_commercial),
             ("--fsr-retail", self.yield_fsr_retail),
         ):
-            args += self._flag(flag, typed)
+            args += self._flag(flag, control)
         # Whatever the page does not say about the site is read at the
         # address the Site analysis page has, when it has one.
         address = self.site_address.get().strip()
@@ -7050,9 +7176,13 @@ class Window:
             args += ["--view", self.yield_view.get().strip()]
         if self.master.get():
             args += ["--master-layout", self.master.get()]
-        tables = self._tables_folder()
-        if tables is not None:
-            args += ["--xlsx", str(tables / AREA_TABLE)]
+        if self.yield_xlsx.get():
+            wanted = self.yield_workbook.get().strip()
+            tables = self._tables_folder()
+            if wanted:
+                args += ["--xlsx", wanted]
+            elif tables is not None:
+                args += ["--xlsx", str(tables / AREA_TABLE)]
         return args
 
     def _start(self) -> None:

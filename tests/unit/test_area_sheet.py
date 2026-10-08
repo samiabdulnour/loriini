@@ -304,6 +304,32 @@ def test_the_workbook_is_the_template_cell_for_cell(tmp_path: Path) -> None:
     assert table["L115"][0] == "L116+K115", "heights add up from the ground"
 
 
+def test_the_workbook_wears_the_templates_own_look(tmp_path: Path) -> None:
+    """The template's style table and theme, verbatim, and each cell styled
+    as the template cell it stands for: the whole main block matches, and
+    the storey table takes the template's first, middle and last level rows."""
+    from sun_study.report import feasibility_style as look
+
+    path = write_workbook(tmp_path / "yield.xlsx", template())
+    with zipfile.ZipFile(path) as package:
+        assert package.read("xl/styles.xml").decode() == look.STYLES_XML
+        assert package.read("xl/theme/theme1.xml").decode() == look.THEME_XML
+        sheet_xml = package.read("xl/worksheets/sheet1.xml").decode()
+        book_xml = package.read("xl/workbook.xml").decode()
+    styles = {ref: int(st) for ref, st in re.findall(r'<c r="([A-Z]+\d+)" s="(\d+)"', sheet_xml)}
+    main = {ref: st for ref, st in look.CELLS.items() if int(re.sub("[A-Z]", "", ref)) <= 107}
+    assert all(styles.get(ref) == st for ref, st in main.items()), "the main block, cell for cell"
+    assert styles["C6"] == look.CELLS["C6"] and styles["A5"] == look.CELLS["A5"]
+    assert styles["J115"] == look.CELLS["J115"], "the top level as the template's top row"
+    assert styles["M116"] == look.CELLS["M116"] and styles["M132"] == look.CELLS["M135"]
+    assert styles["M133"] == look.CELLS["M136"], "the total row"
+    assert styles["AA115"] == look.CELLS["AA115"] and styles["AP115"] == look.CELLS["AP115"]
+    assert look.COLS_XML in sheet_xml
+    assert '<row r="3" ht="23.25" customHeight="1">' in sheet_xml
+    assert 'sqref="AP114:AP133"' in sheet_xml, "the colour scale over the difference column"
+    assert "'Option 01'!$A$3:$E$107" in book_xml, "the print area"
+
+
 def test_a_second_option_is_added_beside_the_first_and_read_back(tmp_path: Path) -> None:
     path = tmp_path / "yield.xlsx"
     write_workbook(path, template())
@@ -503,6 +529,53 @@ def test_a_massing_layers_levels_are_told_in_the_log(monkeypatch: pytest.MonkeyP
     assert result.exit_code == 0, result.output
     assert "Ground Floor: retail" in result.output and "Level 01: residential" in result.output
     assert "by level" in result.output
+
+
+def test_several_options_come_out_of_one_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Two option layers: the slabs read once, a sheet each in the workbook,
+    a comparison line each at the foot of the log."""
+    from typer.testing import CliRunner
+
+    import sun_study.cli as cli
+
+    connection, transport = scripted_project(connect)
+    monkeypatch.setattr(cli, "_connect", lambda *a, **k: connection)
+    workbook = tmp_path / "yield.xlsx"
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "yield",
+            "--option-layer",
+            "Tower A=05 | Mass.Residential",
+            "--option-layer",
+            "05 | Mass.Retail",
+            "--retail-level",
+            "Ground",
+            "--site-area",
+            "100",
+            "--xlsx",
+            str(workbook),
+            "--no-sheet",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert transport.commands().count("GetDetailsOfElements") == 1, "one read for both"
+    assert [option.option for option in options_in(workbook)] == ["Tower A", "Retail"]
+    out = result.output
+    assert "Tower A" in out and "Retail" in out
+    assert "Level 01: residential" in out and "Ground Floor: retail" in out
+    assert "Option" in out and "Total GFA" in out, "the comparison at the foot"
+    clash = CliRunner().invoke(
+        cli.app, ["yield", "--option-layer", "A=x", "--option-layer", "a=y", "--no-sheet"]
+    )
+    assert clash.exit_code == 2 and "same option name" in clash.output
+    assert cli.option_from_layer("01 | Massing - Main Building.3D OPT2") == (
+        "Option 02",
+        "01 | Massing - Main Building.3D OPT2",
+    )
+    assert cli.option_from_layer("05 | Mass.Tower B")[0] == "Tower B"
 
 
 def test_the_command_says_when_nothing_was_counted(monkeypatch: pytest.MonkeyPatch) -> None:

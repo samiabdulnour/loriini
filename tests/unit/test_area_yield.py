@@ -132,6 +132,9 @@ def test_floors_within_half_a_metre_are_one_level_counted_from_the_ground() -> N
     assert level_index(bottoms) == [1, 1, 2, 3, 0], "the lowest is the ground when none is known"
     assert level_index(bottoms, ground_m=10.11) == [0, 0, 1, 2, -1], "the nearest to the storey"
     assert level_index([]) == []
+    # A tower with no ground floor of its own, in the grid the podium stands in.
+    assert level_index([12.0, 15.0], ground_m=0.0) == [0, 1], "alone, its lowest is the ground"
+    assert level_index([12.0, 15.0], ground_m=0.0, others_m=[0.0, 4.0, 8.0]) == [3, 4]
 
 
 def test_levels_are_named_as_the_sheet_names_them() -> None:

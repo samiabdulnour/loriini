@@ -82,7 +82,15 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from sun_study import AUTHOR, PRODUCT, __version__, licence_online, licence_public_key, user_folder
+from sun_study import (
+    AUTHOR,
+    PRODUCT,
+    SUPPORT_EMAIL,
+    __version__,
+    licence_online,
+    licence_public_key,
+    user_folder,
+)
 from sun_study.licence_key import KeyExpiredError, KeyRefusedError, LicenceKey, read, tidy
 from sun_study.licence_lease import Lease, LeaseRefusedError, Reason
 from sun_study.licence_lease import read as read_lease
@@ -240,7 +248,7 @@ NO_KEY = "Loriini needs a licence key, and none is installed."
 HOW_TO_INSTALL = (
     "Keys come by email with the subscription. Loriini's window asks for the key "
     "when it opens; on a command line, run Loriini.exe licence followed by the "
-    f"key. {AUTHOR} can send it again."
+    f"key. {SUPPORT_EMAIL} can send it again."
 )
 
 #: An online key held, and no lease yet: what a start says before it asks.

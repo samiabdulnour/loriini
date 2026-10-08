@@ -13,7 +13,10 @@ when it is opened, so Excel and LibreOffice show their own.
 
 A workbook may hold several sheets, one of them hidden: the yield workbook
 keeps a sheet per option and, hidden, the data each was made from, so a run
-can add an option beside the ones already there (``read_text``).
+can add an option beside the ones already there (``read_text``). That
+workbook also wears the office's template's own styles: a ``Workbook`` made
+with ``raw_styles`` takes a style table verbatim and its cells are styled by
+index into it, rather than by a ``Format`` of this module's.
 """
 
 from __future__ import annotations
@@ -81,6 +84,10 @@ class Format:
 #: The look of a cell nobody styled.
 PLAIN = Format()
 
+#: How a cell is styled: one of this module's formats, or an index into a
+#: style table taken verbatim (``Workbook.raw_styles``).
+Look = Format | int
+
 
 @dataclass
 class Sheet:
@@ -91,11 +98,27 @@ class Sheet:
     formats: list[Format] = field(default_factory=lambda: [PLAIN])
     """Shared with the workbook's other sheets, so one style table serves all."""
     hidden: bool = False
+    raw: bool = False
+    """The workbook's styles are a table taken verbatim: a ``Format`` here is
+    the table's first style, and an index is used as it is."""
+    cols_xml: str = ""
+    """A ``<cols>`` element verbatim, in place of ``widths``."""
+    row_heights: dict[int, float] = field(default_factory=dict)
+    tail_xml: str = ""
+    """Anything that follows the merged cells: a conditional format, the
+    page setup."""
+    zoom: int = 0
+    print_area: str = ""
+    """A range, ``$A$3:$E$107``, printed as the sheet's print area."""
     _rows: dict[int, dict[int, str]] = field(default_factory=dict)
     _merges: list[str] = field(default_factory=list)
 
-    def style(self, look: Format) -> int:
+    def style(self, look: Look) -> int:
         """The index of this format, adding it the first time it is asked for."""
+        if isinstance(look, int):
+            return look
+        if self.raw:
+            return 0
         if look not in self.formats:
             self.formats.append(look)
         return self.formats.index(look)
@@ -103,22 +126,26 @@ class Sheet:
     def _put(self, row: int, col: int, xml: str) -> None:
         self._rows.setdefault(row, {})[col] = xml
 
-    def text(self, row: int, col: int, value: str, look: Format = PLAIN) -> None:
+    def has(self, row: int, col: int) -> bool:
+        return col in self._rows.get(row, {})
+
+    def text(self, row: int, col: int, value: str, look: Look = PLAIN) -> None:
         ref = f"{column(col)}{row}"
         body = f'<is><t xml:space="preserve">{escape(value)}</t></is>'
         self._put(row, col, f'<c r="{ref}" s="{self.style(look)}" t="inlineStr">{body}</c>')
 
-    def number(self, row: int, col: int, value: float, look: Format = PLAIN) -> None:
+    def number(self, row: int, col: int, value: float, look: Look = PLAIN) -> None:
         ref = f"{column(col)}{row}"
         self._put(row, col, f'<c r="{ref}" s="{self.style(look)}"><v>{value!r}</v></c>')
 
-    def blank(self, row: int, col: int, look: Format = PLAIN) -> None:
-        """An empty cell with a look: an input left for somebody to fill."""
+    def blank(self, row: int, col: int, look: Look = PLAIN) -> None:
+        """An empty cell with a look: an input left for somebody to fill, or
+        a border carried across a gap."""
         ref = f"{column(col)}{row}"
         self._put(row, col, f'<c r="{ref}" s="{self.style(look)}"/>')
 
     def formula(
-        self, row: int, col: int, formula: str, value: float | str, look: Format = PLAIN
+        self, row: int, col: int, formula: str, value: float | str, look: Look = PLAIN
     ) -> None:
         """A formula, and the value it comes to now. A text value is written as
         a string result -- the empty one an ``IF`` gives when there is no
@@ -137,12 +164,24 @@ class Sheet:
 
     def xml(self) -> str:
         rows = "".join(
-            f'<row r="{number}">{"".join(cells[col] for col in sorted(cells))}</row>'
+            f'<row r="{number}"'
+            + (
+                f' ht="{self.row_heights[number]:g}" customHeight="1"'
+                if number in self.row_heights
+                else ""
+            )
+            + f">{''.join(cells[col] for col in sorted(cells))}</row>"
             for number, cells in sorted(self._rows.items())
         )
-        cols = "".join(
-            f'<col min="{i}" max="{i}" width="{width:g}" customWidth="1"/>'
-            for i, width in enumerate(self.widths, start=1)
+        cols = self.cols_xml or (
+            "<cols>"
+            + "".join(
+                f'<col min="{i}" max="{i}" width="{width:g}" customWidth="1"/>'
+                for i, width in enumerate(self.widths, start=1)
+            )
+            + "</cols>"
+            if self.widths
+            else ""
         )
         merges = (
             f'<mergeCells count="{len(self._merges)}">'
@@ -151,12 +190,17 @@ class Sheet:
             if self._merges
             else ""
         )
+        view = '<sheetView workbookViewId="0"' + (
+            f' zoomScale="{self.zoom}" zoomScaleNormal="{self.zoom}"/>'
+            if self.zoom
+            else ' showGridLines="0"/>'
+        )
         return (
             _DECLARATION
             + f'<worksheet xmlns="{_MAIN}">'
-            + '<sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>'
-            + (f"<cols>{cols}</cols>" if cols else "")
-            + f"<sheetData>{rows}</sheetData>{merges}</worksheet>\n"
+            + f"<sheetViews>{view}</sheetViews>"
+            + cols
+            + f"<sheetData>{rows}</sheetData>{merges}{self.tail_xml}</worksheet>\n"
         )
 
 
@@ -166,11 +210,15 @@ class Workbook:
 
     formats: list[Format] = field(default_factory=lambda: [PLAIN])
     sheets: list[Sheet] = field(default_factory=list)
+    raw_styles: str = ""
+    """A ``styles.xml`` taken verbatim; the sheets' looks are indices into it."""
+    theme: str = ""
+    """A ``theme1.xml``, for a style table that names theme colours."""
 
     def sheet(self, name: str, widths: Sequence[float] = (), *, hidden: bool = False) -> Sheet:
         """A new sheet at the end of the book. A name over 31 characters,
         Excel's limit, is cut to it."""
-        made = Sheet(name[:31], widths, self.formats, hidden)
+        made = Sheet(name[:31], widths, self.formats, hidden, raw=bool(self.raw_styles))
         self.sheets.append(made)
         return made
 
@@ -178,7 +226,7 @@ class Workbook:
         """The workbook at ``destination``; its folder is made."""
         if not self.sheets:
             raise ValueError("a workbook needs at least one sheet")
-        return _write(destination, self.sheets, self.formats)
+        return _write(destination, self.sheets, self.formats, self.raw_styles, self.theme)
 
 
 def _styles(formats: Sequence[Format]) -> str:
@@ -268,17 +316,37 @@ def _relationships(*targets: tuple[str, str]) -> str:
     )
 
 
-def _write(destination: Path, sheets: Sequence[Sheet], formats: Sequence[Format]) -> Path:
+def _sheet_name_for_formula(name: str) -> str:
+    """A sheet's name as a formula quotes it: in single quotes, with a quote
+    inside doubled."""
+    return "'" + name.replace("'", "''") + "'"
+
+
+def _write(
+    destination: Path,
+    sheets: Sequence[Sheet],
+    formats: Sequence[Format],
+    raw_styles: str = "",
+    theme: str = "",
+) -> Path:
     listed = "".join(
         f'<sheet name="{escape(sheet.name, _QUOTE)}" sheetId="{index}"'
         + (' state="hidden"' if sheet.hidden else "")
         + f' r:id="rId{index}"/>'
         for index, sheet in enumerate(sheets, start=1)
     )
+    print_areas = "".join(
+        f'<definedName name="_xlnm.Print_Area" localSheetId="{index}">'
+        f"{escape(_sheet_name_for_formula(sheet.name), _QUOTE)}!{sheet.print_area}"
+        "</definedName>"
+        for index, sheet in enumerate(sheets)
+        if sheet.print_area
+    )
     workbook = (
         _DECLARATION
         + f'<workbook xmlns="{_MAIN}" xmlns:r="{_DOC_RELS}">'
         + f"<sheets>{listed}</sheets>"
+        + (f"<definedNames>{print_areas}</definedNames>" if print_areas else "")
         + '<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>\n'
     )
     content_types = (
@@ -294,26 +362,31 @@ def _write(destination: Path, sheets: Sequence[Sheet], formats: Sequence[Format]
             for index in range(1, len(sheets) + 1)
         )
         + f'<Override PartName="/xl/styles.xml" ContentType="{_OFFICE_TYPE}.styles+xml"/>'
+        + (
+            '<Override PartName="/xl/theme/theme1.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>'
+            if theme
+            else ""
+        )
         + "</Types>\n"
     )
+    relationships = [
+        ("worksheet", f"worksheets/sheet{index}.xml") for index in range(1, len(sheets) + 1)
+    ]
+    relationships.append(("styles", "styles.xml"))
+    if theme:
+        relationships.append(("theme", "theme/theme1.xml"))
     destination.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as package:
         package.writestr("[Content_Types].xml", content_types)
         package.writestr("_rels/.rels", _relationships(("officeDocument", "xl/workbook.xml")))
         package.writestr("xl/workbook.xml", workbook)
-        package.writestr(
-            "xl/_rels/workbook.xml.rels",
-            _relationships(
-                *(
-                    ("worksheet", f"worksheets/sheet{index}.xml")
-                    for index in range(1, len(sheets) + 1)
-                ),
-                ("styles", "styles.xml"),
-            ),
-        )
+        package.writestr("xl/_rels/workbook.xml.rels", _relationships(*relationships))
         for index, sheet in enumerate(sheets, start=1):
             package.writestr(f"xl/worksheets/sheet{index}.xml", sheet.xml())
-        package.writestr("xl/styles.xml", _styles(formats))
+        package.writestr("xl/styles.xml", raw_styles or _styles(formats))
+        if theme:
+            package.writestr("xl/theme/theme1.xml", theme)
     return destination
 
 
@@ -388,8 +461,3 @@ def read_text(path: Path, sheet_name: str, ref: str) -> str | None:
             return shared[index] if 0 <= index < len(shared) else None
         return value.text
     return None
-
-
-def ref_of(row: int, col: int) -> str:
-    """``(3, 2)`` as ``B3``."""
-    return f"{column(col)}{row}"

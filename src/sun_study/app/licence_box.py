@@ -29,7 +29,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
-from sun_study import AUTHOR, PRODUCT, licence, licence_online
+from sun_study import PRODUCT, SUPPORT_EMAIL, licence, licence_online
 from sun_study.app import theme
 from sun_study.licence_key import KeyRefusedError, LicenceKey, read
 
@@ -70,7 +70,7 @@ class LicenceBox(tk.Toplevel):
         found = licence.standing()
         opening = (
             f"{PRODUCT} needs a licence key to open a project. Keys come by email with "
-            f"the subscription, a new one each time it renews; {AUTHOR} can send one again."
+            f"the subscription, a new one each time it renews; {SUPPORT_EMAIL} can send one again."
             if first
             else found.describe()
         )

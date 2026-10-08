@@ -4769,6 +4769,27 @@ stays. Which levels are which is the office's to say; a level moved from
 one use to another is also one number moved between columns in the
 workbook's storey table, and the formulas follow.
 
+**The look is the template's, lifted once.** Asked on 9 October, seeing
+the two side by side: the office's sheet is boxed, barred in green, its
+inputs red, and a plain grid of the same numbers is not the same sheet.
+``scripts/extract_feasibility_style.py`` reads the template's style table,
+its theme, its column widths, its row heights and the style index of each
+of its 1,720 cells into ``report/feasibility_style.py``, generated and
+committed, so the program ships no data file and never opens the template;
+``xlsx.Workbook`` takes that style table verbatim and the yield sheet
+styles each cell as the template cell it stands for -- the same address in
+the blocks that do not move, a role's row where a mix has more or fewer
+types, and the first, middle and last level rows for the storey table --
+and writes the template's blank styled cells too, so the boxes close.
+
+**Several options are one run.** Each option is usually its own layer, so
+``--option-layer`` (the *Option layers* picker) takes any number, reads the
+slabs once, and makes every option -- a sheet and a layout each, named
+after the layer's OPT number -- with the levels indexed across all of them
+together, since a tower option with no ground floor of its own would
+otherwise read its lowest floor as the ground. The retail and commercial
+levels are ticked from a list rather than typed, as the layers are.
+
 **What was assumed for the two options.** The office did not say which
 podium levels are retail or commercial. The two sheets were run with the
 ground floor retail, the first level commercial and the rest residential,

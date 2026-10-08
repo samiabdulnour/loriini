@@ -1163,6 +1163,23 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     assert flag(args, "--view") == ["Yield Axo"]
     assert flag(args, "--xlsx") == [str(tmp_path / window.AREA_TABLE)]
     assert flag(args, "--port") == ["19723"]
+    assert "--option-layer" not in args
+
+
+def test_option_layers_and_a_workbook_of_their_own(hidden_window: Any, tmp_path: Path) -> None:
+    only_yield(hidden_window)
+    hidden_window.yield_option_layers.insert(0, "01 | Massing.3D OPT1, 01 | Massing.3D OPT2")
+    hidden_window.yield_workbook.insert(0, r"P:³3\Yield.xlsx")
+    hidden_window.tables.delete(0, "end")
+    hidden_window.tables.insert(0, str(tmp_path))
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--option-layer") == ["01 | Massing.3D OPT1", "01 | Massing.3D OPT2"]
+    assert flag(job.args, "--xlsx") == [r"P:³3\Yield.xlsx"], "the typed path over the folder"
+    hidden_window.yield_xlsx.set(False)
+    (job,) = hidden_window.jobs()
+    assert "--xlsx" not in job.args
+    saved = hidden_window.settings()
+    assert saved["yield_xlsx"] is False and saved["yield_workbook"] == r"P:³3\Yield.xlsx"
 
 
 def test_what_the_yield_page_does_not_say_about_the_site_is_read_at_the_address(

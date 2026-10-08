@@ -27,6 +27,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from sun_study.report import feasibility_style as look
 from sun_study.report import xlsx
 from sun_study.rules.area_yield import (
     AFFORDABLE_MIX,
@@ -319,9 +320,6 @@ _COUNT_BOLD = xlsx.Format(number="0", size=10, bold=True)
 _PLAIN = xlsx.Format(size=10)
 _PLAIN_BOLD = xlsx.Format(size=10, bold=True)
 
-#: The template's column widths, A to J, with the storey table's beyond.
-_WIDTHS = (25.9, 8.4, 18.9, 18.3, 19.7, 15.4, 10.6, 10.6, 6.3, 14.0)
-
 #: The storey table's first column (J) and first row, as the template has them.
 _TABLE_COL = 10
 _TABLE_ROW = 111
@@ -356,9 +354,9 @@ def write_workbook(
                 if found.option.casefold() != sheet.option.casefold()
             ]
     options = [*others, sheet]
-    book = xlsx.Workbook()
+    book = xlsx.Workbook(raw_styles=look.STYLES_XML, theme=look.THEME_XML)
     for option in options:
-        _option_sheet(book.sheet(option.option, _WIDTHS), option, note)
+        _option_sheet(book.sheet(option.option), option, note)
     data = book.sheet(DATA_SHEET, (120,), hidden=True)
     data.text(1, 1, json.dumps([feasibility_to_dict(option) for option in options]), _NOTE)
     data.text(
@@ -393,8 +391,84 @@ def options_in(path: Path) -> list[Feasibility]:
     return found
 
 
-def _option_sheet(ws: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
+class _TemplateSheet:
+    """A sheet written as the template is styled.
+
+    Every cell Loriini writes stands for a cell of the template, and takes
+    that cell's style index: the same row for the blocks that do not move,
+    a role's row for the ones that do -- a mix of six types has a sixth row
+    styled like the second -- and the storey table's first, middle and last
+    level rows for however many levels the massing has. The ``Format`` the
+    caller names is ignored; the look is the template's. When the sheet is
+    finished, every template cell in a mapped row that was not written is
+    written blank with its style, so the boxes close and the bars run
+    across.
+    """
+
+    def __init__(self, raw: xlsx.Sheet) -> None:
+        self.raw = raw
+        self.rows: dict[int, int] = {}
+        """My row -> the template's row."""
+        self.cols: dict[int, int] = {}
+        """My column -> the template's column, where they differ."""
+
+    def _style(self, row: int, col: int) -> int:
+        template_row = self.rows.get(row, row)
+        template_col = self.cols.get(col, col)
+        return look.CELLS.get(f"{xlsx.column(template_col)}{template_row}", 0)
+
+    def text(self, row: int, col: int, value: str, _look: object = None) -> None:
+        self.raw.text(row, col, value, self._style(row, col))
+
+    def number(self, row: int, col: int, value: float, _look: object = None) -> None:
+        self.raw.number(row, col, value, self._style(row, col))
+
+    def blank(self, row: int, col: int, _look: object = None) -> None:
+        self.raw.blank(row, col, self._style(row, col))
+
+    def formula(
+        self, row: int, col: int, formula: str, value: float | str, _look: object = None
+    ) -> None:
+        self.raw.formula(row, col, formula, value, self._style(row, col))
+
+    def merge(self, first: str, last: str) -> None:
+        self.raw.merge(first, last)
+
+    def finish(self, last_main_row: int, main_cols: int, table_cols: range) -> None:
+        """The rest of the template's look: its blank styled cells, its
+        column widths, its row heights, its zoom, its print area."""
+        by_template_row: dict[int, dict[int, int]] = {}
+        for ref, style in look.CELLS.items():
+            letters = ref.rstrip("0123456789")
+            number = int(ref[len(letters) :])
+            col = 0
+            for ch in letters:
+                col = col * 26 + ord(ch) - ord("A") + 1
+            by_template_row.setdefault(number, {})[col] = style
+        mine_for: dict[int, list[int]] = {}
+        for col in table_cols:
+            mine_for.setdefault(self.cols.get(col, col), []).append(col)
+        for row, template_row in self.rows.items():
+            for template_col, style in by_template_row.get(template_row, {}).items():
+                if row <= last_main_row and template_col <= main_cols:
+                    targets = [template_col]
+                elif row > last_main_row:
+                    targets = mine_for.get(template_col, [])
+                else:
+                    continue
+                for col in targets:
+                    if not self.raw.has(row, col):
+                        self.raw.blank(row, col, style)
+            if template_row in look.ROW_HEIGHTS:
+                self.raw.row_heights[row] = look.ROW_HEIGHTS[template_row]
+        self.raw.cols_xml = look.COLS_XML
+        self.raw.zoom = 85
+        self.raw.print_area = f"$A$3:$E${last_main_row}"
+
+
+def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     """One option on one sheet, cell for cell as the template has it."""
+    ws = _TemplateSheet(raw)
     market, affordable = sheet.market.types, sheet.affordable.types
     n_market, n_affordable = len(market), len(affordable)
     e = sheet.efficiencies
@@ -461,7 +535,7 @@ def _option_sheet(ws: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     c_bea = tc + 3  # resi, comm, retail, total
     c_gfa = c_bea + 4
     c_nsa = c_gfa + 4
-    c_mix = c_nsa + 5  # one per market type, then total
+    c_mix = c_nsa + 6  # one per market type, then total; the column before is labels
     c_adg = c_mix + n_market + 1  # C Vent, Solar >2hr, <2hr, 0hr
     c_back = c_adg + 5  # GBA, GFA, NLA from the mix
     c_diff = c_back + 4
@@ -470,6 +544,58 @@ def _option_sheet(ws: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     gfa_cell = {use: f"$D${gfa_first + i}" for i, use in enumerate(USES)}
     eff_gfa = {use: f"$C${eff_first + i}" for i, use in enumerate(USES)}
     eff_nla = {use: f"$E${eff_first + i}" for i, use in enumerate(USES)}
+
+    # -- which template cell each of mine stands for ------------------------------
+    rows_map: dict[int, int] = {row: row for row in range(1, market_first)}
+
+    def map_block(mine_first: int, template_first: int, count: int, template_count: int) -> None:
+        for i in range(count):
+            rows_map[mine_first + i] = template_first + min(i, template_count - 1)
+
+    map_block(market_first, 29, n_market, 5)
+    rows_map[market_total] = 34
+    rows_map[market_total + 1] = 35
+    rows_map[affordable_title] = 36
+    rows_map[affordable_head] = 37
+    map_block(affordable_first, 38, n_affordable, 5)
+    rows_map[affordable_total] = 43
+    rows_map[affordable_total + 1] = 44
+    rows_map[all_title] = 45
+    rows_map[all_head] = 46
+    map_block(all_first, 47, all_total - all_first, 5)
+    rows_map[all_total] = 52
+    rows_map[all_total + 1] = 53
+    for offset, template_row in enumerate((54, 55, 56, 57, 58, 59, 60, 61, 62, 63)):
+        rows_map[storeys_title + offset] = template_row
+    map_block(market_parking_first, 64, n_market, 5)
+    rows_map[affordable_parking_head] = 69
+    map_block(affordable_parking_first, 70, n_affordable, 5)
+    rows_map[visitors_row - 1] = 75
+    rows_map[visitors_row] = 76
+    rows_map[visitors_row + 1] = 77
+    for offset, template_row in enumerate(range(78, 108)):
+        rows_map[resi_parking_total + offset] = template_row
+    for offset in range(4):
+        rows_map[t + offset] = _TABLE_ROW + offset
+    for i in range(len(levels)):
+        rows_map[level_first + i] = 115 if i == 0 else (135 if i == len(levels) - 1 else 116)
+    rows_map[level_total] = 136
+    rows_map[level_total + 1] = 137
+    for offset, template_row in enumerate((138, 139, 140, 141)):
+        rows_map[summary_head + offset] = template_row
+    ws.rows.update(rows_map)
+    cols_map: dict[int, int] = {}
+    for j in range(n_market):
+        cols_map[c_mix + j] = 27 + min(j, 4)  # AA to AE
+    cols_map[c_mix + n_market] = 32  # AF
+    for j in range(4):
+        cols_map[c_adg + j] = 33 + j  # AG to AJ
+    cols_map[c_adg + 4] = 37  # AK, the gap
+    for j in range(3):
+        cols_map[c_back + j] = 38 + j  # AL to AN
+    cols_map[c_back + 3] = 41  # AO, the gap
+    cols_map[c_diff] = 42  # AP
+    ws.cols.update(cols_map)
 
     # -- the head of the sheet ------------------------------------------------
     ws.text(1, 1, "Preliminary Yield Analysis", _TITLE)
@@ -1080,9 +1206,10 @@ def _option_sheet(ws: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
             _value_diff(proposed, allowed),
             _AREA,
         )
-    ws.text(target_row, c_nsa + 4, "Proposed", _HEAD)
-    ws.text(proposed_row, c_nsa + 4, "Target", _HEAD)
-    ws.text(difference_row, c_nsa + 4, "Diff", _HEAD)
+    ws.text(level_total, c_mix - 1, "Total", _HEAD)
+    ws.text(target_row, c_mix - 1, "Proposed", _HEAD)
+    ws.text(proposed_row, c_mix - 1, "Target", _HEAD)
+    ws.text(difference_row, c_mix - 1, "Diff", _HEAD)
     total_mix = f"${mix_total_col}${level_total}"
     for j in range(n_market):
         letter = _col(c_mix + j)
@@ -1127,6 +1254,16 @@ def _option_sheet(ws: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
                 "",
                 _SHARE1,
             )
+
+    diff_col = _col(c_diff)
+    raw.tail_xml = (
+        f'<conditionalFormatting sqref="{diff_col}{t + 3}:{diff_col}{level_total}">'
+        + look.COLOUR_SCALE
+        + "</conditionalFormatting>"
+        + '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>'
+        + '<pageSetup paperSize="8" scale="79" orientation="portrait"/>'
+    )
+    ws.finish(basement_ratio_row, 9, range(c_level, c_diff + 1))
 
 
 def _short(name: str) -> str:

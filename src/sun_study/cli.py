@@ -275,6 +275,7 @@ from sun_study.rules.area_yield import (
     AFFORDABLE_MIX,
     DEFAULT_MIX,
     Efficiencies,
+    Feasibility,
     Mix,
     ParkingRates,
     Permissible,
@@ -8644,6 +8645,18 @@ def area_yield(
             ),
         ),
     ] = None,
+    option_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--option-layer",
+            help=(
+                "A layer that is one whole massing option, for several options in one run: "
+                "each becomes a sheet in the workbook and a layout, named after its OPT "
+                "number ('...3D OPT1' is Option 01) or as 'Option 02=<layer>'. Its use is "
+                "told by level, as --massing-layer's is. Repeat for each option."
+            ),
+        ),
+    ] = None,
     retail_level: Annotated[
         list[str] | None,
         typer.Option(
@@ -8833,6 +8846,7 @@ def area_yield(
     commercial = [name for name in commercial_layer or [] if name.strip()]
     retail = [name for name in retail_layer or [] if name.strip()]
     massing = [name for name in massing_layer or [] if name.strip()]
+    options = [option_from_layer(text) for text in option_layer or [] if text.strip()]
     try:
         market = Mix(
             tuple(parse_unit(text) for text in unit) if unit else DEFAULT_MIX,
@@ -8864,6 +8878,12 @@ def area_yield(
             raise ValueError(
                 f"{level_name(both[0])} is named as both retail and commercial; "
                 "a level can only be one."
+            )
+        names = [name.casefold() for name, _layer in options]
+        if len(set(names)) != len(names):
+            raise ValueError(
+                "Two --option-layer entries come to the same option name; name one of them "
+                "as 'Option 02=<layer>'."
             )
     except ValueError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
@@ -8906,40 +8926,26 @@ def area_yield(
         reading = read_slabs(
             connection,
             renovation=renovation_filter,
-            shown_layers_only=not (residential or commercial or retail or massing),
+            shown_layers_only=not (residential or commercial or retail or massing or options),
         )
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
-    try:
-        assignment = floors_from(
-            reading.slabs,
-            residential,
-            commercial,
-            retail,
-            massing,
-            retail_levels=retail_levels,
-            commercial_levels=commercial_levels,
-            ground_m=reading.ground_m,
-        )
-    except ValueError as error:
-        typer.secho(str(error), fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=2) from error
 
-    everything = not (residential or commercial or retail or massing)
+    # The options this run makes: one per --option-layer, each a massing
+    # layer of its own with the use told by level; or the one option the
+    # other flags describe. The slabs are read once for all of them.
+    runs: list[tuple[str, list[str], list[str], list[str], list[str]]] = (
+        [(name, [], [], [], [layer]) for name, layer in options]
+        if options
+        else [(option, residential, commercial, retail, massing)]
+    )
+    everything = not (residential or commercial or retail or massing or options)
     typer.echo(
         f"read {_slabs(len(reading.slabs))}"
         + (", only those the renovation filter shows" if renovation_filter else "")
         + (", on the layers showing" if everything else "")
     )
-    for layer, (use, count, area) in sorted(assignment.by_layer.items()):
-        typer.echo(f"  {layer.strip()}: {_slabs(count)}, {area:.2f} m², {use}")
-    for level_named, use in assignment.levels_used.items():
-        typer.echo(f"    {level_named}: {use}")
-    for layer, count in sorted(assignment.passed_over.items()):
-        typer.echo(f"  {layer.strip()}: {_slabs(count)}, not counted -- named for nothing")
-    for layer in assignment.missing:
-        typer.secho(f"  {layer.strip()}: named, and no slab stands on it", fg=typer.colors.YELLOW)
     if reading.own:
         typer.echo(f"  {reading.own} of Loriini's own context slabs left out")
     if reading.unreadable:
@@ -8955,76 +8961,152 @@ def area_yield(
         )
     if reading.ground_m is None:
         typer.echo("  no storey is named as the ground; the lowest level is the ground floor")
-    if not assignment.floors:
-        typer.secho(
-            "No slab was counted. Name the layers the massing slabs are on, or show them.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
 
-    counted = sum(count for _use, count, _area in assignment.by_layer.values())
-    source = [
-        f"BEA : {_slabs(counted)}, measured to their edges"
-        + (", as the renovation filter shows them" if renovation_filter else ""),
-        *notes_,
+    # Every option stands in one grid of levels: a tower option with no ground
+    # floor of its own still starts above the podium option's ground.
+    option_layers = {" ".join(layer.split()).casefold() for _name, layer in options}
+    grid = [
+        slab.bottom_m
+        for slab in reading.slabs
+        if " ".join(slab.layer.split()).casefold() in option_layers
     ]
-    try:
-        result = feasibility(
-            assignment.floors,
-            option=option,
-            site_area_m2=site_area,
-            permissible=permissible,
-            efficiencies=efficiencies,
-            market=market,
-            affordable=affordable,
-            affordable_share=affordable_share / 100.0,
-            parking=rates,
-            ground_m=reading.ground_m,
-            source=source,
-        )
-    except ValueError as error:
-        typer.secho(str(error), fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=2) from error
+    results: list[tuple[Feasibility, list[str]]] = []
+    for name, res_layers, com_layers, ret_layers, mass_layers in runs:
+        try:
+            assignment = floors_from(
+                reading.slabs,
+                res_layers,
+                com_layers,
+                ret_layers,
+                mass_layers,
+                retail_levels=retail_levels,
+                commercial_levels=commercial_levels,
+                ground_m=reading.ground_m,
+                others_m=grid,
+            )
+        except ValueError as error:
+            typer.secho(str(error), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from error
+        typer.echo(f"\n{name}")
+        for layer, (use, count, area) in sorted(assignment.by_layer.items()):
+            typer.echo(f"  {layer.strip()}: {_slabs(count)}, {area:.2f} m², {use}")
+        for level_named, use in assignment.levels_used.items():
+            typer.echo(f"    {level_named}: {use}")
+        if len(runs) == 1:
+            for layer, count in sorted(assignment.passed_over.items()):
+                typer.echo(f"  {layer.strip()}: {_slabs(count)}, not counted -- named for nothing")
+        for layer in assignment.missing:
+            typer.secho(
+                f"  {layer.strip()}: named, and no slab stands on it", fg=typer.colors.YELLOW
+            )
+        if not assignment.floors:
+            typer.secho(
+                f"No slab was counted for {name}. Name the layers the massing slabs are on, "
+                "or show them.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=1)
 
-    typer.echo("")
-    typer.echo(f"  {result.option}")
-    typer.echo("  Level             F to F     Resi BEA     Comm BEA   Retail BEA")
-    for level in reversed(result.levels):
-        typer.echo(
-            f"  {level.name:<16}{level.floor_to_floor_m:>8.2f}"
-            f"{level.residential_m2:>13.2f}{level.commercial_m2:>13.2f}{level.retail_m2:>13.2f}"
-        )
-    typer.echo("")
-    for line in area_text_lines(result):
-        typer.echo(line)
-    typer.echo("")
-    for line in area_notes(result):
-        typer.echo(f"  {line}")
+        counted = sum(count for _use, count, _area in assignment.by_layer.values())
+        source = [
+            f"BEA : {_slabs(counted)}, measured to their edges"
+            + (", as the renovation filter shows them" if renovation_filter else ""),
+            *notes_,
+        ]
+        try:
+            result = feasibility(
+                assignment.floors,
+                option=name,
+                site_area_m2=site_area,
+                permissible=permissible,
+                efficiencies=efficiencies,
+                market=market,
+                affordable=affordable,
+                affordable_share=affordable_share / 100.0,
+                parking=rates,
+                ground_m=reading.ground_m,
+                source=source,
+                others_m=grid,
+            )
+        except ValueError as error:
+            typer.secho(str(error), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from error
+        results.append((result, source))
+
+        typer.echo("")
+        typer.echo(f"  {result.option}")
+        typer.echo("  Level             F to F     Resi BEA     Comm BEA   Retail BEA")
+        for level in reversed(result.levels):
+            typer.echo(
+                f"  {level.name:<16}{level.floor_to_floor_m:>8.2f}"
+                f"{level.residential_m2:>13.2f}{level.commercial_m2:>13.2f}"
+                f"{level.retail_m2:>13.2f}"
+            )
+        typer.echo("")
+        for line in area_text_lines(result):
+            typer.echo(line)
+        typer.echo("")
+        for line in area_notes(result):
+            typer.echo(f"  {line}")
+
+    if len(results) > 1:
+        typer.echo("")
+        typer.echo(f"  {'Option':<16}{'Total GFA':>14}{'FSR':>8}{'Units':>9}{'Parking':>10}")
+        for result, _source in results:
+            fsr = result.total_fsr
+            typer.echo(
+                f"  {result.option:<16}{result.total_gfa_m2:>11,.0f} m²"
+                f"{(f'{fsr:.2f}' if fsr is not None else '-'):>8}"
+                f"{result.total_units:>9.1f}{result.parking_spaces('sepp')['total']:>10.1f}"
+            )
 
     if xlsx_out is not None:
-        try:
-            written = write_area_workbook(xlsx_out, result)
-        except (OSError, FileExistsError) as error:
-            typer.secho(f"  the workbook was not written: {error}", fg=typer.colors.RED, err=True)
+        for result, _source in results:
+            try:
+                written = write_area_workbook(xlsx_out, result)
+            except (OSError, FileExistsError) as error:
+                typer.secho(
+                    f"  the workbook was not written: {error}", fg=typer.colors.RED, err=True
+                )
+                break
         else:
             typer.echo(f"\nwrote {written}")
 
     if sheet:
-        typer.echo("\ndrawing the yield analysis sheet...")
-        try:
-            report = draw_area_sheet(
-                connection,
-                result,
-                source=source,
-                master_layout=master_layout,
-                view=view,
-                say=say,
-            )
-        except ArchicadError as error:
-            typer.secho(str(error), fg=typer.colors.RED, err=True)
-            raise typer.Exit(code=2) from error
-        typer.echo(report.describe())
+        for result, source in results:
+            typer.echo(f"\ndrawing the yield analysis sheet for {result.option}...")
+            try:
+                report = draw_area_sheet(
+                    connection,
+                    result,
+                    source=source,
+                    master_layout=master_layout,
+                    view=view,
+                    say=say,
+                )
+            except ArchicadError as error:
+                typer.secho(str(error), fg=typer.colors.RED, err=True)
+                raise typer.Exit(code=2) from error
+            typer.echo(report.describe())
+
+
+def option_from_layer(text: str) -> tuple[str, str]:
+    """An ``--option-layer`` as its option's name and its layer.
+
+    ``Option 02=01 | Massing.3D OPT2`` names it; a bare layer is named after
+    its OPT number -- ``01 | Massing - Main Building.3D OPT1`` is *Option
+    01* -- or, with none, after the layer's last part.
+    """
+    name, _, layer = text.partition("=")
+    if layer.strip():
+        return " ".join(name.split()), layer.strip()
+    layer = text.strip()
+    found = re.search(r"opt(?:ion)?\s*0*(\d+)", layer, re.IGNORECASE)
+    if found:
+        return f"Option {int(found.group(1)):02d}", layer
+    tail = re.split(r"[.|]", layer)[-1].strip()
+    return tail or layer, layer
 
 
 @app.command("licence", hidden=True)

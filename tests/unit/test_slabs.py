@@ -208,6 +208,17 @@ def test_a_massing_layers_slabs_take_their_use_from_their_level() -> None:
     }
 
 
+def test_another_options_slabs_keep_the_levels_lined_up() -> None:
+    tower = [slab("OPT2", 10.0, 12.91, 3.0), slab("OPT2", 10.0, 15.91, 3.0)]
+    alone = floors_from(tower, massing=["OPT2"], retail_levels=[0], ground_m=10.11)
+    assert [f.use for f in alone.floors] == [RETAIL, RESIDENTIAL], "its lowest read as the ground"
+    together = floors_from(
+        tower, massing=["OPT2"], retail_levels=[0], ground_m=10.11, others_m=[8.61]
+    )
+    assert [f.use for f in together.floors] == [RESIDENTIAL, RESIDENTIAL]
+    assert list(together.levels_used) == ["Level 01", "Level 02"]
+
+
 def test_with_no_layer_named_everything_showing_is_massing() -> None:
     made = floors_from([slab("A", 10.0, 0.0), slab("B", 10.0, 3.0)], retail_levels=[0])
     assert [f.use for f in made.floors] == [RETAIL, RESIDENTIAL]

@@ -323,13 +323,16 @@ def floors_from(
     retail_levels: Sequence[int] = (),
     commercial_levels: Sequence[int] = (),
     ground_m: float | None = None,
+    others_m: Sequence[float] = (),
 ) -> Assignment:
     """Each slab's floor, its use told by its layer, or by its level on a
     massing layer.
 
     With no layer named at all, every slab counts as massing, its use by
     level: the quick yield of what is showing. A layer named for two things
-    is refused, since one slab cannot be two uses.
+    is refused, since one slab cannot be two uses. ``others_m`` are the
+    undersides of slabs in the same grid of levels that this call does not
+    count -- the other options' -- so every option's levels line up.
     """
     named: dict[str, set[str]] = {
         RESIDENTIAL: {_tidy(name) for name in residential if name.strip()},
@@ -374,7 +377,7 @@ def floors_from(
 
     # The levels are told across every counted slab, so a level is the same
     # level whichever layer its slabs are on.
-    indices = level_index([slab.bottom_m for slab, _ in kept], ground_m)
+    indices = level_index([slab.bottom_m for slab, _ in kept], ground_m, others_m)
     floors: list[Floor] = []
     by_layer: dict[str, tuple[str, int, float]] = {}
     levels_used: dict[str, str] = {}
