@@ -24,13 +24,20 @@ from sun_study.archicad.read import GeoLocation
 from sun_study.archicad.shadow_plans import (
     OVERHEAD_DEG,
     MadePlan,
+    PlanSet,
     ShadowPlan,
     ShadowPlanSettings,
+    Stack,
     hidden_among,
+    make_shadow_plan_stacks,
     make_shadow_plans,
+    make_stacked_shadow_plan_sheets,
     plan_sheet_groups,
     shadow_plans,
     site_context_layers,
+    stack_combinations,
+    stack_labels,
+    stacked_sheet_groups,
 )
 from sun_study.archicad.views import StoreyView
 
@@ -283,11 +290,16 @@ def test_an_add_on_that_cannot_turn_the_shadows_on_is_said_plainly() -> None:
 # -- the sheets ------------------------------------------------------------------------
 
 
-def _made(day: dt.date, hours: list[int]) -> list[MadePlan]:
+def _made(day: dt.date, hours: list[int], set_label: str = "") -> list[MadePlan]:
     times, labels = moments(day, hours)
     plans = shadow_plans(SYDNEY, times, labels)[0]
+    tag = f"{set_label}-" if set_label else ""
     return [
-        MadePlan(plan=plan, view=StoreyView(0, plan.name(), f"VIEW-{plan.stamp}"), reused=False)
+        MadePlan(
+            plan=plan,
+            view=StoreyView(0, plan.name(set_label), f"VIEW-{tag}{plan.stamp}"),
+            reused=False,
+        )
         for plan in plans
     ]
 
@@ -411,3 +423,322 @@ def test_the_context_the_site_tools_drew_is_shown_when_the_combination_hides_it(
     assert hidden_among(wanted, names, hidden) == [wanted[0]]
     assert hidden_among(wanted, names, {"t": False, "b": False}) == []
     assert hidden_among(("01 | Floor.Structural",), names, {"s": True}) == ["01 | Floor.Structural"]
+
+
+# -- the stack -----------------------------------------------------------------------
+
+
+def test_the_proposals_are_named_proposed_and_numbered_in_the_order_given() -> None:
+    """Whatever the office calls its massings this week, the sets are
+    Proposed 1, 2, 3 -- or Proposed alone when there is one."""
+    assert stack_labels(0) == []
+    assert stack_labels(1) == ["Proposed"]
+    assert stack_labels(3) == ["Proposed 1", "Proposed 2", "Proposed 3"]
+
+
+def test_the_stack_combinations_show_what_stands_and_hide_the_other_proposals() -> None:
+    """The existing set shows the neighbours and hides every proposal; each
+    proposal shows the neighbours and itself and hides the others. What the
+    base combination hides that every set needs rides along as also_show."""
+    rows = stack_combinations(
+        ["03 | Site Context.Buildings"],
+        [["20 | Massing.SEARs"], ["20 | Massing.Envelope", "20 | Massing.Podium"]],
+        also_show=["03 | Site Context.Terrain"],
+    )
+    assert [label for label, _, _ in rows] == ["Existing", "Proposed 1", "Proposed 2"]
+    existing, first, second = rows
+    assert existing[1] == ("03 | Site Context.Terrain", "03 | Site Context.Buildings")
+    assert existing[2] == ("20 | Massing.SEARs", "20 | Massing.Envelope", "20 | Massing.Podium")
+    assert first[1] == (
+        "03 | Site Context.Terrain",
+        "03 | Site Context.Buildings",
+        "20 | Massing.SEARs",
+    )
+    assert first[2] == ("20 | Massing.Envelope", "20 | Massing.Podium")
+    assert second[2] == ("20 | Massing.SEARs",)
+
+
+def test_a_layer_two_proposals_share_is_shown_by_both() -> None:
+    rows = stack_combinations(
+        [], [["20 | Podium", "20 | Tower A"], ["20 | Podium", "20 | Tower B"]]
+    )
+    _, first, second = rows
+    assert "20 | Podium" in first[1] and "20 | Podium" not in first[2]
+    assert "20 | Podium" in second[1] and "20 | Podium" not in second[2]
+    assert first[2] == ("20 | Tower B",)
+    assert second[2] == ("20 | Tower A",)
+
+
+def test_a_stack_makes_the_existing_set_once_over_every_proposal() -> None:
+    """One existing set and a set per proposal, each under its own combination
+    and label, each solid in its own pen, every document's uncut surfaces
+    unfilled so the drawing beneath shows through. The existing documents are
+    the same objects in every stack."""
+    transport = PlanTransport()
+    plans = _plans([9, 12])
+    settings = ShadowPlanSettings(shadow_fill={"fillIndex": 1}, fill_uncut_surfaces=None)
+
+    stacks, said = make_shadow_plan_stacks(
+        ArchicadConnection(transport),
+        plans,
+        settings=settings,
+        existing=PlanSet("Existing", f"{SS} Shadow Plans Existing", 93),
+        proposals=[
+            PlanSet("Proposed 1", f"{SS} Shadow Plans Proposed 1", 94),
+            PlanSet("Proposed 2", f"{SS} Shadow Plans Proposed 2", 95),
+        ],
+    )
+
+    assert said == []
+    assert [stack.label for stack in stacks] == ["Proposed 1", "Proposed 2"]
+    assert stacks[0].above is stacks[1].above, "the existing set is made once"
+    created = transport.asked("CreateDocumentFrom3D")
+    assert [c["name"] for c in created] == [
+        f"{SS} Shadow Plan Existing 21 Jun 09:00",
+        f"{SS} Shadow Plan Existing 21 Jun 12:00",
+        f"{SS} Shadow Plan Proposed 1 21 Jun 09:00",
+        f"{SS} Shadow Plan Proposed 1 21 Jun 12:00",
+        f"{SS} Shadow Plan Proposed 2 21 Jun 09:00",
+        f"{SS} Shadow Plan Proposed 2 21 Jun 12:00",
+    ]
+    assert all(c["fillUncutSurfaces"] is False for c in created)
+    assert all(c["sunShadows"] is True for c in created)
+    assert [c["shadowFill"] for c in created[::2]] == [
+        {"fillIndex": 1, "fillPen": 93, "backgroundPen": 93},
+        {"fillIndex": 1, "fillPen": 94, "backgroundPen": 94},
+        {"fillIndex": 1, "fillPen": 95, "backgroundPen": 95},
+    ]
+    pinned = transport.asked("SetViewSettings")
+    combinations = dict.fromkeys(
+        row["viewSettings"]["layerCombination"]
+        for ask in pinned
+        for row in ask["navigatorItemIdsWithViewSettings"]
+    )
+    assert list(combinations) == [
+        f"{SS} Shadow Plans Existing",
+        f"{SS} Shadow Plans Proposed 1",
+        f"{SS} Shadow Plans Proposed 2",
+    ], "each set's views pinned to its own combination"
+
+
+def test_a_rerun_of_a_stack_re_sets_the_surfaces_too() -> None:
+    transport = PlanTransport(existing=(f"{SS} Shadow Plan Existing 21 Jun 09:00",))
+    make_shadow_plan_stacks(
+        ArchicadConnection(transport),
+        _plans([9]),
+        settings=ShadowPlanSettings(),
+        existing=PlanSet("Existing", "X", 93),
+        proposals=[PlanSet("Proposed", "P", 94)],
+    )
+    (reset,) = transport.asked("SetDocumentFrom3D")
+    assert reset["fillUncutSurfaces"] is False
+    assert reset["shadowFill"] == {"fillPen": 93, "backgroundPen": 93}
+
+
+def _stacked(day: dt.date, hours: list[int], *labels: str) -> list[Stack]:
+    """A stack per label after the first, which is the existing set's."""
+    existing, *proposed = labels
+    above = _made(day, hours, existing)
+    return [
+        Stack(
+            label=label,
+            above_label=existing,
+            below=tuple(_made(day, hours, label)),
+            above=tuple(above),
+        )
+        for label in proposed
+    ]
+
+
+def test_a_stacked_sheet_holds_the_proposal_under_the_existing_in_every_cell() -> None:
+    """Named as a labelled set's sheets are; each cell's pile reads bottom to
+    top, and the two drawings of a cell are named apart for the hour and the
+    set, since a sheet finds its drawings by name."""
+    stacks = _stacked(dt.date(2024, 6, 21), [9, 12, 15], "Existing", "Proposed 1", "Proposed 2")
+
+    groups, cells = stacked_sheet_groups(stacks, sheets="one")
+
+    assert [name for name, _ in groups] == [
+        f"{SS} Shadow Plans Proposed 1 - JUNE 21",
+        f"{SS} Shadow Plans Proposed 2 - JUNE 21",
+    ]
+    assert cells == 3
+    first_cell = groups[0][1][0]
+    assert first_cell == [
+        ("VIEW-Proposed 1-21 Jun 09:00", "JUNE 21 -9AM PROPOSED 1"),
+        ("VIEW-Existing-21 Jun 09:00", "JUNE 21 -9AM EXISTING"),
+    ]
+    assert [pile[1][0] for pile in groups[1][1]] == [
+        "VIEW-Existing-21 Jun 09:00",
+        "VIEW-Existing-21 Jun 12:00",
+        "VIEW-Existing-21 Jun 15:00",
+    ], "the same existing documents lie over the second proposal"
+
+
+def test_an_hour_the_existing_set_lacks_leaves_the_proposal_alone_in_its_cell() -> None:
+    above = _made(dt.date(2024, 6, 21), [9], "Existing")
+    below = _made(dt.date(2024, 6, 21), [9, 12], "Proposed")
+    stacks = [Stack("Proposed", "Existing", tuple(below), tuple(above))]
+    groups, _ = stacked_sheet_groups(stacks, sheets="one")
+    piles = groups[0][1]
+    assert len(piles[0]) == 2 and len(piles[1]) == 1
+
+
+def test_the_stacked_sheets_remove_each_stacks_stale_sheets_and_place_in_piles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sun_study.archicad import shadow_plans as module
+
+    removed: list[tuple[str, set[str]]] = []
+    placed: list[Any] = []
+
+    def forget(_connection: object, stem: str, keep: Any) -> list[str]:
+        removed.append((stem, set(keep)))
+        return [f"{stem}OLD"]
+
+    def place(_connection: object, groups: Any, **kwargs: Any) -> list[Any]:
+        placed.append((groups, kwargs))
+        return []
+
+    monkeypatch.setattr(module, "remove_stale_layouts", forget)
+    monkeypatch.setattr(module, "place_stacks_on_sheets", place)
+    stacks = _stacked(dt.date(2024, 6, 21), [9, 12], "Existing", "Proposed 1", "Proposed 2")
+
+    _, gone = make_stacked_shadow_plan_sheets(
+        ArchicadConnection(PlanTransport()), stacks, sheets="one", scale=500.0
+    )
+
+    assert removed == [
+        (f"{SS} Shadow Plans Proposed 1 - ", {f"{SS} Shadow Plans Proposed 1 - JUNE 21"}),
+        (f"{SS} Shadow Plans Proposed 2 - ", {f"{SS} Shadow Plans Proposed 2 - JUNE 21"}),
+    ]
+    assert gone == [f"{SS} Shadow Plans Proposed 1 - OLD", f"{SS} Shadow Plans Proposed 2 - OLD"]
+    ((groups, kwargs),) = placed
+    assert len(groups) == 2 and kwargs["cells"] == 2 and kwargs["scale"] == 500.0
+
+
+class ArrangeTransport:
+    """Answers ArrangeDrawings and records what was asked."""
+
+    def __init__(self) -> None:
+        self.asked: list[dict[str, Any]] = []
+
+    def send(self, payload: dict[str, Any]) -> dict[str, Any]:
+        given = payload["parameters"].get("addOnCommandParameters") or {}
+        self.asked.append(given)
+        return {
+            "succeeded": True,
+            "result": {
+                "addOnCommandResponse": {"success": True, "arranged": len(given["drawings"])}
+            },
+        }
+
+
+def test_the_stacking_order_is_asked_of_the_add_on_only_when_wanted() -> None:
+    """An add-on built before the switch refuses a field it does not know, so
+    the plain placement sends none."""
+    from sun_study.archicad.sun_eyes import arrange_drawings
+
+    transport = ArrangeTransport()
+    cell = (0.1, 0.1, 0.4, 0.4)
+    arrange_drawings(ArchicadConnection(transport), "LAYOUT", [("A", cell)])
+    arrange_drawings(
+        ArchicadConnection(transport), "LAYOUT", [("P", cell), ("E", cell)], stack=True
+    )
+    plain, stacked = transport.asked
+    assert "stack" not in plain
+    assert stacked["stack"] is True
+    assert [d["guid"] for d in stacked["drawings"]] == ["P", "E"], "bottom to top"
+    assert stacked["drawings"][0]["frame"] == stacked["drawings"][1]["frame"]
+
+
+def test_the_stacked_command_builds_a_combination_per_set_and_stacks_the_sheets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End to end over the scripted project: --existing and --proposed turn the
+    stacked mode on, --label is set aside, a combination per set is made from
+    the base with the right layers on and off, the pens given are used and
+    the rest guessed, and the sheets are the stacked ones."""
+    from typer.testing import CliRunner
+
+    from sun_study import cli
+
+    transport = PlanTransport()
+    combinations: list[tuple[str, list[str], list[str], str]] = []
+
+    def pin(_connection: object, name: str, *, show: Any, hide: Any, base: str = "") -> str:
+        combinations.append((name, list(show), list(hide), base))
+        return name
+
+    stacked: list[Any] = []
+
+    def place(_connection: object, stacks: Any, **kwargs: Any) -> tuple[list[Any], list[str]]:
+        stacked.append((list(stacks), kwargs))
+        return [], []
+
+    monkeypatch.setattr(cli, "_connect", lambda *a, **k: ArchicadConnection(transport))
+    monkeypatch.setattr(cli, "read_geo_location", lambda *a, **k: SYDNEY)
+    monkeypatch.setattr(cli, "show_every_storey", lambda _c: "")
+    monkeypatch.setattr(cli, "mend_document_filters", lambda _c: (0, 0, ""))
+    monkeypatch.setattr(cli, "planned_renovation_filter", lambda *a, **k: "PLANNED")
+    monkeypatch.setattr(cli, "ensure_layer_combination", pin)
+    monkeypatch.setattr(cli, "pen_table", lambda _c: ())
+    monkeypatch.setattr(cli, "make_stacked_shadow_plan_sheets", place)
+    monkeypatch.setattr(naming, "_prefix", naming.prefix())
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "shadow-plans",
+            "--shadow-date",
+            "06-21",
+            "--shadow-hour",
+            "9,12",
+            "--layer-combination",
+            "04 | Shadow Diagrams",
+            "--existing",
+            "03 | Site Context.Buildings",
+            "--proposed",
+            "20 | Massing.SEARs",
+            "--proposed",
+            "20 | Massing.Envelope, 20 | Massing.Podium",
+            "--proposed-pen",
+            "150",
+            "--label",
+            "Ignored",
+            "--no-site-context",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "--label 'Ignored' is set aside" in result.output
+    # The command files everything under the shadow diagram's own number.
+    assert [row[0] for row in combinations] == [
+        f"{naming.SHADOW_PREFIX} Shadow Plans Existing",
+        f"{naming.SHADOW_PREFIX} Shadow Plans Proposed 1",
+        f"{naming.SHADOW_PREFIX} Shadow Plans Proposed 2",
+    ]
+    assert all(row[3] == "04 | Shadow Diagrams" for row in combinations)
+    assert combinations[0][1] == ["03 | Site Context.Buildings"]
+    assert combinations[0][2] == [
+        "20 | Massing.SEARs",
+        "20 | Massing.Envelope",
+        "20 | Massing.Podium",
+    ]
+    assert combinations[2][1] == [
+        "03 | Site Context.Buildings",
+        "20 | Massing.Envelope",
+        "20 | Massing.Podium",
+    ]
+    assert combinations[2][2] == ["20 | Massing.SEARs"]
+    created = transport.asked("CreateDocumentFrom3D")
+    assert len(created) == 6
+    assert all(c["fillUncutSurfaces"] is False for c in created)
+    pens = [c["shadowFill"]["fillPen"] for c in created[::2]]
+    assert pens[1] == 150, "the pen given for Proposed 1"
+    assert pens[0] != pens[2] != pens[1], "the rest guessed apart"
+    assert "pen 150  given" in result.output
+    ((stacks, kwargs),) = stacked
+    assert [stack.label for stack in stacks] == ["Proposed 1", "Proposed 2"]
+    assert kwargs["sheets"] == "two"
+    assert "lies over each proposal's in every cell" in result.output

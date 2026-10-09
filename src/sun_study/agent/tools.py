@@ -296,12 +296,46 @@ class ShadowPlanArguments(SheetedArguments):
         default=None,
         description=(
             "A word in the documents' and sheets' names, e.g. 'Existing' or 'Proposed', so "
-            "two sets under two layer combinations sit side by side."
+            "two sets under two layer combinations sit side by side. Not with proposals, "
+            "which name their sets themselves."
+        ),
+    )
+    existing: list[str] | None = Field(
+        default=None,
+        description=(
+            "The layers that hold what already stands -- the neighbouring buildings, e.g. "
+            "['03 | Site Context.Buildings']. Shown in every set of a stack; the ground "
+            "and the rest come from the layer combination. project_options lists the layers."
+        ),
+    )
+    proposals: list[list[str]] | None = Field(
+        default=None,
+        description=(
+            "The stacked mode: one list of layers per proposal, e.g. [['20 | Massing.SEARs'], "
+            "['20 | Massing.Envelope']]. Named Proposed 1, Proposed 2 and on in this order, "
+            "or Proposed alone. For each, a sheet per day with the existing set's document "
+            "laid over the proposal's in every cell: the existing shadow in one pen, and "
+            "what the proposal adds in another, both cast by Archicad, on one plan."
+        ),
+    )
+    existing_pen: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "With proposals: the pen the existing shadow is filled in. Left out, the pen "
+            "nearest the legend's grey in the project's pen table."
+        ),
+    )
+    proposed_pens: list[int] | None = Field(
+        default=None,
+        description=(
+            "With proposals: the pen each proposal's shadow is filled in, in order. Left "
+            "out, the pens nearest the legend's blues."
         ),
     )
     pen_set: str | None = Field(default=None, description="The pen set the plans print in.")
     shadow_pen: int | None = Field(
-        default=None, ge=0, description="The pen the shadows are filled in."
+        default=None, ge=0, description="The pen the shadows are filled in, in the plain mode."
     )
     scale: int | None = Field(
         default=None, gt=0, description="The scale the plans are placed at, e.g. 1000."
@@ -545,6 +579,13 @@ def shadow_plans_argv(arguments: ShadowPlanArguments) -> list[str]:
     if a.hours:
         argv += ["--shadow-hour", ",".join(str(hour) for hour in a.hours)]
     argv += _option("--layer-combination", a.layer_combination) + _option("--label", a.label)
+    for layer in a.existing or []:
+        argv += ["--existing", layer]
+    for layers in a.proposals or []:
+        argv += ["--proposed", ",".join(layers)]
+    argv += _option("--existing-pen", a.existing_pen)
+    for pen in a.proposed_pens or []:
+        argv += ["--proposed-pen", str(pen)]
     argv += _option("--pen-set", a.pen_set) + _option("--shadow-pen", a.shadow_pen)
     argv += _option("--scale", a.scale) + _option("--master-layout", a.master_layout)
     argv += _option("--subset", a.subset) + _option("--year", a.year)
@@ -800,9 +841,12 @@ TOOLS: tuple[Tool, ...] = (
         "shadow_plans",
         "The same days and hours as 3D Documents looking straight down, each with "
         "Archicad's own sun and vectorial shadows for that hour, placed on layouts by day. "
-        "Archicad casts the shadows, so it suits a model too large for shadow_diagrams; it "
-        "shows the whole shadow of what the layer combination shows, not the split into "
-        "existing and additional -- run it once per combination, with a label each.",
+        "Archicad casts the shadows, so it suits a model too large for shadow_diagrams. One "
+        "document shows the whole shadow of what the layer combination shows; given "
+        "existing and proposals, the stacked mode lays the existing set's document over "
+        "each proposal's on one sheet, so the existing shadow and what each proposal adds "
+        "are in two pens on one plan, both cast by Archicad. Without proposals, run it once "
+        "per combination with a label each.",
         ShadowPlanArguments.model_json_schema(),
         shadow_plans,
         title="Shadow plans",

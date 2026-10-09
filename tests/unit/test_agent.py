@@ -515,6 +515,26 @@ def test_the_shadow_plans_take_the_diagrams_days_and_hours() -> None:
     assert "--pen-set" not in argv, "left to the command when not given"
 
 
+def test_the_stacked_shadow_plans_name_the_layers_of_what_stands_and_each_proposal() -> None:
+    """One --existing per layer, one --proposed per proposal with its layers
+    comma separated, and the pens in order; nothing of it without proposals."""
+    argv = tools.shadow_plans_argv(
+        tools.ShadowPlanArguments(
+            existing=["03 | Site Context.Buildings"],
+            proposals=[["20 | Massing.SEARs"], ["20 | Massing.Envelope", "20 | Massing.Podium"]],
+            existing_pen=93,
+            proposed_pens=[94, 95],
+        )
+    )
+    assert argv[argv.index("--existing") + 1] == "03 | Site Context.Buildings"
+    proposed = [argv[i + 1] for i, word in enumerate(argv) if word == "--proposed"]
+    assert proposed == ["20 | Massing.SEARs", "20 | Massing.Envelope,20 | Massing.Podium"]
+    assert argv[argv.index("--existing-pen") + 1] == "93"
+    assert [argv[i + 1] for i, word in enumerate(argv) if word == "--proposed-pen"] == ["94", "95"]
+    plain = tools.shadow_plans_argv(tools.ShadowPlanArguments())
+    assert not {"--existing", "--proposed", "--existing-pen", "--proposed-pen"} & set(plain)
+
+
 def test_cos_solar_is_the_windows_communal_job_under_the_combination_asked_for() -> None:
     """The layer combination is the person's answer, and the export is native."""
     argv = tools.cos_argv(

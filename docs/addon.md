@@ -125,6 +125,7 @@ will say what Archicad did (`docs/shadow-plans.md`).
 | `sunShadows` | make it with Archicad's vectorial sun shadows on (or off) |
 | `shadowContours` | with `sunShadows`, outline each shadow; off by default |
 | `shadowFill` | `fillIndex`, `fillPen`, `backgroundPen`, `contourPen`, each optional |
+| `fillUncutSurfaces` | whether the document fills its uncut surfaces -- `shouldUseUncutSurfaceFill`, the *Uncut Surfaces* switch of its Model Display. False leaves roofs and ground as outlines, so a drawing of the document on a layout shows what lies under it wherever no shadow falls: how the stacked shadow plans put the existing set's document over a proposal's (`docs/shadow-plans.md`). Written onto the defaults for the creation and onto the document, like the fill; left out, the project's default stands |
 
 Neither write is undoable, and the first build's attempt to make them so is
 why it failed. The kit documents both `APIDb_NewDatabaseID` and
@@ -152,7 +153,8 @@ with `sunShadows` -- because which of its bits is the shadow is not written
 down, and copying Archicad's own value is safer than guessing one.
 
 Takes `databaseId` (required), `viewAzimuth` and `viewAltitude`, `sun`,
-`shadowFill` and `effects3D`; answers `effects3D` and `shadowFill` read back.
+`shadowFill`, `fillUncutSurfaces` and `effects3D`; answers `effects3D`,
+`shadowFill` and `fillUncutSurfaces` read back.
 
 ### `Loriini.CreateFills`
 
@@ -224,6 +226,15 @@ clip, sized to the cell the drawing sits in, and the drawing is placed by its
 projected model origin, and on a site modelled around its origin that is the
 building. The placeholder frame Tapir leaves is centred there too; it is only
 59 mm wide. "Almost there, just expand it", as the practice put it.
+
+`stack: true` (9 October 2026) brings the drawings to the front in the order
+given once they are arranged, one `ACAPI_Element_Tool (APITool_BringToFront)`
+each, so the list reads bottom to top. A layout draws its frontmost drawing
+last and a drawing is clear wherever it draws nothing, which is what lets two
+documents share a cell: the stacked shadow plans put the existing set's
+document over the proposal's. A drawing the order could not be set on is
+reported in `failures` with `"step": "bringToFront"`, and the rest are left
+arranged.
 
 `GetDrawings` beside it reads every Drawing on a layout back -- position,
 anchor, frame, bounds and the content box from

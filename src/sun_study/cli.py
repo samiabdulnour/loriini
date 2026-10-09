@@ -125,22 +125,35 @@ from sun_study.archicad.shadow_plans import (
 )
 from sun_study.archicad.shadow_plans import (
     DEFAULT_SHADOW_FILL,
+    EXISTING_LABEL,
     PLAN_SCALE,
+    SET_WORD,
+    STACK_SHADOW_FILLS,
+    PlanSet,
+    ShadowPlan,
     ShadowPlanSettings,
     hidden_among,
     make_shadow_plan_sheets,
+    make_shadow_plan_stacks,
     make_shadow_plans,
+    make_stacked_shadow_plan_sheets,
     shadow_plans,
     site_context_layers,
+    stack_combinations,
+    stack_labels,
 )
 from sun_study.archicad.shadows import (
-    DEFAULT_SHEETS as SHADOW_SHEETS,
-)
-from sun_study.archicad.shadows import (
+    BASELINE_RAMP,
+    FIRST_SHADOW_PEN,
+    SCENARIO_RAMP,
     build_shadow_sheets,
     designed_source,
     draw_shadow_series,
+    legend_colour,
     project_frame,
+)
+from sun_study.archicad.shadows import (
+    DEFAULT_SHEETS as SHADOW_SHEETS,
 )
 from sun_study.archicad.sheeting import (
     SHEETS_HELP,
@@ -7640,10 +7653,56 @@ def shadow_plan_documents(
             help=(
                 "A name for this set, in its documents' and sheets' names -- "
                 "'Existing' and 'Proposed' under two layer combinations sit side by "
-                "side and are compared sheet against sheet."
+                "side and are compared sheet against sheet. Not with --proposed, "
+                "which names its sets itself."
             ),
         ),
     ] = "",
+    existing: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--existing",
+            help=(
+                "A layer that holds what already stands -- the neighbours. Repeatable. "
+                "Shown in every set of the stack; the ground and whatever else the "
+                "layer combination shows is there anyway."
+            ),
+        ),
+    ] = None,
+    proposed: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--proposed",
+            help=(
+                "The layers of one proposal, comma separated. Repeatable, one per "
+                "proposal: named Proposed 1, Proposed 2 and on in the order given, "
+                "or Proposed alone. Turns on the stacked mode: the existing set's "
+                "document is laid over each proposal's in every cell, so the existing "
+                "shadow is in one pen and what the proposal adds is in another, on one "
+                "plan, cast by Archicad both times."
+            ),
+        ),
+    ] = None,
+    existing_pen: Annotated[
+        int | None,
+        typer.Option(
+            "--existing-pen",
+            help=(
+                "The pen the existing set's shadows are filled in. Left out, the pen "
+                "nearest the legend's EXISTING grey in the project's pen table."
+            ),
+        ),
+    ] = None,
+    proposed_pen: Annotated[
+        list[int] | None,
+        typer.Option(
+            "--proposed-pen",
+            help=(
+                "The pen a proposal's shadows are filled in, one per --proposed in "
+                "order. Left out, the pens nearest the legend's blues."
+            ),
+        ),
+    ] = None,
     renovation_filter: Annotated[
         str | None,
         typer.Option(
@@ -7717,9 +7776,12 @@ def shadow_plan_documents(
     each with a view pinned to the layer combination and dealt onto sheets by
     day. Archicad casts the shadows, at any size of model it can display --
     the route for a model too large for the shadow diagram's own caster, and
-    the record beside its fills. What it cannot give is the split between
-    existing and additional shadow: run it once per layer combination, with
-    --label, and read the sheets against each other.
+    the record beside its fills. One document cannot give the split between
+    existing and additional shadow; two can, stacked: with --existing and
+    --proposed the existing set's document is laid over each proposal's on
+    one sheet, in two pens, and the sheet reads as the fills do. Without them,
+    run it once per layer combination, with --label, and read the sheets
+    against each other.
 
     Needs the Loriini add-on, current build: the document's sun shadows are
     switched on as it is made, which older builds cannot do.
@@ -7727,6 +7789,20 @@ def shadow_plan_documents(
     banner()
     naming.set_prefix(layer_prefix, default=naming.SHADOW_PREFIX)
     clock = Stopwatch()
+    proposals = _proposal_layers(proposed or [])
+    if proposals and set_label:
+        typer.secho(
+            f"  --label {set_label!r} is set aside: the stacked mode names its sets "
+            f"{EXISTING_LABEL} and {', '.join(stack_labels(len(proposals)))}.",
+            fg=typer.colors.YELLOW,
+        )
+        set_label = ""
+    if existing and not proposals:
+        typer.secho(
+            "  --existing names what stands, but no --proposed names what is added; "
+            "the plans are made as one set under the layer combination.",
+            fg=typer.colors.YELLOW,
+        )
     moments, labels = _shadow_moments(shadow_date, shadow_hour, year, timezone)
     if not moments:
         typer.secho("No instants to draw.", fg=typer.colors.RED, err=True)
@@ -7765,7 +7841,22 @@ def shadow_plan_documents(
         typer.secho(f"  {trouble}", fg=typer.colors.YELLOW)
 
     fill: dict[str, int] = {}
-    if shadow_fill is None:
+    if shadow_fill is None and proposals:
+        # A stack needs the upper document's shadow to cover the lower's, so
+        # the shadows are solid; the office's hatch would let the pen beneath
+        # show between its lines, and the page would be neither colour.
+        index = site_drawing.attribute_index(connection, "Fill", STACK_SHADOW_FILLS)
+        if index is not None:
+            fill["fillIndex"] = index
+            typer.echo(f"  shadows drawn solid, in the {STACK_SHADOW_FILLS[0]!r} fill")
+        else:
+            typer.secho(
+                f"  the project has no fill called {STACK_SHADOW_FILLS[0]!r}; the shadows "
+                f"keep the project's own fill, and a hatch there lets the pen beneath show "
+                f"through the existing shadow -- name a solid with --shadow-fill",
+                fg=typer.colors.YELLOW,
+            )
+    elif shadow_fill is None:
         # The office draws its shadow documents in "50 %" (read off the
         # Kogarah file, 8 October 2026); a project's 3D Document default was
         # a brick hatch on the mark-up pen, which showed as no shadow at all.
@@ -7815,6 +7906,26 @@ def shadow_plan_documents(
             raise typer.Exit(code=2)
         names = {state.identifier: state.name for state in read_layers(connection)}
         wanted += [n for n in hidden_among(site_context_layers(), names, states) if n not in wanted]
+    if proposals:
+        _stacked_shadow_plans(
+            connection,
+            plans,
+            settings=settings,
+            base=layer_combination,
+            also_show=wanted,
+            existing_layers=existing or [],
+            proposals=proposals,
+            existing_pen=existing_pen,
+            proposed_pens=proposed_pen or [],
+            layout=layout,
+            sheets=sheets,
+            master_layout=master_layout,
+            subset=subset,
+            title_block_mm=title_block_mm,
+            scale=scale,
+            clock=clock,
+        )
+        return
     if wanted:
         pinned = ensure_layer_combination(
             connection,
@@ -7885,6 +7996,186 @@ def shadow_plan_documents(
     typer.echo(
         "  Archicad draws the shadows when a document is opened or its drawing updated; "
         "open one to check the shadows are on and fall where the fills say."
+    )
+    typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
+
+
+def _proposal_layers(given: Sequence[str]) -> list[list[str]]:
+    """Each ``--proposed`` value as one proposal's layers.
+
+    Comma separated inside a value, one value per proposal, so the count of
+    proposals is the count of flags and the numbering follows it.
+    """
+    proposals: list[list[str]] = []
+    for text in given:
+        layers = [part.strip() for part in text.split(",") if part.strip()]
+        if not layers:
+            raise typer.BadParameter(
+                f"{text!r} names no layer. Write one proposal's layers comma separated, "
+                f'e.g. "20 | Massing.SEARs,20 | Massing.Podium", and repeat --proposed '
+                f"for the next proposal."
+            )
+        proposals.append(layers)
+    return proposals
+
+
+def _stack_pens(
+    connection: ArchicadConnection,
+    existing_pen: int | None,
+    proposed_pens: Sequence[int],
+    count: int,
+) -> tuple[int, list[int]]:
+    """A solid pen per set of the stack: the existing set's, then one per proposal.
+
+    The ones given win; the rest are matched by colour against the project's
+    pen table, as the fills' legend rows are -- the existing shadow in the
+    legend's grey, a single proposal in its blue, several proposals up the
+    blue ramp in order -- so the stacked sheet and the fills sheet of one
+    project read in the same colours.
+    """
+    labels = stack_labels(count)
+    wanted = [
+        BandStyle(
+            EXISTING_LABEL.upper(), float("inf"), fill_pen=FIRST_SHADOW_PEN, rgb=BASELINE_RAMP[0]
+        )
+    ] + [
+        BandStyle(
+            label.upper(),
+            float("inf"),
+            fill_pen=FIRST_SHADOW_PEN + 1 + index,
+            rgb=legend_colour(label) or SCENARIO_RAMP[index % len(SCENARIO_RAMP)],
+        )
+        for index, label in enumerate(labels)
+    ]
+    try:
+        pens = pen_table(connection)
+    except ArchicadError as error:
+        typer.secho(
+            f"  could not read the pen table ({error}); the shadow pens not given are a guess",
+            fg=typer.colors.YELLOW,
+        )
+        pens = ()
+    matched, _ = match_pens(wanted, pens)
+    chosen = [band.fill_pen for band in matched]
+    given = [False] * len(chosen)
+    if existing_pen is not None:
+        chosen[0], given[0] = existing_pen, True
+    for index, pen in enumerate(proposed_pens[:count]):
+        chosen[1 + index], given[1 + index] = pen, True
+    if len(proposed_pens) > count:
+        typer.secho(
+            f"  {len(proposed_pens)} --proposed-pen for {count} --proposed; the last "
+            f"{len(proposed_pens) - count} are set aside",
+            fg=typer.colors.YELLOW,
+        )
+    for band, pen, told in zip(matched, chosen, given, strict=True):
+        how = "given" if told else ("matched" if pens else "guessed")
+        typer.echo(f"    {band.label:<12} rgb{band.rgb} -> pen {pen:<4} {how}")
+    return chosen[0], chosen[1:]
+
+
+def _stacked_shadow_plans(
+    connection: ArchicadConnection,
+    plans: Sequence[ShadowPlan],
+    *,
+    settings: ShadowPlanSettings,
+    base: str,
+    also_show: Sequence[str],
+    existing_layers: Sequence[str],
+    proposals: Sequence[Sequence[str]],
+    existing_pen: int | None,
+    proposed_pens: Sequence[int],
+    layout: bool,
+    sheets: str,
+    master_layout: str | None,
+    subset: str | None,
+    title_block_mm: float,
+    scale: float,
+    clock: Stopwatch,
+) -> None:
+    """The stacked mode of ``shadow-plans``: the existing set over each proposal.
+
+    A layer combination per set is made from the base -- the existing layers
+    on and every proposal's off for the existing set; its own on and the
+    others' off for each proposal -- then the documents, then the sheets with
+    two drawings to a cell. The existing document lies on top, its uncut
+    surfaces unfilled, so its shadow covers in its pen and the proposal's pen
+    shows wherever only the proposal casts.
+    """
+    typer.echo("  shadow pens for the stack:")
+    first, rest = _stack_pens(connection, existing_pen, proposed_pens, len(proposals))
+    members: list[PlanSet] = []
+    rows = stack_combinations(existing_layers, proposals, also_show=also_show)
+    for (label, show, hide), pen in zip(rows, [first, *rest], strict=True):
+        name = ensure_layer_combination(
+            connection, naming.named(f"{SET_WORD} {label}"), show=show, hide=hide, base=base
+        )
+        members.append(PlanSet(label=label, layer_combination=name, shadow_pen=pen))
+        on = ", ".join(repr(layer) for layer in show) or "nothing more"
+        off = ", ".join(repr(layer) for layer in hide) or "nothing"
+        typer.echo(f"  {label}: views on {name!r}, which is {base!r} with {on} on and {off} off")
+    typer.echo(
+        f"  {len(plans)} hours in {len(members)} sets, overhead with north up, each with "
+        f"Archicad's sun and shadows, uncut surfaces unfilled; the {members[0].label} "
+        f"document lies over each proposal's in every cell"
+    )
+
+    try:
+        stacks, said = make_shadow_plan_stacks(
+            connection, plans, settings=settings, existing=members[0], proposals=members[1:]
+        )
+    except ArchicadError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    for line in said:
+        typer.secho(f"  {line}", fg=typer.colors.YELLOW)
+    mended, looked, note = mend_document_filters(connection)
+    if mended:
+        typer.echo(f"  took the storey filter off {mended} of {looked} documents")
+    if note:
+        typer.secho(f"  {note}", fg=typer.colors.YELLOW)
+    typer.echo("    document                               sun altitude")
+    seen: set[str] = set()
+    for stack in stacks:
+        for one in (*stack.above, *stack.below):
+            if one.view.name in seen:
+                continue
+            seen.add(one.view.name)
+            typer.echo(
+                f"    {one.view.name:<38} {one.plan.altitude_deg:6.1f}"
+                + ("  (already there, re-set)" if one.reused else "")
+            )
+    typer.echo(clock.said("made the documents"))
+
+    if layout:
+        try:
+            placed, removed = make_stacked_shadow_plan_sheets(
+                connection,
+                stacks,
+                sheets=sheets,
+                scale=scale,
+                master_layout=master_layout,
+                title_block_mm=title_block_mm,
+            )
+        except ArchicadError as error:
+            typer.secho(
+                f"  the documents are made; the sheets are not: {error}",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+        else:
+            for name in removed:
+                typer.echo(f"  removed the earlier sheet {name!r}")
+            for report in placed:
+                typer.echo(report.describe())
+            if subset:
+                filing = file_under_subset(connection, [r.layout_name for r in placed], subset)
+                typer.echo(filing.describe())
+            typer.echo(clock.said("placed them on sheets"))
+    typer.echo(
+        "  Archicad draws the shadows when a sheet is opened or its drawings updated; open "
+        "one to check the existing shadow lies over the proposal's, and the proposal's "
+        "pen shows only where the existing set casts none."
     )
     typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
 

@@ -86,6 +86,7 @@ __all__ = [
     "make_sun_eye_views",
     "mend_document_filters",
     "place_on_sheets",
+    "place_stacks_on_sheets",
     "planned_renovation_filter",
     "sheet_cells_for",
     "sheet_groups",
@@ -665,11 +666,16 @@ def arrange_drawings(
     connection: ArchicadConnection,
     layout_database_id: str,
     placements: Sequence[tuple[str, tuple[float, float, float, float]]],
+    *,
+    stack: bool = False,
 ) -> int:
     """Put each drawing's origin at the centre of a cell and clip it to the cell.
 
     ``placements`` is ``(drawing element guid, (xMin, yMin, xMax, yMax))`` in
-    metres on the layout. Returns how many the add-on arranged.
+    metres on the layout. Returns how many the add-on arranged. ``stack``
+    has the add-on bring them to the front in the order given as well, so a
+    cell that holds two reads bottom to top; sent only when asked, since an
+    add-on built before it refuses a field it does not know.
 
     The origin rather than the centre of the content, and a clip rather than a
     free frame, because of what a drawing of a 3D Document is: the whole site
@@ -680,24 +686,24 @@ def arrange_drawings(
     """
     if not placements:
         return 0
-    response = connection.run_loriini(
-        "ArrangeDrawings",
-        {
-            "layoutDatabaseId": {"guid": layout_database_id},
-            "drawings": [
-                {
-                    "guid": guid,
-                    "x": (x0 + x1) / 2.0,
-                    "y": (y0 + y1) / 2.0,
-                    "frame": {"xMin": x0, "yMin": y0, "xMax": x1, "yMax": y1},
-                }
-                for guid, (x0, y0, x1, y1) in placements
-            ],
-            "anchor": "origin",
-            "frameRelativeToOrigin": False,
-            "autoUpdate": True,
-        },
-    )
+    asked: dict[str, Any] = {
+        "layoutDatabaseId": {"guid": layout_database_id},
+        "drawings": [
+            {
+                "guid": guid,
+                "x": (x0 + x1) / 2.0,
+                "y": (y0 + y1) / 2.0,
+                "frame": {"xMin": x0, "yMin": y0, "xMax": x1, "yMax": y1},
+            }
+            for guid, (x0, y0, x1, y1) in placements
+        ],
+        "anchor": "origin",
+        "frameRelativeToOrigin": False,
+        "autoUpdate": True,
+    }
+    if stack:
+        asked["stack"] = True
+    response = connection.run_loriini("ArrangeDrawings", asked)
     if not isinstance(response, dict) or not response.get("success"):
         raise ArchicadError(f"ArrangeDrawings answered {response!r}")
     failures = response.get("failures") or []
@@ -785,6 +791,51 @@ def place_on_sheets(
             if drawing_name in placed
         ]
         arrange_drawings(connection, report.database_id, placements)
+    return reports
+
+
+def place_stacks_on_sheets(
+    connection: ArchicadConnection,
+    groups: Sequence[tuple[str, Sequence[Sequence[tuple[str, str]]]]],
+    *,
+    cells: int,
+    scale: float,
+    master_layout: str | None = None,
+    title_block_mm: float = TITLE_BLOCK_MM,
+) -> list[LayoutReport]:
+    """Each group of piled views onto its layout, a pile to a cell.
+
+    ``groups`` is ``(layout name, [[(navigator id, drawing name), ...] per
+    cell])``, each cell's list bottom to top, as the stacked shadow plans deal
+    them: the proposal's document under the existing set's. Every drawing of
+    a cell has its origin at the cell's centre and its frame clipped to the
+    cell, as ``place_on_sheets`` does with one, and the add-on then brings
+    them to the front in order, so the last of a pile lies over the rest.
+    """
+    reports: list[LayoutReport] = []
+    for name, piles in groups:
+        flat = [view for pile in piles for view in pile]
+        report = layout_from_views(
+            connection,
+            flat,
+            layout_name=name,
+            scale=scale,
+            master_layout=master_layout,
+            cells=max(cells, len(piles)),
+        )
+        reports.append(report)
+        if not report.database_id:
+            continue
+        sheet, _ = layout_sheet(connection, report.database_id)
+        placed = _drawings_by_name(connection, report.database_id)
+        grid = sheet_cells_for(sheet, cells, title_block_mm=title_block_mm)[: len(piles)]
+        placements = [
+            (str(placed[drawing_name]["elementId"]["guid"]), cell)
+            for pile, cell in zip(piles, grid, strict=True)
+            for _, drawing_name in pile
+            if drawing_name in placed
+        ]
+        arrange_drawings(connection, report.database_id, placements, stack=True)
     return reports
 
 

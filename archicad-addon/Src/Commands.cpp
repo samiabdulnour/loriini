@@ -147,6 +147,24 @@ GS::ObjectState ShadowFillState (const API_UniformAttributeOptions& options)
 }
 
 
+// Whether the document fills its uncut surfaces at all: the "Uncut Surfaces"
+// switch of its Model Display, `shouldUseUncutSurfaceFill`. Off, a roof or a
+// terrain is its outline and nothing else, and a drawing of the document
+// placed on a layout shows whatever lies under it wherever no shadow falls.
+// That is what lets two documents stack on one sheet -- the existing shadow
+// in one pen over the proposal's in another -- which is the stacked shadow
+// plans (docs/shadow-plans.md). Left out, the document keeps what it has.
+bool ApplyUncutSurfaces (const GS::ObjectState& parameters, API_UniformAttributeOptions& options)
+{
+	bool fill = true;
+	if (!parameters.Get ("fillUncutSurfaces", fill)) {
+		return false;
+	}
+	options.shouldUseUncutSurfaceFill = fill;
+	return true;
+}
+
+
 // A document's settings as they now are, read back rather than assumed.
 //
 // `effects3D` is Archicad's own word for the document's vectorial effects --
@@ -164,6 +182,7 @@ GS::ObjectState DocumentState (API_DatabaseUnId document)
 	}
 	result.Add ("effects3D", static_cast<Int32> (now.effects3D));
 	result.Add ("shadowFill", ShadowFillState (now.attributeOptions));
+	result.Add ("fillUncutSurfaces", now.attributeOptions.shouldUseUncutSurfaceFill);
 	result.Add ("isPerspective", now.projectionSetting.isPersp);
 	// The settings read back carry a handle the kit's own example frees
 	// after use; nothing here owns it.
@@ -365,7 +384,8 @@ GS::Optional<GS::UniString> CreateDocumentFrom3DCommand::GetInputParametersSchem
 					"contourPen": { "type": "integer" }
 				},
 				"additionalProperties": false
-			}
+			},
+			"fillUncutSurfaces": { "type": "boolean", "description": "Whether the document fills its uncut surfaces. False leaves roofs and ground as outlines, so a drawing of it on a layout shows what lies under it wherever no shadow falls -- how two documents stack on one sheet. Left out, the project's own default stands." }
 		},
 		"required": [ "name" ],
 		"additionalProperties": false
@@ -382,6 +402,7 @@ GS::Optional<GS::UniString> CreateDocumentFrom3DCommand::GetResponseSchema () co
 			"sunShadows": { "type": "boolean", "description": "The defaults' vectorial sun shadow setting the document was made under, when one was asked for." },
 			"effects3D": { "type": "integer", "description": "The document's vectorial effects flags, read back. Undocumented bits; reported whole." },
 			"shadowFill": { "type": "object" },
+			"fillUncutSurfaces": { "type": "boolean", "description": "Whether the document fills its uncut surfaces, read back." },
 			"isPerspective": { "type": "boolean" },
 			"error": { "type": "object" }
 		}
@@ -419,11 +440,13 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 	parameters.Get ("shadowContours", shadowContours);
 	GS::ObjectState shadowFill;
 	const bool hasShadowFill = parameters.Get ("shadowFill", shadowFill);
+	bool fillUncut = true;
+	const bool hasUncut = parameters.Get ("fillUncutSurfaces", fillUncut);
 
 	API_DocumentFrom3DDefaults before = {};
 	bool defaultsChanged = false;
 	GSErrCode err = NoError;
-	if (askedShadows || hasShadowFill) {
+	if (askedShadows || hasShadowFill || hasUncut) {
 		err = ACAPI_Environment (APIEnv_GetDocumentFrom3DDefaultsID, &before);
 		if (err != NoError) {
 			return Failed ("Could not read the 3D Document defaults to set the sun shadows.", err);
@@ -436,6 +459,7 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 		if (hasShadowFill) {
 			ApplyShadowFill (shadowFill, wanted.attributeOptions);
 		}
+		ApplyUncutSurfaces (parameters, wanted.attributeOptions);
 		err = ACAPI_Environment (APIEnv_ChangeDocumentFrom3DDefaultsID, &wanted);
 		if (err != NoError) {
 			return Failed ("Could not set the 3D Document defaults for the sun shadows.", err);
@@ -475,7 +499,8 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 		if (hasShadowFill) {
 			ApplyShadowFill (shadowFill, settings.attributeOptions);
 		}
-		if (aimed || hasShadowFill) {
+		const bool surfaced = ApplyUncutSurfaces (parameters, settings.attributeOptions);
+		if (aimed || hasShadowFill || surfaced) {
 			// Non-undoable as well, per the same documentation.
 			err = ACAPI_Environment (APIEnv_ChangeDocumentFrom3DSettingsID, &database.databaseUnId, &settings);
 		}
@@ -516,6 +541,7 @@ GS::Optional<GS::UniString> SetDocumentFrom3DCommand::GetInputParametersSchema (
 			"viewAltitude": { "type": "number", "description": "How high the camera stands, in degrees above the horizon." },
 			"sun": { "type": "object", "description": "The date and time the document keeps its sun at. Any field left out keeps its value." },
 			"shadowFill": { "type": "object", "description": "The fill its sun shadows are drawn in, as for CreateDocumentFrom3D." },
+			"fillUncutSurfaces": { "type": "boolean", "description": "Whether the document fills its uncut surfaces, as for CreateDocumentFrom3D." },
 			"effects3D": { "type": "integer", "description": "The document's vectorial effects flags, copied whole from a document read back with the effects wanted." }
 		},
 		"required": [ "databaseId" ],
@@ -531,6 +557,7 @@ GS::Optional<GS::UniString> SetDocumentFrom3DCommand::GetResponseSchema () const
 			"success": { "type": "boolean" },
 			"effects3D": { "type": "integer" },
 			"shadowFill": { "type": "object" },
+			"fillUncutSurfaces": { "type": "boolean" },
 			"isPerspective": { "type": "boolean" },
 			"error": { "type": "object" }
 		}
@@ -562,6 +589,7 @@ GS::ObjectState SetDocumentFrom3DCommand::Execute (const GS::ObjectState& parame
 	if (parameters.Get ("shadowFill", fill)) {
 		ApplyShadowFill (fill, settings.attributeOptions);
 	}
+	ApplyUncutSurfaces (parameters, settings.attributeOptions);
 	Int32 effects = 0;
 	if (ReadInt (parameters, "effects3D", effects)) {
 		settings.effects3D = static_cast<short> (effects);

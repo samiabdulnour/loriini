@@ -62,11 +62,67 @@ as no shadow at all. `--shadow-fill` names another, `--shadow-fill none`
 keeps the project's default, and `--shadow-pen` and `--shadow-background-pen`
 set the pens.
 
-## The comparison: two sets
+## The comparison: the stack
 
-A document shows one scenario's whole shadow, and layouts do not composite
-drawings. The comparison is made the way the office made it by hand: run the
-set twice, under two layer combinations, with a **set name** for each --
+A document shows one scenario's whole shadow. Two documents show the split,
+stacked. A drawing on a layout is clear wherever it draws nothing, so a
+document of what stands laid over a document of what stands plus the
+proposal shows the existing shadow in the upper document's pen and, wherever
+only the proposal casts, the proposal's pen through the gaps. Archicad casts
+both; nothing is measured or traced, which is what the fills route does and
+what the office found not precise enough on the model it tried it on.
+
+```
+sun-study shadow-plans --layer-combination "04 | Shadow Diagrams" ^
+  --existing "03 | Site Context.Buildings" ^
+  --proposed "20 | Massing.SEARs" ^
+  --proposed "20 | Massing.Envelope,20 | Massing.Podium"
+```
+
+`--existing` names the layers of what already stands, the neighbours,
+repeatable; `--proposed` names one proposal's layers, comma separated, and is
+repeated once per proposal. The proposals are called **Proposed 1, Proposed
+2** and on in the order given -- **Proposed** alone when there is one --
+whatever the office calls them this week, and the existing set **Existing**.
+Any `--label` is set aside.
+
+A run then makes, from the base combination:
+
+- **a layer combination per set**, `15 | Shadow Plans Existing` with the
+  existing layers on and every proposal's off, and `15 | Shadow Plans
+  Proposed 1` with the existing and its own on and the other proposals' off.
+  The ground and the rest keep the state the base gives them, and the site
+  context the plain mode switches on is switched on here the same way;
+- **a document per set and hour**, `15 | Shadow Plan Existing 21 Jun 09:00`,
+  `15 | Shadow Plan Proposed 1 21 Jun 09:00`, each with two things forced:
+  its shadows solid in its own pen (`Solid Fill` when the project has it,
+  `--shadow-fill` otherwise; a hatch would let the pen beneath show between
+  its lines), and its **uncut surfaces unfilled**, so a roof or the terrain is
+  an outline and the drawing beneath shows through. The pens are
+  `--existing-pen` and one `--proposed-pen` per proposal; left out, they are
+  matched by colour against the project's pen table as the fills' legend rows
+  are -- the existing shadow in the legend's grey, a single proposal in its
+  blue, several up the blue ramp in order;
+- **sheets per proposal**, `15 | Shadow Plans Proposed 1 - JUNE 21`, dealt as
+  a labelled set's are, with **two drawings in every cell**: the proposal's,
+  `JUNE 21 -9AM PROPOSED 1`, and over it the existing set's, `JUNE 21 -9AM
+  EXISTING`, both with their origin at the cell's centre and clipped to it.
+  The add-on brings them to the front in that order (`ArrangeDrawings`,
+  `stack`). The existing documents are made once and lie over every proposal.
+
+The existing document on top rather than under, because that is what makes
+the split: where the existing shadow falls its pen covers whatever the
+proposal cast there, and what is left of the proposal's pen is exactly the
+shadow the proposal adds. The other way up the proposal's pen would cover
+everything, since its combination casts the existing shadow too.
+
+From the agent, `shadow_plans` takes `existing`, `proposals` -- a list of
+layers per proposal -- `existing_pen` and `proposed_pens`.
+
+### Two sets side by side
+
+The older comparison remains: run the set twice, under two layer
+combinations, with a **set name** for each --
 
 ```
 sun-study shadow-plans --layer-combination "04 | Shadow - Existing" --label Existing
@@ -131,6 +187,19 @@ not yet a live project. In order:
    should have whatever *Vectorial Sun Shadows* setting the project had
    before, since the run puts the defaults back after each document.
 5. **The fill.** With `--shadow-pen` given, the shadows are in that pen.
+6. **The stack shows through.** On a stacked sheet, open one cell: the
+   proposal's roof and shadow must be visible under the existing document
+   wherever the existing shadow does not fall. If the upper drawing blanks
+   the page under it, its uncut surfaces are still filled -- open the
+   document's settings, Model Display, and check *Uncut Surfaces*; the
+   add-on writes `shouldUseUncutSurfaceFill` and answers what it read back
+   as `fillUncutSurfaces`. If the proposal's pen shows *through* the
+   existing shadow, the shadow fill is a hatch: name a solid with
+   `--shadow-fill`.
+7. **The order.** The existing drawing lies over the proposal's. If the sheet
+   shows the proposal's pen everywhere, the add-on's bring-to-front did not
+   take; select the existing drawing and *Bring to Front* by hand, and note
+   the `failures` the run printed from `ArrangeDrawings`.
 
 ## What is not here yet
 
