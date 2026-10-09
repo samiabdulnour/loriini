@@ -4796,3 +4796,30 @@ ground floor retail, the first level commercial and the rest residential,
 the LEP's one FSR read at the address and written on the residential row
 with a note; the run's log says so, and both are one flag or one cell to
 change.
+
+### D128 — A start proves the model with any element, and moves the database without the window
+
+Reported on 9 October 2026, and there since the beginning: when Loriini
+opens, Archicad's floor plan is left "stuck" -- deaf to the mouse until
+another tab is clicked. The window's first read of a project runs
+``ensure_model_database``, which had to prove that the current database was
+a floor plan before trusting any read, and its proof was the walls. A
+massing project is slabs and has no walls, so on every such project the
+proof failed, the check went to the Project Map and made the ground storey
+current through Tapir's ``ChangeWindow`` -- which ends in
+``ACAPI_Window_ChangeWindow``, a window switch made from inside an API
+command. That switch is what leaves the plan half-activated.
+
+**Any element is the proof.** ``GetAllElements`` -- the walls only where an
+add-on is too old to have it. A massing, a site model, a project of
+zones: all read, and nothing is moved. An empty project reads as empty and
+is moved as before, harmlessly.
+
+**When the database has strayed under a floor plan, only the database is
+moved.** The add-on's own ``SetCurrentDatabase`` (D95) changes the current
+database with ``APIDb_ChangeCurrentDatabaseID`` and touches no window; so
+with a floor plan in front it is tried first, and Tapir's ``ChangeWindow``
+is the fallback -- for an add-on that lacks the command, a refused move,
+or a layout in front, where the window itself has to change for an export
+to see the building. The connection notes the move as it notes
+``ChangeWindow``'s, so the layer guard stays on.

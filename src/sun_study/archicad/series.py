@@ -515,14 +515,14 @@ def ensure_model_database(connection: ArchicadConnection) -> str | None:
     # when the visible window stays put, so a run can be looking at a floor
     # plan while every read goes to a layout -- and a layout holds no walls,
     # so the project reads as empty and the scene filter gets the blame. Ask
-    # what is actually visible to a read instead.
-    walls = connection.run_tapir("GetElementsByType", {"elementType": "Wall"})
-    found = walls.get("elements") if isinstance(walls, dict) else None
-    readable = isinstance(found, list) and bool(found)
+    # what is actually visible to a read instead: any element at all. Walls
+    # were the test once, and a massing of slabs has none, so every start on
+    # a massing project moved the window for nothing (D128).
+    readable = _anything_readable(connection)
     if where == "FloorPlan" and readable:
-        # Nothing to move, but the walls just proved where we are. Say so, or
-        # the connection goes on reporting that it does not know -- and the
-        # layer guard, which trusts that answer, stays switched off.
+        # Nothing to move, but the elements just proved where we are. Say so,
+        # or the connection goes on reporting that it does not know -- and
+        # the layer guard, which trusts that answer, stays switched off.
         connection.note_model_database()
         return None
 
@@ -535,15 +535,55 @@ def ensure_model_database(connection: ArchicadConnection) -> str | None:
         return None
 
     lowest = min(storeys, key=lambda item: item.storey_index or 0)
-    activate(connection, database_of(connection, lowest.identifier), "FloorPlan")
+    target = database_of(connection, lowest.identifier)
+    if not (where == "FloorPlan" and _move_database_only(connection, target)):
+        # The floor plan in front with only the database strayed is put back
+        # by the add-on's own move, which touches no window. Tapir's
+        # ``ChangeWindow`` switches the window through the API as well, and
+        # that switch leaves the plan deaf to the mouse until another tab is
+        # clicked -- so it is the fallback, and the only way from a layout.
+        activate(connection, target, "FloorPlan")
 
-    # Only *report* a move that mattered. Walls read fine when a layout is the
-    # visible window but a floor plan is still the current database, and the
-    # two move separately -- so the switch above is worth making either way,
-    # to bring them back together, while telling somebody the project had no
-    # Zones and no walls would be untrue. The walls are the test, exactly as
-    # the comment above says; the window never was.
+    # Only *report* a move that mattered. Elements read fine when a layout is
+    # the visible window but a floor plan is still the current database, and
+    # the two move separately -- so the switch above is worth making either
+    # way, to bring them back together, while telling somebody the project
+    # had nothing in it would be untrue.
     return None if readable else str(where)
+
+
+def _anything_readable(connection: ArchicadConnection) -> bool:
+    """Whether a read of the current database finds any element at all.
+
+    ``GetAllElements`` where the add-on has it; the walls, as before, where
+    it does not. Empty means a database with no building in it -- a layout,
+    a worksheet -- or an empty project, which reads the same and is moved
+    the same, harmlessly.
+    """
+    try:
+        found = connection.run_tapir("GetAllElements", {})
+    except ArchicadError:
+        found = connection.run_tapir("GetElementsByType", {"elementType": "Wall"})
+    elements = found.get("elements") if isinstance(found, dict) else None
+    return isinstance(elements, list) and bool(elements)
+
+
+def _move_database_only(connection: ArchicadConnection, database_id: str) -> bool:
+    """Make a floor plan database current through the add-on's own
+    ``SetCurrentDatabase``, which moves the database and nothing else. False
+    when the add-on has no such command, or refused: the caller falls back
+    to Tapir's ``ChangeWindow``."""
+    try:
+        moved = connection.run_loriini(
+            "SetCurrentDatabase",
+            {"databaseId": {"guid": database_id}, "windowType": "FloorPlan"},
+        )
+    except ArchicadError:
+        return False
+    if not (isinstance(moved, dict) and moved.get("success")):
+        return False
+    connection.note_model_database(database_id)
+    return True
 
 
 def restore_after(connection: ArchicadConnection, storey_database_id: str) -> bool:
