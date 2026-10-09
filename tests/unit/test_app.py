@@ -1166,6 +1166,37 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     assert "--option-layer" not in args
 
 
+def test_the_workbook_is_chosen_with_a_save_dialog(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Not typed: a Save dialog, opened in the tables folder with the
+    workbook's own name, and the answer shown in the box."""
+    from tkinter import filedialog
+
+    only_yield(hidden_window)
+    hidden_window.tables.delete(0, "end")
+    hidden_window.tables.insert(0, str(tmp_path))
+    asked: dict[str, Any] = {}
+
+    def save(**kwargs: Any) -> str:
+        asked.update(kwargs)
+        return str(tmp_path / "Yield.xlsx")
+
+    monkeypatch.setattr(filedialog, "asksaveasfilename", save)
+    hidden_window._browse_file(
+        hidden_window.yield_workbook, "Workbook", (("Excel workbook", "*.xlsx"),), "Default.xlsx"
+    )
+    assert asked["initialdir"] == str(tmp_path) and asked["initialfile"] == "Default.xlsx"
+    assert asked["filetypes"] == [("Excel workbook", "*.xlsx")]
+    assert hidden_window.yield_workbook.get() == str(tmp_path / "Yield.xlsx")
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--xlsx") == [str(tmp_path / "Yield.xlsx")]
+    # Cancelled: the box keeps what it had.
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **_k: "")
+    hidden_window._browse_file(hidden_window.yield_workbook, "Workbook", (), "x")
+    assert hidden_window.yield_workbook.get() == str(tmp_path / "Yield.xlsx")
+
+
 def test_option_layers_and_a_workbook_of_their_own(hidden_window: Any, tmp_path: Path) -> None:
     only_yield(hidden_window)
     hidden_window.yield_option_layers.insert(0, "01 | Massing.3D OPT1, 01 | Massing.3D OPT2")

@@ -4487,14 +4487,16 @@ class Window:
             title="The workbook",
         )
         row += 1
-        self.yield_workbook, row = self._entry(
+        self.yield_workbook, row = self._file_row(
             frame,
             row,
             "Workbook",
-            "",
             "Blank writes Preliminary Yield Analysis.xlsx into the tables folder in General.",
-            "A path of its own, for a workbook kept with the project. A workbook Loriini "
-            "did not write is left alone, and the run says so.",
+            "Choose where the workbook goes, for one kept with the project. An option "
+            "already in it is replaced and the others stay; a workbook Loriini did not "
+            "write is left alone, and the run says so.",
+            kinds=(("Excel workbook", "*.xlsx"),),
+            default=AREA_TABLE,
         )
 
         frame, row = self._panel(outer, 1, title="Efficiencies, mix and parking"), 0
@@ -4673,6 +4675,67 @@ class Window:
         for target in (name, box, button):
             Tooltip(target, detail, title=label, short=self._saying(line))
         return box, row + 1
+
+    def _file_row(
+        self,
+        parent: ttk.Frame,
+        row: int,
+        label: str,
+        hint: str,
+        detail: str,
+        *,
+        kinds: Sequence[tuple[str, str]],
+        default: str,
+    ) -> tuple[ttk.Entry, int]:
+        """A file to write, chosen with a Save dialog, with a Choose beside it.
+
+        The same row as a folder's, for a path that is a file: the workbook
+        the yield analysis writes. The box shows what was chosen and can be
+        cleared, which is the one edit it is for -- blank is the tables
+        folder's own file.
+        """
+        name = ttk.Label(parent, text=label, **icons.options(label))
+        name.grid(row=row, column=0, sticky="w", pady=(3, 0))
+        holder = ttk.Frame(parent)
+        holder.grid(row=row, column=1, sticky="ew", pady=(3, 0))
+        holder.columnconfigure(0, weight=1)
+        box = ttk.Entry(holder)
+        box.grid(row=0, column=0, sticky="ew")
+        button = ttk.Button(
+            holder,
+            text="Choose…",
+            width=11,
+            command=lambda: self._browse_file(box, label, kinds, default),
+            **icons.button_options("folder"),
+        )
+        button.grid(row=0, column=1, padx=(6, 0))
+        line = self._hint(parent, row + 1, hint)
+        for target in (name, box, button):
+            Tooltip(target, detail, title=label, short=self._saying(line))
+        return box, row + 1
+
+    def _browse_file(
+        self, box: ttk.Entry, label: str, kinds: Sequence[tuple[str, str]], default: str
+    ) -> None:
+        """Pick a file to write. Leaves the entry alone if the dialog was
+        cancelled. Opens where the box points, or in the tables folder."""
+        current = Path(box.get().strip()) if box.get().strip() else None
+        tables = self._tables_folder()
+        start = current.parent if current else tables
+        chosen = filedialog.asksaveasfilename(
+            parent=self.root,
+            title=label,
+            filetypes=list(kinds),
+            defaultextension=kinds[0][1].lstrip("*") if kinds else "",
+            initialdir=str(start) if start else "",
+            initialfile=current.name if current else default,
+            confirmoverwrite=False,
+        )
+        if not chosen:
+            return
+        box.delete(0, "end")
+        box.insert(0, chosen)
+        self._sync()
 
     def _browse(self, box: ttk.Entry, label: str) -> None:
         """Pick a folder. Leaves the entry alone if the dialog was cancelled."""
