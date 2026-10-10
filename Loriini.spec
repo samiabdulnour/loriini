@@ -28,6 +28,11 @@ datas += [(str(ROOT / 'assets' / 'loriini-icon-256.png'), 'assets')]
 # the executable either way; this is what `Read the full licence` shows, and
 # without it that button is hidden rather than broken.
 datas += [(str(ROOT / 'LICENSE'), '.')]
+# The terms a subscriber buys under, at the root of the bundle, where
+# `sun_study.terms.page` looks for them. A build that takes licence keys shows
+# these under `Read the full terms` in place of the source licence: they are
+# the agreement the customer accepted at the checkout.
+datas += [(str(ROOT / 'site' / 'terms.html'), '.')]
 binaries = []
 hiddenimports = []
 datas += collect_data_files('tzdata')

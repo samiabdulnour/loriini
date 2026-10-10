@@ -158,7 +158,7 @@ unreliable and its names are not. The palette is the Oatley legend's.
 Free is not the same as unconditional. Every publisher above asks to be
 credited on anything drawn from their data, and a DA sheet is exactly that.
 The list, the licences and the wording each publisher asks for live in
-`sun_study.site.sources`, and the window shows them: the **ⓘ** beside the
+`sun_study.site.sources`, and the window shows them: **About** beside the
 project picker, or **Where this data comes from** on the Site analysis tab,
 which opens the same box at the registers. The box ends with the credit line
 for a sheet, ready to copy into a title block.

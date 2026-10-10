@@ -14,9 +14,11 @@ anybody would guess. So the box carries the line ready to copy.
 
 *What may I do with the program?* The short form of the licence, because the
 question a colleague actually has is "may I give this to the consultant", and
-that is one line rather than a page. The LICENSE file remains the authority
-and the box says so; ``Read the full licence`` puts the whole text on screen
-for the person who needs it.
+that is one line rather than a page. Which licence depends on the build: one
+that takes licence keys was bought, and shows the subscription terms sold at
+loriini.app; one that does not is the source, and shows the source licence.
+The full text remains the authority and the box says so; the button under it
+puts the whole of it on screen for the person who needs it.
 
 *Is this any good yet?* The prototype notice, in the same words as the README,
 the run bar and every exported file -- from ``disclaimer``, so the four cannot
@@ -143,11 +145,14 @@ class About(tk.Toplevel):
         buttons.grid(row=2, column=0, sticky="ew", pady=(PAD, 0))
         buttons.columnconfigure(0, weight=1)
         self._full = ttk.Button(
-            buttons, text="Read the full licence", command=self._show_the_licence, width=22
+            buttons,
+            text="Read the full terms" if licence.keys_required() else "Read the full licence",
+            command=self._show_the_licence,
+            width=22,
         )
         self._full.grid(row=0, column=0, sticky="w")
-        if licence.file() is None:
-            # A build whose licence file did not make it in. The summary above
+        if licence.full_text() is None:
+            # A build whose licence text did not make it in. The summary above
             # is in the executable and stands on its own, so the button goes
             # rather than the box.
             self._full.grid_remove()
@@ -206,7 +211,7 @@ class About(tk.Toplevel):
             if not licence.standing().online:
                 self._check.grid_remove()
             row += 1
-        for clause in licence.SUMMARY:
+        for clause in licence.summary():
             ttk.Label(
                 page,
                 text=f"•  {clause}",
@@ -214,13 +219,15 @@ class About(tk.Toplevel):
                 justify="left",
             ).grid(row=row, column=0, sticky="w", pady=(0, 3))
             row += 1
-        return self._paragraph(
-            page,
-            row,
-            "This is the short form. The LICENSE file that came with this "
-            "build is the licence, and where the two differ the file wins.",
-            style="Hint.TLabel",
+        closing = (
+            "This is the short form. The terms at loriini.app/terms, also in "
+            "LICENSE.txt beside the program, are the agreement, and where the "
+            "two differ the terms win."
+            if licence.keys_required()
+            else "This is the short form. The LICENSE file that came with this "
+            "build is the licence, and where the two differ the file wins."
         )
+        return self._paragraph(page, row, closing, style="Hint.TLabel")
 
     def _sources(self, page: ttk.Frame, row: int) -> int:
         """One block per publisher, and every block ends in its own terms."""
@@ -465,7 +472,8 @@ class About(tk.Toplevel):
         if text is None:  # pragma: no cover - the button is hidden without it
             return
         window = tk.Toplevel(self)
-        window.title(f"{PRODUCT} — licence")
+        what = "licence terms" if licence.keys_required() else "licence"
+        window.title(f"{PRODUCT} — {what}")
         window.transient(self)
         window.geometry("720x620")
         frame = ttk.Frame(window, padding=PAD)

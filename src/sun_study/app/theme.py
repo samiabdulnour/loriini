@@ -462,7 +462,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: because it prints layer names and tallies that want to line up.
     style.configure("Note.TLabel", background=CHROME, foreground=BODY, font=log_font(), anchor="w")
 
-    #: A tile in a choice row: icon only, no text, and square.
+    #: A tile in a choice row: its drawing, and the word that names it where
+    #: it has one (``window.Tiles`` widens those itself). The hour chips wear
+    #: this too, and fourteen of them have to fit a card's row.
     style.configure(
         "Tile.TButton",
         padding=(4, 1),

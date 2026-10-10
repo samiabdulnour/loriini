@@ -4823,3 +4823,48 @@ is the fallback -- for an add-on that lacks the command, a refused move,
 or a layout in front, where the window itself has to change for an export
 to see the building. The connection notes the move as it notes
 ``ChangeWindow``'s, so the layer guard stays on.
+
+### D129 — The window after its first sale: the terms it was sold under, and nothing learnt by hovering
+
+Asked on 10 October 2026, after the first live purchase, for a review of the
+window as a subscriber meets it, and then for every finding to be fixed.
+The review was made from the window itself, opened over a fake project and
+photographed page by page.
+
+**About shows the terms the build was sold under.** It summarised the
+repository's source-available licence -- the firm it was written for, the
+MIT versions, "passing it outside the firm needs written permission" --
+to a practice that had just accepted the subscription terms, while the
+LICENSE.txt beside the program said otherwise. A build that takes licence
+keys now shows ``licence.TERMS_SUMMARY`` and *Read the full terms* opens
+``site/terms.html`` as text, by ``sun_study.terms``, the renderer that also
+writes the download's LICENSE.txt; the bundle carries the page for it. A
+build without keys, which is the source, keeps the source licence.
+
+**Every control says what it is without being hovered.** The choice tiles
+carry a word beside their drawing (*One layout*, *Floor heat map*, *Project
+location*); labels the review found opaque are spelt out (*TOD envelope*,
+*SEARs envelope*, *Ignore ground below (m)*, *3 zone layers*); the top bar
+says *Connect Claude* and *About* where it said *Add to Claude* and showed a
+bare (i). Every row label carries an icon, or a clear square the size of
+one, so the labels on a page start at one line -- the Yield page had none
+and sat a column to the left of every other page.
+
+**Run says what it will run.** *Run 3 studies*, or *Tick a study to run*
+and off, where it looked ready with nothing ticked and answered a press
+with a line at the foot of the window.
+
+**Space that said nothing is given back.** The sheets panel waits at its
+edge while nothing is ticked and comes out at the first tick, unless it was
+opened by hand; the progress trough is shown only during a run; the licence
+line moved to the right of the run's own line instead of a row of its own.
+
+**The same card in the same place.** *Days studied* is the first card on
+all three sun pages; it was first on one and last on the other two. The
+sun views' hours open lit at the ruleset's window, as the shadow diagram's
+do, and lit exactly so they send nothing, so the ruleset's window stands.
+
+**Smaller.** The no-location notice on a thumbnail is shorter and stops
+short of the title block; the grid of drawings ends clear of the title
+under it; the licence box's text field has the theme's one-pixel edge in
+place of Tk's black focus ring.

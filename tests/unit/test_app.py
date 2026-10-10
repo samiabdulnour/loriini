@@ -2805,8 +2805,18 @@ def test_the_sun_eye_run_sends_what_is_filled_in_and_nothing_else(hidden_window:
     assert job.args[job.args.index("--scale") + 1] == "500"
     assert job.args[job.args.index("--sheets") + 1] == "two"
     assert job.args[job.args.index("--override") + 1] == "Sun Eye Views"
-    # Blank hours: the ruleset's own window, not an empty flag.
+    # The hours open lit at the ruleset's window, and lit exactly so they
+    # send nothing: the ruleset's own window stands, not a copy of it.
+    assert hidden_window.eye_hours.get(), "the row shows the hours it will draw"
     assert "--hour" not in job.args
+    # Blank hours are the same answer.
+    hidden_window.eye_hours.delete(0, "end")
+    (job,) = hidden_window.jobs()
+    assert "--hour" not in job.args
+    # And a narrower set is sent as pressed.
+    hidden_window.eye_hours.insert(0, "9, 12")
+    (job,) = hidden_window.jobs()
+    assert "--hour" in job.args
 
 
 def test_the_sun_eye_override_and_layers_are_picked_from_the_project(
@@ -3452,6 +3462,9 @@ def test_the_sheets_panel_folds_when_the_window_cannot_hold_both(hidden_window: 
             self.widget, self.width = widget, width
 
     root, dock = hidden_window.root, hidden_window.dock
+    # With a sheet to show; an empty panel waits at its edge (the test below).
+    hidden_window.do_shadows.set(True)
+    hidden_window._sync()
     assert not dock.folded
     assert hidden_window.fold_below >= window.Window.FOLD_BELOW
 
@@ -3468,6 +3481,67 @@ def test_the_sheets_panel_folds_when_the_window_cannot_hold_both(hidden_window: 
 
     hidden_window._fit(Resized(hidden_window.dock, 10))
     assert dock.folded, "and a child being resized is not the window being resized"
+
+
+def test_an_empty_sheets_panel_waits_at_its_edge(hidden_window: Any) -> None:
+    """Nothing ticked is nothing to draw, and a third of the window saying so
+    on every page was a third of the window. The first tick brings it out,
+    the last one puts it away, and a panel opened by hand stays open."""
+    dock = hidden_window.dock
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window._sync()
+    assert dock.folded, "nothing ticked, so nothing to show"
+
+    hidden_window.do_shadows.set(True)
+    hidden_window._sync()
+    assert not dock.folded, "the first tick brings the sheets out"
+
+    hidden_window.do_shadows.set(False)
+    hidden_window._sync()
+    assert dock.folded, "and the last one puts them away"
+
+    dock.fold(False)  # the chevron, pressed by hand
+    hidden_window._sync()
+    assert not dock.folded, "opened on purpose, so it stays open"
+
+
+def test_run_says_what_it_will_run(hidden_window: Any) -> None:
+    """A Run button that looked ready with nothing ticked answered a press
+    with a line at the foot of the window. It now counts, and is off when
+    the count is nought."""
+    go = hidden_window.go
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window._sync()
+    assert str(go.cget("state")) == "disabled"
+    assert go.cget("text") == "Tick a study to run"
+
+    hidden_window.do_shadows.set(True)
+    hidden_window._sync()
+    assert str(go.cget("state")) == "normal"
+    assert go.cget("text") == "Run study"
+
+    hidden_window.do_sun_eyes.set(True)
+    hidden_window._sync()
+    assert go.cget("text") == "Run 2 studies"
+
+
+def test_the_progress_bar_is_there_only_while_a_run_is(hidden_window: Any) -> None:
+    """An empty trough between runs was a strip of nothing under every page."""
+    assert hidden_window.progress_row.winfo_manager() == ""
+
+
+def test_every_choice_tile_names_itself(hidden_window: Any) -> None:
+    """A row of drawings was learnable only by hovering each one. Every tile
+    now carries a word on its face as well as its picture."""
+    rows = [hidden_window.sheets]
+    for row in rows:
+        for button in row._buttons.values():
+            assert str(button.cget("text")).strip(), "a tile with a picture and no word"
+    for label, words in window.Window.TILE_WORDS.items():
+        offered = {value for value, _icon, _detail in window.Window.TILE_CHOICES[label]}
+        assert set(words) == offered, f"{label}: a tile without its word, or a word without a tile"
 
 
 def test_the_sheets_panel_folds_before_it_pushes_a_tab_off_the_window(
@@ -3605,7 +3679,7 @@ def test_the_info_box_carries_the_licence_and_the_prototype_notice(
     try:
         said = _every_word(box)
         assert STATUS in said
-        for clause in licence.SUMMARY:
+        for clause in licence.summary():
             assert clause in said
     finally:
         box._close()

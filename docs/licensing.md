@@ -44,7 +44,7 @@ in `%APPDATA%\Loriini\licence.key`, and the lease beside it in `licence.lease`.
 - **Renewals** need nothing. When the subscription renews, the lease follows,
   and there is no new key.
 
-**The info box** (ⓘ) says whose licence it is and what the service last said:
+**The About box** says whose licence it is and what the service last said:
 
 > Licensed: licence 0042, Fuse Architects (office@fuse.example), 12 seats,
 > renewed online. Paid to 31 October 2026; 4 of 12 seats in use; checked with

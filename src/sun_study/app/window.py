@@ -750,7 +750,7 @@ SHADOW_LEGEND_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
     (
         "TOD",
         "scenario",
-        "TOD",
+        "TOD envelope",
         "Current LEP 2023 building height limit.",
         "The palest blue. A scenario: cast against every grey row and against "
         "no other blue one, so the blues overlap on the sheet — which is the "
@@ -759,7 +759,7 @@ SHADOW_LEGEND_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
     (
         "SEARS",
         "scenario",
-        "SEARs",
+        "SEARs envelope",
         "Canterbury Bankstown LEP building height limit.",
         "The middle blue. Compared, not accumulated: putting this under a grey "
         "row instead tests it against itself and reads as a much smaller "
@@ -816,6 +816,7 @@ class Tiles(ttk.Frame):
         *,
         multi: bool = False,
         aliases: Mapping[str, Sequence[str]] | None = None,
+        words: Mapping[str, str] | None = None,
     ) -> None:
         super().__init__(parent)
         self._chosen = choices[0][0]
@@ -828,16 +829,20 @@ class Tiles(ttk.Frame):
         self._on_change = on_change
         self._buttons: dict[str, ttk.Button] = {}
         for column, (value, icon, detail) in enumerate(choices):
+            # A word on the face as well as the drawing. A row of three
+            # pictures was only learnable by hovering each one, and the
+            # window's rule is that every control says what it is without
+            # being asked; the tooltip keeps the longer sentence.
+            word = (words or {}).get(value, "")
             button = ttk.Button(
                 self,
+                text=word,
                 style="Tile.TButton",
                 command=partial(self._pick, value),
+                padding=(8, 1) if word else (4, 1),
                 **icons.button_options(icon, 16),
             )
-            button.grid(row=0, column=column, padx=(0, 2))
-            # Every tile says what it is in words as well. Seven unlabelled
-            # drawings are only learnable if something names them, and this is
-            # also what the window's own test for explained controls looks for.
+            button.grid(row=0, column=column, padx=(0, 4))
             Tooltip(button, detail)
             self._buttons[value] = button
         self._paint()
@@ -1674,6 +1679,11 @@ FLATS_MM = tuple(
 SHADOW_GREY = "#8F8E87"
 
 
+def _hours_in(text: str) -> list[str]:
+    """The hours in a comma list, each spelled the way a sheet is named."""
+    return [_clock_text(part) for part in text.split(",") if part.strip()]
+
+
 def _clock_text(text: str) -> str:
     """``9``, ``9am``, ``09:00`` and ``3pm`` as the ``15:00`` a sheet is named for.
 
@@ -1737,7 +1747,9 @@ FRAME_MM = (56.0, 28.0, 206.0, 178.0)
 #: What the cells are cut from: the page less the title block, a margin and
 #: the title line along the bottom.
 MARGIN_MM = 8.0
-CELLS_BOTTOM_MM = 180.0
+#: Clear of the drawing's title under the grid, which is set at ten points:
+#: at 180 the bottom row's hour labels sat under its first line.
+CELLS_BOTTOM_MM = 172.0
 
 
 def _grid(
@@ -1817,9 +1829,18 @@ def draw_sheet(
         *,
         anchor: Literal["w", "center"] = "w",
         bold: bool = False,
+        clear_of_block: bool = False,
     ) -> None:
+        # ``clear_of_block`` stops a line at the drawing area's right edge,
+        # so it cannot run on under the title block strip.
         paper.create_text(
-            x(mm_x), x(mm_y), text=text, anchor=anchor, fill=colour, font=_face(size, bold)
+            x(mm_x),
+            x(mm_y),
+            text=text,
+            anchor=anchor,
+            fill=colour,
+            font=_face(size, bold),
+            width=x(draw_r - mm_x) if clear_of_block else 0,
         )
 
     # -- the paper itself ------------------------------------------------
@@ -1880,7 +1901,9 @@ def draw_sheet(
     if sheet.time and sheet.elevation is None:
         # The one line still worth its ink: the sheet has no sun to draw,
         # and a person should not have to hover to learn why.
-        words(10, 201, "Project location not set \u2014 no sun to draw", 6, theme.RED)
+        # Short, and kept clear of the title block: the longer sentence ran
+        # on under the strip at the sheet's right.
+        words(10, 201, "No project location: no sun drawn", 6, theme.RED, clear_of_block=True)
 
     # -- the title block, at the width General is set to ----------------
     #
@@ -2548,6 +2571,11 @@ class Window:
         self.ports: list[int] = []
         self.run: Run | None = None
         self.queued: list[Job] = []
+        #: Whether a run is under way, and whether the open Archicad lacks the
+        #: add-on. The two things besides an empty queue that switch Run off;
+        #: ``_paint_run`` weighs all three in one place.
+        self._running = False
+        self._tapir_missing = False
         #: Everything a run has said, in order. The window shows the newest
         #: line of it and no more, but a failure has to be readable after the
         #: fact, so the transcript is kept rather than drawn.
@@ -2698,11 +2726,17 @@ class Window:
         # a page, so it sits outside the tabs and stays put while they change.
         middle = ttk.Frame(self.root, style="Chrome.TFrame")
         middle.pack(side="top", fill="both", expand=True)
-        self.dock = Dock(middle, on_pick=self._sheet_under)
+        self.dock = Dock(middle, on_pick=self._sheet_under, on_fold=self._dock_folded)
         #: Whether the window is too narrow to hold both panes. Crossing the
         #: line folds the panel or brings it back; in between, the chevron
         #: is the user's and is left alone.
         self._narrow = False
+        #: Whether nothing is ticked, so the panel has no sheet to show, and
+        #: whether somebody opened it by hand anyway. An empty panel was a
+        #: third of the window saying "Nothing ticked" on every page; it now
+        #: waits at its edge until there is a sheet to draw.
+        self._dock_empty = False
+        self._dock_opened_empty = False
         self.root.bind("<Configure>", self._fit, add="+")
         self.dock.pack(side="right", fill="y")
         # The contour between the page and the dock: one pixel, and thin.
@@ -2789,12 +2823,15 @@ class Window:
         # Loriini as an MCP server in the Claude a person already has. Up
         # here with the picker because it is about the program, not a study;
         # ``claude_mcp`` is the whole of it.
+        # "Connect Claude" rather than "Add to Claude": what it does to the
+        # Claude a person already has, in the words of somebody who has not
+        # read what an MCP server is.
         claude = ttk.Button(
             picker,
-            text="Add to Claude",
+            text="Connect Claude",
             style="Chrome.TButton",
             command=self._add_to_claude,
-            width=14,
+            width=15,
             **icons.button_options("claude"),
         )
         claude.grid(row=0, column=3, padx=(6, 0))
@@ -2806,12 +2843,14 @@ class Window:
             "run the studies into the open project. docs/agent.md says what it "
             "can then do.",
         )
+        # Named as well as drawn. A lone (i) at the end of the bar was the
+        # one button up here that did not say what it was.
         tell = ttk.Button(
             picker,
-            text="",
+            text="About",
             style="Chrome.TButton",
             command=self._about,
-            width=3,
+            width=8,
             **icons.button_options("info"),
         )
         tell.grid(row=0, column=4, padx=(6, 0))
@@ -2847,7 +2886,7 @@ class Window:
         """Register the program with Claude Desktop and Claude Code, and say
         what happened where."""
         added = claude_mcp.add_to_claude()
-        self._tell("Add to Claude", added.describe())
+        self._tell("Connect Claude", added.describe())
 
     def _reference(self) -> None:
         """Open the reference-image palette, or raise the one already open.
@@ -3713,11 +3752,12 @@ class Window:
         """
         row = 0
         self.do_shadows = tk.BooleanVar(value=False)
-        # The study's own box. Everything from here to the days box at the
-        # end is built inside it, by the simple means of pointing ``frame``
-        # at it: the rows beneath neither know nor care.
+        # The study's own box, in the page's second row: the days box is
+        # the first. Everything from here to the days box is built inside
+        # it, by the simple means of pointing ``frame`` at it: the rows
+        # beneath neither know nor care.
         outer = frame
-        frame, row = self._panel(outer, row), 0
+        frame, row = self._panel(outer, 1), 0
         box = ttk.Checkbutton(
             frame,
             text="Shadow diagram",
@@ -3762,7 +3802,7 @@ class Window:
         self.terrain_floor, row = self._entry(
             frame,
             row,
-            "Ignore ground below",
+            "Ignore ground below (m)",
             "",
             "Metres. Blank keeps all of it.",
             "A survey often runs past the neighbourhood into ground tens of "
@@ -3823,10 +3863,13 @@ class Window:
             "left at the root of the book.",
         )
         # The diagram's own days, the same three buttons the other two sun
-        # studies press, in a box under the study. They were a row of four
+        # studies press, in a box of their own. They were a row of four
         # dates inside it, spelled differently from the other pages' days.
+        # Above the study, as on the other two sun pages: the day is the
+        # first thing a council names, and the same card in the same place
+        # on every page is found without looking.
         self.shadow_custom_day, _ = self._days_panel(
-            outer, 1, self.shadow_day_ticks, study="shadow diagram", year=False
+            outer, 0, self.shadow_day_ticks, study="shadow diagram", year=False
         )
         self._shadow_plans(outer, 2)
 
@@ -3917,7 +3960,7 @@ class Window:
         which answers "why is this balcony dark at ten" in one picture. The
         settings here are the ones read off the practice's own diagrams; the
         hours come from the ruleset's assessment window, and the days from
-        the views' own box under the study -- a sun eye set at the wrong
+        the views' own box above the study -- a sun eye set at the wrong
         date is a plausible picture of the wrong day, so the day is said
         where the views are asked for.
 
@@ -3927,11 +3970,12 @@ class Window:
         """
         row = 0
         self.do_sun_eyes = tk.BooleanVar(value=False)
-        # The study's own box. Everything from here to the days box at the
-        # end is built inside it, by the simple means of pointing ``frame``
-        # at it: the rows beneath neither know nor care.
+        # The study's own box, in the page's second row: the days box is
+        # the first. Everything from here to the days box is built inside
+        # it, by the simple means of pointing ``frame`` at it: the rows
+        # beneath neither know nor care.
         outer = frame
-        frame, row = self._panel(outer, row), 0
+        frame, row = self._panel(outer, 1), 0
         box = ttk.Checkbutton(
             frame,
             text="Sun views",
@@ -3952,7 +3996,7 @@ class Window:
         self._caption(
             frame,
             row,
-            "Seven views along the sun, 9am to 3pm on each day lit below, each exact to the "
+            "Seven views along the sun, 9am to 3pm on each day lit above, each exact to the "
             "sun's own bearing; the documents on two sheets.",
         )
         row += 1
@@ -4003,16 +4047,22 @@ class Window:
             frame,
             row,
             "Hours",
-            "None pressed is the ruleset's window, 9 to 15.",
+            "The ruleset's window, 9 to 15, lit to begin with.",
             "Only for a sheet that needs fewer. The assessment window is the "
-            "ruleset's and a set drawn at other hours is not the study.",
+            "ruleset's and a set drawn at other hours is not the study. Lit "
+            "from the start, as the shadow diagram's are, so the row shows "
+            "the hours the views will be drawn at rather than leaving none "
+            "lit to mean all of them; with none pressed it is still the "
+            "ruleset's window.",
             _hour_choices(clock=False),
             key=_clock_text,
+            initial=DEFAULT_SHADOW_HOURS,
         )
-        # The views' own days, under the study and not on another tab. They
-        # used to run on whatever the solar analysis was ticked for.
+        # The views' own days, on this page and not on another tab. They
+        # used to run on whatever the solar analysis was ticked for. Above
+        # the study, where the other two sun pages have theirs.
         self.eye_custom_day, _ = self._days_panel(
-            outer, 1, self.eye_days, study="sun views", year=False
+            outer, 0, self.eye_days, study="sun views", year=False
         )
 
     def _site(self, frame: ttk.Frame) -> None:
@@ -4057,7 +4107,7 @@ class Window:
         )
         row += 1
         # The only section drawn from data nobody here owns, so it is the only
-        # one that carries this. It opens the same box the ⓘ at the top does,
+        # one that carries this. It opens the same box the About button at the top does,
         # scrolled to the registers -- the question ("where did this line come
         # from, and what do I have to put on the sheet") occurs on this page,
         # and an answer two clicks away on another one is an answer nobody
@@ -4769,6 +4819,11 @@ class Window:
         progress_row = ttk.Frame(base, style="Chrome.TFrame")
         progress_row.grid(row=2, column=0, sticky="ew", pady=(2, 6))
         progress_row.columnconfigure(0, weight=1)
+        #: Shown while a run is under way and not otherwise: an empty trough
+        #: between runs was a strip of nothing at the foot of every page,
+        #: on a window whose pages already scroll for want of height.
+        self.progress_row = progress_row
+        progress_row.grid_remove()
 
         buttons = ttk.Frame(base, style="Chrome.TFrame")
         buttons.grid(row=1, column=0, sticky="ew", pady=(2, 2))
@@ -4926,9 +4981,11 @@ class Window:
         # The one line of text down here that is not about this run: whose
         # build this is, and until when. The prototype disclaimer is still on
         # every sheet and in every export, where the numbers are; the foot of
-        # the window carries the licence instead of shouting it.
-        ttk.Label(base, text=credential(), style="ChromeHint.TLabel").grid(
-            row=4, column=0, sticky="w", pady=(8, 0)
+        # the window carries the licence instead of shouting it. At the right
+        # of the run's own line rather than on a line of its own, which was a
+        # row of the window spent on one short sentence.
+        ttk.Label(note_row, text=credential(), style="ChromeHint.TLabel").grid(
+            row=0, column=2, sticky="e", padx=(12, 0)
         )
 
     #: How wide the label column is inside a box. Every box has a grid of its
@@ -5116,6 +5173,7 @@ class Window:
             on_change=self._sync,
             multi=label in self.TILE_MULTI,
             aliases=self.TILE_ALIASES.get(label),
+            words=self.TILE_WORDS.get(label),
         )
         made.grid(row=row, column=1, sticky="w", pady=(6, 0))
         line = self._hint(parent, row + 1, hint)
@@ -5438,6 +5496,30 @@ class Window:
                     style="PanelSays.TLabel" if on else "PanelSaysOff.TLabel",
                 )
         self._refill_dock(sheets)
+        self._paint_run()
+
+    def _paint_run(self) -> None:
+        """Say on the Run button what pressing it will do, and switch it off
+        when the answer is nothing.
+
+        A Run button that looked ready with nothing ticked answered a press
+        with a line at the foot of the window and nothing else. So it counts
+        the ticked studies and says so -- "Run 3 studies" -- and is off, and
+        says why, while there is nothing to run; while a run is going; and
+        while the open Archicad lacks the add-on, which ``_offer`` says in
+        the status line.
+        """
+        if not hasattr(self, "go"):  # pragma: no cover - a tick before the bar is built
+            return
+        ticked = sum(1 for _name, tick, _where in self._studies() if tick.get())
+        if not ticked:
+            text = "Tick a study to run"
+        elif ticked == 1:
+            text = "Run study"
+        else:
+            text = f"Run {ticked} studies"
+        off = self._running or self._tapir_missing or not ticked
+        self.go.config(text=text, state="disabled" if off else "normal")
 
     #: Under this many pixels the window cannot hold the page and the sheets
     #: panel side by side: the page is left with less than a chip row needs.
@@ -5463,7 +5545,7 @@ class Window:
         if narrow == self._narrow:
             return
         self._narrow = narrow
-        self.dock.fold(narrow, by_hand=False)
+        self.dock.fold(narrow or (self._dock_empty and not self._dock_opened_empty), by_hand=False)
 
     def _refill_dock(self, sheets: Sequence[Sheet]) -> None:
         """Redraw the sheets panel from what is ticked and typed now.
@@ -5480,6 +5562,26 @@ class Window:
             )
         )
         self.dock.refill(sheets, filed=f"Layout Book: {filed}" if filed else "")
+        empty = not sheets
+        if empty == self._dock_empty:
+            return
+        self._dock_empty = empty
+        if empty:
+            # The last tick went: the panel goes to its edge, unless it was
+            # opened by hand on an empty page, which is somebody looking.
+            if not self._dock_opened_empty:
+                self.dock.fold(True, by_hand=False)
+        else:
+            # The first tick: the sheets come out, unless the window is too
+            # narrow to hold them, which is the other reason it folds.
+            self._dock_opened_empty = False
+            if not self._narrow:
+                self.dock.fold(False, by_hand=False)
+
+    def _dock_folded(self, shut: bool) -> None:
+        """The chevron, pressed by hand. Opening an empty panel is a person
+        asking to see it, and it stays open until a tick comes and goes."""
+        self._dock_opened_empty = not shut and self._dock_empty
 
     # -- settings that outlive the window ------------------------------------
     def _fields(self) -> dict[str, ttk.Entry | Tiles | Ticks | Chips]:
@@ -5796,7 +5898,8 @@ class Window:
         # calls are Tapir's commands, which the Loriini add-on carries built
         # in. So it is said plainly, and Run is switched off rather than left
         # to fail several steps later.
-        self.go.config(state="disabled" if found.tapir_missing else "normal")
+        self._tapir_missing = found.tapir_missing
+        self._paint_run()
         if found.tapir_missing:
             self.status.config(
                 text=(
@@ -5820,7 +5923,7 @@ class Window:
             foreground=HINT,
             text=(
                 f"Tapir {found.tapir} · {len(found.layers)} layers · "
-                f"{len(found.zone_layers)} carry zones · {len(found.masters)} masters · "
+                f"{len(found.zone_layers)} zone layers · {len(found.masters)} masters · "
                 f"{len(found.subsets)} subsets"
             ),
             **icons.state_options("connected"),
@@ -6106,6 +6209,28 @@ class Window:
         "Plans": {
             "Bands and times": ("Sun at each time", "Floor heat map", "Apartment total"),
             "Bands by hour": ("Floor heat map", "Apartment total"),
+        },
+    }
+
+    #: The word on each tile's face, by row and then by value: short enough
+    #: that a row of three still fits beside its label, and the same words
+    #: the tooltip opens with so the two never disagree.
+    TILE_WORDS: ClassVar[dict[str, dict[str, str]]] = {
+        "Plans": {
+            "Sun at each time": "Sun at each time",
+            "Floor heat map": "Floor heat map",
+            "Apartment total": "Apartment total",
+        },
+        "Sheets": {
+            "One layout, all drawings": "One layout",
+            "Two layouts, half each": "Two layouts",
+            "A layout per drawing": "One per drawing",
+        },
+        "Skin cell": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed"},
+        "Communal grid": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed"},
+        "Site lands at": {
+            "Project location": "Project location",
+            "Project origin": "Project origin",
         },
     }
 
@@ -7115,10 +7240,15 @@ class Window:
                 ("--base-combination", self.eye_base_combination),
                 ("--scale", self.eye_scale),
                 ("--title-block-mm", self.eye_title_block),
-                ("--hour", self.eye_hours),
             ):
                 if field.get().strip():
                     args += [flag, field.get().strip()]
+            # The hours open lit at the ruleset's window, so the row shows
+            # what will be drawn. Lit exactly so, nothing is sent: the
+            # ruleset's own window stands, and follows it if it ever moves.
+            hours = self.eye_hours.get().strip()
+            if hours and _hours_in(hours) != _hours_in(DEFAULT_SHADOW_HOURS):
+                args += ["--hour", hours]
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
             args += ["--year", self.year.get().strip() or "2024"]
@@ -7268,8 +7398,10 @@ class Window:
         self.lines.clear()
         self._start_log([job.label for job in queued])
         self.queued = queued
-        self.go.config(state="disabled")
+        self._running = True
+        self._paint_run()
         self.cancel.config(state="normal")
+        self.progress_row.grid()
         self.progress.config(mode="indeterminate")
         self.progress.start(12)
         self._next()
@@ -7299,7 +7431,9 @@ class Window:
     def _finished(self) -> None:
         self.progress.stop()
         self.progress.config(mode="determinate", value=0)
-        self.go.config(state="normal")
+        self.progress_row.grid_remove()
+        self._running = False
+        self._paint_run()
         self.cancel.config(state="disabled")
         if self.log is not None:
             self.log.close()

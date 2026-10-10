@@ -48,12 +48,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import textwrap
-from html.parser import HTMLParser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from sun_study import AUTHOR, PRODUCT, __version__
+from sun_study import AUTHOR, PRODUCT, __version__, terms
 
 ROOT = Path(__file__).resolve().parent.parent
 #: What the built file is called. Deliberately not ``PRODUCT``: everything
@@ -98,7 +96,7 @@ LICENCE_COPY = "LICENSE.txt"
 #: Where the terms are kept: the site's page, which is also what a buyer
 #: accepts at the checkout. The folder carries the same words as text.
 TERMS_PAGE = ROOT / "site" / "terms.html"
-TERMS_ADDRESS = "https://loriini.app/terms"
+TERMS_ADDRESS = terms.ADDRESS
 
 #: Windows reads this out of the .exe for its Properties > Details tab, and
 #: shows it in the UAC prompt and the task manager. Without it the file claims
@@ -197,74 +195,13 @@ folder.
 """
 
 
-class _TermsText(HTMLParser):
-    """The words of ``site/terms.html``, as a text file reads: headings on
-    their own lines, paragraphs wrapped, list items numbered, links spelt
-    out. Only what is inside ``<article>`` counts; the page's header and
-    footer are navigation."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.blocks: list[tuple[str, str]] = []
-        self._inside = False
-        self._tag: str | None = None
-        self._text: list[str] = []
-        self._item = 0
-        self._list: str | None = None
-        self._href: str | None = None
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag == "article":
-            self._inside = True
-        if not self._inside:
-            return
-        if tag in ("ol", "ul"):
-            self._list, self._item = tag, 0
-        elif tag in ("h1", "h2", "p", "li", "span"):
-            self._tag, self._text = tag, []
-            if tag == "li":
-                self._item += 1
-        elif tag == "a":
-            href = dict(attrs).get("href") or ""
-            if href == "privacy.html":
-                href = "https://loriini.app/privacy"
-            self._href = href if href.startswith("http") else None
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag == "article":
-            self._inside = False
-        if tag == "a" and self._href:
-            self._text.append(f" ({self._href})")
-            self._href = None
-        if not self._inside or tag != self._tag:
-            return
-        text = " ".join("".join(self._text).split())
-        if tag == "li":
-            text = f"{self._item}. {text}" if self._list == "ol" else f"- {text}"
-        self.blocks.append((tag, text))
-        self._tag, self._text = None, []
-
-    def handle_data(self, data: str) -> None:
-        if self._inside and self._tag is not None:
-            self._text.append(data)
-
-
 def licence_terms(page: Path = TERMS_PAGE) -> str:
-    """``LICENSE.txt`` for the folder: the terms page as plain text, under
-    a line saying where the current wording lives."""
-    parser = _TermsText()
-    parser.feed(page.read_text(encoding="utf-8"))
-    lines = [f"{PRODUCT}: the licence terms, as at {TERMS_ADDRESS}", ""]
-    for tag, text in parser.blocks:
-        if tag == "h1":
-            lines += [text.upper(), "=" * len(text), ""]
-        elif tag == "h2":
-            lines += [text, "-" * len(text), ""]
-        elif tag == "li":
-            lines += [*textwrap.wrap(text, 76, subsequent_indent="   "), ""]
-        else:
-            lines += [*textwrap.wrap(text, 76), ""]
-    return "\n".join(lines).rstrip() + "\n"
+    """``LICENSE.txt`` for the folder: the terms page as plain text, by the
+    same renderer the About box uses (``sun_study.terms``)."""
+    found = terms.text(page)
+    if found is None:
+        raise SystemExit(f"The terms page is missing: {page}")
+    return found
 
 
 def add_notes(dist: Path) -> None:

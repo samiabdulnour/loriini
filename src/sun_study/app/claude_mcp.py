@@ -1,4 +1,4 @@
-"""The *Add to Claude* button: Loriini registered as an MCP server with the
+"""The *Connect Claude* button: Loriini registered as an MCP server with the
 Claude a person already has.
 
 docs/agent.md says how to connect a client by hand: a block in Claude

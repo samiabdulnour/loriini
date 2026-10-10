@@ -89,6 +89,7 @@ from sun_study import (
     __version__,
     licence_online,
     licence_public_key,
+    terms,
     user_folder,
 )
 from sun_study.licence_key import KeyExpiredError, KeyRefusedError, LicenceKey, read, tidy
@@ -614,6 +615,37 @@ SUMMARY: tuple[str, ...] = (
 )
 
 
+#: The short form a subscriber reads: the terms sold at loriini.app, clause for
+#: clause with ``site/terms.html``, which is the agreement and says so. A
+#: build that takes licence keys is a build somebody bought, and the
+#: source-available summary above -- which names the firm it was written for
+#: and the permission it needs to leave it -- is not what they agreed to.
+TERMS_SUMMARY: tuple[str, ...] = (
+    "Licensed by subscription, per seat, to the practice named on the key, "
+    "for its own architectural work and its clients' projects.",
+    "A seat is a computer that has used Loriini in the last fourteen days. "
+    "Install it on as many computers as you like; the number in use at once "
+    "may not exceed the seats paid for.",
+    "You may not sell, rent, sublicense or redistribute it, offer it as a "
+    "service to others, or remove the authorship statements it shows and "
+    "writes onto the drawings it makes.",
+    "A prototype, not validated for submission: its figures are for "
+    "design-stage iteration and must not be used as a compliance figure in a "
+    "development application.",
+    "Provided as it is. As far as the law allows, liability is limited to the "
+    "fees paid in the twelve months before a claim; guarantees the law will "
+    "not let anyone exclude still stand.",
+    "Governed by the law of the Czech Republic. Updates during the "
+    "subscription are included; support is by email.",
+)
+
+
+def summary() -> tuple[str, ...]:
+    """The short form this build shows: the subscription terms where it takes
+    licence keys, the source licence where it does not."""
+    return TERMS_SUMMARY if keys_required() else SUMMARY
+
+
 def file() -> Path | None:
     """The LICENSE file itself, wherever this is running from, or ``None``.
 
@@ -631,7 +663,13 @@ def file() -> Path | None:
 
 
 def full_text() -> str | None:
-    """The whole licence as written, or ``None`` where the file is not there."""
+    """The whole licence as written, or ``None`` where it is not there.
+
+    The terms page as text in a build that takes licence keys, because that
+    is what its user agreed to; the LICENSE file otherwise.
+    """
+    if keys_required():
+        return terms.text()
     found = file()
     if found is None:
         return None
