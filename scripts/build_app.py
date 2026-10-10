@@ -8,7 +8,9 @@ Leaves ``dist/Loriini.exe`` and, beside it, the add-on it talks to --
 program to double-click, and the one file to drop into Archicad's add-on
 folder. Neither needs Python or an install. ``How to install.txt`` and
 ``LICENSE.txt`` go in beside them, because whoever unzips the folder has not
-read ``docs/addon.md`` and should not have to.
+read ``docs/addon.md`` and should not have to. The licence in the folder is
+the terms a subscriber buys under, ``site/terms.html`` as plain text, not
+the repository's own source-available LICENSE, which governs the source.
 
 The same folder is built on GitHub by the ``Archicad add-on`` workflow and
 uploaded as the ``Loriini_AC26_Win`` artifact, for anybody without a checkout.
@@ -46,6 +48,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
+from html.parser import HTMLParser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -88,9 +92,13 @@ ADDON_WORKFLOW = "archicad-addon.yml"
 #: The note that rides beside the two files, named for what it answers.
 INSTALL_NOTE = "How to install.txt"
 
-#: The licence, under a name Windows opens with a double-click. It answers an
-#: extensionless ``LICENSE`` with "how do you want to open this".
+#: The licence terms, under a name Windows opens with a double-click.
 LICENCE_COPY = "LICENSE.txt"
+
+#: Where the terms are kept: the site's page, which is also what a buyer
+#: accepts at the checkout. The folder carries the same words as text.
+TERMS_PAGE = ROOT / "site" / "terms.html"
+TERMS_ADDRESS = "https://loriini.app/terms"
 
 #: Windows reads this out of the .exe for its Properties > Details tab, and
 #: shows it in the UAC prompt and the task manager. Without it the file claims
@@ -164,7 +172,7 @@ administrator rights.
   {NAME}.exe                  the program
   {ADDON}.apx    the Archicad 26 add-on, with Tapir's commands
                                built in
-  {LICENCE_COPY}                  the licence
+  {LICENCE_COPY}                  the licence terms, as at {TERMS_ADDRESS}
 
 To install
 
@@ -189,13 +197,84 @@ folder.
 """
 
 
+class _TermsText(HTMLParser):
+    """The words of ``site/terms.html``, as a text file reads: headings on
+    their own lines, paragraphs wrapped, list items numbered, links spelt
+    out. Only what is inside ``<article>`` counts; the page's header and
+    footer are navigation."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.blocks: list[tuple[str, str]] = []
+        self._inside = False
+        self._tag: str | None = None
+        self._text: list[str] = []
+        self._item = 0
+        self._list: str | None = None
+        self._href: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "article":
+            self._inside = True
+        if not self._inside:
+            return
+        if tag in ("ol", "ul"):
+            self._list, self._item = tag, 0
+        elif tag in ("h1", "h2", "p", "li", "span"):
+            self._tag, self._text = tag, []
+            if tag == "li":
+                self._item += 1
+        elif tag == "a":
+            href = dict(attrs).get("href") or ""
+            if href == "privacy.html":
+                href = "https://loriini.app/privacy"
+            self._href = href if href.startswith("http") else None
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "article":
+            self._inside = False
+        if tag == "a" and self._href:
+            self._text.append(f" ({self._href})")
+            self._href = None
+        if not self._inside or tag != self._tag:
+            return
+        text = " ".join("".join(self._text).split())
+        if tag == "li":
+            text = f"{self._item}. {text}" if self._list == "ol" else f"- {text}"
+        self.blocks.append((tag, text))
+        self._tag, self._text = None, []
+
+    def handle_data(self, data: str) -> None:
+        if self._inside and self._tag is not None:
+            self._text.append(data)
+
+
+def licence_terms(page: Path = TERMS_PAGE) -> str:
+    """``LICENSE.txt`` for the folder: the terms page as plain text, under
+    a line saying where the current wording lives."""
+    parser = _TermsText()
+    parser.feed(page.read_text(encoding="utf-8"))
+    lines = [f"{PRODUCT}: the licence terms, as at {TERMS_ADDRESS}", ""]
+    for tag, text in parser.blocks:
+        if tag == "h1":
+            lines += [text.upper(), "=" * len(text), ""]
+        elif tag == "h2":
+            lines += [text, "-" * len(text), ""]
+        elif tag == "li":
+            lines += [*textwrap.wrap(text, 76, subsequent_indent="   "), ""]
+        else:
+            lines += [*textwrap.wrap(text, 76), ""]
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def add_notes(dist: Path) -> None:
-    """The install note and the licence, beside the program and the add-on."""
+    """The install note and the licence terms, beside the program and the
+    add-on."""
     dist.mkdir(parents=True, exist_ok=True)
     # Notepad reads either line ending since 2018; the office's other readers
-    # of a .txt may not, so the note is written the way Windows writes one.
+    # of a .txt may not, so the notes are written the way Windows writes one.
     (dist / INSTALL_NOTE).write_text(install_note(), encoding="utf-8", newline="\r\n")
-    shutil.copyfile(ROOT / "LICENSE", dist / LICENCE_COPY)
+    (dist / LICENCE_COPY).write_text(licence_terms(), encoding="utf-8", newline="\r\n")
     print(f"added  {dist / INSTALL_NOTE}  and  {LICENCE_COPY}")
 
 
