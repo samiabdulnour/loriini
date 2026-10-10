@@ -28,9 +28,9 @@ analytics, nothing to keep running.
 Three things on the page are placeholders, each marked with an HTML comment
 beside it:
 
-1. **The payment links** under *Price* are Stripe's **test** links. Swap them
-   for the live ones once the Stripe account is activated and the live
-   product exists.
+1. ~~The payment links~~ Live since 10 October: Stripe's live payment links,
+   made through the API with the product, the prices, the webhook destination
+   (`https://licence.loriini.app/v1/stripe`) and the customer portal.
 2. ~~The company's details~~ Filled in on 8 October: Žofia Kosová, trading as
    Loriini.app, IČO 19785283, DIČ CZ0154024321, as on the Stripe account.
 3. **The prices** are the placeholders from licence-model.md §8, A$75 a seat
