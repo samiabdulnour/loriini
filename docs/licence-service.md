@@ -133,10 +133,13 @@ card, the key arriving by email, installed on a computer, and the licence under
 
 ## Keeping it
 
-- **Backups.** Run `scripts/licence.py backup --out D:\Backups\licences.sqlite3`
-  daily, from Task Scheduler with a dated name. The backup is the SQLite file
-  itself, copied consistently while the service runs. Fly also snapshots
-  volumes daily.
+- **Backups.** The *Licence database backup* workflow
+  (`.github/workflows/backup.yml`) runs nightly and keeps each copy as an
+  artifact for ninety days; it needs the repository secret
+  `LORIINI_ADMIN_TOKEN`, and *Run workflow* takes a copy now. By hand:
+  `scripts/licence.py backup --out licences.sqlite3`. The backup is the SQLite
+  file itself, copied consistently while the service runs. Fly also snapshots
+  volumes daily, kept five days.
 - **Restoring.** Stop the machine, copy the file onto the volume as
   `/data/licences.sqlite3` (`fly ssh sftp shell`), and start it again. What
   happened after the backup comes back as follows:
