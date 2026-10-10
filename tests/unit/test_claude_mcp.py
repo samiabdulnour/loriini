@@ -1,4 +1,4 @@
-"""The *Add to Claude* button: the program registered as an MCP server with
+"""The *Connect Claude* button: the program registered as an MCP server with
 Claude Desktop's settings file and with Claude Code's own command."""
 
 from __future__ import annotations

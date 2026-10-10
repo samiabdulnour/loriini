@@ -17,7 +17,7 @@ started. It is roadmap item R2; D120 records how it is built.
 
 ## Connecting a client
 
-**The button.** *Add to Claude*, beside the project picker at the top of
+**The button.** *Connect Claude*, beside the project picker at the top of
 Loriini's window, does the two things below for the program it is pressed
 in: it writes the server into Claude Desktop's settings file, keeping
 whatever else is there, and runs `claude mcp add` for Claude Code when that

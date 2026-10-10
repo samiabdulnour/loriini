@@ -81,8 +81,24 @@ class LicenceBox(tk.Toplevel):
         )
 
         face, size = theme.log_font()
+        # A field's one-pixel edge, in the field colour and blue while it has
+        # the keyboard -- the theme's thin contour. Tk's own Text drew a
+        # sunken border inside a black focus ring, two pixels of black round
+        # the one box in the window that is not a ttk widget.
         self.text = tk.Text(
-            outer, width=64, height=6, wrap="char", font=(face, size), undo=True, padx=8, pady=6
+            outer,
+            width=64,
+            height=6,
+            wrap="char",
+            font=(face, size),
+            undo=True,
+            padx=8,
+            pady=6,
+            borderwidth=0,
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=theme.EDGE,
+            highlightcolor=theme.BLUE,
         )
         self.text.grid(row=2, column=0, sticky="ew")
         self.text.bind("<<Modified>>", self._changed)
