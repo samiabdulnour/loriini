@@ -98,11 +98,34 @@ was made at**. Without that, seven documents made in a row would all show
 whatever the 3D window happens to display now, and a sheet of seven hours would
 be seven copies of one hour.
 
-The vectorial sun shadow is not part of it, though the field names suggest it
-should be. `vectSunShadow` belongs to `API_3DStyle`, and a 3D style is already
-reachable: Tapir's `SetViewSettings` pins one on a view by name through
-`d3styleName`. Make the style once, with the shadow settings the office wants,
-and every document uses it.
+**The vectorial sun shadows are part of it, since roadmap R1.** The first
+build said they were not, because `vectSunShadow` belongs to `API_3DStyle` and
+a style can be pinned on a view -- which is true of a view of the 3D window
+and not of a document's view: Tapir refuses a 3D style there, as the sun views
+found. A document's shadows are its own, the *Vectorial Sun Shadows* of its
+Model Display, and the kit reaches them in two places:
+
+| | What it is |
+|---|---|
+| `API_DocumentFrom3DDefaults::vectSunShadow`, `contureOff` | what a **new** document is made with: the shadows on, and their contours |
+| `attributeOptions.shadFill`, `shadFillPen`, `shadFillBkgPen`, `shadContPen` | the fill the shadows are drawn in -- on the defaults and on a document alike |
+| `API_DocumentFrom3DType::effects3D` | an existing document's vectorial effects, shadows among them; the kit says only "Effects to apply" and not which bit is which |
+
+So `sunShadows: true` switches the defaults on for the one creation and puts
+them back straight after, whatever happened, and `shadowFill` is written onto
+the defaults and onto the document. The answer carries `effects3D` and
+`shadowFill` read back from the document, which is how the first live run
+will say what Archicad did (`docs/shadow-plans.md`).
+
+| Parameter | |
+|---|---|
+| `name`, `referenceId` | the document's name and reference ID in the Project Map |
+| `viewAzimuth`, `viewAltitude` | where the camera stands, as for `SetProjection`; 90 is straight down, snapped north-up |
+| `sun` | the date and time the document keeps its sun at |
+| `sunShadows` | make it with Archicad's vectorial sun shadows on (or off) |
+| `shadowContours` | with `sunShadows`, outline each shadow; off by default |
+| `shadowFill` | `fillIndex`, `fillPen`, `backgroundPen`, `contourPen`, each optional |
+| `fillUncutSurfaces` | whether the document fills its uncut surfaces -- `shouldUseUncutSurfaceFill`, the *Uncut Surfaces* switch of its Model Display. False leaves roofs and ground as outlines, so a drawing of the document on a layout shows what lies under it wherever no shadow falls: how the stacked shadow plans put the existing set's document over a proposal's (`docs/shadow-plans.md`). Written onto the defaults for the creation and onto the document, like the fill; left out, the project's default stands |
 
 Neither write is undoable, and the first build's attempt to make them so is
 why it failed. The kit documents both `APIDb_NewDatabaseID` and
@@ -112,6 +135,26 @@ scope: wrapped in `ACAPI_CallUndoableCommand`, the live call came back
 `-2130312312`, which is that code. So seven documents made by a run and then
 abandoned are deleted the way any other is, by hand in the Navigator. The names
 a run gives them are what make that tolerable.
+
+### `Loriini.SetDocumentFrom3D`
+
+Re-aims a 3D Document the add-on made, sets its sun again, its shadow fill,
+and -- given `effects3D` -- its vectorial effects, read and written back whole
+with `APIEnv_ChangeDocumentFrom3DSettingsID`.
+
+It exists because a document cannot be deleted through the API:
+`APIDb_DeleteDatabaseID` takes details, worksheets, layouts and masters and
+nothing else, and `DeleteNavigatorItems` reports success on a document and
+leaves it (measured on the Bondi file, D98). A second run over the same hours
+finds the first run's documents by name, and without this they would keep
+whatever sun and aim they were made with. `effects3D` is copied whole from a
+document read back with the effects wanted -- one the same run has just made
+with `sunShadows` -- because which of its bits is the shadow is not written
+down, and copying Archicad's own value is safer than guessing one.
+
+Takes `databaseId` (required), `viewAzimuth` and `viewAltitude`, `sun`,
+`shadowFill`, `fillUncutSurfaces` and `effects3D`; answers `effects3D`,
+`shadowFill` and `fillUncutSurfaces` read back.
 
 ### `Loriini.CreateFills`
 
@@ -151,6 +194,14 @@ the section plane passes through, and either can change or vanish under a model
 view option the tool never set — which is how a diagram that looked right on
 screen arrives empty on a layout.
 
+A batch is **one undo step**, so a fill Archicad refuses takes the whole
+batch back with it, and the answer says which: *Archicad refused to create
+fill 212 of the 500 in this batch*. That is right for an undo and was fatal
+for a run -- on a larger model one outline Archicad would not draw stopped
+the diagram with nothing on the plan (roadmap R1). The caller now halves a
+refused batch until it has the fill, leaves that one out, draws the rest and
+names what it left out (`archicad.shadows._create_legend_fills`).
+
 ### `Loriini.ArrangeDrawings`
 
 What a placed Drawing is, once Tapir has placed it. `CreateDrawings` puts a
@@ -176,6 +227,15 @@ projected model origin, and on a site modelled around its origin that is the
 building. The placeholder frame Tapir leaves is centred there too; it is only
 59 mm wide. "Almost there, just expand it", as the practice put it.
 
+`stack: true` (9 October 2026) brings the drawings to the front in the order
+given once they are arranged, one `ACAPI_Element_Tool (APITool_BringToFront)`
+each, so the list reads bottom to top. A layout draws its frontmost drawing
+last and a drawing is clear wherever it draws nothing, which is what lets two
+documents share a cell: the stacked shadow plans put the existing set's
+document over the proposal's. A drawing the order could not be set on is
+reported in `failures` with `"step": "bringToFront"`, and the rest are left
+arranged.
+
 `GetDrawings` beside it reads every Drawing on a layout back -- position,
 anchor, frame, bounds and the content box from
 `APIDb_GetFullDrawingContentBoxID` -- because a frame written in the wrong
@@ -197,6 +257,16 @@ and does not move. On Archicad 26, Tapir's `ChangeWindow` answers
 `{"success": true}` and stays put for `windowType` alone, with `storyIndex`,
 and with a floor plan's own `databaseId`. A replacement that trusted its own
 write would be the same trap wearing a different name.
+
+`open: true` (7 October 2026) opens the database's window first, through
+`APIDo_ChangeWindowID` -- the call a double-click in the Project Map makes,
+and the one the 3D export already uses to bring the 3D window to the front --
+and moves the database after. It is for the worksheet the API just made,
+which refuses the plain move until a person has opened it once ([D95](decisions.md));
+the site tools try the plain move, then this, and only then wait for the
+person. The answer carries `opened`. Measured on the Redfern project the same
+evening: Archicad opens a fresh worksheet's window this way, the move then
+takes, and the sheet draws with nobody touching the Project Map.
 
 ### `Loriini.CreateWorksheet`
 
@@ -462,6 +532,14 @@ without administrator rights registers its own add-on folder in the Add-On
 Manager, and on these workstations that is a folder under Documents. A missing
 .exe says so in a report dialog rather than doing nothing, because a menu item
 that silently does nothing reads as a broken add-on.
+
+The palette (`LoriiniPalette.cpp`) is the same thing as a strip of buttons:
+one per study, each starting the app with that study ticked, and since
+7 October 2026 an eighth that is not a study -- it starts the app with the
+reference image over the 3D window already open ([overlay.md](overlay.md)),
+which is the one thing a person reaches for while standing in Archicad. The
+button's name travels as `--study reference`, and `Window.ask_for` opens the
+palette rather than ticking anything.
 
 ## Building it
 

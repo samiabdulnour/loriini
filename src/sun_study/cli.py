@@ -24,7 +24,7 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, NoReturn
 
 import numpy as np
 import numpy.typing as npt
@@ -33,6 +33,7 @@ import typer
 from sun_study import AUTHOR, PRODUCT, STOP_FILE_VAR, __version__, licence
 from sun_study.archicad import context_model, future_context, naming
 from sun_study.archicad import site_analysis as site_drawing
+from sun_study.archicad.area_sheet import draw_area_sheet
 from sun_study.archicad.connection import (
     DEFAULT_PORT,
     DEFAULT_TIMEOUT_SECONDS,
@@ -56,7 +57,7 @@ from sun_study.archicad.draw import (
     match_pens,
     pen_table,
 )
-from sun_study.archicad.layers import export_state
+from sun_study.archicad.layers import combination_states, export_state, read_layers
 from sun_study.archicad.layout import (
     DEFAULT_LAYOUT_SCALE,
     NavigatorItem,
@@ -119,14 +120,40 @@ from sun_study.archicad.series import (
     find_worksheet,
     restore_after,
 )
-from sun_study.archicad.shadows import (
-    DEFAULT_SHEETS as SHADOW_SHEETS,
+from sun_study.archicad.shadow_plans import (
+    DEFAULT_COMBINATION as SHADOW_PLAN_COMBINATION,
+)
+from sun_study.archicad.shadow_plans import (
+    DEFAULT_SHADOW_FILL,
+    EXISTING_LABEL,
+    PLAN_SCALE,
+    SET_WORD,
+    STACK_SHADOW_FILLS,
+    PlanSet,
+    ShadowPlan,
+    ShadowPlanSettings,
+    hidden_among,
+    make_shadow_plan_sheets,
+    make_shadow_plan_stacks,
+    make_shadow_plans,
+    make_stacked_shadow_plan_sheets,
+    shadow_plans,
+    site_context_layers,
+    stack_combinations,
+    stack_labels,
 )
 from sun_study.archicad.shadows import (
+    BASELINE_RAMP,
+    FIRST_SHADOW_PEN,
+    SCENARIO_RAMP,
     build_shadow_sheets,
     designed_source,
     draw_shadow_series,
+    legend_colour,
     project_frame,
+)
+from sun_study.archicad.shadows import (
+    DEFAULT_SHEETS as SHADOW_SHEETS,
 )
 from sun_study.archicad.sheeting import (
     SHEETS_HELP,
@@ -143,6 +170,7 @@ from sun_study.archicad.sheets import (
     legend_place,
     straighten_and_tile,
 )
+from sun_study.archicad.slabs import floors_from, read_slabs
 from sun_study.archicad.sun_eyes import (
     DEFAULT_SHEETS as SUN_VIEW_SHEETS,
 )
@@ -191,6 +219,7 @@ from sun_study.core.analysis import (
     ZERO_TOLERANCE_MINUTES,
     BandedResult,
     band_by_area,
+    candidate_rays,
     cumulative_minutes,
     instant_weights,
     sunlit_matrix,
@@ -199,6 +228,13 @@ from sun_study.core.facade import face_panels
 from sun_study.core.geometry import TriangleMesh
 from sun_study.core.occlusion import Occluder
 from sun_study.core.orientation import sun_vectors_in_model_frame
+from sun_study.core.resources import (
+    Stopwatch,
+    duration_text,
+    peak_memory_bytes,
+    physical_memory_bytes,
+    size_text,
+)
 from sun_study.core.sampling import SamplePoints
 from sun_study.core.shadow import (
     BASELINE,
@@ -206,6 +242,7 @@ from sun_study.core.shadow import (
     cast_shadows,
     drape_onto_terrain,
     ground_plane_grid,
+    receiving_samples,
 )
 from sun_study.core.shadow import (
     DEFAULT_MARGIN_M as SHADOW_MARGIN_M,
@@ -225,7 +262,8 @@ from sun_study.ingest.scene import (
     massing_subject,
     open_ground_grid,
 )
-from sun_study.licence import LicenceExpiredError
+from sun_study.licence import LicenceExpiredError, LicenceKeyError
+from sun_study.licence_key import KeyRefusedError
 from sun_study.pipeline import (
     WEIGHTING_BY_RULESET,
     InstantSeries,
@@ -234,6 +272,9 @@ from sun_study.pipeline import (
     run_assessment,
     run_massing,
 )
+from sun_study.report.area_table import notes as area_notes
+from sun_study.report.area_table import text_lines as area_text_lines
+from sun_study.report.area_table import write_workbook as write_area_workbook
 from sun_study.report.bands_out import (
     build_massing_header,
     write_bands_csv,
@@ -243,10 +284,26 @@ from sun_study.report.cos_table import write_workbook, zone_tables
 from sun_study.report.csv_out import write_csv
 from sun_study.report.header import build_header
 from sun_study.report.json_out import write_json
+from sun_study.rules.area_yield import (
+    AFFORDABLE_MIX,
+    DEFAULT_MIX,
+    Efficiencies,
+    Feasibility,
+    Mix,
+    ParkingRates,
+    Permissible,
+    checked_mix,
+    feasibility,
+    level_name,
+    parse_level,
+    parse_rates,
+    parse_unit,
+)
 from sun_study.rules.days import DAY_HELP, day_tag, day_title, parse_day, with_day
 from sun_study.rules.ruleset import BUILTIN_RULESETS, Ruleset, RulesetError, load_ruleset
 from sun_study.site import pipeline as site_pipeline
 from sun_study.site.geocode import geocode
+from sun_study.site.http import FetchError
 
 #: A sheet label that is a time of day. Those are shadow diagrams; the
 #: banded and two-hour plans are not, and the two go to different subsets.
@@ -3093,6 +3150,7 @@ def report_assessment(
             scene_provenance=result.scene.provenance,
             scene_config_description=result.scene.config.describe(),
             generated_at=dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+            licensee=licence.licensee(),
         )
         typer.echo("")
         if csv_out:
@@ -4103,6 +4161,7 @@ def massing(
             scene_config_description=result.scene.config.describe(),
             scene_provenance=result.scene.provenance,
             generated_at=dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+            licensee=licence.licensee(),
         )
         typer.echo("")
         if csv_out:
@@ -6093,8 +6152,9 @@ def archicad_run(
 
         if write:
             typer.echo("")
+            who = licence.licensee()
             try:
-                written = write_assessment(connection, result.assessment, match=match)
+                written = write_assessment(connection, result.assessment, match=match, licensee=who)
             except ArchicadError as error:
                 # Not fatal when a drawing was also asked for. A fill is
                 # geometry on a layer: it needs no property, no classification
@@ -6839,6 +6899,7 @@ def shadows(
 
     with tempfile.TemporaryDirectory(prefix="sun-study-shadow-") as scratch:
         destination = ifc_out or Path(scratch) / "shadow.ifc"
+        clock = Stopwatch()
         try:
             # Before the layer state is touched. A previous run that filed a
             # sheet leaves the *database* on a layout, and every layer read and
@@ -6888,7 +6949,8 @@ def shadows(
             ) as plan:
                 typer.echo(plan.describe())
                 exported = _export_by_route(connection, destination, export_route)
-            typer.echo(f"  model written to {exported}")
+            typer.echo(f"  model written to {exported} ({size_text(exported.stat().st_size)})")
+            typer.echo(clock.said("exported the model"))
             note = oversized_export_note(exported) if exported.suffix.lower() == ".ifc" else ""
             if note:
                 typer.secho(note, fg=typer.colors.YELLOW)
@@ -6918,6 +6980,7 @@ def shadows(
             shadow_subset=shadow_subset,
             check_georeferencing=True,
             from_views=shadow_from_views,
+            clock=clock,
         )
 
 
@@ -6944,6 +7007,7 @@ def _shadow_report(
     check_georeferencing: bool,
     from_views: Path | None = None,
     sheets: str = SHADOW_SHEETS,
+    clock: Stopwatch | None = None,
 ) -> None:
     """Measure one exported model and say what it shows. Draws only if asked.
 
@@ -6951,7 +7015,13 @@ def _shadow_report(
     export cannot drift into measuring differently. The cross-check is the one
     thing they do not share: it compares the live project against the file,
     which is a question only worth asking of a file this run just produced.
+
+    Every stage says how long it took and how much memory the run had reached
+    by then (``timing:`` lines), and the size of the cast is said before it
+    starts: on a larger model the log is how a failure is read, and the last
+    stage it names is the one that was running (roadmap R1).
     """
+    clock = clock or Stopwatch()
     try:
         if from_views is not None:
             # Archicad already decided what belongs in each of these, so
@@ -6987,6 +7057,7 @@ def _shadow_report(
 
     typer.echo("")
     typer.echo(f"  {scene.describe()}")
+    typer.echo(clock.said("read the model and sorted it into the legend"))
 
     # Project zero, not the lowest point of the geometry. Archicad's zero
     # is conventionally the ground floor level, while the lowest geometry
@@ -6996,9 +7067,15 @@ def _shadow_report(
     # out solid grey: measured, 24% of the plane permanently dark and
     # 87 hectares of "existing shadow".
     datum = shadow_datum if shadow_datum is not None else 0.0
-    grid = ground_plane_grid(
-        scene.bounds, datum_m=datum, spacing_m=shadow_grid, margin_m=shadow_margin
-    )
+    # Said before the grid is laid, so a grid too big to hold is on the log
+    # with its size before it is attempted.
+    samples = _say_grid(scene, grid_m=shadow_grid, margin_m=shadow_margin)
+    try:
+        grid = ground_plane_grid(
+            scene.bounds, datum_m=datum, spacing_m=shadow_grid, margin_m=shadow_margin
+        )
+    except MemoryError as error:
+        _out_of_memory(f"laying a grid of about {samples:,} samples", error)
     # What the shadow lands on is the ground *and* what stands on it. A
     # shadow reaching a thirty-metre neighbour stops on its roof; carried on
     # to the ground under it, the fill would run tens of metres too far and
@@ -7016,16 +7093,30 @@ def _shadow_report(
     )
     receiving = None
     if receiver.triangle_count:
-        draped = drape_onto_terrain(grid, receiver, floor_m=terrain_floor)
-        grid, receiving = draped.grid, draped.on_terrain
-        typer.echo(
-            f"  draped onto {scene.terrain.triangle_count:,} terrain and "
-            f"{receiver.triangle_count - scene.terrain.triangle_count:,} building "
-            f"triangles; "
-            f"{draped.off_terrain_share:.0%} of the grid reaches past the survey and "
-            f"is left undrawn"
-        )
-        if not receiving.any():
+        try:
+            draped = drape_onto_terrain(grid, receiver, floor_m=terrain_floor)
+        except MemoryError as error:
+            _out_of_memory(f"draping {len(grid):,} samples onto the ground", error)
+        grid = draped.grid
+        receiving = receiving_samples(draped, bool(scene.terrain.triangle_count))
+        buildings = receiver.triangle_count - scene.terrain.triangle_count
+        if receiving is None:
+            # No ground named: the datum plane is the ground, and the roofs
+            # stand on it. Said, because a flat ground under a sloping site
+            # is the thing to know about the drawing (D72).
+            typer.echo(
+                f"  no terrain layer named: the shadows land on the flat datum at "
+                f"{datum:g} m across the whole grid, and on the roofs of "
+                f"{buildings:,} building triangles"
+            )
+        else:
+            typer.echo(
+                f"  draped onto {scene.terrain.triangle_count:,} terrain and "
+                f"{buildings:,} building triangles; "
+                f"{draped.off_terrain_share:.0%} of the grid reaches past the survey "
+                f"and is left undrawn"
+            )
+        if receiving is not None and not receiving.any():
             typer.secho(
                 "  no sample found any ground, so nothing would be drawn. Check the "
                 "terrain view covers the site.",
@@ -7033,6 +7124,7 @@ def _shadow_report(
                 err=True,
             )
             raise typer.Exit(code=2)
+        typer.echo(clock.said("draped the grid onto the ground"))
     sun = sun_vectors_in_model_frame(
         solar_position(moments, scene.orientation.latitude_deg, scene.orientation.longitude_deg),
         scene.orientation.normalised_bearing_deg,
@@ -7045,17 +7137,26 @@ def _shadow_report(
             fg=typer.colors.YELLOW,
         )
     outlined = designed if shadow_all_hours else None
-    series = cast_shadows(
-        grid,
-        sources=scene.sources,
-        sun_vectors=sun,
-        moments=moments,
-        labels=labels,
-        spacing_m=shadow_grid,
-        receiving=receiving,
-        edge_tolerance_m=edge_tolerance if edge_tolerance > 0 else None,
-        outline=outlined,
+    typer.echo(
+        f"  {candidate_rays(grid, sun):,} rays a cast, {len(scene.sources)} casts"
+        + (" and one more for the every-hour drawing" if outlined else "")
     )
+    try:
+        series = cast_shadows(
+            grid,
+            sources=scene.sources,
+            sun_vectors=sun,
+            moments=moments,
+            labels=labels,
+            spacing_m=shadow_grid,
+            receiving=receiving,
+            edge_tolerance_m=edge_tolerance if edge_tolerance > 0 else None,
+            outline=outlined,
+            say=typer.echo,
+        )
+    except MemoryError as error:
+        _out_of_memory(f"casting {len(grid):,} samples x {len(moments)} instants", error)
+    typer.echo(clock.said("cast and traced the shadows"))
 
     lower, upper = scene.bounds
     typer.echo(
@@ -7104,6 +7205,7 @@ def _shadow_report(
             "build the views and layouts from them.",
             fg=typer.colors.GREEN,
         )
+        typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
         return
 
     try:
@@ -7140,6 +7242,7 @@ def _shadow_report(
         )
         typer.echo("")
         typer.echo(drawn.describe())
+        typer.echo(clock.said("drew the fills"))
         if sheet:
             built = build_shadow_sheets(
                 connection,
@@ -7153,9 +7256,64 @@ def _shadow_report(
             )
             typer.echo("")
             typer.echo(built.describe())
+            typer.echo(clock.said("made the views and sheets"))
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from error
+    typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
+
+
+#: A grid past this many samples is said to be large before it is cast. About
+#: the size where the caster's hour starts, on the machines measured.
+LARGE_GRID_SAMPLES = 5_000_000
+
+
+def _say_grid(scene: Any, *, grid_m: float, margin_m: float) -> int:
+    """How big the grid will be, and what stretched it, before it is laid.
+
+    Said up front because the cast is where a larger model spends its time
+    and its memory, and both go with the grid's area: a log that ends in the
+    caster should already have said how much it was asked to do. Returns the
+    samples, near enough -- the grid rounds its edges to the spacing.
+    """
+    lower, upper = scene.bounds
+    width = float(upper[0] - lower[0]) + 2.0 * margin_m
+    depth = float(upper[1] - lower[1]) + 2.0 * margin_m
+    samples = max(round(width / grid_m), 1) * max(round(depth / grid_m), 1)
+    typer.echo(
+        f"  grid {width:,.0f} x {depth:,.0f} m at {grid_m:g} m, {margin_m:g} m past "
+        f"everything: about {samples:,} samples"
+    )
+    for layer, distance in scene.far[:6]:
+        typer.secho(
+            f"    stretched by {layer!r}, which has a solid {distance:,.0f} m clear of every "
+            f"legend row; if it is not meant to be in the drawing, take it out of the "
+            f"export",
+            fg=typer.colors.YELLOW,
+        )
+    if samples > LARGE_GRID_SAMPLES:
+        typer.secho(
+            "    that is a large grid, and the cast takes time and memory with it. A 2 m "
+            "--shadow-grid is a quarter of the samples.",
+            fg=typer.colors.YELLOW,
+        )
+    return samples
+
+
+def _out_of_memory(doing: str, error: MemoryError) -> NoReturn:
+    """Stop, saying what ran out of memory, how close the machine came, and
+    the ways to a smaller job -- rather than a numpy traceback."""
+    typer.secho(
+        f"  Out of memory {doing}: the run had reached {size_text(peak_memory_bytes())} "
+        f"of the machine's {size_text(physical_memory_bytes())}. A 2 m --shadow-grid is a "
+        f"quarter of the samples; a smaller --shadow-margin, fewer days at once, or a "
+        f"stretching layer named above taken out of the export shrink the grid; and "
+        f"'sun-study shadow-plans' has Archicad draw the hours as 3D Documents, at any "
+        f"size it can display. ({str(error) or 'no detail'})",
+        fg=typer.colors.RED,
+        err=True,
+    )
+    raise typer.Exit(code=2) from error
 
 
 @app.command("sun-views")
@@ -7443,6 +7601,585 @@ def sun_eye_views(
     )
 
 
+@app.command("shadow-plans")
+def shadow_plan_documents(
+    port: Annotated[int, typer.Option("--port", help="Which Archicad to talk to.")] = DEFAULT_PORT,
+    timeout: Annotated[
+        float, typer.Option("--timeout", help="Seconds to wait for one Archicad command.")
+    ] = DEFAULT_TIMEOUT_SECONDS,
+    timezone: Annotated[str, typer.Option("--timezone")] = "Australia/Sydney",
+    year: Annotated[int, typer.Option("--year")] = 2024,
+    shadow_date: Annotated[
+        str, typer.Option("--shadow-date", help="Days to draw, MM-DD, comma separated.")
+    ] = DEFAULT_SHADOW_DATES,
+    shadow_hour: Annotated[
+        str, typer.Option("--shadow-hour", help="Whole hours, comma separated.")
+    ] = DEFAULT_SHADOW_HOURS,
+    layer_combination: Annotated[
+        str,
+        typer.Option(
+            "--layer-combination",
+            help=(
+                "What the plans show, and so what casts and catches the shadows: "
+                "the ground has to be in it, or the shadows fall on nothing."
+            ),
+        ),
+    ] = SHADOW_PLAN_COMBINATION,
+    require_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--require-layer",
+            help=(
+                "A layer to show on top of the combination, whatever it says. Repeatable. "
+                "The plans then pin a combination of their own, the named one with these on."
+            ),
+        ),
+    ] = None,
+    site_context: Annotated[
+        bool,
+        typer.Option(
+            "--site-context/--no-site-context",
+            help=(
+                "Show the context the site tools drew -- terrain, roads, neighbours, future "
+                "neighbours -- when the project has those layers and the combination hides "
+                "them. On by default: a plan with no ground has nothing to catch a shadow."
+            ),
+        ),
+    ] = True,
+    set_label: Annotated[
+        str,
+        typer.Option(
+            "--label",
+            help=(
+                "A name for this set, in its documents' and sheets' names -- "
+                "'Existing' and 'Proposed' under two layer combinations sit side by "
+                "side and are compared sheet against sheet. Not with --proposed, "
+                "which names its sets itself."
+            ),
+        ),
+    ] = "",
+    existing: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--existing",
+            help=(
+                "A layer that holds what already stands -- the neighbours. Repeatable. "
+                "Shown in every set of the stack; the ground and whatever else the "
+                "layer combination shows is there anyway."
+            ),
+        ),
+    ] = None,
+    proposed: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--proposed",
+            help=(
+                "The layers of one proposal, comma separated. Repeatable, one per "
+                "proposal: named Proposed 1, Proposed 2 and on in the order given, "
+                "or Proposed alone. Turns on the stacked mode: the existing set's "
+                "document is laid over each proposal's in every cell, so the existing "
+                "shadow is in one pen and what the proposal adds is in another, on one "
+                "plan, cast by Archicad both times."
+            ),
+        ),
+    ] = None,
+    existing_pen: Annotated[
+        int | None,
+        typer.Option(
+            "--existing-pen",
+            help=(
+                "The pen the existing set's shadows are filled in. Left out, the pen "
+                "nearest the legend's EXISTING grey in the project's pen table."
+            ),
+        ),
+    ] = None,
+    proposed_pen: Annotated[
+        list[int] | None,
+        typer.Option(
+            "--proposed-pen",
+            help=(
+                "The pen a proposal's shadows are filled in, one per --proposed in "
+                "order. Left out, the pens nearest the legend's blues."
+            ),
+        ),
+    ] = None,
+    renovation_filter: Annotated[
+        str | None,
+        typer.Option(
+            "--renovation-filter",
+            help=(
+                "GUID of the renovation filter to pin. By default the one most of the "
+                "project's views carry, which is its planned state."
+            ),
+        ),
+    ] = None,
+    model_view_options: Annotated[str | None, typer.Option("--model-view-options")] = None,
+    pen_set: Annotated[str | None, typer.Option("--pen-set")] = None,
+    override: Annotated[
+        str | None, typer.Option("--override", help="Graphic override combination to pin.")
+    ] = None,
+    shadow_fill: Annotated[
+        str | None,
+        typer.Option(
+            "--shadow-fill",
+            help=(
+                "Fill type the shadows are drawn in, by name. Left out, the office's '50 %' "
+                "when the project has it, as its own shadow documents are drawn; 'none' keeps "
+                "the project's 3D Document default."
+            ),
+        ),
+    ] = None,
+    shadow_pen: Annotated[
+        int | None, typer.Option("--shadow-pen", help="Pen the shadow fill is drawn in.")
+    ] = None,
+    shadow_background_pen: Annotated[
+        int | None,
+        typer.Option("--shadow-background-pen", help="The fill's background pen; 0 is none."),
+    ] = None,
+    shadow_contours: Annotated[
+        bool,
+        typer.Option("--shadow-contours/--no-shadow-contours", help="Outline each shadow."),
+    ] = False,
+    scale: Annotated[
+        float, typer.Option("--scale", help="Scale of the plans' views, and so of the drawings.")
+    ] = PLAN_SCALE,
+    layout: Annotated[
+        bool, typer.Option("--layout/--no-layout", help="Place the plans on layouts.")
+    ] = True,
+    sheets: Annotated[str, typer.Option("--sheets", help=SHEETS_HELP)] = SHADOW_SHEETS,
+    master_layout: Annotated[str | None, typer.Option("--master-layout")] = None,
+    subset: Annotated[
+        str | None, typer.Option("--subset", help="Layout Book subset the sheets go into.")
+    ] = None,
+    title_block_mm: Annotated[
+        float,
+        typer.Option(
+            "--title-block-mm",
+            help="Width of the master's title block strip on the right, kept clear of drawings.",
+        ),
+    ] = TITLE_BLOCK_MM,
+    layer_prefix: Annotated[
+        str | None,
+        typer.Option(
+            "--layer-prefix",
+            help=(
+                "What every document, view and sheet is named under. Defaults to "
+                "15 |, the shadow diagram's own number."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Shadow plans as 3D Documents: Archicad draws each hour's shadows.
+
+    One 3D Document per day and hour, looking straight down with north up,
+    carrying the sun at that hour and Archicad's own vectorial sun shadows,
+    each with a view pinned to the layer combination and dealt onto sheets by
+    day. Archicad casts the shadows, at any size of model it can display --
+    the route for a model too large for the shadow diagram's own caster, and
+    the record beside its fills. One document cannot give the split between
+    existing and additional shadow; two can, stacked: with --existing and
+    --proposed the existing set's document is laid over each proposal's on
+    one sheet, in two pens, and the sheet reads as the fills do. Without them,
+    run it once per layer combination, with --label, and read the sheets
+    against each other.
+
+    Needs the Loriini add-on, current build: the document's sun shadows are
+    switched on as it is made, which older builds cannot do.
+    """
+    banner()
+    naming.set_prefix(layer_prefix, default=naming.SHADOW_PREFIX)
+    clock = Stopwatch()
+    proposals = _proposal_layers(proposed or [])
+    if proposals and set_label:
+        typer.secho(
+            f"  --label {set_label!r} is set aside: the stacked mode names its sets "
+            f"{EXISTING_LABEL} and {', '.join(stack_labels(len(proposals)))}.",
+            fg=typer.colors.YELLOW,
+        )
+        set_label = ""
+    if existing and not proposals:
+        typer.secho(
+            "  --existing names what stands, but no --proposed names what is added; "
+            "the plans are made as one set under the layer combination.",
+            fg=typer.colors.YELLOW,
+        )
+    moments, labels = _shadow_moments(shadow_date, shadow_hour, year, timezone)
+    if not moments:
+        typer.secho("No instants to draw.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2)
+    connection = _connect(port, timeout, switch_database=False)
+
+    # A floor plan in front, as for the sun views: documents are made from
+    # the 3D window's state, and the database must not be moved under it.
+    front = connection.run_tapir("GetCurrentWindowType", {})
+    where = front.get("currentWindowType") if isinstance(front, dict) else None
+    if where != "FloorPlan":
+        typer.secho(
+            f"  Archicad has a {where or 'non-plan window'} in front. Click a floor plan "
+            f"tab first: a 3D Document is made from the 3D window's state, and this "
+            f"command must not move the database from under it.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    geo = read_geo_location(connection)
+    plans, down = shadow_plans(geo, moments, labels)
+    for plan in down:
+        typer.secho(
+            f"  {plan.caption}: the sun is below the horizon, so there is no plan to draw",
+            fg=typer.colors.YELLOW,
+        )
+    if not plans:
+        typer.secho("  the sun is down at every hour asked for.", fg=typer.colors.RED)
+        raise typer.Exit(code=2)
+
+    # Before any document is made: a document keeps the storey filter the
+    # window had when it was made (D98).
+    trouble = show_every_storey(connection)
+    if trouble:
+        typer.secho(f"  {trouble}", fg=typer.colors.YELLOW)
+
+    fill: dict[str, int] = {}
+    if shadow_fill is None and proposals:
+        # A stack needs the upper document's shadow to cover the lower's, so
+        # the shadows are solid; the office's hatch would let the pen beneath
+        # show between its lines, and the page would be neither colour.
+        index = site_drawing.attribute_index(connection, "Fill", STACK_SHADOW_FILLS)
+        if index is not None:
+            fill["fillIndex"] = index
+            typer.echo(f"  shadows drawn solid, in the {STACK_SHADOW_FILLS[0]!r} fill")
+        else:
+            typer.secho(
+                f"  the project has no fill called {STACK_SHADOW_FILLS[0]!r}; the shadows "
+                f"keep the project's own fill, and a hatch there lets the pen beneath show "
+                f"through the existing shadow -- name a solid with --shadow-fill",
+                fg=typer.colors.YELLOW,
+            )
+    elif shadow_fill is None:
+        # The office draws its shadow documents in "50 %" (read off the
+        # Kogarah file, 8 October 2026); a project's 3D Document default was
+        # a brick hatch on the mark-up pen, which showed as no shadow at all.
+        index = site_drawing.attribute_index(connection, "Fill", (DEFAULT_SHADOW_FILL,))
+        if index is not None:
+            fill["fillIndex"] = index
+            typer.echo(f"  shadows drawn in the {DEFAULT_SHADOW_FILL!r} fill")
+    elif shadow_fill.strip().casefold() != "none":
+        index = site_drawing.attribute_index(connection, "Fill", (shadow_fill,))
+        if index is None:
+            typer.secho(
+                f"  the project has no fill called {shadow_fill!r}; the shadows keep the "
+                f"project's own fill",
+                fg=typer.colors.YELLOW,
+            )
+        else:
+            fill["fillIndex"] = index
+    if shadow_pen is not None:
+        fill["fillPen"] = shadow_pen
+    if shadow_background_pen is not None:
+        fill["backgroundPen"] = shadow_background_pen
+
+    guid = renovation_filter or planned_renovation_filter(connection)
+    settings = ShadowPlanSettings(
+        layer_combination=layer_combination,
+        renovation_filter_guid=guid,
+        model_view_options=model_view_options,
+        pen_set=pen_set,
+        graphic_override=override,
+        scale=scale,
+        shadow_fill=fill,
+        shadow_contours=shadow_contours,
+    )
+    # What the combination hides that the plans need: the context the site
+    # tools drew, and whatever --require-layer names. Shown through a
+    # combination of the plans' own, the named one with those on, since a
+    # view pins a combination and nothing else.
+    wanted = list(require_layer or [])
+    if site_context:
+        states = combination_states(connection, layer_combination)
+        if states is None:
+            typer.secho(
+                f"  no layer combination named {layer_combination!r} in this project.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        names = {state.identifier: state.name for state in read_layers(connection)}
+        wanted += [n for n in hidden_among(site_context_layers(), names, states) if n not in wanted]
+    if proposals:
+        _stacked_shadow_plans(
+            connection,
+            plans,
+            settings=settings,
+            base=layer_combination,
+            also_show=wanted,
+            existing_layers=existing or [],
+            proposals=proposals,
+            existing_pen=existing_pen,
+            proposed_pens=proposed_pen or [],
+            layout=layout,
+            sheets=sheets,
+            master_layout=master_layout,
+            subset=subset,
+            title_block_mm=title_block_mm,
+            scale=scale,
+            clock=clock,
+        )
+        return
+    if wanted:
+        pinned = ensure_layer_combination(
+            connection,
+            f"{naming.prefix()} Shadow Plans",
+            show=wanted,
+            hide=(),
+            base=layer_combination,
+        )
+        settings = replace(settings, layer_combination=pinned)
+        typer.echo(
+            f"  {layer_combination!r} hides what the plans need; views on {pinned!r} "
+            f"instead, which is that combination with {', '.join(repr(n) for n in wanted)} on"
+        )
+    typer.echo(
+        f"  {len(plans)} plans, overhead with north up, each with Archicad's sun and "
+        f"shadows; views on {settings.layer_combination!r} at 1:{scale:g}"
+        + ("" if guid else ", no renovation filter pinned (no view carries one)")
+    )
+
+    try:
+        made, said = make_shadow_plans(connection, plans, settings=settings, set_label=set_label)
+    except ArchicadError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    for line in said:
+        typer.secho(f"  {line}", fg=typer.colors.YELLOW)
+    # Over the documents just made as well: each keeps its own copy of the
+    # storey filter from the moment it exists (D98).
+    mended, looked, note = mend_document_filters(connection)
+    if mended:
+        typer.echo(f"  took the storey filter off {mended} of {looked} documents")
+    if note:
+        typer.secho(f"  {note}", fg=typer.colors.YELLOW)
+    typer.echo("    document                               sun altitude")
+    for one in made:
+        typer.echo(
+            f"    {one.view.name:<38} {one.plan.altitude_deg:6.1f}"
+            + ("  (already there, re-set)" if one.reused else "")
+        )
+    typer.echo(clock.said("made the documents"))
+
+    if layout:
+        try:
+            placed, removed = make_shadow_plan_sheets(
+                connection,
+                made,
+                sheets=sheets,
+                set_label=set_label,
+                scale=scale,
+                master_layout=master_layout,
+                title_block_mm=title_block_mm,
+            )
+        except ArchicadError as error:
+            typer.secho(
+                f"  the documents are made; the sheets are not: {error}",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+        else:
+            for name in removed:
+                typer.echo(f"  removed the earlier sheet {name!r}")
+            for report in placed:
+                typer.echo(report.describe())
+            if subset:
+                filing = file_under_subset(connection, [r.layout_name for r in placed], subset)
+                typer.echo(filing.describe())
+            typer.echo(clock.said("placed them on sheets"))
+    typer.echo(
+        "  Archicad draws the shadows when a document is opened or its drawing updated; "
+        "open one to check the shadows are on and fall where the fills say."
+    )
+    typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
+
+
+def _proposal_layers(given: Sequence[str]) -> list[list[str]]:
+    """Each ``--proposed`` value as one proposal's layers.
+
+    Comma separated inside a value, one value per proposal, so the count of
+    proposals is the count of flags and the numbering follows it.
+    """
+    proposals: list[list[str]] = []
+    for text in given:
+        layers = [part.strip() for part in text.split(",") if part.strip()]
+        if not layers:
+            raise typer.BadParameter(
+                f"{text!r} names no layer. Write one proposal's layers comma separated, "
+                f'e.g. "20 | Massing.SEARs,20 | Massing.Podium", and repeat --proposed '
+                f"for the next proposal."
+            )
+        proposals.append(layers)
+    return proposals
+
+
+def _stack_pens(
+    connection: ArchicadConnection,
+    existing_pen: int | None,
+    proposed_pens: Sequence[int],
+    count: int,
+) -> tuple[int, list[int]]:
+    """A solid pen per set of the stack: the existing set's, then one per proposal.
+
+    The ones given win; the rest are matched by colour against the project's
+    pen table, as the fills' legend rows are -- the existing shadow in the
+    legend's grey, a single proposal in its blue, several proposals up the
+    blue ramp in order -- so the stacked sheet and the fills sheet of one
+    project read in the same colours.
+    """
+    labels = stack_labels(count)
+    wanted = [
+        BandStyle(
+            EXISTING_LABEL.upper(), float("inf"), fill_pen=FIRST_SHADOW_PEN, rgb=BASELINE_RAMP[0]
+        )
+    ] + [
+        BandStyle(
+            label.upper(),
+            float("inf"),
+            fill_pen=FIRST_SHADOW_PEN + 1 + index,
+            rgb=legend_colour(label) or SCENARIO_RAMP[index % len(SCENARIO_RAMP)],
+        )
+        for index, label in enumerate(labels)
+    ]
+    try:
+        pens = pen_table(connection)
+    except ArchicadError as error:
+        typer.secho(
+            f"  could not read the pen table ({error}); the shadow pens not given are a guess",
+            fg=typer.colors.YELLOW,
+        )
+        pens = ()
+    matched, _ = match_pens(wanted, pens)
+    chosen = [band.fill_pen for band in matched]
+    given = [False] * len(chosen)
+    if existing_pen is not None:
+        chosen[0], given[0] = existing_pen, True
+    for index, pen in enumerate(proposed_pens[:count]):
+        chosen[1 + index], given[1 + index] = pen, True
+    if len(proposed_pens) > count:
+        typer.secho(
+            f"  {len(proposed_pens)} --proposed-pen for {count} --proposed; the last "
+            f"{len(proposed_pens) - count} are set aside",
+            fg=typer.colors.YELLOW,
+        )
+    for band, pen, told in zip(matched, chosen, given, strict=True):
+        how = "given" if told else ("matched" if pens else "guessed")
+        typer.echo(f"    {band.label:<12} rgb{band.rgb} -> pen {pen:<4} {how}")
+    return chosen[0], chosen[1:]
+
+
+def _stacked_shadow_plans(
+    connection: ArchicadConnection,
+    plans: Sequence[ShadowPlan],
+    *,
+    settings: ShadowPlanSettings,
+    base: str,
+    also_show: Sequence[str],
+    existing_layers: Sequence[str],
+    proposals: Sequence[Sequence[str]],
+    existing_pen: int | None,
+    proposed_pens: Sequence[int],
+    layout: bool,
+    sheets: str,
+    master_layout: str | None,
+    subset: str | None,
+    title_block_mm: float,
+    scale: float,
+    clock: Stopwatch,
+) -> None:
+    """The stacked mode of ``shadow-plans``: the existing set over each proposal.
+
+    A layer combination per set is made from the base -- the existing layers
+    on and every proposal's off for the existing set; its own on and the
+    others' off for each proposal -- then the documents, then the sheets with
+    two drawings to a cell. The existing document lies on top, its uncut
+    surfaces unfilled, so its shadow covers in its pen and the proposal's pen
+    shows wherever only the proposal casts.
+    """
+    typer.echo("  shadow pens for the stack:")
+    first, rest = _stack_pens(connection, existing_pen, proposed_pens, len(proposals))
+    members: list[PlanSet] = []
+    rows = stack_combinations(existing_layers, proposals, also_show=also_show)
+    for (label, show, hide), pen in zip(rows, [first, *rest], strict=True):
+        name = ensure_layer_combination(
+            connection, naming.named(f"{SET_WORD} {label}"), show=show, hide=hide, base=base
+        )
+        members.append(PlanSet(label=label, layer_combination=name, shadow_pen=pen))
+        on = ", ".join(repr(layer) for layer in show) or "nothing more"
+        off = ", ".join(repr(layer) for layer in hide) or "nothing"
+        typer.echo(f"  {label}: views on {name!r}, which is {base!r} with {on} on and {off} off")
+    typer.echo(
+        f"  {len(plans)} hours in {len(members)} sets, overhead with north up, each with "
+        f"Archicad's sun and shadows, uncut surfaces unfilled; the {members[0].label} "
+        f"document lies over each proposal's in every cell"
+    )
+
+    try:
+        stacks, said = make_shadow_plan_stacks(
+            connection, plans, settings=settings, existing=members[0], proposals=members[1:]
+        )
+    except ArchicadError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    for line in said:
+        typer.secho(f"  {line}", fg=typer.colors.YELLOW)
+    mended, looked, note = mend_document_filters(connection)
+    if mended:
+        typer.echo(f"  took the storey filter off {mended} of {looked} documents")
+    if note:
+        typer.secho(f"  {note}", fg=typer.colors.YELLOW)
+    typer.echo("    document                               sun altitude")
+    seen: set[str] = set()
+    for stack in stacks:
+        for one in (*stack.above, *stack.below):
+            if one.view.name in seen:
+                continue
+            seen.add(one.view.name)
+            typer.echo(
+                f"    {one.view.name:<38} {one.plan.altitude_deg:6.1f}"
+                + ("  (already there, re-set)" if one.reused else "")
+            )
+    typer.echo(clock.said("made the documents"))
+
+    if layout:
+        try:
+            placed, removed = make_stacked_shadow_plan_sheets(
+                connection,
+                stacks,
+                sheets=sheets,
+                scale=scale,
+                master_layout=master_layout,
+                title_block_mm=title_block_mm,
+            )
+        except ArchicadError as error:
+            typer.secho(
+                f"  the documents are made; the sheets are not: {error}",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+        else:
+            for name in removed:
+                typer.echo(f"  removed the earlier sheet {name!r}")
+            for report in placed:
+                typer.echo(report.describe())
+            if subset:
+                filing = file_under_subset(connection, [r.layout_name for r in placed], subset)
+                typer.echo(filing.describe())
+            typer.echo(clock.said("placed them on sheets"))
+    typer.echo(
+        "  Archicad draws the shadows when a sheet is opened or its drawings updated; open "
+        "one to check the existing shadow lies over the proposal's, and the proposal's "
+        "pen shows only where the existing set casts none."
+    )
+    typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
+
+
 def _site_out_dir(address: str, out: Path | None) -> Path:
     """Where a run keeps what it fetched: under Documents, by address, unless told."""
     if out is not None:
@@ -7538,6 +8275,27 @@ def site_analysis(
             ),
         ),
     ] = "location",
+    origin_at: Annotated[
+        str,
+        typer.Option(
+            "--origin-at",
+            help=(
+                "With --anchor site: which point of the site is the project origin -- "
+                "'centre', or 'bottom-left', 'bottom-right', 'top-left', 'top-right' as the "
+                "plan reads them."
+            ),
+        ),
+    ] = "centre",
+    square_to_site: Annotated[
+        bool,
+        typer.Option(
+            "--square-to-site/--no-square-to-site",
+            help=(
+                "With --anchor site: turn the site so its longest boundary runs level across "
+                "the plan, and write the project's north to match, so the sun is right."
+            ),
+        ),
+    ] = False,
     out: Annotated[
         Path | None,
         typer.Option(
@@ -7667,8 +8425,9 @@ def site_analysis(
         typer.Option(
             "--set-location/--keep-location",
             help=(
-                "Set the project location to the site. By default only when the project is "
-                "still on a city preset and the site is anchored at the origin."
+                "Set the project location to the site. By default when the project is still "
+                "on a city preset, when the site was fitted to the boundary drawn in the file, "
+                "and with --anchor site, where the origin is now a point on the site."
             ),
         ),
     ] = None,
@@ -7712,8 +8471,9 @@ def site_analysis(
     """Draw the context analysis, site analysis and development summary for
     an address into worksheets of the open project.
 
-    Fetched from NSW open data -- cadastre, ePlanning, topography, Transport
-    for NSW, OpenStreetMap and Valhalla -- and drawn as native fills, lines
+    Fetched from open data -- the NSW cadastre, ePlanning, topography,
+    the City of Sydney's contours and trees inside its area, Transport for
+    NSW, OpenStreetMap and Valhalla -- and drawn as native fills, lines
     and texts at true ground scale in the project's own frame, with a view of
     each sheet at its scale. Needs the Loriini add-on: a
     worksheet can only be drawn into in the session that made it through the
@@ -7732,6 +8492,22 @@ def site_analysis(
         raise typer.Exit(code=2)
     if anchor not in ("location", "site"):
         typer.secho("  --anchor takes 'location' or 'site'.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2)
+    if origin_at not in site_drawing.ORIGIN_CHOICES:
+        typer.secho(
+            f"  --origin-at takes one of {', '.join(site_drawing.ORIGIN_CHOICES)}.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    placing = square_to_site or origin_at != "centre"
+    if placing and anchor != "site":
+        typer.secho(
+            "  --square-to-site and --origin-at place the site in a frame of Loriini's own, "
+            "which is --anchor site; with --anchor location the project says where the site is.",
+            fg=typer.colors.RED,
+            err=True,
+        )
         raise typer.Exit(code=2)
     if from_dir is None and not (address or "").strip():
         typer.secho(
@@ -7898,12 +8674,24 @@ def site_analysis(
                 fg=typer.colors.YELLOW,
             )
 
-    def frame_and_offset(bundle: Any) -> site_drawing.Frame:
+    if fit is not None and placing:
+        typer.echo(
+            "  the boundary drawn in the file places the site; --square-to-site and "
+            "--origin-at are not applied over it."
+        )
+
+    def frame_and_offset(bundle: Any, *, quiet: bool = False) -> site_drawing.Frame:
         if fit is not None:
             return fit.frame
         frame = site_drawing.frame_for(
             geo, site_centre=bundle.centre_lonlat, anchor=anchor, north=north
         )
+        if anchor == "site" and placing and reference is not None:
+            frame = site_drawing.placed_frame(
+                frame, reference.site_rings, square=square_to_site, origin_at=origin_at
+            )
+        if quiet:
+            return frame
         x, y = frame.project(*bundle.centre_lonlat)
         distance = math.hypot(x, y)
         typer.echo(
@@ -7911,6 +8699,10 @@ def site_analysis(
             f"{distance / 1000:.2f} km from the origin; MGA zone {frame.zone}, "
             f"project +Y at bearing {frame.plus_y_bearing_deg:.2f}"
         )
+        if anchor == "site" and square_to_site:
+            typer.echo("    turned so the site's longest boundary runs level across the plan")
+        if anchor == "site" and origin_at != "centre":
+            typer.echo(f"    the site's {origin_at} corner is the project origin")
         if distance > 5000.0:
             typer.secho(
                 "  that is a long way from the model. If the project location is not this "
@@ -7970,17 +8762,30 @@ def site_analysis(
     # that was told to trust it would be the wrong way round.
     if reference is not None and (anchor == "site" or fit is not None or set_location):
         preset = geo is not None and geo.looks_like_a_city_preset
-        if set_location or (set_location is None and (preset or fit is not None)):
+        # With --anchor site the origin is the site's centre or corner and,
+        # squared, the frame's +Y is the project's north: a project that kept
+        # its old location would then georeference the model to the wrong
+        # place and light it from the wrong side. So the anchor sets it unless
+        # --keep-location says otherwise.
+        at_origin = anchor == "site"
+        if set_location or (set_location is None and (preset or fit is not None or at_origin)):
             ground = (
                 context_model.ground_at_site(site_bundle, frame_and_offset(site_bundle))
                 if site_bundle is not None
                 else None
             )
-            # With a fit the origin is wherever the drawn boundary put it;
-            # without one the site's centre is the origin by construction.
-            origin = fit.frame.unproject(0.0, 0.0) if fit is not None else reference.centre_lonlat
+            # The origin is wherever the frame put it: the drawn boundary with
+            # a fit, the corner asked for with --origin-at, and the site's
+            # centre otherwise. The north is written only when the site was
+            # squared: the frame's +Y is then the project's new north, and
+            # the sun would be wrong by the turn without it.
+            placed = frame_and_offset(reference, quiet=True)
+            origin = placed.unproject(0.0, 0.0)
+            turned = placed.plus_y_bearing_deg if fit is None and square_to_site else None
             try:
-                geo = context_model.set_project_location(connection, geo, origin, ground_m=ground)
+                geo = context_model.set_project_location(
+                    connection, geo, origin, ground_m=ground, north_bearing_deg=turned
+                )
                 typer.echo(f"  project location set to the site: {geo.describe()}")
             except ArchicadError as error:
                 typer.secho(f"  the project location was not set: {error}", fg=typer.colors.YELLOW)
@@ -8078,6 +8883,600 @@ def site_analysis(
                 )
 
 
+def _slabs(count: int) -> str:
+    return "1 slab" if count == 1 else f"{count} slabs"
+
+
+@app.command("yield")
+@app.command("area-yield", hidden=True)
+def area_yield(
+    port: Annotated[int, typer.Option("--port", help="Which Archicad to talk to.")] = DEFAULT_PORT,
+    timeout: Annotated[
+        float, typer.Option("--timeout", help="Seconds to wait for one Archicad command.")
+    ] = DEFAULT_TIMEOUT_SECONDS,
+    option: Annotated[
+        str,
+        typer.Option(
+            "--option",
+            help=(
+                "What this massing option is called: its sheet in the workbook and its "
+                "layout. A run with the same name replaces that option's sheet."
+            ),
+        ),
+    ] = "Option 01",
+    residential_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--residential-layer",
+            help="A layer whose slabs are residential floor. Repeat for more.",
+        ),
+    ] = None,
+    commercial_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--commercial-layer",
+            "--non-residential-layer",
+            help="A layer whose slabs are commercial floor: offices, a podium. Repeat for more.",
+        ),
+    ] = None,
+    retail_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--retail-layer", help="A layer whose slabs are retail floor. Repeat for more."
+        ),
+    ] = None,
+    massing_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--massing-layer",
+            help=(
+                "A layer whose slabs are the whole massing, the use of each told by its level: "
+                "the levels named --retail-level are retail, --commercial-level commercial, "
+                "the rest residential. Repeat for more."
+            ),
+        ),
+    ] = None,
+    option_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--option-layer",
+            help=(
+                "A layer that is one whole massing option, for several options in one run: "
+                "each becomes a sheet in the workbook and a layout, named after its OPT "
+                "number ('...3D OPT1' is Option 01) or as 'Option 02=<layer>'. Its use is "
+                "told by level, as --massing-layer's is. Repeat for each option."
+            ),
+        ),
+    ] = None,
+    retail_level: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--retail-level",
+            help=(
+                "A level whose massing-layer slabs are retail: 'Ground', 'Level 01', 'B 01'. "
+                "Repeat for more."
+            ),
+        ),
+    ] = None,
+    commercial_level: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--commercial-level",
+            help="A level whose massing-layer slabs are commercial. Repeat for more.",
+        ),
+    ] = None,
+    renovation_filter: Annotated[
+        bool,
+        typer.Option(
+            "--renovation-filter/--any-renovation-status",
+            help=(
+                "Count only the slabs the floor plan's renovation filter shows, so that a "
+                "massing modelled as New over an existing building counts the new."
+            ),
+        ),
+    ] = False,
+    gfa_residential: Annotated[
+        float, typer.Option("--gfa-residential", help="BEA to GFA, residential.")
+    ] = 0.725,
+    gfa_commercial: Annotated[
+        float, typer.Option("--gfa-commercial", help="BEA to GFA, commercial.")
+    ] = 0.85,
+    gfa_retail: Annotated[float, typer.Option("--gfa-retail", help="BEA to GFA, retail.")] = 0.95,
+    nla_residential: Annotated[
+        float, typer.Option("--nla-residential", help="GFA to NLA, residential.")
+    ] = 0.85,
+    nla_commercial: Annotated[
+        float, typer.Option("--nla-commercial", help="GFA to NLA, commercial.")
+    ] = 0.90,
+    nla_retail: Annotated[float, typer.Option("--nla-retail", help="GFA to NLA, retail.")] = 0.90,
+    unit: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--unit",
+            help=(
+                "One type in the market mix: its name, its share in per cent and its size in m² "
+                "NLA, as '2-bed=70,75'. Repeat for each; the shares come to 100. The sheet's "
+                "five types -- Studio, 1-bed, 2-bed, 3-bed, 4-bed at 0/20/70/10/0 per cent of "
+                "35/50/75/100/120 m² -- by default."
+            ),
+        ),
+    ] = None,
+    affordable_unit: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--affordable-unit",
+            help="One type in the affordable mix, as --unit. The sheet's five by default.",
+        ),
+    ] = None,
+    affordable_share: Annotated[
+        float,
+        typer.Option(
+            "--affordable-share",
+            help="The share of the residential GFA that is affordable housing, in per cent.",
+        ),
+    ] = 0.0,
+    common_area: Annotated[
+        float,
+        typer.Option("--common-area", help="Common areas per unit, m² NLA, added to the average."),
+    ] = 0.0,
+    size_tolerance: Annotated[
+        float,
+        typer.Option("--size-tolerance", help="Unit size tolerance, m² NLA, added to the average."),
+    ] = 0.0,
+    parking_rate: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--parking-rate",
+            help=(
+                "A market type's spaces per unit under the SEPP and the DCP, as '2-bed=1,1'. "
+                "The sheet's rates for the rest."
+            ),
+        ),
+    ] = None,
+    affordable_parking_rate: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--affordable-parking-rate",
+            help="An affordable type's spaces per unit, SEPP and DCP, as '2-bed=0.5,1'.",
+        ),
+    ] = None,
+    sqm_per_space: Annotated[
+        float,
+        typer.Option("--sqm-per-space", help="Square metres of basement a parking space takes."),
+    ] = 40.0,
+    basement_site_ratio: Annotated[
+        float,
+        typer.Option(
+            "--basement-site-ratio",
+            help="The share of the site a basement level may take, 0.4 for forty per cent.",
+        ),
+    ] = 0.4,
+    site_area: Annotated[
+        float | None, typer.Option("--site-area", help="The site's area in m², for the FSR.")
+    ] = None,
+    fsr_residential: Annotated[
+        float | None,
+        typer.Option("--fsr-residential", help="The permissible FSR for residential floor."),
+    ] = None,
+    fsr_commercial: Annotated[
+        float | None,
+        typer.Option("--fsr-commercial", help="The permissible FSR for commercial floor."),
+    ] = None,
+    fsr_retail: Annotated[
+        float | None, typer.Option("--fsr-retail", help="The permissible FSR for retail floor.")
+    ] = None,
+    target_fsr: Annotated[
+        float | None,
+        typer.Option(
+            "--target-fsr",
+            help=(
+                "The LEP's one FSR, when it is not split by use: written on the residential "
+                "row, to be split in the workbook."
+            ),
+        ),
+    ] = None,
+    address: Annotated[
+        str | None,
+        typer.Option(
+            "--address",
+            help=(
+                "The site's address: the site area and the LEP's FSR are read at it, for "
+                "whichever of --site-area and the permissible FSR is not given. NSW only."
+            ),
+        ),
+    ] = None,
+    xlsx_out: Annotated[
+        Path | None,
+        typer.Option(
+            "--xlsx",
+            help=(
+                "Write the analysis as a live workbook in the office's template, here: one "
+                "sheet per option, this option added beside the ones the workbook has."
+            ),
+        ),
+    ] = None,
+    sheet: Annotated[
+        bool,
+        typer.Option("--sheet/--no-sheet", help="Draw the Yield Analysis sheet on a layout."),
+    ] = True,
+    view: Annotated[
+        str | None,
+        typer.Option(
+            "--view",
+            help=(
+                "A view in the View Map, such as the massing in axonometric, placed "
+                "beside the table."
+            ),
+        ),
+    ] = None,
+    master_layout: Annotated[
+        str | None, typer.Option("--master-layout", help="The master the sheet is made on.")
+    ] = None,
+    layer_prefix: Annotated[
+        str | None,
+        typer.Option(
+            "--layer-prefix", help="Files the sheet in the Layout Book. '18 |' by default."
+        ),
+    ] = None,
+) -> None:
+    """The preliminary yield analysis from the massing slabs, as the office's
+    feasibility sheet works it.
+
+    The slabs on the layers named are measured to their edges, arcs and
+    holes and all, and gathered into levels by their height; each use's BEA
+    goes to GFA and NLA by the sheet's efficiencies, over the site to an FSR
+    against the permissible, and the residential GFA over the mix's average
+    unit to the units, the parking and the basements. With no layer named,
+    every slab on a layer that is showing counts, as residential. Printed,
+    drawn on a sheet of its own, and written as a live workbook, one sheet
+    per option.
+    """
+    banner()
+    naming.set_prefix(layer_prefix, default=naming.YIELD_PREFIX)
+    residential = [name for name in residential_layer or [] if name.strip()]
+    commercial = [name for name in commercial_layer or [] if name.strip()]
+    retail = [name for name in retail_layer or [] if name.strip()]
+    massing = [name for name in massing_layer or [] if name.strip()]
+    options = [option_from_layer(text) for text in option_layer or [] if text.strip()]
+    try:
+        market = Mix(
+            tuple(parse_unit(text) for text in unit) if unit else DEFAULT_MIX,
+            common_area,
+            size_tolerance,
+        )
+        affordable = Mix(
+            tuple(parse_unit(text) for text in affordable_unit)
+            if affordable_unit
+            else AFFORDABLE_MIX
+        )
+        checked_mix(market.types)
+        checked_mix(affordable.types)
+        efficiencies = Efficiencies(
+            gfa_residential, gfa_commercial, gfa_retail, nla_residential, nla_commercial, nla_retail
+        )
+        rates = ParkingRates(
+            sqm_per_space=sqm_per_space, basement_site_ratio=basement_site_ratio
+        ).for_mixes(
+            market.types,
+            affordable.types,
+            dict(parse_rates(text) for text in parking_rate or []),
+            dict(parse_rates(text) for text in affordable_parking_rate or []),
+        )
+        retail_levels = [parse_level(text) for text in retail_level or []]
+        commercial_levels = [parse_level(text) for text in commercial_level or []]
+        both = sorted(set(retail_levels) & set(commercial_levels))
+        if both:
+            raise ValueError(
+                f"{level_name(both[0])} is named as both retail and commercial; "
+                "a level can only be one."
+            )
+        names = [name.casefold() for name, _layer in options]
+        if len(set(names)) != len(names):
+            raise ValueError(
+                "Two --option-layer entries come to the same option name; name one of them "
+                "as 'Option 02=<layer>'."
+            )
+    except ValueError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+
+    def say(line: str) -> None:
+        typer.echo(line)
+
+    permissible_given = any(v is not None for v in (fsr_residential, fsr_commercial, fsr_retail))
+    if address and (site_area is None or not (permissible_given or target_fsr is not None)):
+        typer.echo(f"reading the site and its controls at {address}...")
+        try:
+            found = site_pipeline.run_summary(address, log=say)
+        except (FetchError, OSError, ValueError, RuntimeError) as error:
+            typer.secho(
+                f"  the site could not be read ({error}); the FSR is left out.",
+                fg=typer.colors.YELLOW,
+            )
+        else:
+            if site_area is None and found.site_area_m2:
+                site_area = found.site_area_m2
+                typer.echo(f"  site area {site_area:.2f} m² (the cadastral lots)")
+            if not permissible_given and target_fsr is None and found.controls.fsr:
+                target_fsr = found.controls.fsr
+                typer.echo(f"  FSR control {target_fsr:g}:1")
+    notes_: list[str] = []
+    if permissible_given:
+        permissible = Permissible(fsr_residential, fsr_commercial, fsr_retail)
+    elif target_fsr is not None:
+        permissible = Permissible(residential=target_fsr)
+        notes_.append(
+            f"Permissible FSR : the LEP's {target_fsr:g}:1 is one figure, written on the "
+            "residential row; split it by use in the workbook."
+        )
+    else:
+        permissible = Permissible()
+
+    connection = _connect(port, timeout)
+    try:
+        reading = read_slabs(
+            connection,
+            renovation=renovation_filter,
+            shown_layers_only=not (residential or commercial or retail or massing or options),
+        )
+    except ArchicadError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+
+    # The options this run makes: one per --option-layer, each a massing
+    # layer of its own with the use told by level; or the one option the
+    # other flags describe. The slabs are read once for all of them.
+    runs: list[tuple[str, list[str], list[str], list[str], list[str]]] = (
+        [(name, [], [], [], [layer]) for name, layer in options]
+        if options
+        else [(option, residential, commercial, retail, massing)]
+    )
+    everything = not (residential or commercial or retail or massing or options)
+    typer.echo(
+        f"read {_slabs(len(reading.slabs))}"
+        + (", only those the renovation filter shows" if renovation_filter else "")
+        + (", on the layers showing" if everything else "")
+    )
+    if reading.own:
+        typer.echo(f"  {reading.own} of Loriini's own context slabs left out")
+    if reading.unreadable:
+        typer.secho(
+            f"  {len(reading.unreadable)} slabs Archicad would not describe were left out",
+            fg=typer.colors.YELLOW,
+        )
+    if everything:
+        typer.secho(
+            "  No layer named: every slab showing is counted as massing, residential unless "
+            "its level is named retail or commercial.",
+            fg=typer.colors.YELLOW,
+        )
+    if reading.ground_m is None:
+        typer.echo("  no storey is named as the ground; the lowest level is the ground floor")
+
+    # Every option stands in one grid of levels: a tower option with no ground
+    # floor of its own still starts above the podium option's ground.
+    option_layers = {" ".join(layer.split()).casefold() for _name, layer in options}
+    grid = [
+        slab.bottom_m
+        for slab in reading.slabs
+        if " ".join(slab.layer.split()).casefold() in option_layers
+    ]
+    results: list[tuple[Feasibility, list[str]]] = []
+    for name, res_layers, com_layers, ret_layers, mass_layers in runs:
+        try:
+            assignment = floors_from(
+                reading.slabs,
+                res_layers,
+                com_layers,
+                ret_layers,
+                mass_layers,
+                retail_levels=retail_levels,
+                commercial_levels=commercial_levels,
+                ground_m=reading.ground_m,
+                others_m=grid,
+            )
+        except ValueError as error:
+            typer.secho(str(error), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from error
+        typer.echo(f"\n{name}")
+        for layer, (use, count, area) in sorted(assignment.by_layer.items()):
+            typer.echo(f"  {layer.strip()}: {_slabs(count)}, {area:.2f} m², {use}")
+        for level_named, use in assignment.levels_used.items():
+            typer.echo(f"    {level_named}: {use}")
+        if len(runs) == 1:
+            for layer, count in sorted(assignment.passed_over.items()):
+                typer.echo(f"  {layer.strip()}: {_slabs(count)}, not counted -- named for nothing")
+        for layer in assignment.missing:
+            typer.secho(
+                f"  {layer.strip()}: named, and no slab stands on it", fg=typer.colors.YELLOW
+            )
+        if not assignment.floors:
+            typer.secho(
+                f"No slab was counted for {name}. Name the layers the massing slabs are on, "
+                "or show them.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+        counted = sum(count for _use, count, _area in assignment.by_layer.values())
+        source = [
+            f"BEA : {_slabs(counted)}, measured to their edges"
+            + (", as the renovation filter shows them" if renovation_filter else ""),
+            *notes_,
+        ]
+        try:
+            result = feasibility(
+                assignment.floors,
+                option=name,
+                site_area_m2=site_area,
+                permissible=permissible,
+                efficiencies=efficiencies,
+                market=market,
+                affordable=affordable,
+                affordable_share=affordable_share / 100.0,
+                parking=rates,
+                ground_m=reading.ground_m,
+                source=source,
+                others_m=grid,
+            )
+        except ValueError as error:
+            typer.secho(str(error), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from error
+        results.append((result, source))
+
+        typer.echo("")
+        typer.echo(f"  {result.option}")
+        typer.echo("  Level             F to F     Resi BEA     Comm BEA   Retail BEA")
+        for level in reversed(result.levels):
+            typer.echo(
+                f"  {level.name:<16}{level.floor_to_floor_m:>8.2f}"
+                f"{level.residential_m2:>13.2f}{level.commercial_m2:>13.2f}"
+                f"{level.retail_m2:>13.2f}"
+            )
+        typer.echo("")
+        for line in area_text_lines(result):
+            typer.echo(line)
+        typer.echo("")
+        for line in area_notes(result):
+            typer.echo(f"  {line}")
+
+    if len(results) > 1:
+        typer.echo("")
+        typer.echo(f"  {'Option':<16}{'Total GFA':>14}{'FSR':>8}{'Units':>9}{'Parking':>10}")
+        for result, _source in results:
+            fsr = result.total_fsr
+            typer.echo(
+                f"  {result.option:<16}{result.total_gfa_m2:>11,.0f} m²"
+                f"{(f'{fsr:.2f}' if fsr is not None else '-'):>8}"
+                f"{result.total_units:>9.1f}{result.parking_spaces('sepp')['total']:>10.1f}"
+            )
+
+    if xlsx_out is not None:
+        for result, _source in results:
+            try:
+                written = write_area_workbook(xlsx_out, result)
+            except (OSError, FileExistsError) as error:
+                typer.secho(
+                    f"  the workbook was not written: {error}", fg=typer.colors.RED, err=True
+                )
+                break
+        else:
+            typer.echo(f"\nwrote {written}")
+
+    if sheet:
+        for result, source in results:
+            typer.echo(f"\ndrawing the yield analysis sheet for {result.option}...")
+            try:
+                report = draw_area_sheet(
+                    connection,
+                    result,
+                    source=source,
+                    master_layout=master_layout,
+                    view=view,
+                    say=say,
+                )
+            except ArchicadError as error:
+                typer.secho(str(error), fg=typer.colors.RED, err=True)
+                raise typer.Exit(code=2) from error
+            typer.echo(report.describe())
+
+
+def option_from_layer(text: str) -> tuple[str, str]:
+    """An ``--option-layer`` as its option's name and its layer.
+
+    ``Option 02=01 | Massing.3D OPT2`` names it; a bare layer is named after
+    its OPT number -- ``01 | Massing - Main Building.3D OPT1`` is *Option
+    01* -- or, with none, after the layer's last part.
+    """
+    name, _, layer = text.partition("=")
+    if layer.strip():
+        return " ".join(name.split()), layer.strip()
+    layer = text.strip()
+    found = re.search(r"opt(?:ion)?\s*0*(\d+)", layer, re.IGNORECASE)
+    if found:
+        return f"Option {int(found.group(1)):02d}", layer
+    tail = re.split(r"[.|]", layer)[-1].strip()
+    return tail or layer, layer
+
+
+@app.command("licence", hidden=True)
+@app.command("license", hidden=True)
+def licence_command(
+    key: Annotated[
+        list[str] | None,
+        typer.Argument(help="The key from the licence email, pasted whole. Spaces are fine."),
+    ] = None,
+    remove: Annotated[
+        bool,
+        typer.Option(
+            "--remove",
+            help="Remove the licence key this machine holds, freeing its seat.",
+        ),
+    ] = False,
+    renew: Annotated[
+        bool,
+        typer.Option("--renew", help="Ask the licence service now, for an online key."),
+    ] = False,
+) -> None:
+    """Show the licence this machine holds, or install one from its key.
+
+    Hidden from the list of commands, as the licence is everywhere a
+    colleague looks (``licence`` module); a start that needs a key says this
+    command's name in the sentence that refuses it. Runs with no key, which is
+    the point of it. An online key is checked with the licence service as it
+    is installed, and ``--renew`` asks again (D125).
+    """
+    if remove:
+        typer.echo(licence.remove() or "There was no licence key to remove.")
+        return
+    if key:
+        try:
+            installed = licence.install(" ".join(key))
+        except KeyRefusedError as refused:
+            typer.secho(str(refused), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from refused
+        if installed.online:
+            found = licence.renew()
+            if not found.usable:
+                typer.secho(
+                    f"Installed {installed.describe()}, but it cannot be used yet. {found.problem}",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                typer.echo(f"Kept in {licence.key_path()}; Loriini.exe licence --renew asks again.")
+                raise typer.Exit(code=2)
+            typer.secho(found.describe(), fg=typer.colors.GREEN)
+        else:
+            typer.secho(f"Installed: {installed.describe()}.", fg=typer.colors.GREEN)
+        typer.echo(f"Kept in {licence.key_path()}.")
+        return
+    found = licence.renew() if renew else licence.standing()
+    typer.echo(found.describe())
+    if found.required and found.usable:
+        typer.echo(f"Kept in {licence.key_path()}.")
+    elif found.online:
+        typer.echo("Loriini.exe licence --renew asks the licence service again.")
+    elif found.required:
+        typer.echo(licence.HOW_TO_INSTALL)
+
+
+@app.command("mcp")
+def agent_server() -> None:
+    """Serve the studies to an AI agent, over MCP on stdin and stdout.
+
+    For Claude Desktop, Claude Code or any other client of the Model Context
+    Protocol: pointed at ``Loriini.exe mcp`` (``sun-study mcp`` from a
+    checkout), it can list the running Archicads, read the open project's
+    layers and names, and run the site analysis, the shadow diagrams and the
+    sun views into the project, or any command this program has. docs/agent.md
+    has the client settings. Prints nothing itself: stdout is the protocol.
+    """
+    from sun_study.agent import serve
+
+    serve()
+
+
 def main() -> None:
     """Entry point. Makes output degrade rather than abort.
 
@@ -8098,12 +9497,17 @@ def main() -> None:
             reconfigure(errors="replace")
 
     # Before the banner, and before anything is read or written. A build past
-    # its term should not get as far as opening somebody's project.
+    # its term should not get as far as opening somebody's project; nor should
+    # a build that takes licence keys and has none it can use -- except for
+    # the commands that only say something, and the one that installs a key.
     try:
-        licence.check()
+        licence.check(key_needed=licence.needs_key(sys.argv[1:]))
     except LicenceExpiredError as expired:
         typer.secho(str(expired), fg=typer.colors.RED, err=True)
         raise SystemExit(4) from expired
+    except LicenceKeyError as unlicensed:
+        typer.secho(str(unlicensed), fg=typer.colors.RED, err=True)
+        raise SystemExit(5) from unlicensed
 
     listen_for_stop()
     app()

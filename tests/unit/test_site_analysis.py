@@ -32,7 +32,13 @@ from sun_study.archicad.site_analysis import (
 )
 from sun_study.site import nsw, osm, transport
 from sun_study.site.arcgis import rings_of
-from sun_study.site.geo import Extent, extent_for, lonlat_to_mercator, lonlat_to_mga
+from sun_study.site.geo import (
+    Extent,
+    convex_hull,
+    extent_for,
+    lonlat_to_mercator,
+    lonlat_to_mga,
+)
 from sun_study.site.pipeline import (
     ContextBundle,
     Institution,
@@ -44,6 +50,7 @@ from sun_study.site.pipeline import (
     lots_area_m2,
     save,
 )
+from sun_study.site.trees import Tree
 from tests.unit.test_archicad_adapter import Sequential, connect
 
 KOGARAH = GeoLocation(
@@ -169,6 +176,38 @@ def test_anchoring_at_the_site_puts_its_centre_at_the_origin_and_keeps_north() -
         frame_for(None, site_centre=(LON, LAT), anchor="location")
 
 
+def test_the_site_can_be_squared_to_its_long_boundary_and_set_on_a_corner() -> None:
+    """Asked for on 8 October 2026: the model is set out with its long
+    frontage level and its origin on a corner of the lot, and the context
+    should come in to match. Squared, the site's longest boundary runs along
+    +X and the frame's +Y bearing has turned with it, which is the north to
+    write; cornered, the corner named is (0, 0)."""
+    from sun_study.archicad import site_analysis as sd
+
+    rings = site_bundle().site_rings
+    base = frame_for(None, site_centre=(LON, LAT), anchor="site")
+    assert sd.placed_frame(base, rings) == base, "centre and unsquared is the frame as it was"
+
+    squared = sd.placed_frame(base, rings, square=True)
+    hull = convex_hull(p for ring in rings for p in squared.ring(ring))
+    angle = sd._edge_bearing(hull)
+    assert min(angle, 180.0 - angle) == pytest.approx(0.0, abs=1e-6), "the long side is level"
+    turn = (squared.plus_y_bearing_deg - base.plus_y_bearing_deg + 180.0) % 360.0 - 180.0
+    assert turn != 0.0 and abs(turn) <= 90.0, "turned the short way, and north went with it"
+
+    cornered = sd.placed_frame(base, rings, square=True, origin_at="bottom-left")
+    hull = convex_hull(p for ring in rings for p in cornered.ring(ring))
+    corner = min(hull, key=lambda p: p[0] + p[1])
+    assert corner == pytest.approx((0.0, 0.0), abs=1e-6)
+    assert cornered.plus_y_bearing_deg == pytest.approx(squared.plus_y_bearing_deg)
+    top_right = sd.placed_frame(base, rings, origin_at="top-right")
+    hull = convex_hull(p for ring in rings for p in top_right.ring(ring))
+    assert max(hull, key=lambda p: p[0] + p[1]) == pytest.approx((0.0, 0.0), abs=1e-6)
+
+    with pytest.raises(ValueError, match="origin_at"):
+        sd.placed_frame(base, rings, origin_at="middle")
+
+
 def test_the_context_drawing_carries_the_legends_colours_and_the_site_on_top() -> None:
     bundle = context_bundle()
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
@@ -246,10 +285,28 @@ def site_bundle() -> SiteBundle:
         ),
         neighbours=(nsw.Neighbour("3", east, LAT),),
         furniture=osm.Furniture(
-            trees=((LON, LAT + 0.0002),),
+            trees=(Tree(LON, LAT + 0.0002),),
             buildings=(osm.Building(east, LAT, tuple(square(east, LAT, 10.0)), levels=2),),
             driveways=(((LON, LAT), (LON, LAT + 0.0003)),),
         ),
+    )
+
+
+def test_the_site_drawing_fills_the_neighbouring_buildings() -> None:
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    drawing = site_drawing(site_bundle(), frame)
+    masses = [
+        f for f in drawing.fills if f.layer.endswith(".Context") and f.element_id == "SA BUILDINGS"
+    ]
+    assert len(masses) == 1, "one neighbour, one solid footprint on the Context layer"
+    assert masses[0].wash is False and masses[0].contour is not None
+    footprint = masses[0].rings[0]
+    assert not any(
+        line.points[0] == footprint[0] and line.points[-1] == footprint[0] for line in drawing.lines
+    ), "the footprint is a fill, not a closed outline"
+    trees = [f for f in drawing.fills if f.wash and f.element_id.startswith("SA TREE")]
+    assert drawing.fills.index(masses[0]) < drawing.fills.index(trees[0]), (
+        "canopies over the masses"
     )
 
 
@@ -316,6 +373,58 @@ def test_the_summary_table_fills_what_is_published_and_rules_up_the_rest() -> No
     drawing = summary_drawing(bundle)
     assert "SUMMARY OF CONTROLS" in [t.text for t in drawing.texts]
     assert len(drawing.lines) == len(rows) + 1, "a rule under every row and one above"
+
+
+def test_a_long_label_wraps_inside_its_column_rather_than_over_the_controls() -> None:
+    """The Redfern sheet, 7 October 2026: "3F. VISUAL PRIVACY / BUILDING
+    SEPARATION" ran across the controls column. Labels now wrap at a word to
+    the column's width, the row grows with them, and nothing in the label
+    column starts where the controls do."""
+    from sun_study.archicad.site_analysis import (
+        SUMMARY_LABEL_CHARS,
+        SUMMARY_LABEL_MM,
+        summary_label_lines,
+    )
+
+    assert summary_label_lines("3F. VISUAL PRIVACY / BUILDING SEPARATION") == [
+        "3F. VISUAL PRIVACY /",
+        "BUILDING SEPARATION",
+    ]
+    assert summary_label_lines("4A. SOLAR AND DAYLIGHT ACCESS") == [
+        "4A. SOLAR AND DAYLIGHT",
+        "ACCESS",
+    ]
+    assert summary_label_lines("GROSS FLOOR AREA (sqm)") == ["GROSS FLOOR AREA (sqm)"]
+    assert summary_label_lines("") == [""]
+
+    bundle = SummaryBundle(
+        address="1 Test St",
+        site_address="1 TEST STREET KOGARAH",
+        lot_description="LOT 1 - DP 1",
+        site_area_m2=1000.0,
+        controls=nsw.SiteControls(
+            epi_name="Georges River Local Environmental Plan 2021",
+            lga_name="GEORGES RIVER",
+            zone_code="R3",
+            zone_purpose="Medium Density Residential",
+            max_height_m=12.0,
+            fsr=0.55,
+            heritage=(("Cottage", "Local"),),
+        ),
+    )
+    drawing = summary_drawing(bundle)
+    controls_x = drawing.mm(SUMMARY_LABEL_MM)
+    by_text = {t.text: t for t in drawing.texts}
+    for kind, label, _ in summary_rows(bundle):
+        if kind != "row":
+            continue
+        for line in summary_label_lines(label):
+            assert len(line) <= SUMMARY_LABEL_CHARS or " " not in line, line
+            assert by_text[line].at[0] < controls_x, f"{line!r} sits in the controls column"
+    # The wrapped label's second line sits one lead under its first.
+    first, second = by_text["3F. VISUAL PRIVACY /"], by_text["BUILDING SEPARATION"]
+    assert first.at[0] == second.at[0]
+    assert first.at[1] - second.at[1] == pytest.approx(drawing.mm(5.2))
 
 
 def test_the_bundles_survive_a_round_trip_through_json(tmp_path: Path) -> None:
@@ -587,6 +696,42 @@ def test_a_refused_creation_falls_back_to_tapir_and_a_refused_entry_says_what_to
         ]
     }
     assert transport_.all_parameters_for("SetCurrentDatabase")[0]["databaseId"] == {"guid": "NEW"}
+    # The plain move, then the move with the window opened first, before any
+    # waiting: the second is the route D95 left unread, and an add-on that
+    # refuses both leaves the person to open it as before.
+    tried = [p.get("open") for p in transport_.all_parameters_for("SetCurrentDatabase")]
+    assert tried[:2] == [None, True]
+
+
+def test_a_fresh_worksheet_entered_by_opening_its_window_needs_nobody() -> None:
+    """The add-on's ``open`` -- the call a double-click makes -- taken where
+    the plain move is refused. The worksheet is read back as current, so the
+    run draws at once and never asks for the Project Map."""
+    from sun_study.archicad.site_analysis import ensure_worksheet
+
+    connection, transport_ = connect(
+        {
+            # Standing on the plan before the move, on the worksheet after.
+            "GetCurrentDatabase": Sequential(
+                {"databaseId": {"guid": "PLAN"}, "windowType": "FloorPlan"},
+                {"databaseId": {"guid": "NEW"}, "windowType": "Worksheet"},
+            ),
+            "GetNavigatorItemTree": navigator_tree(),
+            "CreateWorksheet": {"error": {"code": -2130312312, "message": "Failed to create"}},
+            "CreateWorksheets": {"databases": [{"databaseId": {"guid": "NEW"}}]},
+            "SetCurrentDatabase": Sequential(
+                {"error": {"code": -2130313110, "message": "refused to move"}},
+                {"success": True, "opened": True},
+            ),
+        }
+    )
+    database_id, _, reused = ensure_worksheet(connection, f"{SS} Context Analysis", wait_s=0.0)
+    assert database_id == "NEW"
+    assert not reused
+    assert [p.get("open") for p in transport_.all_parameters_for("SetCurrentDatabase")] == [
+        None,
+        True,
+    ]
 
 
 def test_a_worksheet_the_refused_creation_left_behind_is_found_rather_than_made_twice() -> None:
@@ -944,12 +1089,76 @@ def test_the_neighbours_stand_on_the_ground_and_the_sites_own_are_left_out() -> 
     assert len(slabs) == 1 and report.on_site == 0
     assert slabs[0]["thickness"] == pytest.approx(2 * 3.1)
     assert slabs[0]["referencePlane"] == "bottom"
-    assert 24.0 < slabs[0]["level"] < 28.0
+    # It stands 17 m east of the 28 m contour, the last on a slope rising 4 m
+    # in 22: the slope carries on past it, one contour interval at most --
+    # the state's 2 m, since the fixture's contours are the state's.
+    assert slabs[0]["level"] == pytest.approx(30.0)
     assert slabs[0]["layerIndex"] == 9 and slabs[0]["floorIndex"] == 0
     assert slabs[0]["elementId"] == "SA NEIGHBOUR 2 STOREY (OSM)"
     assert len(slabs[0]["contours"][0]["points"]) >= 3
     assert report.blocks == 0, "no cadastre in the site bundle, so no blocks"
     assert "blocks: 0 meshes" in report.describe()
+
+
+def test_a_neighbour_on_a_heritage_item_stands_in_its_own_surface() -> None:
+    """The item's building reads as the item: its three faces in the heritage
+    surface, named and coloured in the request so the add-on can make it,
+    and HERITAGE on its ID. A conservation area is not an item."""
+    from sun_study.archicad.context_model import HERITAGE_SURFACE, model_context
+
+    east = LON + 0.00035
+    west = LON - 0.00035
+    bundle = replace(
+        site_bundle(),
+        heritage=collection(
+            polygon(square(east, LAT, 14.0), LAY_CLASS="Item - General", H_NAME="Terrace"),
+            polygon(square(west, LAT, 14.0), LAY_CLASS="Conservation Area"),
+        ),
+        furniture=osm.Furniture(
+            buildings=(
+                osm.Building(east, LAT, tuple(square(east, LAT, 10.0)), levels=2),
+                osm.Building(west, LAT, tuple(square(west, LAT, 10.0)), levels=2),
+            )
+        ),
+    )
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    connection, transport_ = connect(
+        {
+            "GetAttributesByType": {"attributes": _layer_attributes()},
+            "GetCurrentDatabase": {"databaseId": {"guid": "PLAN"}, "windowType": "FloorPlan"},
+            "GetLayers": {"layers": _layer_states()},
+            "CreateMesh": {"success": True, "guid": "MESH"},
+            "CreateSlabs": {
+                "elements": [{"elementId": {"guid": "SLAB1"}}, {"elementId": {"guid": "SLAB2"}}]
+            },
+            "CreateGroups": {"groupGuids": [{"guid": "GROUP"}]},
+            "GetDetailsOfElements": {"detailsOfElements": [{"layerIndex": 9}]},
+            "GetElementsByType": {"elements": []},
+            "GetStories": {"stories": [{"index": 0, "level": 0.0}]},
+            "GetGeoLocation": {
+                "projectLocation": {
+                    "latitude": LAT,
+                    "longitude": LON,
+                    "altitude": 0.0,
+                    "north": 0.0,
+                }
+            },
+            "SetPropertyValuesOfElements": {"executionResults": [{"success": True}]},
+            "GetAllProperties": {"properties": []},
+            "GetPropertyValuesOfElements": {"propertyValuesForElements": []},
+        }
+    )
+    report = model_context(connection, bundle, frame)
+    slabs = transport_.parameters_for("CreateSlabs")["slabs"]
+    assert len(slabs) == 2 and report.heritage == 1
+    listed, plain = slabs
+    assert listed["elementId"] == "SA NEIGHBOUR 2 STOREY (OSM) HERITAGE"
+    assert listed["surface"]["name"] == HERITAGE_SURFACE
+    colour = listed["surface"]["colour"]
+    assert set(colour) == {"red", "green", "blue"}
+    assert all(0.0 <= v <= 1.0 for v in colour.values()), "the add-on takes 0 to 1"
+    assert plain["elementId"] == "SA NEIGHBOUR 2 STOREY (OSM)" and "surface" not in plain
+    assert "1 on heritage items in the 'LORIINI HERITAGE' surface" in report.describe()
 
 
 def test_the_location_is_the_site_on_the_grid_with_north_kept() -> None:
@@ -965,8 +1174,8 @@ def test_the_location_is_the_site_on_the_grid_with_north_kept() -> None:
     assert geo.altitude_m == 26.0 and geo.project_north_bearing_deg == pytest.approx(319.052)
 
 
-def test_the_ground_index_answers_like_the_scan_and_the_contours_thin_to_a_limit() -> None:
-    from sun_study.archicad.context_model import _Ground, _thinned
+def test_the_models_ground_reads_across_the_slope_and_zero_where_there_is_none() -> None:
+    from sun_study.archicad.context_model import _Ground
 
     contours = [
         (24.0, [(0.0, float(y)) for y in range(0, 100, 5)]),
@@ -975,13 +1184,39 @@ def test_the_ground_index_answers_like_the_scan_and_the_contours_thin_to_a_limit
     ground = _Ground(contours)
     assert ground.at((10.0, 50.0)) == pytest.approx(25.0, abs=0.01), "halfway is halfway"
     assert ground.at((0.0, 50.0)) == pytest.approx(24.0)
-    assert 24.0 <= ground.at((400.0, 400.0)) <= 26.0, "far away, still between the two"
+    # Past the last contour the slope carries on, and never further than one
+    # interval -- here read off the lines, 2 m -- and beyond the walk's reach
+    # it is the nearest contour's level.
+    assert ground.at((30.0, 50.0)) == pytest.approx(27.0)
+    assert ground.at((100.0, 50.0)) == pytest.approx(28.0)
+    assert ground.at((400.0, 50.0)) == pytest.approx(26.0)
     assert _Ground([]).at((0.0, 0.0)) == 0.0
 
-    many = [(float(e), [(float(i), float(e)) for i in range(100)]) for e in range(0, 40)]
-    thinned = _thinned(many, limit=600)
-    assert sum(len(p) for _, p in thinned) <= 600
-    assert all(e % 2 == 0 for e, _ in thinned) or all(e % 4 == 0 for e, _ in thinned)
+
+def test_the_terrain_mesh_is_cut_to_the_model_and_read_at_the_bundles_interval() -> None:
+    """``level_lines`` is the model's side of ``site.ground.mesh_lines``: the
+    site's rings are what the detail is kept around, the model's square what
+    the lines are cut to, and the interval is whoever drew the contours'."""
+    from sun_study.archicad.context_model import level_lines
+    from sun_study.archicad.site_analysis import _distance_to_ring, _map_rectangle
+    from sun_study.site.geo import point_in_ring
+
+    bundle = site_bundle()
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    field = _map_rectangle(bundle, frame)
+    contours = [
+        (float(level), [(float(x), float(level) + 0.3 * (x % 2)) for x in range(-300, 300)])
+        for level in range(-80, 80, 2)
+    ]
+    lines = level_lines(bundle, frame, contours)
+    assert lines.interval_m == 2.0, "the fixture's contours are the state's"
+    assert lines.lines and all(
+        point_in_ring(x, y, field) for _, points in lines.lines for x, y in points
+    ), "every level line is inside the model's square, never on its edge"
+    # And each is carried to within a few centimetres of the edge it leaves by.
+    ends = [points[i] for _, points in lines.lines for i in (0, -1)]
+    assert any(_distance_to_ring(end, field) < 0.06 for end in ends)
+    assert lines.vertices <= 12_000
 
 
 # -- the future context -------------------------------------------------------------
@@ -1139,7 +1374,8 @@ def test_the_envelopes_stand_as_slabs_on_their_own_layer_and_a_rerun_replaces_th
     assert len(slabs) == 1
     assert slabs[0]["layerIndex"] == 10 and slabs[0]["floorIndex"] == 0
     assert slabs[0]["thickness"] == pytest.approx(24.8)
-    assert 24.0 < slabs[0]["level"] < 28.0, "on the ground the contours give"
+    # Past the 28 m contour: the slope carries on, a 2 m interval at most.
+    assert slabs[0]["level"] == pytest.approx(30.0), "on the ground the contours give"
     assert slabs[0]["elementId"] == "SA FUTURE 2//DP1 8 STOREY 0-24.8 m"
     assert "1 buildings raised to their height control" in report.describe()
 
@@ -1215,11 +1451,15 @@ def test_the_model_is_placed_against_the_projects_declared_altitude() -> None:
     report = model_context(connection, bundle, frame)
 
     slab = transport_.parameters_for("CreateSlabs")["slabs"][0]
-    assert 4.0 < slab["level"] < 8.0, "the ground is 24-28 AHD and project zero is RL 20"
+    # The ground under it is 30 AHD -- past the 28 m contour, the slope carried
+    # on a 2 m interval -- and project zero is RL 20.
+    assert slab["level"] == pytest.approx(10.0), "30 AHD against project zero at RL 20"
     mesh = transport_.parameters_for("CreateMesh")
-    # 4.0 exactly at a corner the contours do not reach, which extrapolates
-    # to the lowest contour, 24 AHD.
-    assert all(4.0 <= point["z"] <= 8.0 for point in mesh["outline"]), mesh["outline"]
+    # A corner the contours do not reach carries the slope on past the last
+    # one they do, an interval at most: 22 to 30 AHD, 2 to 10 above the datum.
+    assert all(2.0 - 1e-9 <= point["z"] <= 10.0 + 1e-9 for point in mesh["outline"]), mesh[
+        "outline"
+    ]
     assert any("datum of 20.00 m" in note for note in report.notes), report.notes
 
 
@@ -1367,7 +1607,7 @@ def test_a_datum_given_outright_beats_the_projects_own_altitude() -> None:
     )
     model_context(connection, bundle, frame, datum_m=26.0)
     slab = transport_.parameters_for("CreateSlabs")["slabs"][0]
-    assert -2.0 < slab["level"] < 2.0, "24-28 AHD against a datum of 26"
+    assert slab["level"] == pytest.approx(4.0), "30 AHD against a datum of 26"
 
     # And 'sea' puts it back at true AHD, whatever the project says.
     connection, transport_ = connect(
@@ -1392,7 +1632,7 @@ def test_a_datum_given_outright_beats_the_projects_own_altitude() -> None:
     )
     model_context(connection, bundle, frame, datum_m=0.0)
     slab = transport_.parameters_for("CreateSlabs")["slabs"][0]
-    assert 24.0 < slab["level"] < 28.0, "true AHD, as it was before the datum existed"
+    assert slab["level"] == pytest.approx(30.0), "true AHD, as it was before the datum existed"
 
 
 def tmp_jpeg() -> Path:
@@ -1556,6 +1796,26 @@ def test_asking_to_be_located_is_enough_on_its_own() -> None:
     assert "set_location" in outer, "asking for the location does not reach it: " + outer
 
 
+def test_anchoring_the_site_at_the_origin_locates_the_project_by_default() -> None:
+    """--anchor site puts the origin on the site and, squared, turns the
+    frame: a project that kept its old location would then stand its model in
+    the wrong place and light it from the wrong side. Found on Darlinghurst,
+    where the squared model went in with the north untouched."""
+    import ast
+    from pathlib import Path as _Path
+
+    source = _Path("src/sun_study/cli.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    guards = [
+        ast.unparse(node.test)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.If) and "set_project_location" in ast.unparse(node)
+    ]
+    assert len(guards) >= 2, "the location's own guard is gone -- has the branch moved?"
+    inner = guards[1]
+    assert "at_origin" in inner, "the anchor does not locate the project by default: " + inner
+
+
 def test_locating_a_project_writes_the_grid_and_leaves_north_alone() -> None:
     """The survey point matters as much as the latitude: a project located by
     longitude alone georeferences to nothing an engineer can use. North is not
@@ -1679,3 +1939,121 @@ def test_the_summary_table_credits_the_register_its_figures_came_from() -> None:
     credit = _credit_of(summary_drawing(bare))
     assert "Department of Planning" not in credit
     assert "Spatial Services" in credit
+
+
+# ---------------------------------------------------------------------------
+# The City of Sydney's registers: trees at the size of their canopy, the
+# council's own contours, and the council credited for both.
+# ---------------------------------------------------------------------------
+def council_site_bundle() -> SiteBundle:
+    """The site bundle with the council's contours, one inventory tree 10 m
+    across and one OSM tree nobody measured."""
+    from sun_study.site import sources
+
+    bundle = site_bundle()
+    return replace(
+        bundle,
+        contours=tuple(
+            nsw.Contour(c.elevation, c.coords, sources.CITY_OF_SYDNEY) for c in bundle.contours
+        ),
+        furniture=replace(
+            bundle.furniture,
+            trees=(
+                Tree(
+                    LON,
+                    LAT + 0.0002,
+                    10.0,
+                    "measured",
+                    12.0,
+                    45.0,
+                    "Platanus x acerifolia",
+                    "London Plane",
+                    sources.CITY_OF_SYDNEY,
+                ),
+                Tree(LON + 0.0002, LAT - 0.0002),
+            ),
+        ),
+    )
+
+
+def test_trees_are_drawn_the_size_of_their_canopy_and_a_guess_is_dashed() -> None:
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    drawing = site_drawing(council_site_bundle(), frame)
+
+    plane = next(f for f in drawing.fills if "London Plane" in f.element_id)
+    centre = frame.project(LON, LAT + 0.0002)
+    radii = [math.dist(centre, p) for p in plane.rings[0]]
+    assert radii == pytest.approx([5.0] * len(radii), abs=1e-6), "10 m across, on the ground"
+    assert plane.wash and not plane.dashed
+    assert plane.element_id == (
+        "SA TREE London Plane (Platanus x acerifolia), canopy 10 m, 12 m high, trunk 45 cm"
+    )
+
+    guess = next(f for f in drawing.fills if f.element_id.startswith("SA TREE, canopy not"))
+    assert guess.wash and guess.dashed, "a size nobody recorded is drawn dashed"
+    radii = [math.dist(frame.project(LON + 0.0002, LAT - 0.0002), p) for p in guess.rings[0]]
+    assert radii == pytest.approx([3.0] * len(radii), abs=1e-6)
+    assert sum(f.element_id == "SA TREE TRUNK" for f in drawing.fills) == 2
+
+    legend = [t.text for t in drawing.texts if t.layer.endswith(".Sheet")]
+    assert "TREE, CANOPY TO SCALE" in legend
+    assert "TREE, SIZE NOT RECORDED (6 m SHOWN)" in legend
+
+
+def test_a_sheet_of_the_councils_contours_says_whose_and_at_what_interval() -> None:
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    council = [t.text for t in site_drawing(council_site_bundle(), frame).texts]
+    assert "CONTOURS AT 1 m AHD, CITY OF SYDNEY 2020 SURVEY" in council
+    state = [t.text for t in site_drawing(site_bundle(), frame).texts]
+    assert "CONTOURS AT 2 m AHD, NSW SPATIAL SERVICES" in state
+
+
+def test_the_council_is_credited_for_its_contours_and_its_trees_and_only_then() -> None:
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    assert "© City of Sydney, CC BY 4.0" in _credit_of(site_drawing(council_site_bundle(), frame))
+    assert "City of Sydney" not in _credit_of(site_drawing(site_bundle(), frame))
+
+
+def test_the_councils_trees_are_not_credited_to_openstreetmap() -> None:
+    """The trees say whose they are. A sheet whose furniture is the
+    council's trees and nothing else -- Overpass down that morning -- owes
+    OpenStreetMap nothing."""
+    from sun_study.site import sources
+
+    bundle = council_site_bundle()
+    only_council = replace(
+        bundle,
+        furniture=osm.Furniture(
+            trees=tuple(t for t in bundle.furniture.trees if t.source == sources.CITY_OF_SYDNEY)
+        ),
+    )
+    used = only_council.sources_used()
+    assert sources.CITY_OF_SYDNEY in used and sources.OSM not in used
+    assert sources.OSM in bundle.sources_used(), "the nominal tree is OpenStreetMap's"
+
+
+def test_a_dashed_fill_reaches_archicad_with_the_dashed_line_type() -> None:
+    from sun_study.archicad.site_analysis import Drawing, _Attributes, _flush
+
+    drawing = Drawing(200.0, "Site Analysis")
+    drawing.circle("Trees", (0.0, 0.0), 3.0, fill="#7dbb57", wash=True, dashed=True)
+    drawing.circle("Trees", (9.0, 0.0), 3.0, fill="#7dbb57", wash=True)
+    connection, transport_ = connect(
+        {
+            "GetAttributesByType": {
+                "attributes": [
+                    {"name": name, "index": 10 + i, "attributeId": {"guid": f"L{i}"}}
+                    for i, name in enumerate(drawing.layers)
+                ]
+            },
+            "GetLayers": {
+                "layers": [{"layerAttribute": {"name": "x", "isHidden": False, "isLocked": False}}]
+            },
+            "CreateLayers": {"success": True},
+            "CreateFills": {"success": True, "elements": [{"guid": "F"}, {"guid": "G"}]},
+        }
+    )
+    _flush(connection, drawing, _Attributes(solid_fill=1, dashed=2, pens=(), wash_fill=3))
+    dashed, solid = transport_.parameters_for("CreateFills")["fills"]
+    assert dashed["lineTypeIndex"] == 2 and dashed["fillIndex"] == 3
+    assert "lineTypeIndex" not in solid

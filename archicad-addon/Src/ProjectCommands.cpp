@@ -116,6 +116,10 @@ GS::Optional<GS::UniString> SetCurrentDatabaseCommand::GetInputParametersSchema 
 			"floorIndex": {
 				"type": "integer",
 				"description": "For the floor plan, which storey to stand on."
+			},
+			"open": {
+				"type": "boolean",
+				"description": "Open the database's window first, as a double-click in the Project Map does, and move the database after. For a worksheet made through the API, which refuses the plain move until a person has opened it once."
 			}
 		},
 		"additionalProperties": false
@@ -128,6 +132,7 @@ GS::Optional<GS::UniString> SetCurrentDatabaseCommand::GetResponseSchema () cons
 		"type": "object",
 		"properties": {
 			"success": { "type": "boolean" },
+			"opened": { "type": "boolean" },
 			"databaseId": { "type": "object" },
 			"windowType": { "type": "string" },
 			"error": { "type": "object" }
@@ -167,9 +172,30 @@ GS::ObjectState SetCurrentDatabaseCommand::Execute (const GS::ObjectState& param
 		database.index = floor;
 	}
 
+	// A worksheet made through the API refuses `APIDb_ChangeCurrentDatabaseID`
+	// with APIERR_BADDATABASE until a person has opened it once, and a save or
+	// a reopen does not lift that (D95). What a person does is open its
+	// *window*, which is a different call: `APIDo_ChangeWindowID`, the one
+	// the 3D export already uses to bring the 3D window to the front
+	// (ModelCommands.cpp). Asked for with `open`, the window is opened first
+	// and the move made after; whether Archicad takes it for a fresh
+	// worksheet is for a live run to say, which is why it is asked for
+	// rather than always done, and why the plain move is still tried first.
+	bool open = false;
+	bool opened = false;
+	if (parameters.Get ("open", open) && open) {
+		API_WindowInfo window = database;
+		err = ACAPI_Automate (APIDo_ChangeWindowID, &window);
+		if (err != NoError) {
+			return Failed ("Archicad refused to open that database's window.", err);
+		}
+		opened = true;
+	}
+
 	err = ACAPI_Database (APIDb_ChangeCurrentDatabaseID, &database);
 	if (err != NoError) {
-		return Failed ("Archicad refused to move to that database.", err);
+		return Failed (opened ? "Archicad opened the window and still refused to move to that database."
+							  : "Archicad refused to move to that database.", err);
 	}
 
 	// Read back rather than assumed. This command exists because Tapir's
@@ -187,6 +213,7 @@ GS::ObjectState SetCurrentDatabaseCommand::Execute (const GS::ObjectState& param
 
 	GS::ObjectState result = DatabaseState (landed);
 	result.Add ("success", true);
+	result.Add ("opened", opened);
 	return result;
 }
 

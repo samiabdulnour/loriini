@@ -20,7 +20,8 @@ program is packaged, and three things about the window.
 ## Installing it
 
 The `Archicad add-on (macOS)` workflow makes the folder: `Loriini.app` beside
-`LoriiniAddOn_AC26_Mac.bundle`, with `How to install.txt` and the licence. It
+`LoriiniAddOn_AC26_Mac.bundle`, with `How to install.txt` and the licence
+terms (`site/terms.html` as text, as in the PC's folder). It
 is the `Loriini_AC26_Mac` artifact on the run's page, under the Actions tab.
 The download is a zip holding `Loriini_AC26_Mac.zip`: open both. An artifact
 flattens the links inside an application and drops its execute bit, so the
@@ -165,10 +166,11 @@ that it claims macOS 11.
   the log, and the lettering on the thumbnails, which is measured at the size
   it is drawn. The face is the Mac's own, San Francisco, as Tk names it
   (`.AppleSystemUIFont`); the log is set in Menlo.
-- **Settings** live in `~/Library/Application Support/Loriini`, where a Mac
-  keeps every program's and where a migrated account takes them. `APPDATA` is
-  still asked first, because it is how the tests point the settings somewhere
-  disposable, on every platform.
+- **Settings, the licence key and the run logs** live in
+  `~/Library/Application Support/Loriini`, where a Mac keeps every program's
+  and where a migrated account takes them. `sun_study.user_folder` says so for
+  all of them. `APPDATA` is still asked first, because it is how the tests
+  point the folder somewhere disposable, on every platform.
 - **The Dock's icon.** The packaged program's comes from its bundle. A window
   started from a checkout is Python's, so it is given `loriini-icon-256.png`.
 - **Advice names the Mac's add-on.** `sun_study.ADDON_FILE` is
@@ -192,7 +194,7 @@ platform branches that leave Windows as it was:
 | `archicad-addon/Tools/download_and_unzip.py` | links and permissions kept off Windows |
 | `scripts/build_app.py` | hands over to the Mac script on a Mac |
 | `scripts/make_icon.py` | writes the `.icns` too |
-| `src/sun_study/__init__.py` | `ADDON_FILE` |
+| `src/sun_study/__init__.py` | `ADDON_FILE`; `user_folder` on a Mac |
 | `src/sun_study/app/theme.py`, `window.py`, `preferences.py` | type, Dock icon, settings folder |
 | `src/sun_study/archicad/connection.py` | advice names `ADDON_FILE` |
 | `tests/unit/test_app.py` | the PC icon test pins the PC branch |

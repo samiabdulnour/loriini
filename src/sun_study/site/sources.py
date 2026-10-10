@@ -12,9 +12,10 @@ Why it is worth a module at all
 A sheet drawn from open data is a *produced work* under most of these
 licences, and a produced work carries the credit. Nobody can supply that
 credit from memory at four o'clock on the day a DA goes in: the site analysis
-touches six publishers, they are not the same six every run -- a service that
-is down costs the sheet its layer, and with it the reason to credit that
-publisher -- and two of them ask for particular wording. So the office needs
+touches seven publishers, they are not the same seven every run -- a service
+that is down costs the sheet its layer, and with it the reason to credit that
+publisher, and a council's register answers only inside the council's area --
+and two of them ask for particular wording. So the office needs
 one place that says it, and it has to be beside the code that does the
 fetching or it goes stale the first time an endpoint moves.
 
@@ -40,6 +41,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 __all__ = [
+    "CITY_OF_SYDNEY",
     "EPLANNING",
     "IMAGERY",
     "OSM",
@@ -60,6 +62,7 @@ __all__ = [
 SPATIAL = "nsw-spatial"
 EPLANNING = "nsw-eplanning"
 IMAGERY = "nsw-imagery"
+CITY_OF_SYDNEY = "cityofsydney"
 OSM = "openstreetmap"
 VALHALLA = "valhalla"
 TFNSW = "tfnsw"
@@ -112,9 +115,10 @@ SOURCES: tuple[Source, ...] = (
         provides=(
             "The address register the site is found in, the lot boundaries and "
             "their dimensions, the rail corridor, roads and railways, parks, "
-            "schools, hospitals and named complexes, train stations, the "
-            "contours the levels and the terrain are taken from, and the "
-            "neighbours' address points."
+            "schools, hospitals and named complexes, train stations, the 2 m "
+            "contours the levels and the terrain are taken from wherever no "
+            "council publishes finer ones, the council boundaries that say "
+            "where one does, and the neighbours' address points."
         ),
         licence="Creative Commons Attribution 4.0 (CC BY 4.0)",
         terms="https://www.spatial.nsw.gov.au/copyright",
@@ -164,14 +168,42 @@ SOURCES: tuple[Source, ...] = (
         ),
     ),
     Source(
+        slug=CITY_OF_SYDNEY,
+        name="City of Sydney Data Hub (terrain contours, trees)",
+        publisher="Council of the City of Sydney",
+        provides=(
+            "Inside the City of Sydney's own area, two registers no statewide "
+            "layer matches: the 1 m contours from its 2020 aerial survey, which "
+            "the Site Analysis sheet draws and the context model's terrain is "
+            "made from in place of the state's 2 m ones, and its tree inventory "
+            "-- every street and park tree where it stands, with its height, "
+            "canopy spread, trunk diameter and species -- which the site sheet "
+            "draws to the size of its canopy."
+        ),
+        licence="Creative Commons Attribution 4.0 (CC BY 4.0)",
+        terms="https://data.cityofsydney.nsw.gov.au/pages/disclaimer",
+        credit="© City of Sydney, CC BY 4.0",
+        note=(
+            "A council's register stops at the council's boundary. A sheet "
+            "that reaches past it takes the state's contours instead, and the "
+            "trees past it come from OpenStreetMap; the model takes the "
+            "council's contours inside the boundary and the state's outside. "
+            "The contours are the ground as the 2020 survey found it, "
+            "interpolated under buildings, and a canopy is the spread the "
+            "council recorded north to south: records, not a survey of the site."
+        ),
+    ),
+    Source(
         slug=OSM,
         name="OpenStreetMap, through the public Overpass mirrors",
         publisher="OpenStreetMap contributors",
         provides=(
-            "What no government register carries at this scale: street trees, "
-            "hydrants, poles and lamps, driveways and kerbside parking, "
-            "one-way streets, bus stops and routes, utilities, and the "
-            "building footprints the context model stands its neighbours on."
+            "What no government register carries at this scale: street trees "
+            "where no council publishes its own (drawn at a nominal size unless "
+            "a mapper recorded one), hydrants, poles and lamps, driveways and "
+            "kerbside parking, one-way streets, bus stops and routes, utilities, "
+            "and the building footprints the context model stands its "
+            "neighbours on."
         ),
         licence="Open Data Commons Open Database Licence 1.0 (ODbL)",
         terms="https://www.openstreetmap.org/copyright",

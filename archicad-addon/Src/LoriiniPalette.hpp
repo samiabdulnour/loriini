@@ -69,6 +69,8 @@ private:
 	DG::IconButton	shadowButton;
 	DG::IconButton	viewsButton;
 	DG::IconButton	siteButton;
+	// Not a study: the reference image over the 3D window (docs/overlay.md).
+	DG::IconButton	referenceButton;
 
 	void			SetMenuItemCheckedState (bool isChecked);
 

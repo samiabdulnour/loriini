@@ -8,7 +8,9 @@ Leaves ``dist/Loriini.exe`` and, beside it, the add-on it talks to --
 program to double-click, and the one file to drop into Archicad's add-on
 folder. Neither needs Python or an install. ``How to install.txt`` and
 ``LICENSE.txt`` go in beside them, because whoever unzips the folder has not
-read ``docs/addon.md`` and should not have to.
+read ``docs/addon.md`` and should not have to. The licence in the folder is
+the terms a subscriber buys under, ``site/terms.html`` as plain text, not
+the repository's own source-available LICENSE, which governs the source.
 
 The same folder is built on GitHub by the ``Archicad add-on`` workflow and
 uploaded as the ``Loriini_AC26_Win`` artifact, for anybody without a checkout.
@@ -49,7 +51,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from sun_study import AUTHOR, PRODUCT, __version__
+from sun_study import AUTHOR, PRODUCT, __version__, terms
 
 ROOT = Path(__file__).resolve().parent.parent
 #: What the built file is called. Deliberately not ``PRODUCT``: everything
@@ -88,9 +90,13 @@ ADDON_WORKFLOW = "archicad-addon.yml"
 #: The note that rides beside the two files, named for what it answers.
 INSTALL_NOTE = "How to install.txt"
 
-#: The licence, under a name Windows opens with a double-click. It answers an
-#: extensionless ``LICENSE`` with "how do you want to open this".
+#: The licence terms, under a name Windows opens with a double-click.
 LICENCE_COPY = "LICENSE.txt"
+
+#: Where the terms are kept: the site's page, which is also what a buyer
+#: accepts at the checkout. The folder carries the same words as text.
+TERMS_PAGE = ROOT / "site" / "terms.html"
+TERMS_ADDRESS = terms.ADDRESS
 
 #: Windows reads this out of the .exe for its Properties > Details tab, and
 #: shows it in the UAC prompt and the task manager. Without it the file claims
@@ -164,7 +170,7 @@ administrator rights.
   {NAME}.exe                  the program
   {ADDON}.apx    the Archicad 26 add-on, with Tapir's commands
                                built in
-  {LICENCE_COPY}                  the licence
+  {LICENCE_COPY}                  the licence terms, as at {TERMS_ADDRESS}
 
 To install
 
@@ -189,13 +195,23 @@ folder.
 """
 
 
+def licence_terms(page: Path = TERMS_PAGE) -> str:
+    """``LICENSE.txt`` for the folder: the terms page as plain text, by the
+    same renderer the About box uses (``sun_study.terms``)."""
+    found = terms.text(page)
+    if found is None:
+        raise SystemExit(f"The terms page is missing: {page}")
+    return found
+
+
 def add_notes(dist: Path) -> None:
-    """The install note and the licence, beside the program and the add-on."""
+    """The install note and the licence terms, beside the program and the
+    add-on."""
     dist.mkdir(parents=True, exist_ok=True)
     # Notepad reads either line ending since 2018; the office's other readers
-    # of a .txt may not, so the note is written the way Windows writes one.
+    # of a .txt may not, so the notes are written the way Windows writes one.
     (dist / INSTALL_NOTE).write_text(install_note(), encoding="utf-8", newline="\r\n")
-    shutil.copyfile(ROOT / "LICENSE", dist / LICENCE_COPY)
+    (dist / LICENCE_COPY).write_text(licence_terms(), encoding="utf-8", newline="\r\n")
     print(f"added  {dist / INSTALL_NOTE}  and  {LICENCE_COPY}")
 
 
@@ -333,8 +349,9 @@ def main(argv: list[str] | None = None) -> int:
     #   collect_data sun_study  the rulesets are YAML. Nothing imports them, so
     #       gathering code is not enough and the app dies on "No ruleset at".
     #   collect_submodules typer  its runtime hides behind lazy imports.
-    #   exclude PIL  it builds the icon and nothing imports it at run time, but
-    #       a dependency scan finds it and bundles 8 MB of image codecs.
+    #   Pillow is in  it was excluded until D121, when only the icon script
+    #       imported it; the reference image (app.overlay) reads photographs
+    #       with it now, so its codecs ride along, a few MB.
     command = [
         sys.executable,
         "-m",

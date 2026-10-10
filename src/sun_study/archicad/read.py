@@ -125,6 +125,12 @@ def north_bearing_deg(north_radians: float) -> float:
     return (math.degrees(north_radians) - NORTH_ANGLE_OFFSET_DEG) % 360.0
 
 
+def north_radians_from_bearing(bearing_deg: float) -> float:
+    """Archicad's north angle for a compass bearing of the project +Y axis:
+    ``north_bearing_deg`` the other way, for writing a north back."""
+    return math.radians((bearing_deg + NORTH_ANGLE_OFFSET_DEG) % 360.0)
+
+
 @dataclass(frozen=True)
 class ProjectInfo:
     """Which project answered, so a result can be traced back to a file."""

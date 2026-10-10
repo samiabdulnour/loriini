@@ -9,7 +9,9 @@ therefore fully testable without an Archicad licence. Everything that talks to
 Archicad lives in the ``archicad`` package and nowhere else.
 """
 
+import os
 import sys
+from pathlib import Path
 
 from sun_study.disclaimer import DISCLAIMER, STATUS
 
@@ -22,6 +24,7 @@ __all__ = [
     "STATUS",
     "STOP_FILE_VAR",
     "__version__",
+    "user_folder",
 ]
 __version__ = "0.0.1"
 
@@ -30,6 +33,10 @@ __version__ = "0.0.1"
 #: drift apart -- the same reason the disclaimer has a module of its own.
 AUTHOR = "Sami Abdulnour"
 PRODUCT = "Loriini"
+
+#: Where a licence key comes from, and where to write for another: the
+#: mailbox the licence service sends from, on the product's own domain.
+SUPPORT_EMAIL = "sami@loriini.app"
 
 #: The copyright line, kept beside the author for the same reason: the window,
 #: the executable's file properties and every sheet must say the same thing.
@@ -59,3 +66,30 @@ STOP_FILE_VAR = "SUN_STUDY_STOP_FILE"
 ADDON_FILE = (
     "LoriiniAddOn_AC26_Mac.bundle" if sys.platform == "darwin" else "LoriiniAddOn_AC26_Win.apx"
 )
+
+
+def user_folder() -> Path:
+    """This user's own folder for Loriini: the settings, the run logs, the
+    licence key.
+
+    ``%APPDATA%\\Loriini`` on Windows, because that is where Windows keeps a
+    person's application settings and it follows a roaming profile from one
+    machine to the next. A Mac keeps the same thing in
+    ``~/Library/Application Support``, which a migrated or restored account
+    carries across the same way. ``~/.loriini`` elsewhere, for a developer.
+    Here rather than in the window's own settings module because the licence
+    is read before any window exists, by the command line as well.
+
+    ``APPDATA`` is asked first everywhere, a Mac included, although nothing
+    there sets it: it is how the tests point the folder somewhere disposable,
+    and they run on all three.
+    """
+    roaming = os.environ.get("APPDATA")
+    if roaming:
+        return Path(roaming) / PRODUCT
+    # An else, not a fall-through: mypy reads the platform, and on a Mac a
+    # line after this branch's return would be code it can never reach.
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / PRODUCT
+    else:
+        return Path.home() / f".{PRODUCT.casefold()}"

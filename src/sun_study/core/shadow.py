@@ -65,7 +65,8 @@ up as a number in the run rather than as a sheet somebody prints.
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 
 import numpy as np
@@ -76,6 +77,7 @@ from sun_study.core.edges import traced_regions
 from sun_study.core.geometry import TriangleMesh
 from sun_study.core.occlusion import Occluder
 from sun_study.core.patches import Ring, drawable_contours, trace_lit_regions
+from sun_study.core.resources import duration_text
 from sun_study.core.sampling import SamplePoints, horizontal_grid
 
 FloatArray = npt.NDArray[np.float64]
@@ -96,6 +98,7 @@ __all__ = [
     "default_sources",
     "drape_onto_terrain",
     "ground_plane_grid",
+    "receiving_samples",
 ]
 
 #: The default three fills, in the order they are drawn and legended. Keys
@@ -322,6 +325,20 @@ class Draped:
         return float(1.0 - self.on_terrain.mean()) if len(self.on_terrain) else 0.0
 
 
+def receiving_samples(draped: Draped, terrain_named: bool) -> BoolArray | None:
+    """Which samples the fills are drawn on, or ``None`` for all of them.
+
+    With a terrain named, the samples that found it or a roof: past the
+    survey there is no ground, and a shadow drawn there would be drawn on
+    nothing real. With no terrain named, every sample: the datum plane *is*
+    the ground, the whole grid over, and the buildings' roofs stand on it.
+    Before this the roofs alone received when no terrain was named -- the
+    Redfern run of 7 October 2026 drew 17% of its grid, the footprints of
+    the neighbours, and nothing on the ground between them.
+    """
+    return draped.on_terrain if terrain_named else None
+
+
 def drape_onto_terrain(
     grid: SamplePoints,
     terrain: TriangleMesh,
@@ -468,7 +485,20 @@ def drape_onto_terrain(
     return Draped(grid=replace(grid, positions=positions), on_terrain=on_terrain)
 
 
-def _shaded(grid: SamplePoints, occluder: Occluder, sun_vectors: FloatArray) -> BoolArray:
+#: How often a long cast says how far through it is, in seconds. Often
+#: enough that a log which stops mid-cast shows the caster was still going,
+#: rarely enough that an hour's cast is a screenful and not a scroll.
+PROGRESS_SECONDS = 30.0
+
+
+def _shaded(
+    grid: SamplePoints,
+    occluder: Occluder,
+    sun_vectors: FloatArray,
+    *,
+    what: str = "",
+    say: Callable[[str], None] | None = None,
+) -> BoolArray:
     """Which samples are *not* in the sun, per instant.
 
     Written here rather than taken as ``~sunlit_matrix`` so the below-horizon
@@ -476,8 +506,28 @@ def _shaded(grid: SamplePoints, occluder: Occluder, sun_vectors: FloatArray) -> 
     "false" to both, which is correct for counting sunlight hours and wrong
     for drawing a shadow: at an hour before sunrise it would fill the sheet.
     Telling the two apart is the caller's job, on the sun vector's own +Z.
+
+    With ``say``, the cast is announced -- what, how many samples and hours,
+    against how many triangles -- and then reported every ``PROGRESS_SECONDS``
+    while it runs, so a run that dies in the caster leaves a log that says
+    so and says how far it got.
     """
-    return ~sunlit_matrix(grid, occluder, sun_vectors)
+    if say is None:
+        return ~sunlit_matrix(grid, occluder, sun_vectors)
+    say(
+        f"  casting {what or 'the shadow'}: {len(grid):,} samples x {len(sun_vectors)} "
+        f"instants against {occluder.triangle_count:,} triangles"
+    )
+    started = last = time.monotonic()
+
+    def tick(done: int, total: int) -> None:
+        nonlocal last
+        now = time.monotonic()
+        if done < total and now - last >= PROGRESS_SECONDS:
+            last = now
+            say(f"    {done / total:.0%} of {what or 'the cast'}, {duration_text(now - started)}")
+
+    return ~sunlit_matrix(grid, occluder, sun_vectors, progress=tick)
 
 
 def _lattice_shape(grid: SamplePoints) -> tuple[int, int] | None:
@@ -558,6 +608,7 @@ def cast_shadows(
     receiving: BoolArray | None = None,
     edge_tolerance_m: float | None = None,
     outline: str | None = None,
+    say: Callable[[str], None] | None = None,
 ) -> ShadowSeries:
     """Trace one shadow fill per source at every instant.
 
@@ -589,6 +640,8 @@ def cast_shadows(
     One ray cast per source, and no more. A baseline is cast against the
     baselines before it, a scenario against all of them; nothing is cast
     twice, so the cost is linear in the legend rather than in its powerset.
+
+    ``say`` hears each cast announced and how far through it is, for a log.
     """
     if len(moments) != len(labels):
         raise ValueError(f"{len(moments)} moments but {len(labels)} labels")
@@ -640,7 +693,11 @@ def cast_shadows(
             if any(mesh.triangle_count for mesh in standing)
             else None
         )
-        shaded = _shaded(grid, occluder, directions) if occluder is not None else empty
+        shaded = (
+            _shaded(grid, occluder, directions, what=source.label or source.key, say=say)
+            if occluder is not None
+            else empty
+        )
         masks[source.key] = shaded & ~before
         against[source.key] = (occluder, before_occluder)
         before, before_occluder = shaded, occluder
@@ -657,7 +714,11 @@ def cast_shadows(
             if source.mesh.triangle_count
             else None
         )
-        after = _shaded(grid, occluder, directions) if occluder is not None else before
+        after = (
+            _shaded(grid, occluder, directions, what=source.label or source.key, say=say)
+            if occluder is not None
+            else before
+        )
         masks[source.key] = after & ~before
         against[source.key] = (occluder, before_occluder)
 
@@ -667,7 +728,17 @@ def cast_shadows(
         own = next((source for source in sources if source.key == outline), None)
         if own is None:
             raise ValueError(f"No shadow source {outline!r} to outline; the sources are {seen}")
-        alone = _shaded(grid, Occluder(own.mesh), directions) if own.mesh.triangle_count else empty
+        alone = (
+            _shaded(
+                grid,
+                Occluder(own.mesh),
+                directions,
+                what=f"{own.label or own.key} alone, for the every-hour drawing",
+                say=say,
+            )
+            if own.mesh.triangle_count
+            else empty
+        )
 
     for index, (moment, label) in enumerate(zip(moments, labels, strict=True)):
         down = not bool(above_horizon[index])

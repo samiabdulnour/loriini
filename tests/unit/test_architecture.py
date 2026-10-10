@@ -30,6 +30,10 @@ ALLOWED_IMPORTS: dict[str, set[str]] = {
     # rules are tested without a licence.
     "site": {"core"},
     "archicad": {"core", "rules", "ingest", "report", "site"},
+    # The window, and the agent that runs the same studies through it, sit on
+    # top of everything and are imported by nothing below.
+    "app": {"core", "rules", "ingest", "report", "site", "archicad"},
+    "agent": {"core", "rules", "ingest", "report", "site", "archicad", "app"},
 }
 
 LAYERS = sorted(ALLOWED_IMPORTS)

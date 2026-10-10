@@ -3345,6 +3345,60 @@ def test_an_open_modal_dialog_is_explained_rather_than_relayed() -> None:
     assert "not a problem with the project or the tool" in message
 
 
+class _HandOnTheMouse:
+    """Archicad while a double-click is still landing: the same code 4001,
+    with Archicad's other words, for ``refusals`` sends, and then the answer."""
+
+    def __init__(self, refusals: int) -> None:
+        self.refusals = refusals
+        self.sent = 0
+
+    def send(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.sent += 1
+        if self.sent <= self.refusals:
+            return {
+                "succeeded": False,
+                "error": {"code": 4001, "message": "Invalid program status (ongoing user input)"},
+            }
+        return {"succeeded": True, "result": {"ok": True}}
+
+
+def test_a_hand_still_on_the_mouse_is_waited_out_rather_than_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run asks the person to double-click a worksheet, sees it in front,
+    and sends its next command while the mouse is still down. Archicad refuses
+    that for a moment with "ongoing user input", which is not a dialog left
+    open: the request is sent again until it goes through."""
+    from sun_study.archicad import connection as module
+
+    paused: list[float] = []
+    monkeypatch.setattr(module, "_sleep", paused.append)
+    monkeypatch.setattr(module, "_clock", lambda: 0.0)
+    transport = _HandOnTheMouse(refusals=3)
+    assert ArchicadConnection(transport).run_official("API.GetProjectInfo") == {"ok": True}
+    assert transport.sent == 4
+    assert paused == [module.INPUT_PAUSE_S] * 3
+
+
+def test_a_hand_that_never_lets_go_is_given_up_on_and_said_in_its_own_words(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sun_study.archicad import connection as module
+
+    ticks = iter(range(0, 1000))
+    monkeypatch.setattr(module, "_sleep", lambda _s: None)
+    monkeypatch.setattr(module, "_clock", lambda: float(next(ticks)))
+    transport = _HandOnTheMouse(refusals=10_000)
+    with pytest.raises(CommandFailedError) as raised:
+        ArchicadConnection(transport).run_official("API.GetProjectInfo")
+    assert transport.sent == int(module.INPUT_WAIT_S) + 1
+    message = str(raised.value)
+    assert "ongoing user input" in message
+    assert "Let go of the mouse" in message
+    assert "Close the dialog" not in message, "there is no dialog to close"
+
+
 def test_other_failures_keep_their_code_for_looking_up() -> None:
     """Only 4001 has a known fix. Everything else needs its number."""
 
@@ -4098,6 +4152,7 @@ def test_a_combination_is_built_from_the_model_even_from_inside_a_layout() -> No
         _combination_world(
             GetCurrentWindowType={"currentWindowType": "Layout"},
             GetElementsByType={"elements": []},
+            GetAllElements={"elements": []},
             GetNavigatorItemTree={
                 "navigatorItemTree": {
                     "navigatorItemId": {"guid": "R"},
@@ -4140,6 +4195,7 @@ def test_a_refused_switch_stops_the_read_instead_of_answering_about_another_shee
         {
             "ChangeWindow": {"success": False},
             "GetElementsByType": {"elements": [{"elementId": {"guid": "D1"}}]},
+            "GetAllElements": {"elements": [{"elementId": {"guid": "D1"}}]},
         }
     )
     with pytest.raises(ArchicadError) as raised:
@@ -4235,7 +4291,7 @@ def test_going_back_to_a_floor_plan_makes_layer_work_possible_again() -> None:
     assert [state.name for state in read_layers(connection)] == ["Walls", "Context", "Joinery"]
 
 
-def test_the_walls_that_prove_a_floor_plan_are_recorded_as_proof() -> None:
+def test_the_elements_that_prove_a_floor_plan_are_recorded_as_proof() -> None:
     """ensure_model_database usually finds nothing to move. Returning early
     without saying so left the connection claiming not to know where it was,
     which switches the guard off for the whole run."""
@@ -4245,6 +4301,7 @@ def test_the_walls_that_prove_a_floor_plan_are_recorded_as_proof() -> None:
         {
             "GetCurrentWindowType": {"currentWindowType": "FloorPlan"},
             "GetElementsByType": {"elements": [{"elementId": {"guid": "W1"}}]},
+            "GetAllElements": {"elements": [{"elementId": {"guid": "W1"}}]},
         }
     )
     assert ensure_model_database(connection) is None
@@ -4263,6 +4320,7 @@ def test_a_layout_window_over_a_readable_model_is_realigned_but_not_reported() -
         {
             "GetCurrentWindowType": {"currentWindowType": "Layout"},
             "GetElementsByType": {"elements": [{"elementId": {"guid": "W1"}}]},
+            "GetAllElements": {"elements": [{"elementId": {"guid": "W1"}}]},
             "GetNavigatorItemTree": {
                 "navigatorItemTree": {
                     "navigatorItemId": {"guid": "R"},
@@ -4307,6 +4365,7 @@ def test_a_layout_left_current_is_moved_off_and_the_move_is_recorded() -> None:
         {
             "GetCurrentWindowType": {"currentWindowType": "Layout"},
             "GetElementsByType": {"elements": []},
+            "GetAllElements": {"elements": []},
             "GetNavigatorItemTree": {
                 "navigatorItemTree": {
                     "navigatorItemId": {"guid": "R"},
@@ -4329,6 +4388,79 @@ def test_a_layout_left_current_is_moved_off_and_the_move_is_recorded() -> None:
     )
     assert ensure_model_database(connection) == "Layout"
     assert connection.database == Database(guid="S0", window_type="FloorPlan")
+
+
+def test_a_massing_of_slabs_proves_the_floor_plan_as_walls_did() -> None:
+    """Walls were the proof once, and a massing project has none: every start
+    on one moved the window through the API for nothing, and that switch is
+    what left the floor plan deaf to the mouse until another tab was clicked.
+    Any element at all is the proof now, and nothing is moved."""
+    from sun_study.archicad.series import ensure_model_database
+
+    connection, transport = connect(
+        {
+            "GetCurrentWindowType": {"currentWindowType": "FloorPlan"},
+            "GetAllElements": {"elements": [{"elementId": {"guid": "SLAB"}}]},
+        }
+    )
+    assert ensure_model_database(connection) is None
+    assert connection.database is not None and connection.database.is_model
+    assert "ChangeWindow" not in transport.commands()
+    assert "GetElementsByType" not in transport.commands(), "no second read when the first answers"
+
+
+def test_a_strayed_database_under_a_floor_plan_is_moved_without_the_window() -> None:
+    """The plan is in front and only the database has strayed: the add-on's
+    own SetCurrentDatabase puts it back and touches no window, so Archicad
+    is left exactly as the person had it. Tapir's ChangeWindow is the
+    fallback when the add-on lacks the command or refuses."""
+    from sun_study.archicad.series import ensure_model_database
+
+    tree = {
+        "navigatorItemTree": {
+            "navigatorItemId": {"guid": "R"},
+            "name": "Project Map",
+            "children": [
+                {
+                    "navigatorItem": {
+                        "navigatorItemId": {"guid": "N0"},
+                        "name": "Ground",
+                        "type": "StoryItem",
+                        "prefix": "0",
+                    }
+                }
+            ],
+        }
+    }
+    connection, transport = connect(
+        {
+            "GetCurrentWindowType": {"currentWindowType": "FloorPlan"},
+            "GetAllElements": {"elements": []},
+            "GetNavigatorItemTree": tree,
+            "GetDatabaseIdFromNavigatorItemId": {"databases": [{"databaseId": {"guid": "S0"}}]},
+            "SetCurrentDatabase": {"success": True},
+        }
+    )
+    assert ensure_model_database(connection) == "FloorPlan"
+    assert transport.parameters_for("SetCurrentDatabase") == {
+        "databaseId": {"guid": "S0"},
+        "windowType": "FloorPlan",
+    }
+    assert "ChangeWindow" not in transport.commands()
+    assert connection.database is not None and connection.database.is_model
+
+    refused, transport = connect(
+        {
+            "GetCurrentWindowType": {"currentWindowType": "FloorPlan"},
+            "GetAllElements": {"elements": []},
+            "GetNavigatorItemTree": tree,
+            "GetDatabaseIdFromNavigatorItemId": {"databases": [{"databaseId": {"guid": "S0"}}]},
+            "SetCurrentDatabase": {"success": False},
+            "ChangeWindow": {"success": True},
+        }
+    )
+    assert ensure_model_database(refused) == "FloorPlan"
+    assert "ChangeWindow" in transport.commands(), "the fallback"
 
 
 def test_a_layer_both_hidden_and_locked_is_counted_once() -> None:

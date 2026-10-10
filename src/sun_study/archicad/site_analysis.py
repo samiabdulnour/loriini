@@ -76,7 +76,7 @@ from sun_study.archicad.views import (
     ensure_layer_combination,
     views_for_sources,
 )
-from sun_study.site import curate, sources
+from sun_study.site import curate, sources, terrain
 from sun_study.site.arcgis import rings_of
 from sun_study.site.envelope import ADG_SEPARATION, Envelope
 from sun_study.site.geo import (
@@ -91,6 +91,7 @@ from sun_study.site.geo import (
     ring_area,
     ring_centroid,
 )
+from sun_study.site.ground import Ground
 from sun_study.site.pipeline import (
     MAP_HEIGHT_MM,
     MAP_WIDTH_MM,
@@ -98,6 +99,7 @@ from sun_study.site.pipeline import (
     SiteBundle,
     SummaryBundle,
 )
+from sun_study.site.trees import ESTIMATED, NOMINAL, NOMINAL_CANOPY_M, Tree
 
 __all__ = [
     "CONTEXT_WORD",
@@ -157,6 +159,8 @@ WIND_BLUE = "#2f9fd6"
 SUN_YELLOW = "#feefab"
 CADASTRE_GREY = "#6f6f6f"
 ROAD_GREY = "#8a8a8a"
+#: The neighbouring buildings on the site sheet, filled so they read as masses.
+BUILDING_GREY = "#d9d9d9"
 #: The future context: what the controls would allow next door, drawn in a
 #: colour nothing existing is drawn in.
 FUTURE_MAGENTA = "#c2189a"
@@ -169,6 +173,7 @@ CONTOUR_BROWN = "#a07c3f"
 NOISE_BLUE = "#3b4fd8"
 TREE_GREEN = "#7dbb57"
 TREE_EDGE = "#4e8c33"
+TRUNK_GREEN = "#2f5e20"
 HYDRANT_BLUE = "#1f78d1"
 LAMP_YELLOW = "#f0c020"
 POLE_GREY = "#333333"
@@ -345,6 +350,54 @@ def fit_frame(frame: Frame, site_rings: Sequence[Sequence[Point]], drawn: Sequen
         residual_m=residual,
         drawn_points=len(theirs),
     )
+
+
+#: Where the project origin may be put on the site: its centre, or one of
+#: its corners as the drawing reads them, bottom-left being south-west on a
+#: north-up frame and the left end of the long boundary on a squared one.
+ORIGIN_CHOICES: tuple[str, ...] = ("centre", "bottom-left", "bottom-right", "top-left", "top-right")
+
+
+def placed_frame(
+    frame: Frame,
+    site_rings: Sequence[Sequence[Point]],
+    *,
+    square: bool = False,
+    origin_at: str = "centre",
+) -> Frame:
+    """The site-anchored frame, turned and moved the way the office sets a
+    site up: ``square`` turns it so the site's longest boundary runs along
+    +X, and ``origin_at`` names the corner of the site that is the project
+    origin, the centre being where ``frame_for`` already put it.
+
+    Asked for on 8 October 2026: a model is drawn with its long frontage
+    level on the screen and its origin on a corner of the site, not on an
+    address's centroid, and the context should come in to match. The turn
+    is the one the boundary fit makes (``fit_frame``), applied to the site's
+    own convex hull; a corner is the hull's vertex furthest that way, taken
+    after the turn so "bottom-left" means what the drawing shows.
+
+    The project's north follows the turn: ``plus_y_bearing_deg`` is the
+    bearing to write into Project Location, or the sun is wrong by the turn.
+    """
+    if origin_at not in ORIGIN_CHOICES:
+        raise ValueError(f"origin_at must be one of {ORIGIN_CHOICES}, not {origin_at!r}")
+    placed = frame
+    hull = convex_hull(p for ring in site_rings for p in placed.ring(ring))
+    if square and len(hull) >= 2:
+        delta = -((_edge_bearing(hull) + 90.0) % 180.0 - 90.0)
+        placed = placed.turned_and_moved(delta, (0.0, 0.0))
+        hull = convex_hull(p for ring in site_rings for p in placed.ring(ring))
+    if origin_at != "centre" and hull:
+        furthest: dict[str, Callable[[Point], float]] = {
+            "bottom-left": lambda p: p[0] + p[1],
+            "bottom-right": lambda p: p[1] - p[0],
+            "top-left": lambda p: p[0] - p[1],
+            "top-right": lambda p: -p[0] - p[1],
+        }
+        corner = min(hull, key=furthest[origin_at])
+        placed = placed.turned_and_moved(0.0, (-corner[0], -corner[1]))
+    return placed
 
 
 def frame_for(
@@ -545,6 +598,8 @@ class Fill:
     """A diagonal hatch with a clear background: the heritage items."""
     weight_mm: float | None = None
     """The contour's pen weight."""
+    dashed: bool = False
+    """The contour dashed: a size the sheet draws without having it recorded."""
 
 
 @dataclass
@@ -626,6 +681,7 @@ class Drawing:
         wash: bool = False,
         hatch: bool = False,
         weight_mm: float | None = None,
+        dashed: bool = False,
     ) -> None:
         # An ID on every fill, so a schedule or a Find & Select can pick the
         # railway, the heritage items or the wash out of six thousand fills:
@@ -651,6 +707,7 @@ class Drawing:
                     wash,
                     hatch,
                     weight_mm,
+                    dashed,
                 )
             )
 
@@ -728,6 +785,8 @@ class Drawing:
         dashed: bool = False,
         segments: int = 24,
         weight_mm: float | None = None,
+        wash: bool = False,
+        element_id: str = "",
     ) -> None:
         ring = [
             (
@@ -737,7 +796,16 @@ class Drawing:
             for i in range(segments)
         ]
         if fill is not None:
-            self.fill(part, [ring], fill, contour=colour, weight_mm=weight_mm)
+            self.fill(
+                part,
+                [ring],
+                fill,
+                contour=colour,
+                weight_mm=weight_mm,
+                wash=wash,
+                dashed=dashed,
+                element_id=element_id,
+            )
         else:
             self.line(part, ring, colour=colour, dashed=dashed, closed=True, weight_mm=weight_mm)
 
@@ -973,8 +1041,9 @@ def _legend(
     """Swatches and labels down the right of the map field.
 
     ``rows`` are ``(kind, colour, contour, label)`` with kind ``fill``,
-    ``line``, ``dashed`` or ``text``; a text swatch shows the label's own
-    lettering, the way ``SB 30.48`` is explained on the site sheet.
+    ``dashed fill``, ``wash``, ``dashed wash``, ``line``, ``dashed`` or ``text``;
+    a text swatch shows the label's own lettering, the way ``SB 30.48`` is
+    explained on the site sheet.
     """
     x, top = origin
     swatch_w, swatch_h, step = drawing.mm(16), drawing.mm(6.5), drawing.mm(10)
@@ -983,12 +1052,14 @@ def _legend(
     )
     for row, (kind, colour, contour, label) in enumerate(rows):
         y = top - step * (row + 1)
-        if kind == "fill":
+        if kind in ("fill", "dashed fill", "wash", "dashed wash"):
             drawing.fill(
                 "Legend",
                 [[(x, y), (x + swatch_w, y), (x + swatch_w, y + swatch_h), (x, y + swatch_h)]],
                 colour,
                 contour=contour or colour,
+                wash="wash" in kind,
+                dashed=kind.startswith("dashed"),
             )
         elif kind in ("line", "dashed"):
             drawing.line(
@@ -1411,19 +1482,26 @@ def _significant_corners(ring: Sequence[Point], threshold_deg: float = 12.0) -> 
     return keep if len(keep) >= 3 else list(range(n))
 
 
-def _level_at(point: Point, contours: Sequence[tuple[float, list[Point]]]) -> float | None:
-    """The ground level from the two nearest distinct contours, inverse-distance weighted."""
-    nearest: dict[float, float] = {}
-    for elevation, points in contours:
-        d = min(math.dist(point, p) for p in points[::2] or points)
-        nearest[elevation] = min(d, nearest.get(elevation, math.inf))
-    if not nearest:
-        return None
-    ranked = sorted(nearest.items(), key=lambda item: item[1])
-    if len(ranked) == 1 or ranked[0][1] < 1.0:
-        return ranked[0][0]
-    (e1, d1), (e2, d2) = ranked[0], ranked[1]
-    return (e1 / d1 + e2 / d2) / (1 / d1 + 1 / d2)
+def _tree_id(tree: Tree) -> str:
+    """What the tree is, as a schedule of the sheet's trees would read it:
+    ``SA TREE Brush Box (Lophostemon confertus), canopy 4 m, 10 m high, trunk
+    18 cm``. The sheet draws the canopy; the rest is here or nowhere."""
+    name = (
+        f"{tree.common} ({tree.species})"
+        if tree.common and tree.species
+        else tree.common or tree.species or ""
+    )
+    parts = [f"SA TREE {name}".rstrip()]
+    if tree.canopy_from == NOMINAL:
+        parts.append(f"canopy not recorded, {tree.canopy_m:g} m shown")
+    else:
+        how = " estimated" if tree.canopy_from == ESTIMATED else ""
+        parts.append(f"canopy {round(tree.canopy_m, 1):g} m{how}")
+    if tree.height_m:
+        parts.append(f"{round(tree.height_m, 1):g} m high")
+    if tree.dbh_cm:
+        parts.append(f"trunk {round(tree.dbh_cm):g} cm")
+    return ", ".join(parts)
 
 
 def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope] = ()) -> Drawing:
@@ -1597,8 +1675,46 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
             contour="#c9bb00",
         )
 
-    for lon, lat in bundle.furniture.trees:
-        drawing.circle("Trees", frame.project(lon, lat), mm(3), colour=TREE_EDGE, fill=TREE_GREEN)
+    # The neighbours as masses: a solid grey over the aerial, edged in the
+    # road grey, so the built form reads at a glance and the site's red
+    # boundary and the tree canopies, drawn after, sit over it.
+    for building in bundle.furniture.buildings:
+        if len(building.ring) >= 3:
+            drawing.fill(
+                "Buildings",
+                [frame.ring(building.ring)],
+                BUILDING_GREY,
+                contour=ROAD_GREY,
+                weight_mm=0.18,
+            )
+    # Trees at the size of their canopy, on the ground. A size somebody
+    # recorded -- the council's inventory, or a mapper's measurement -- has a
+    # solid edge; the nominal canopy of a tree nobody measured is dashed, so the
+    # sheet never claims a size it does not have. A wash, so the kerb and the
+    # parking under a canopy still show; never smaller than a dot a reader can
+    # find, and never so big that a register's typing error covers the sheet.
+    for tree in bundle.furniture.trees:
+        at = frame.project(tree.lon, tree.lat)
+        drawing.circle(
+            "Trees",
+            at,
+            min(mm(45), max(mm(1.6), tree.canopy_m / 2.0)),
+            colour=TREE_EDGE,
+            fill=TREE_GREEN,
+            wash=True,
+            dashed=tree.canopy_from == NOMINAL,
+            weight_mm=0.25,
+            element_id=_tree_id(tree),
+        )
+        drawing.circle(
+            "Trees",
+            at,
+            mm(0.55),
+            colour=TRUNK_GREEN,
+            fill=TRUNK_GREEN,
+            segments=12,
+            element_id="SA TREE TRUNK",
+        )
     for lon, lat in bundle.furniture.hydrants:
         drawing.circle(
             "Services", frame.project(lon, lat), mm(1.4), colour=HYDRANT_BLUE, fill=HYDRANT_BLUE
@@ -1622,9 +1738,6 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
                 ],
                 colour="#a8860b",
             )
-    for building in bundle.furniture.buildings:
-        if len(building.ring) >= 3:
-            drawing.line("Buildings", frame.ring(building.ring), colour=ROAD_GREY, closed=True)
     # The future context: the lowest tier's footprint, which is the largest,
     # and the upper tiers inside it where the envelope steps.
     for envelope in future:
@@ -1728,6 +1841,9 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
         for ring in rings_of(feature.get("geometry")):
             drawing.line("Site lots", frame.ring(ring), colour=SITE_RED, closed=True)
 
+    # Levels across the slope, between the contours that bracket each corner.
+    described = terrain.described(bundle.contours)
+    ground = Ground(contours, interval_m=described[0]) if described else None
     corner_levels: list[tuple[int, float]] = []
     if site:
         corners = _significant_corners(site)
@@ -1761,7 +1877,7 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
             if spot:
                 drawing.text("Dimensions", label, spot, height_mm=STREET_MM, angle_rad=angle)
         for i in corners:
-            level = _level_at(site[i], contours)
+            level = ground.at(site[i]) if ground is not None else None
             if level is None:
                 continue
             corner_levels.append((i, level))
@@ -1906,8 +2022,10 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
         ("text", "SB 30.48", None, "BOUNDARY DIMENSION (m)"),
         ("text", "RL 24.5", None, "SURFACE LEVEL (AHD)"),
     ]
-    if bundle.contours:
-        rows.append(("line", CONTOUR_BROWN, None, "CONTOURS (m AHD)"))
+    if described:
+        # The interval, and whose: the City of Sydney's 1 m or the state's 2 m.
+        interval, who, _ = described
+        rows.append(("line", CONTOUR_BROWN, None, f"CONTOURS AT {interval:g} m AHD, {who}"))
     rows.append(("text", "12 / R3", None, "NEIGHBOUR: NUMBER, STOREYS, ZONE"))
     if bundle.furniture.parking_lanes:
         rows.append(("fill", PARKING_PLUM, "#7a3c50", "STREET PARKING ZONE"))
@@ -1915,8 +2033,17 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
         rows.append(("fill", DRIVEWAY_YELLOW, "#c9bb00", "VEHICULAR ACCESS"))
     if any(r.lanes for r in bundle.roads) or bundle.furniture.oneway_roads:
         rows.append(("line", ROAD_GREY, None, "TRAFFIC DIRECTION AND LANES"))
-    if bundle.furniture.trees:
-        rows.append(("fill", TREE_GREEN, TREE_EDGE, "EXISTING TREES"))
+    if any(tree.canopy_from != NOMINAL for tree in bundle.furniture.trees):
+        rows.append(("wash", TREE_GREEN, TREE_EDGE, "TREE, CANOPY TO SCALE"))
+    if any(tree.canopy_from == NOMINAL for tree in bundle.furniture.trees):
+        rows.append(
+            (
+                "dashed wash",
+                TREE_GREEN,
+                TREE_EDGE,
+                f"TREE, SIZE NOT RECORDED ({NOMINAL_CANOPY_M:g} m SHOWN)",
+            )
+        )
     if bundle.furniture.power_poles:
         rows.append(("line", POLE_GREY, None, "POWER POLE"))
     if bundle.furniture.street_lamps:
@@ -1926,7 +2053,7 @@ def site_drawing(bundle: SiteBundle, frame: Frame, *, future: Sequence[Envelope]
     if bundle.bus_stops:
         rows.append(("text", "B", None, "BUS STOPS"))
     if bundle.furniture.buildings:
-        rows.append(("line", ROAD_GREY, None, "BUILDING FOOTPRINTS (OSM)"))
+        rows.append(("fill", BUILDING_GREY, ROAD_GREY, "BUILDING FOOTPRINTS (OSM)"))
     if future:
         rows.append(("dashed", FUTURE_MAGENTA, None, "FUTURE CONTEXT: LEP + ADG 3F ENVELOPE"))
     rows.append(("line", NOISE_BLUE, None, "NOISE SOURCE"))
@@ -2100,6 +2227,21 @@ def summary_rows(bundle: SummaryBundle) -> list[tuple[str, str, list[str]]]:
 #: 3.9 mm on paper is 0.39 m on the worksheet and the rows step by 0.52 m.
 SUMMARY_SCALE = 100.0
 
+#: Where the controls column starts, in paper millimetres, and the most
+#: characters of a row's label that fit before it. The column was 60.4 mm
+#: and the labels ran into the controls (the Redfern sheet, 7 October 2026:
+#: "3F. VISUAL PRIVACY / BUILDING SEPARATION" over "6 to 12 m between
+#: habitable rooms"); Archicad's capitals at 3.9 mm run about 0.72 of the
+#: height each, so 80 mm less the margins holds 27 of them. A longer label
+#: is wrapped at a word onto as many lines as it needs, and the row grows.
+SUMMARY_LABEL_MM = 80.0
+SUMMARY_LABEL_CHARS = 27
+
+
+def summary_label_lines(label: str) -> list[str]:
+    """A row's label on as many lines as fit the label column."""
+    return textwrap.wrap(label, SUMMARY_LABEL_CHARS) or [label]
+
 
 def summary_drawing(bundle: SummaryBundle, scale: float = SUMMARY_SCALE) -> Drawing:
     """The planning-controls table, as texts and rules.
@@ -2111,7 +2253,7 @@ def summary_drawing(bundle: SummaryBundle, scale: float = SUMMARY_SCALE) -> Draw
     mm = drawing.mm
     body, lead, pad = 3.9, mm(5.2), mm(5.2)
     left, right = 0.0, mm(372)
-    label_x, controls_x = mm(0.7), mm(60.4)
+    label_x, controls_x = mm(0.7), mm(SUMMARY_LABEL_MM)
     y = 0.0
     drawing.text(
         "Table", "SUMMARY OF CONTROLS", (label_x, y + mm(2)), height_mm=8.2, justification="Left"
@@ -2119,7 +2261,8 @@ def summary_drawing(bundle: SummaryBundle, scale: float = SUMMARY_SCALE) -> Draw
     y -= mm(6.3)
     drawing.line("Table", [(left, y), (right, y)], colour=INK)
     for kind, label, controls in summary_rows(bundle):
-        lines = max(len(controls), 1)
+        names = summary_label_lines(label) if kind == "row" else [label]
+        lines = max(len(controls), len(names), 1)
         height = mm(9.6) if kind == "section" else max(mm(7.6), pad + (lines - 1) * lead + mm(2.4))
         base = y - pad
         if kind == "section":
@@ -2129,7 +2272,10 @@ def summary_drawing(bundle: SummaryBundle, scale: float = SUMMARY_SCALE) -> Draw
                 "Table", "CONTROLS", (controls_x, base), height_mm=body, justification="Left"
             )
         else:
-            drawing.text("Table", label, (label_x, base), height_mm=body, justification="Left")
+            for i, name in enumerate(names):
+                drawing.text(
+                    "Table", name, (label_x, base - i * lead), height_mm=body, justification="Left"
+                )
             for i, line in enumerate(controls):
                 drawing.text(
                     "Table",
@@ -2314,14 +2460,23 @@ def _standing_in(connection: ArchicadConnection) -> tuple[str, str, str]:
 
 
 def _enter(connection: ArchicadConnection, database_id: str) -> bool:
-    """Try to make the worksheet current through the add-on. False if refused."""
-    try:
-        moved = connection.run_loriini(
-            "SetCurrentDatabase", {"databaseId": {"guid": database_id}, "windowType": "Worksheet"}
-        )
-    except ArchicadError:
-        return False
-    return isinstance(moved, dict) and bool(moved.get("success"))
+    """Try to make the worksheet current through the add-on. False if refused.
+
+    Two tries. The plain move first, which enters any worksheet a person has
+    ever opened (D96). Then the move with the window opened first -- the
+    add-on's ``open``, the call a double-click makes -- which is the one
+    route D95 left unread for a worksheet nobody has opened; an older add-on
+    refuses the unknown parameter, which reads as refused and costs nothing.
+    """
+    where = {"databaseId": {"guid": database_id}, "windowType": "Worksheet"}
+    for parameters in (where, {**where, "open": True}):
+        try:
+            moved = connection.run_loriini("SetCurrentDatabase", parameters)
+        except ArchicadError:
+            continue
+        if isinstance(moved, dict) and bool(moved.get("success")):
+            return True
+    return False
 
 
 def _wait_until_in_front(
@@ -2596,6 +2751,8 @@ def _flush(
         contour_pen = attributes.pen(fill.contour or fill.colour)
         if contour_pen is not None:
             data["contourPen"] = contour_pen
+        if fill.dashed and attributes.dashed is not None:
+            data["lineTypeIndex"] = attributes.dashed
         if fill.weight_mm is not None:
             data["penWeight"] = fill.weight_mm
         if fill.element_id:

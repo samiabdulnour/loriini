@@ -300,7 +300,8 @@ GS::Optional<GS::UniString> ArrangeDrawingsCommand::GetInputParametersSchema () 
 			},
 			"frameRelativeToOrigin": { "type": "boolean", "description": "Whether a frame's coordinates are measured from the drawing's own origin rather than the layout's. Default false." },
 			"fitFrame": { "type": "boolean", "description": "Drop the clip polygon so the frame follows the drawing's own extent. Ignored for a drawing given a frame. Default false." },
-			"autoUpdate": { "type": "boolean", "description": "Let Archicad regenerate the drawing when the layout opens. Default true." }
+			"autoUpdate": { "type": "boolean", "description": "Let Archicad regenerate the drawing when the layout opens. Default true." },
+			"stack": { "type": "boolean", "description": "Bring the drawings to the front in the order given, so the last listed lies on top of the rest: how two documents share one cell, the existing shadow over the proposal's. Default false." }
 		},
 		"required": [ "drawings" ],
 		"additionalProperties": false
@@ -332,10 +333,12 @@ GS::ObjectState ArrangeDrawingsCommand::Execute (const GS::ObjectState& paramete
 	bool frameRelative = false;
 	bool fitFrame = false;
 	bool autoUpdate = true;
+	bool stack = false;
 	parameters.Get ("anchor", anchor);
 	parameters.Get ("frameRelativeToOrigin", frameRelative);
 	parameters.Get ("fitFrame", fitFrame);
 	parameters.Get ("autoUpdate", autoUpdate);
+	parameters.Get ("stack", stack);
 	const bool byOrigin = anchor == "origin";
 
 	GS::Optional<VisitDatabase> visit;
@@ -346,6 +349,8 @@ GS::ObjectState ArrangeDrawingsCommand::Execute (const GS::ObjectState& paramete
 
 	Int32 arranged = 0;
 	GS::Array<GS::ObjectState> failures;
+	//: The drawings arranged, in the order given, for the stacking after.
+	GS::Array<API_Guid> inOrder;
 
 	// One undo step for the whole sheet, which is how a person would want to
 	// take it back. An element change outside an undo scope is refused.
@@ -415,11 +420,32 @@ GS::ObjectState ArrangeDrawingsCommand::Execute (const GS::ObjectState& paramete
 
 			if (one == NoError) {
 				++arranged;
+				inOrder.Push (element.header.guid);
 			} else {
 				GS::ObjectState failed;
 				failed.Add ("guid", guid);
 				failed.Add ("code", static_cast<Int32> (one));
 				failures.Push (failed);
+			}
+		}
+
+		// The display order, when asked. Each drawing is brought to the
+		// front in turn, so the list reads bottom to top: a layout draws the
+		// frontmost drawing last, over the others, and a drawing is clear
+		// wherever it draws nothing. The stacked shadow plans put the
+		// existing set's document over the proposal's in every cell.
+		if (stack) {
+			for (const API_Guid& guid : inOrder) {
+				GS::Array<API_Guid> one;
+				one.Push (guid);
+				const GSErrCode ordered = ACAPI_Element_Tool (one, APITool_BringToFront, nullptr);
+				if (ordered != NoError) {
+					GS::ObjectState failed;
+					failed.Add ("guid", APIGuidToString (guid));
+					failed.Add ("code", static_cast<Int32> (ordered));
+					failed.Add ("step", "bringToFront");
+					failures.Push (failed);
+				}
 			}
 		}
 		return NoError;

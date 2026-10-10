@@ -13,7 +13,7 @@ back without a class per layer.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from sun_study.site.geo import Extent, Point
@@ -60,9 +60,18 @@ def _to_geojson(data: Any) -> FeatureCollection:
 
 
 def query_by_extent(
-    layer_url: str, extent: Extent, out_fields: str = "*", where: str = "1=1"
+    layer_url: str,
+    extent: Extent,
+    out_fields: str = "*",
+    where: str = "1=1",
+    extra: Mapping[str, str] | None = None,
 ) -> FeatureCollection:
-    """Everything intersecting the extent, paged until the server says done."""
+    """Everything intersecting the extent, paged until the server says done.
+
+    ``extra`` is further query parameters, passed as they are: the one in use
+    is ``maxAllowableOffset``, which has the server generalise the geometry
+    before it is sent -- in the output's units, so degrees here.
+    """
     features: list[Feature] = []
     offset = 0
     while True:
@@ -77,6 +86,7 @@ def query_by_extent(
                 "spatialRel": "esriSpatialRelIntersects",
                 "outFields": out_fields,
                 "resultOffset": str(offset),
+                **(extra or {}),
             },
             label=layer_url,
         )
