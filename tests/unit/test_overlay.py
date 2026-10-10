@@ -261,18 +261,22 @@ def test_the_corner_sizes_the_picture_from_its_top_left_and_widens_the_strip(
 ) -> None:
     """Pull the corner out and the top-left corner stays put, the picture
     keeps its top-left in the frame, and the strip is as wide as the frame.
-    Push it in and the frame stops at the strip's own width."""
+    Push it in and the frame stops at the strip's own width.
+
+    Sized to fit a 1024 by 768 screen: Windows clamps a window to the
+    screen, and a CI runner's is small, so a frame asked to reach past its
+    edge comes back narrower than asked."""
     palette.take(photograph)
     root.update()
-    palette.lay(Placement(200, 200, 900, 500))
+    palette.lay(Placement(200, 200, 500, 300))
     settled(root)
     before = palette.overlay.placement
     palette.overlay._grab_corner(pointer(before.x + before.width, before.y + before.height))
-    palette.overlay._resize(pointer(before.x + before.width + 300, before.y + before.height + 100))
+    palette.overlay._resize(pointer(before.x + before.width + 200, before.y + before.height + 100))
     settled(root)
     after = palette.overlay.placement
     assert (after.x, after.y) == (before.x, before.y)
-    assert (after.width, after.height) == (before.width + 300, before.height + 100)
+    assert (after.width, after.height) == (before.width + 200, before.height + 100)
     assert palette.winfo_width() == after.width
     assert palette.winfo_rootx() == after.x
     face = palette.overlay.face
