@@ -29,17 +29,20 @@ def build_header(
     scene_provenance: Mapping[str, Any],
     scene_config_description: str,
     generated_at: str,
+    licensee: str = "",
 ) -> dict[str, Any]:
     """Everything a reader needs to judge, reproduce or challenge the numbers.
 
     ``generated_at`` is passed in rather than read from the clock so that
-    golden-file comparisons stay deterministic.
+    golden-file comparisons stay deterministic. ``licensee`` is whose licence
+    made the file (``licence.licensee``), recorded when there is one (D125).
     """
     area = ruleset.area(assessment.area_key)
     return {
         "status": STATUS,
         "disclaimer": DISCLAIMER,
         "tool": f"sun-study {__version__}",
+        **({"licence": licensee} if licensee else {}),
         "generated_at": generated_at,
         "site": site_description,
         "scene": scene_config_description,

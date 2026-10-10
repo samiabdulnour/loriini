@@ -24,6 +24,7 @@ LoriiniPalette::LoriiniPalette ()
 	, shadowButton (GetReference (), ID_PALETTE_ITEM_SHADOW)
 	, viewsButton (GetReference (), ID_PALETTE_ITEM_VIEWS)
 	, siteButton (GetReference (), ID_PALETTE_ITEM_SITE)
+	, referenceButton (GetReference (), ID_PALETTE_ITEM_REFERENCE)
 {
 	Attach (*this);
 	// Each button by name rather than `AttachToAllItems`, which the 26
@@ -38,6 +39,7 @@ LoriiniPalette::LoriiniPalette ()
 	shadowButton.Attach (*this);
 	viewsButton.Attach (*this);
 	siteButton.Attach (*this);
+	referenceButton.Attach (*this);
 
 	BeginEventProcessing ();
 }
@@ -52,6 +54,7 @@ LoriiniPalette::~LoriiniPalette ()
 	shadowButton.Detach (*this);
 	viewsButton.Detach (*this);
 	siteButton.Detach (*this);
+	referenceButton.Detach (*this);
 	EndEventProcessing ();
 }
 
@@ -132,6 +135,10 @@ void LoriiniPalette::ButtonClicked (const DG::ButtonClickEvent& ev)
 		Loriini::StartTheApp ("views");
 	} else if (ev.GetSource () == &siteButton) {
 		Loriini::StartTheApp ("site");
+	} else if (ev.GetSource () == &referenceButton) {
+		// Not a study. The window opens with the reference-image palette
+		// already up, so the next click is "Open picture".
+		Loriini::StartTheApp ("reference");
 	}
 }
 

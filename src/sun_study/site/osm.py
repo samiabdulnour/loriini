@@ -6,6 +6,10 @@ footprints for the site sheet. Failure is soft: the sheet is drawn without.
 
 Building footprints carry their ring and any recorded storey count, which is
 what the next step -- a massing of the neighbours in the model -- will read.
+
+Trees carry whatever size their tags record, through ``trees.tree_from_osm``;
+where a council publishes its own inventory, the pipeline puts the council's
+trees first and keeps OSM's only where the council has none.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from typing import Any
 
 from sun_study.site.geo import Extent, Point, point_in_ring
 from sun_study.site.http import Log, overpass
+from sun_study.site.trees import Tree, tree_from_osm, trees_along_row
 
 __all__ = [
     "Building",
@@ -216,7 +221,9 @@ class Utility:
 
 @dataclass(frozen=True)
 class Furniture:
-    trees: tuple[Point, ...] = ()
+    trees: tuple[Tree, ...] = ()
+    """Every tree, each with a canopy to draw and whose record it is --
+    OpenStreetMap's or a council's (``site.trees``)."""
     hydrants: tuple[Point, ...] = ()
     power_poles: tuple[Point, ...] = ()
     street_lamps: tuple[Point, ...] = ()
@@ -229,7 +236,7 @@ class Furniture:
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "trees": [list(p) for p in self.trees],
+            "trees": [t.as_dict() for t in self.trees],
             "hydrants": [list(p) for p in self.hydrants],
             "power_poles": [list(p) for p in self.power_poles],
             "street_lamps": [list(p) for p in self.street_lamps],
@@ -252,7 +259,7 @@ class Furniture:
             return tuple((float(x), float(y)) for x, y in data.get(key) or [])
 
         return cls(
-            trees=points("trees"),
+            trees=tuple(Tree.from_dict(t) for t in data.get("trees") or []),
             hydrants=points("hydrants"),
             power_poles=points("power_poles"),
             street_lamps=points("street_lamps"),
@@ -435,6 +442,7 @@ def furniture(extent: Extent, *, log: Log | None = None) -> Furniture:
     query = f"""[out:json][timeout:60];
 (
   node["natural"="tree"]({bbox});
+  way["natural"="tree_row"]({bbox});
   node["emergency"="fire_hydrant"]({bbox});
   node["power"="pole"]({bbox});
   node["highway"="street_lamp"]({bbox});
@@ -454,7 +462,7 @@ def furniture(extent: Extent, *, log: Log | None = None) -> Furniture:
 out geom;"""
     data = overpass(query, log=log)
 
-    trees: list[Point] = []
+    trees: list[Tree] = []
     hydrants: list[Point] = []
     poles: list[Point] = []
     lamps: list[Point] = []
@@ -469,7 +477,7 @@ out geom;"""
         if element.get("type") == "node":
             point = (float(element["lon"]), float(element["lat"]))
             if tags.get("natural") == "tree":
-                trees.append(point)
+                trees.append(tree_from_osm(point[0], point[1], tags))
             elif tags.get("emergency") == "fire_hydrant":
                 hydrants.append(point)
             elif tags.get("power") == "pole":
@@ -480,6 +488,9 @@ out geom;"""
         if element.get("type") != "way" or not element.get("geometry"):
             continue
         coords: Line = tuple((float(g["lon"]), float(g["lat"])) for g in element["geometry"])
+        if tags.get("natural") == "tree_row":
+            trees.extend(trees_along_row(coords))
+            continue
         if tags.get("service") == "driveway":
             driveways.append(coords)
             continue

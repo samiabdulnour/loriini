@@ -47,7 +47,9 @@ __pycache__/
 *.egg-info/
 build/
 dist/
-.venv/
+# `.venv312` and the like: a second environment, for a Python that has tkinter
+# where the first has none, so the window's tests can run under a display.
+.venv*/
 venv/
 
 # --- Tooling caches ---
@@ -75,3 +77,6 @@ archicad-addon/Build/
 !Loriini.spec
 # And the one that builds Loriini.app from it; see docs/macos.md.
 !Loriini-macOS.spec
+
+# The current build, put in site/download/ at deploy time (docs/website.md).
+site/download/*.zip

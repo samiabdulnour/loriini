@@ -1,0 +1,51 @@
+name: Licence database backup
+
+# A nightly copy of the licence service's database (docs/licence-service.md,
+# "Backups"): the SQLite file itself, fetched through the service's own
+# backup request with the admin token, kept as an artifact for ninety days.
+# Fly's daily volume snapshots are kept for five; this is the longer memory,
+# and the one that survives the volume.
+#
+# Needs one repository secret, LORIINI_ADMIN_TOKEN: the same token the
+# vendor's scripts/licence.py commands carry. Run workflow on the Actions
+# tab takes a copy now.
+on:
+  schedule:
+    - cron: "17 16 * * *"   # 16:17 UTC daily: early morning in Sydney, evening in Prague
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: Copy the database
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install runtime dependencies only
+        run: uv sync --no-dev
+
+      - name: Fetch the database
+        env:
+          LORIINI_ADMIN_TOKEN: ${{ secrets.LORIINI_ADMIN_TOKEN }}
+        run: |
+          set -u
+          if [ -z "$LORIINI_ADMIN_TOKEN" ]; then
+            echo "::error::The LORIINI_ADMIN_TOKEN repository secret is not set."
+            exit 1
+          fi
+          day=$(date -u +%Y-%m-%d)
+          uv run --no-dev python scripts/licence.py backup \
+            --service https://licence.loriini.app --out "backup/licences-$day.sqlite3"
+          ls -l backup/
+
+      - name: Keep it
+        uses: actions/upload-artifact@v4
+        with:
+          name: licences-${{ github.run_number }}
+          path: backup/
+          retention-days: 90
+          if-no-files-found: error

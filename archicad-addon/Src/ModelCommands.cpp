@@ -242,6 +242,38 @@ private:
 };
 
 
+// The window that was in front, put back in front when the export is done.
+//
+// The export has to bring the 3D window forward to build the model, and
+// leaving it there is not harmless: with the 3D window in front, Archicad 26
+// refuses every save through the API as APIERR_READONLY. Measured on Kogarah,
+// 30 September 2026: SaveProject succeeded with a floor plan in front, failed
+// read-only straight after an export, and succeeded again once a floor plan
+// was clicked -- and a study saves to read its sheets back, so every run lost
+// its tables at the last step.
+//
+// Declared before `ZonesInTheModel` so it is destroyed after it: the filter
+// goes back while the 3D window is still in front, then the window follows.
+class WindowPutBack {
+public:
+	WindowPutBack ()
+	{
+		known = ACAPI_Database (APIDb_GetCurrentWindowID, &before) == NoError;
+	}
+
+	~WindowPutBack ()
+	{
+		if (known && before.typeID != APIWind_3DModelID) {
+			ACAPI_Automate (APIDo_ChangeWindowID, &before);
+		}
+	}
+
+private:
+	API_WindowInfo before = {};
+	bool known = false;
+};
+
+
 // A Zone's own name, which is not its element ID and is what a study selects on.
 //
 // Archicad keeps two strings on a Zone and they are easy to mistake for each
@@ -486,6 +518,9 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	if (!parameters.Get ("path", path) || path.IsEmpty ()) {
 		return Failed ("ExportModel needs a 'path' to write to.", APIERR_BADPARS);
 	}
+
+	// Whatever window the person had in front, back in front at the end.
+	const WindowPutBack window;
 
 	// Zones into the model before the sight is taken, because turning them on
 	// regenerates it. Held for the length of the export and put back after.

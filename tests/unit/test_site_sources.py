@@ -36,6 +36,11 @@ ANSWERED_BY: dict[str, str] = {
     "overpass.osm.jp": "OpenStreetMap",
     "valhalla1.openstreetmap.de": "Valhalla",
     "api.transport.nsw.gov.au": "Transport for NSW",
+    # Esri's shared ArcGIS Online host, where the City of Sydney publishes its
+    # contours and its trees. Another publisher's layer on the same host
+    # would pass this test uncredited, so a new service here is worth a look
+    # at its organisation id in the path, not just its host.
+    "services1.arcgis.com": "City of Sydney",
 }
 
 #: Hosts that appear in the package and are not where any data comes from.
@@ -111,6 +116,15 @@ def test_the_one_source_needing_a_key_is_the_one_that_needs_a_key() -> None:
     keyed = needing_a_key()
     assert [source.name for source in keyed] == ["Transport for NSW Open Data Hub"]
     assert keyed[0].key_var == "TFNSW_API_KEY"
+
+
+def test_the_city_of_sydney_is_credited_in_its_own_words_and_the_licence_it_asks_for() -> None:
+    """The one council here, and the only credit that names its licence: the
+    council states none, and CC BY asks for the licence to be named."""
+    line = credit_line()
+    assert "© City of Sydney, CC BY 4.0" in line
+    council = next(source for source in SOURCES if source.slug == "cityofsydney")
+    assert "boundary" in council.note, "a council's register stops at its boundary"
 
 
 def test_the_share_alike_one_says_so() -> None:

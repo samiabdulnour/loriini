@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loriini privacy</title>
+<meta name="description" content="What Loriini and its licence service collect, and what they do not.">
+<link rel="icon" href="favicon.ico">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="stripe"></div>
+<div class="wrap">
+<header class="top">
+  <a class="brand" href="/"><img src="icon-256.png" alt=""> Loriini</a>
+  <nav class="main"><a href="/">Home</a><a href="terms.html">Licence terms</a></nav>
+</header>
+
+<article class="legal">
+  <span class="draft">Draft, 8 October 2026, for a lawyer's review</span>
+  <h1>Privacy</h1>
+  <p>This note says what Loriini sends, what the licence service keeps, and what neither of them does. It is short because there is little to tell.</p>
+
+  <h2>What the program sends</h2>
+  <p>Loriini runs on your computer and works on your Archicad project there. The only thing it talks to over the internet is the licence service, at one address, and it sends it:</p>
+  <ul>
+    <li>the licence key;</li>
+    <li>a one-way hash of the computer, made from Windows' machine identifier and the user's name with the product's name mixed in, so that the raw values never leave the computer;</li>
+    <li>the user's and the computer's names, such as <code>jsmith on FUSE-PC-07</code>, so that a practice can tell its seats apart;</li>
+    <li>the version of Loriini.</li>
+  </ul>
+  <p>Nothing about any project, file, address or result is sent. The site and context analysis fetches public map and planning data from the publishers named on each sheet; those requests carry the address being analysed and nothing about you.</p>
+
+  <h2>What the licence service keeps</h2>
+  <ul>
+    <li>For each licence: its number, the practice's name as given at checkout, the email address the key is sent to, the seats bought, the dates paid to, and Stripe's identifiers for the subscription and the customer.</li>
+    <li>For each computer using a licence: the hash above, the user's and computer's names, the version, and the day it was last seen. A computer not seen for a fortnight drops off.</li>
+    <li>A log of what happened to each licence: issued, paid, a payment that failed, a seat freed, a change made by the vendor.</li>
+  </ul>
+  <p>This is kept on one server in Sydney, with daily backups, for as long as the licence exists and for the time the vendor's accounts have to be kept afterwards.</p>
+
+  <h2>Payment</h2>
+  <p>Payment is taken by Stripe on its own pages. Card details go to Stripe and never reach the vendor. Stripe's handling of them is under <a href="https://stripe.com/privacy">Stripe's privacy policy</a>. The customer portal, where a practice changes its card or its seats, is Stripe's as well.</p>
+
+  <h2>Email</h2>
+  <p>The licence key, and a notice when a payment fails, are sent to the address given at checkout, through the vendor's mail provider. No newsletter, no marketing mail.</p>
+
+  <h2>This site</h2>
+  <p>This site sets no cookies and runs no analytics. The host keeps ordinary server logs, with the requesting address, for a short time.</p>
+
+  <h2>Updates</h2>
+  <p>When Loriini checks for a newer version, the request carries no identifier.</p>
+
+  <h2>Your rights</h2>
+  <p>To see what the service holds about your practice, correct it, or have it deleted once the licence has ended, write to <a href="mailto:sami@loriini.app">sami@loriini.app</a>.</p>
+
+  <h2>Who</h2>
+  <p>The vendor is Žofia Kosová, trading as Loriini.app, registered in the Czech Republic, IČO 19785283, DIČ CZ0154024321, postal address 212 Bondi Road 708, Bondi NSW 2026, Australia. Contact: <a href="mailto:sami@loriini.app">sami@loriini.app</a>.</p>
+</article>
+</div>
+<footer><div class="wrap">Loriini · <a href="terms.html">Licence terms</a> · <a href="privacy.html">Privacy</a></div></footer>
+</body>
+</html>

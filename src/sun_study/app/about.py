@@ -4,7 +4,7 @@ Three questions, one box, because they are asked by the same person at the
 same moment and none of them is a setting.
 
 *Whose data is this?* The site analysis draws a neighbourhood nobody in the
-office surveyed. Six public registers answer for it, all but one of them
+office surveyed. Seven public registers answer for it, all but one of them
 under a licence that asks for a credit on anything drawn from it, and a DA
 set is exactly the sort of thing that gets drawn from it. A colleague sending
 a Context Analysis sheet out has to be able to find that credit in the ten
@@ -14,9 +14,11 @@ anybody would guess. So the box carries the line ready to copy.
 
 *What may I do with the program?* The short form of the licence, because the
 question a colleague actually has is "may I give this to the consultant", and
-that is one line rather than a page. The LICENSE file remains the authority
-and the box says so; ``Read the full licence`` puts the whole text on screen
-for the person who needs it.
+that is one line rather than a page. Which licence depends on the build: one
+that takes licence keys was bought, and shows the subscription terms sold at
+loriini.app; one that does not is the source, and shows the source licence.
+The full text remains the authority and the box says so; the button under it
+puts the whole of it on screen for the person who needs it.
 
 *Is this any good yet?* The prototype notice, in the same words as the README,
 the run bar and every exported file -- from ``disclaimer``, so the four cannot
@@ -143,11 +145,14 @@ class About(tk.Toplevel):
         buttons.grid(row=2, column=0, sticky="ew", pady=(PAD, 0))
         buttons.columnconfigure(0, weight=1)
         self._full = ttk.Button(
-            buttons, text="Read the full licence", command=self._show_the_licence, width=22
+            buttons,
+            text="Read the full terms" if licence.keys_required() else "Read the full licence",
+            command=self._show_the_licence,
+            width=22,
         )
         self._full.grid(row=0, column=0, sticky="w")
-        if licence.file() is None:
-            # A build whose licence file did not make it in. The summary above
+        if licence.full_text() is None:
+            # A build whose licence text did not make it in. The summary above
             # is in the executable and stands on its own, so the button goes
             # rather than the box.
             self._full.grid_remove()
@@ -185,7 +190,28 @@ class About(tk.Toplevel):
 
     def _licence(self, page: ttk.Frame, row: int) -> int:
         row = self._title(page, row, "Licence")
-        for clause in licence.SUMMARY:
+        if licence.keys_required():
+            # Whose licence this is, and the way to change the key -- only in
+            # a build that takes keys, so a build that does not says nothing
+            # about them (roadmap R5).
+            self._holder = ttk.Label(
+                page, text=licence.standing().describe(), wraplength=WRAP, justify="left"
+            )
+            self._holder.grid(row=row, column=0, sticky="w", pady=(0, 4))
+            row += 1
+            keys = ttk.Frame(page)
+            keys.grid(row=row, column=0, sticky="w", pady=(0, 8))
+            ttk.Button(keys, text="Enter licence key…", command=self._enter_key, width=20).grid(
+                row=0, column=0
+            )
+            # An online key can be checked with the licence service on the
+            # spot -- after a payment, or a seat freed elsewhere (D125).
+            self._check = ttk.Button(keys, text="Check now", command=self._check_now, width=12)
+            self._check.grid(row=0, column=1, padx=(6, 0))
+            if not licence.standing().online:
+                self._check.grid_remove()
+            row += 1
+        for clause in licence.summary():
             ttk.Label(
                 page,
                 text=f"•  {clause}",
@@ -193,13 +219,15 @@ class About(tk.Toplevel):
                 justify="left",
             ).grid(row=row, column=0, sticky="w", pady=(0, 3))
             row += 1
-        return self._paragraph(
-            page,
-            row,
-            "This is the short form. The LICENSE file that came with this "
-            "build is the licence, and where the two differ the file wins.",
-            style="Hint.TLabel",
+        closing = (
+            "This is the short form. The terms at loriini.app/terms, also in "
+            "LICENSE.txt beside the program, are the agreement, and where the "
+            "two differ the terms win."
+            if licence.keys_required()
+            else "This is the short form. The LICENSE file that came with this "
+            "build is the licence, and where the two differ the file wins."
         )
+        return self._paragraph(page, row, closing, style="Hint.TLabel")
 
     def _sources(self, page: ttk.Frame, row: int) -> int:
         """One block per publisher, and every block ends in its own terms."""
@@ -272,10 +300,11 @@ class About(tk.Toplevel):
 
         self.credit = tk.Text(
             line,
-            # Six lines, which is what the credits come to at this width with
-            # every publisher answering. A field a line short of its own text
-            # is worse than a scrollbar: it looks complete and is not.
-            height=6,
+            # Seven lines, which is what the credits come to at this width
+            # with every publisher answering, the City of Sydney included. A
+            # field a line short of its own text is worse than a scrollbar: it
+            # looks complete and is not.
+            height=7,
             wrap="word",
             relief="solid",
             borderwidth=1,
@@ -383,6 +412,55 @@ class About(tk.Toplevel):
         top = max(0.0, heading.winfo_y() - 12.0)
         self._scroller.canvas.yview_moveto(max(0.0, min(1.0, top / tall)))
 
+    def _enter_key(self) -> None:
+        """The licence box, to change the key this machine holds."""
+        from sun_study.app import licence_box
+
+        if licence_box.ask(self) is not None:
+            self._show_standing()
+
+    def _show_standing(self) -> None:
+        found = licence.standing()
+        self._holder.configure(text=found.describe())
+        if found.online:
+            self._check.grid()
+        else:
+            self._check.grid_remove()
+
+    def _check_now(self) -> None:
+        """Ask the licence service now, in the background, and say the answer."""
+        import threading
+
+        done: list[licence.Standing] = []
+        asking = threading.Thread(
+            target=lambda: done.append(licence.renew()), name="licence check", daemon=True
+        )
+        self._holder.configure(text="Checking the licence with the licence service…")
+        self._check.configure(state="disabled")
+        asking.start()
+
+        def answered() -> None:
+            if asking.is_alive():
+                self._waiting = self.after(100, answered)
+                return
+            self._waiting = None
+            self._check.configure(state="normal")
+            found = done[0] if done else licence.standing()
+            self._holder.configure(text=found.describe())
+
+        self._waiting = self.after(100, answered)
+
+    #: The look at a licence check that is due next, while one runs.
+    _waiting: str | None = None
+
+    def destroy(self) -> None:
+        # Closed while a check runs: it finishes on its own, and keeps what
+        # it gets; nothing is left to write into a closed box.
+        if self._waiting is not None:
+            self.after_cancel(self._waiting)
+            self._waiting = None
+        super().destroy()
+
     def _show_the_licence(self) -> None:
         """The whole text, in a window of its own.
 
@@ -394,7 +472,8 @@ class About(tk.Toplevel):
         if text is None:  # pragma: no cover - the button is hidden without it
             return
         window = tk.Toplevel(self)
-        window.title(f"{PRODUCT} — licence")
+        what = "licence terms" if licence.keys_required() else "licence"
+        window.title(f"{PRODUCT} — {what}")
         window.transient(self)
         window.geometry("720x620")
         frame = ttk.Frame(window, padding=PAD)

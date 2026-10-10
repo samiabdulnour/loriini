@@ -14,23 +14,36 @@ ROOT = PurePath(SPECPATH)
 ICON = str(ROOT / 'assets' / 'loriini.ico')
 
 datas = [(ICON, 'assets')]
-# The window's icons. PNGs rather than a drawing library: Tk reads them
-# itself, so Pillow stays a development dependency and out of the bundle --
-# it is in `excludes` below, and `scripts/make_icons.py` is what needs it.
+# The window's icons. PNGs rather than drawings made at run time: Tk reads
+# them itself, and `scripts/make_icons.py` is what draws them. Pillow is in
+# the bundle since D121 for the reference image (`sun_study.app.overlay`),
+# which reads photographs with it; the icons still never need it.
 # `sun_study.app.icons` looks for them at exactly this path under _MEIPASS.
 datas += [(str(ROOT / 'assets' / 'icons'), 'assets/icons')]
+# The bird at 256 pixels, for the agent's client to show beside the server's
+# name (`sun_study.agent.tools.icon` looks for it at `assets` under _MEIPASS).
+datas += [(str(ROOT / 'assets' / 'loriini-icon-256.png'), 'assets')]
 # The licence itself, at the root of the bundle, where `sun_study.licence.file`
 # looks for it. The info box summarises the terms from a constant that is in
 # the executable either way; this is what `Read the full licence` shows, and
 # without it that button is hidden rather than broken.
 datas += [(str(ROOT / 'LICENSE'), '.')]
+# The terms a subscriber buys under, at the root of the bundle, where
+# `sun_study.terms.page` looks for them. A build that takes licence keys shows
+# these under `Read the full terms` in place of the source licence: they are
+# the agreement the customer accepted at the checkout.
+datas += [(str(ROOT / 'site' / 'terms.html'), '.')]
 binaries = []
 hiddenimports = []
 datas += collect_data_files('tzdata')
 datas += collect_data_files('sun_study')
 hiddenimports += collect_submodules('typer')
-# The Rhino reader is a dev-only path and drags 6 MB of rhino3dm in.
-hiddenimports += [m for m in collect_submodules('sun_study') if not m.startswith('sun_study.ingest.rhino')]
+# The Rhino reader is a dev-only path and drags 6 MB of rhino3dm in. The
+# licence issuer and the licence service are the vendor's side
+# (scripts/licence.py, deploy/licence-service): Loriini only checks keys and
+# leases, and a program that carried the code that makes them would be
+# advertising where to look.
+hiddenimports += [m for m in collect_submodules('sun_study') if not m.startswith(('sun_study.ingest.rhino', 'sun_study.licence_issue', 'sun_study.licence_service'))]
 # ifcopenshell: the package and its wrapper, without the express rules, the
 # MVD examples and the schema dumps nothing here imports -- 20 MB of the
 # 106 MB it weighs when collected whole.
@@ -50,7 +63,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['PIL', 'rhino3dm', 'shapely', 'mypy', 'pydantic.v1.mypy', 'pydantic.mypy'],
+    excludes=['rhino3dm', 'shapely', 'mypy', 'pydantic.v1.mypy', 'pydantic.mypy'],
     noarchive=False,
     optimize=0,
 )

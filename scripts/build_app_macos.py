@@ -110,7 +110,8 @@ administrator rights.
   {APP}                      the program
   {ADDON}.bundle     the Archicad 26 add-on, with Tapir's
                                    commands built in
-  {pc.LICENCE_COPY}                      the licence
+  {pc.LICENCE_COPY}                      the licence terms, as at
+                                   {pc.TERMS_ADDRESS}
 
 To install
 
@@ -144,10 +145,12 @@ add-on runs in Archicad on Apple silicon and Intel alike.
 
 
 def add_notes(dist: Path, oldest: tuple[int, int] = OLDEST_MACOS) -> None:
-    """The install note and the licence, beside the program and the add-on."""
+    """The install note and the licence terms, beside the program and the
+    add-on. The terms as the PC's folder carries them (``build_app.licence_terms``),
+    in a Mac's own line endings."""
     dist.mkdir(parents=True, exist_ok=True)
     (dist / pc.INSTALL_NOTE).write_text(install_note(oldest), encoding="utf-8")
-    shutil.copyfile(ROOT / "LICENSE", dist / pc.LICENCE_COPY)
+    (dist / pc.LICENCE_COPY).write_text(pc.licence_terms(), encoding="utf-8")
     print(f"added  {dist / pc.INSTALL_NOTE}  and  {pc.LICENCE_COPY}")
 
 

@@ -33,10 +33,10 @@ sent to the next desk.
 from __future__ import annotations
 
 import json
-import os
-import sys
 from collections.abc import Mapping
 from pathlib import Path
+
+from sun_study import user_folder
 
 #: The folder name under %APPDATA%, and the file in it. Named for the program
 #: rather than for the product: everything the tool writes *into a project* is
@@ -56,25 +56,11 @@ def folder() -> Path:
     """Where this user's settings live.
 
     ``%APPDATA%`` because that is where Windows keeps per-user application
-    settings and it follows a roaming profile between machines. A Mac keeps
-    the same thing in ``~/Library/Application Support``, which a migrated or
-    restored account carries across the same way. The home directory is the
-    fallback for a developer on anything else, so the module can be exercised
-    off both.
-
-    ``APPDATA`` is asked first everywhere, a Mac included, although nothing
-    there sets it: it is how the tests point the settings somewhere
-    disposable, and they run on all three.
+    settings and it follows a roaming profile between machines; a Mac keeps
+    them in ``~/Library/Application Support``. The same folder as the licence
+    key and the run logs: ``sun_study.user_folder`` says where, for all three.
     """
-    roaming = os.environ.get("APPDATA")
-    if roaming:
-        return Path(roaming) / FOLDER
-    # An else, not a fall-through: mypy reads the platform, and on a Mac a
-    # line after this branch's return would be code it can never reach.
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / FOLDER
-    else:
-        return Path.home() / f".{FOLDER.casefold()}"
+    return user_folder()
 
 
 def path() -> Path:

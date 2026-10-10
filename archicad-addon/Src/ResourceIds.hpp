@@ -61,6 +61,7 @@
 #define ID_PALETTE_ITEM_SHADOW			5
 #define ID_PALETTE_ITEM_VIEWS			6
 #define ID_PALETTE_ITEM_SITE			7
+#define ID_PALETTE_ITEM_REFERENCE		8
 
 // -- 'GICN' ----------------------------------------------------------------
 //
@@ -76,6 +77,7 @@
 #define ID_ICON_SHADOW				32524
 #define ID_ICON_VIEWS				32525
 #define ID_ICON_SITE				32526
+#define ID_ICON_REFERENCE			32527
 
 // -- 'FILE' ----------------------------------------------------------------
 //

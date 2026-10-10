@@ -33,9 +33,10 @@ open the window for, so every failure answers ``None`` and the label renders
 bare. This mirrors ``preferences``, where a settings file hand-edited into
 nonsense costs one setting rather than the whole window.
 
-The PNGs are drawn by ``scripts/make_icons.py`` and committed. Pillow is a
-development dependency and is excluded from the bundle, because Tk reads PNG
-by itself and the app only ever needs the finished files.
+The PNGs are drawn by ``scripts/make_icons.py`` and committed: Tk reads PNG
+by itself, so the window needs only the finished files and never draws one.
+Pillow is in the bundle since D121, for the reference image; nothing here
+uses it.
 """
 
 from __future__ import annotations
@@ -200,10 +201,35 @@ def options(label: str, size: int = DEFAULT_SIZE) -> dict[str, Any]:
     icon is constructed exactly as it was before rather than with an
     ``image=""`` that Tk has to be told to ignore.
     """
-    image = for_label(label, size)
+    image = for_label(label, size) or blank(size)
     if image is None:
         return {}
     return {"image": image, "compound": "left", "padding": (0, 0, 6, 0)}
+
+
+def blank(size: int = DEFAULT_SIZE) -> tk.PhotoImage | None:
+    """A clear square the size of an icon, for a label that has none.
+
+    So that every label in a card starts its text at the same place. A page
+    where some rows had a drawing and some did not read as two columns of
+    labels a few pixels apart, and the Yield page, which had none at all,
+    sat a column to the left of every other page.
+    """
+    key = ("", size)
+    cached = _loaded.get(key)
+    if cached is not None:
+        try:
+            cached.width()
+        except tk.TclError:
+            del _loaded[key]
+        else:
+            return cached
+    try:
+        made = tk.PhotoImage(width=size, height=size)
+    except (tk.TclError, RuntimeError):  # pragma: no cover - no interpreter yet
+        return None
+    _loaded[key] = made
+    return made
 
 
 def section_options(title: str, size: int = DEFAULT_SIZE) -> dict[str, Any]:
@@ -290,6 +316,7 @@ BY_SECTION: dict[str, str] = {
     "Solar analysis": "analysis",
     "Shadow diagram": "shadow",
     "Sun views": "views",
+    "Yield": "yield",
 }
 
 #: The six studies, by the label on their own tick.
@@ -300,6 +327,7 @@ BY_STUDY: dict[str, str] = {
     "Shadow diagram": "shadow",
     "Sun views": "views",
     "Site analysis": "site",
+    "Area and yield": "yield",
 }
 
 #: Every field that has a picture worth drawing, by its own label.
@@ -349,12 +377,12 @@ BY_LABEL: dict[str, str] = {
     "Existing": "always_there",
     "Future": "always_there",
     "Existing on site": "always_there",
-    "TOD": "being_tested",
-    "SEARs": "being_tested",
+    "TOD envelope": "being_tested",
+    "SEARs envelope": "being_tested",
     "ADG envelope": "being_tested",
     "Proposed": "being_tested",
     "Ground it lands on": "ground_plane",
-    "Ignore ground below": "ground_cut",
+    "Ignore ground below (m)": "ground_cut",
     "Hours": "plan_times",
     "Draw on storey": "storey_draw",
     "Subset — shadow sheets": "subset",
@@ -373,6 +401,36 @@ BY_LABEL: dict[str, str] = {
     "Model radius (m)": "radius",
     "Future reach (m)": "radius",
     "Run folder": "run_folder",
+    "Origin at": "origin",
+    "Site turned": "site",
+    # Solar analysis, the plans the apartments are drawn on
+    "Plans": "plans_both",
+    "Shadow pen": "pen_set",
+    "Set name": "subset",
+    # Yield -- the feasibility sheet
+    "Option": "yield",
+    "Option layers": "combination",
+    "Residential layers": "yield",
+    "Commercial layers": "yield",
+    "Retail layers": "yield",
+    "Massing layers": "model",
+    "Retail levels": "storey_datum",
+    "Commercial levels": "storey_datum",
+    "Site area (m²)": "site",
+    "Permissible FSR, residential": "table",
+    "Permissible FSR, commercial": "table",
+    "Permissible FSR, retail": "table",
+    "BEA to GFA, residential": "table",
+    "BEA to GFA, commercial": "table",
+    "BEA to GFA, retail": "table",
+    "GFA to NLA, residential": "table",
+    "GFA to NLA, commercial": "table",
+    "GFA to NLA, retail": "table",
+    "Affordable share (%)": "table",
+    "Basement site ratio": "table",
+    "m² per parking space": "table",
+    "Workbook": "table",
+    "View beside the table": "views",
 }
 
 #: The site page's six outputs, by the short word on each button. They were

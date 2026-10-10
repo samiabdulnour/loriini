@@ -874,7 +874,14 @@ GS::ObjectState SaveProjectCommand::Execute (const GS::ObjectState& /*parameters
 {
     GSErrCode err = ACAPI_ProjectOperation_Save ();
     if (err != NoError) {
-        return CreateFailedExecutionResult (APIERR_COMMANDFAILED, "Failed to save the project.");
+        // Archicad's own code, not a blanket one. Upstream Tapir answers every
+        // refusal with APIERR_COMMANDFAILED, and on Kogarah (30 September 2026)
+        // that hid why a project the person could save by hand refused every
+        // save through the API.
+        return CreateFailedExecutionResult (
+            err,
+            GS::UniString::Printf ("Failed to save the project: Archicad error %d (0x%08X).",
+                                   static_cast<int> (err), static_cast<unsigned int> (err)));
     }
     return CreateSuccessfulExecutionResult ();
 }

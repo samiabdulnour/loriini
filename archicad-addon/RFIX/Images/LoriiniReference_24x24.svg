@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="24" height="24" viewBox="0 0 32 32">
+  <!-- reference: a photograph in a frame over the corner of a block - the reference image laid over the 3D window -->
+  <polygon points="21.00,9.00 29.00,13.40 21.00,17.80 13.00,13.40" fill="#F4F3EE" stroke="#3C3C3A" stroke-width="1.10" stroke-linejoin="round"/>
+  <polygon points="13.00,13.40 21.00,17.80 21.00,24.80 13.00,20.40" fill="#C6C5BE" stroke="#3C3C3A" stroke-width="1.10" stroke-linejoin="round"/>
+  <polygon points="29.00,13.40 21.00,17.80 21.00,24.80 29.00,20.40" fill="#DEDDD6" stroke="#3C3C3A" stroke-width="1.10" stroke-linejoin="round"/>
+  <polygon points="3.00,5.00 21.00,5.00 21.00,19.00 3.00,19.00" fill="#FFFFFF" stroke="#3C3C3A" stroke-width="1.10" stroke-linejoin="round"/>
+  <polygon points="4.30,17.70 9.00,11.00 12.00,14.20 14.40,12.00 19.70,17.70" fill="#DEDDD6" stroke="none"/>
+  <circle cx="16.60" cy="9.00" r="2.00" fill="#D98A1E" stroke="none"/>
+</svg>

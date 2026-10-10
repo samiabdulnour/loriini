@@ -42,7 +42,10 @@
 /* [  1] */			"Solar Analysis Palette^E3^ES^EE^EI^ED^EL^EW^ET^EM"
 }
 
-// The palette: seven 28 px buttons in a row, so 196 wide and 28 tall.
+// The palette: eight 28 px buttons in a row, so 224 wide and 28 tall. The
+// last is not a study: it opens the reference image over the 3D window
+// (docs/overlay.md), which is the one thing in Loriini a person reaches for
+// while standing in Archicad rather than before a run.
 //
 // `leftCaption | close` is what gives it a title bar it can be dragged by and
 // a close box, and matches every other add-on palette in Archicad. `noFrame`
@@ -54,7 +57,7 @@
 // palette's constructor pairs each button with its number: swap two and a
 // button quietly does another button's job.
 
-'GDLG' ID_PALETTE Palette | leftCaption | close   0   0  196  28  "Loriini"  {
+'GDLG' ID_PALETTE Palette | leftCaption | close   0   0  224  28  "Loriini"  {
 /* [  1] */ IconButton                 0   0  28  28    ID_ICON_LOGO noFrame
 /* [  2] */ IconButton                28   0  28  28    ID_ICON_FACADE noFrame
 /* [  3] */ IconButton                56   0  28  28    ID_ICON_APARTMENTS noFrame
@@ -62,9 +65,10 @@
 /* [  5] */ IconButton               112   0  28  28    ID_ICON_SHADOW noFrame
 /* [  6] */ IconButton               140   0  28  28    ID_ICON_VIEWS noFrame
 /* [  7] */ IconButton               168   0  28  28    ID_ICON_SITE noFrame
+/* [  8] */ IconButton               196   0  28  28    ID_ICON_REFERENCE noFrame
 }
 
-// The hover text, which is the whole of how somebody learns what seven
+// The hover text, which is the whole of how somebody learns what eight
 // unlabelled drawings do. Worth as much as the icons.
 
 'DLGH' ID_PALETTE Loriini_Palette {
@@ -75,4 +79,5 @@
 5    "Shadow diagram"                          ShadowButton
 6    "Sun views"                               ViewsButton
 7    "Site analysis"                           SiteButton
+8    "Reference image over the 3D window"      ReferenceButton
 }

@@ -497,6 +497,35 @@ def test_ground_beyond_the_survey_keeps_the_flat_datum() -> None:
     assert draped.off_terrain_share == pytest.approx(1.0 - 16 / len(on))
 
 
+def test_with_no_terrain_named_the_whole_datum_receives_not_only_the_roofs() -> None:
+    """The Redfern run of 7 October 2026: no terrain layer named, so the
+    receiver was the neighbours alone and the fills covered their roofs and
+    nothing on the ground between them -- 17% of the grid. With no terrain
+    the datum plane is the ground, everywhere; with one, past the survey
+    there is nothing to draw on."""
+    from sun_study.core.shadow import drape_onto_terrain, receiving_samples
+
+    roof = TriangleMesh(
+        vertices=np.array([[0, 0, 5], [4, 0, 5], [4, 4, 5], [0, 4, 5]], dtype=float),
+        faces=np.array([[0, 1, 2], [0, 2, 3]]),
+    )
+    grid = ground_plane_grid(
+        (np.array([0.0, 0.0, 0.0]), np.array([8.0, 8.0, 1.0])),
+        datum_m=2.0,
+        spacing_m=1.0,
+        margin_m=0.0,
+        offset_m=0.0,
+    )
+    draped = drape_onto_terrain(grid, roof, offset_m=0.0)
+
+    assert receiving_samples(draped, terrain_named=False) is None, "every sample draws"
+    with_terrain = receiving_samples(draped, terrain_named=True)
+    assert with_terrain is not None and with_terrain.sum() == 16, "only what found ground"
+    # Either way the samples off the roof stand on the datum, so a shadow
+    # drawn there is a shadow on the flat ground.
+    assert np.allclose(draped.grid.positions[~draped.on_terrain, 2], 2.0)
+
+
 def test_terrain_is_the_receiver_and_never_an_occluder() -> None:
     """The failure this exists to end. Handed in among the sources, a site
     mesh puts every sample below the hill in permanent shade and the sheet

@@ -21,10 +21,19 @@ import sys
 import pytest
 from typer.testing import CliRunner
 
-from sun_study import AUTHOR, licence
+from sun_study import AUTHOR, licence, licence_public_key
 from sun_study.cli import app
 
 runner = CliRunner()
+
+
+# The build now carries a public key (licence_public_key.py), and a keyed build
+# asks for its key before the term applies -- test_licence_keys covers that.
+# These tests are about the term itself, so they run as the build without keys.
+@pytest.fixture(autouse=True)
+def _a_build_without_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(licence_public_key, "PUBLIC_KEY", None)
+    monkeypatch.setattr(licence_public_key, "SERVICE", None)
 
 
 # Two of the tests below reach the window, and reaching it imports tkinter,
@@ -108,7 +117,10 @@ def test_the_expiry_is_not_advertised_in_any_command_help() -> None:
 # ---------------------------------------------------------------------------
 EXPIRED_CLOCK = """
 import datetime as dt
-from sun_study import licence
+from sun_study import licence, licence_public_key
+
+licence_public_key.PUBLIC_KEY = None
+licence_public_key.SERVICE = None
 
 class Frozen(dt.date):
     @classmethod
@@ -245,7 +257,7 @@ def test_the_summary_says_what_somebody_may_actually_do_with_it() -> None:
     assert "no warranty" in said
 
 
-@pytest.mark.parametrize("clause", licence.SUMMARY)
+@pytest.mark.parametrize("clause", licence.SUMMARY + licence.TERMS_SUMMARY)
 def test_the_summary_never_mentions_the_term(clause: str) -> None:
     """The silence, in the one place it would be easiest to break.
 
@@ -266,6 +278,53 @@ def test_the_full_text_is_the_file_itself() -> None:
     assert whole is not None, "a checkout has a LICENSE file at its root"
     assert "SOURCE-AVAILABLE LICENCE" in whole
     assert "NO WARRANTY" in whole
+
+
+def test_a_build_that_takes_keys_shows_the_terms_it_was_sold_under(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A keyed build was bought. Its user agreed to the terms at the checkout,
+    not to the source licence written for the firm the tool began in, and the
+    box must not tell them otherwise."""
+    monkeypatch.setattr(licence_public_key, "PUBLIC_KEY", "ab" * 32)
+
+    said = " ".join(licence.summary()).lower()
+    assert licence.summary() == licence.TERMS_SUMMARY
+    assert "per seat" in said
+    assert "fourteen days" in said
+    assert "not validated for submission" in said
+    assert "czech republic" in said
+    for gone in ("fuse architects", "source-available", "written permission"):
+        assert gone not in said, f"{gone!r} is the source licence"
+    assert "mit" not in said.replace(",", " ").replace(".", " ").split()
+
+    whole = licence.full_text()
+    assert whole is not None, "a checkout has site/terms.html"
+    assert whole.startswith("Loriini: the licence terms, as at https://loriini.app/terms")
+    assert "governed by the law of the Czech Republic" in " ".join(whole.split())
+    assert "SOURCE-AVAILABLE LICENCE" not in whole
+
+
+def test_a_build_without_keys_keeps_the_source_licence() -> None:
+    """The checkout itself, under the fixture above: the source licence still
+    governs the source, and the box still says so."""
+    assert licence.summary() == licence.SUMMARY
+
+
+def test_the_terms_text_reads_as_a_text_file() -> None:
+    """Headings underlined, items numbered, links spelt out, and nothing from
+    the page's navigation."""
+    from sun_study import terms
+
+    text = terms.text()
+    assert text is not None
+    assert "LICENCE TERMS\n=============" in text
+    assert "1. What is licensed\n-------------------" in text
+    assert "privacy note\n(https://loriini.app/privacy)" in text or (
+        "privacy note (https://loriini.app/privacy)" in text
+    )
+    assert "Home" not in text.split("\n")[:3]
+    assert max(len(line) for line in text.splitlines()) <= terms.WIDTH + 3
 
 
 def test_a_build_without_the_file_still_answers(monkeypatch: pytest.MonkeyPatch) -> None:

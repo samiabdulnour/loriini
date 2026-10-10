@@ -313,6 +313,10 @@ def apply(root: tk.Misc) -> ttk.Style:
 
     #: The line under a control, on the content surface.
     style.configure("Hint.TLabel", background=SURFACE, foreground=HINT)
+    #: The same line when what it has to say went wrong: a file that would
+    #: not read, a window that could not be found. Red, and nothing else
+    #: about it changes, so the sentence reads where the last one did.
+    style.configure("Refused.TLabel", background=SURFACE, foreground=RED)
     #: A study's own name, above the fields it needs.
     style.configure("Heading.TLabel", background=SURFACE, foreground=INK, font=heading)
     style.configure("Strong.TLabel", background=SURFACE, foreground=INK, font=strong)
@@ -322,6 +326,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: is already the colour of the interface here, so it costs the palette
     #: nothing to say "this one answers".
     style.configure("Link.TLabel", background=SURFACE, foreground=BLUE, font=link)
+    #: The same, on the window's surround: the way from the run's one line to
+    #: its whole transcript.
+    style.configure("ChromeLink.TLabel", background=CHROME, foreground=BLUE, font=link)
 
     #: The window's surround: the project strip at the top, the run bar at the
     #: bottom, the summary down the left.
@@ -490,7 +497,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: because it prints layer names and tallies that want to line up.
     style.configure("Note.TLabel", background=CHROME, foreground=BODY, font=log_font(), anchor="w")
 
-    #: A tile in a choice row: icon only, no text, and square.
+    #: A tile in a choice row: its drawing, and the word that names it where
+    #: it has one (``window.Tiles`` widens those itself). The hour chips wear
+    #: this too, and fourteen of them have to fit a card's row.
     style.configure(
         "Tile.TButton",
         padding=(4, 1),
@@ -617,6 +626,24 @@ def apply(root: tk.Misc) -> ttk.Style:
         darkcolor=BLUE,
         thickness=10,
     )
+    #: The one slider in the program: the reference image's opacity. A white
+    #: knob with the field edge on the field's own grey trough, so it reads
+    #: as a control beside the fields it sits among rather than as clam's
+    #: raised grey bar.
+    style.configure(
+        "Horizontal.TScale",
+        background=SURFACE,
+        troughcolor=MUTED,
+        bordercolor=EDGE,
+        lightcolor=SURFACE,
+        darkcolor=SURFACE,
+        sliderlength=18,
+    )
+    style.map(
+        "Horizontal.TScale",
+        background=[("active", BLUE_TINT)],
+        bordercolor=[("active", BLUE), ("focus", BLUE)],
+    )
     style.configure(
         "Vertical.TScrollbar",
         background=MUTED,
@@ -651,8 +678,8 @@ def _rounded(style: ttk.Style) -> None:
     radius dresses a button of any width and the corner never distorts.
 
     The faces are drawn by ``scripts/make_icons.py`` and committed beside the
-    icons, for the same reason those are: Tk reads PNG by itself, and Pillow
-    is a development dependency that never goes in the bundle.
+    icons, for the same reason those are: Tk reads PNG by itself, so the
+    window never has to draw one.
 
     Four traps, each of which is silent, and each of which has a test in
     ``tests/unit/test_theme.py`` so that it stays caught.

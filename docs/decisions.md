@@ -3016,6 +3016,27 @@ opens a navigator item, which is not the same call as changing the current
 database, and Loriini only ever tries the latter. Whether AC26's API exposes
 the former is unread — the kit is not on this workstation.
 
+*Taken up on 7 October 2026, after the wait tripped again on the site tools.*
+The second route is built, blind. The kit does expose opening a window:
+`APIDo_ChangeWindowID` through `ACAPI_Automate`, which `ModelCommands.cpp`
+already uses to bring the 3D window to the front before an export. The
+add-on's `SetCurrentDatabase` takes `open: true` and makes that call on the
+worksheet's own window before the database move, and `_enter` in
+`site_analysis.py` tries the plain move, then the open one, and only then
+waits for the person. Tapir's `ChangeWindow` never reached this call for a
+fresh worksheet: it changes the database first and returns on that refusal.
+If Archicad opens a fresh worksheet's window this way, the waiting ends; if
+it refuses that too, the first route — the sheets on layouts, as the Summary
+of Controls is — is what is left, and it is certain.
+
+*Measured the same evening, on the Redfern project with the rebuilt add-on.*
+It works. The Site Analysis worksheet did not exist; the run made it, the
+plain move was refused as always, the open call took it, and the sheet drew
+with nobody touching the Project Map. **The waiting is over**: a worksheet
+made through the API is entered by opening its window, which is what a
+double-click was doing all along. D84's wait stays in the code as the
+fallback behind both tries, and should never be seen again.
+
 
 ### D96 — A worksheet already in the project enters without help; only one the run made is refused
 
@@ -4097,3 +4118,753 @@ assumed.
 Artifacts also expire, after 90 days unless the repository says otherwise.
 That is one more reason the folder is cheap to remake and is not kept in the
 repository.
+
+### D119 — The City of Sydney's contours and trees, and a terrain that spends its vertices at the site
+
+Asked on 28 September 2026, after the office's `au-site-analysis` generator
+took them the day before: inside the City of Sydney the contours and the
+trees come from the council, because its contours are better and its trees
+have a size and a place; the window says whose data that is; and whether
+the context model could be made differently, perhaps from the better
+contours.
+
+**The registers.** The council publishes, under CC BY 4.0 on its Data Hub,
+1 m contours from its 2020 aerial survey and an inventory of every street and
+park tree with its height, north-south canopy spread, trunk diameter,
+species and age. Both are taken where they cover the ground and not
+otherwise, each through a registry of one entry (`terrain.COUNCIL_CONTOURS`,
+`trees.COUNCIL_TREES`) in the generator's shape, so the next council to
+publish is a line and a credit. The council is a source of its own in
+`site.sources` -- the window's info box and every credit line name it --
+and a sheet credits it only when its lines or its trees reached that sheet:
+contours and trees now say whose they are, one by one, because a council's
+register stops at its boundary and the same sheet can hold the council's
+trees and OpenStreetMap's. OpenStreetMap is no longer credited for a
+council's trees.
+
+**The sheet's rule is the generator's, with its blind spot closed.** A sheet
+takes the council's contours only where they cover 85% of the map field, so
+one sheet is drawn to one interval. The generator measures "cover" by the box
+of the lines, and at King Street, Newtown -- the boundary between the City
+and Inner West -- the council's lines on one side reach every edge of the
+sheet between them: 100% by their box, 36% of the sheet in fact, and two
+thirds of it drawn with no contours. The rule here also asks the state's
+register of local government areas how much of the sheet is the council's,
+and takes the smaller. The generator should do the same.
+
+**The model's rule is not the sheet's.** A kilometre square crosses a council
+boundary more often than a sheet does, and all-or-nothing would throw the
+council's lines away exactly where the model needs them, at the site. So the
+model takes the council's lines inside the boundary and the state's outside,
+cut at it: at Newtown 47% of the square is the council's. And it asks the
+council's server to generalise the lines to 0.1 m before they are sent,
+because a square kilometre is 440,000 vertices as published -- a vertex every
+quarter of a metre, the staircase of the grid the lines were traced from.
+
+**The terrain had to change for any of this to matter.** The mesh has a budget
+of 12,000 level-line vertices (D85), and the old rule met it by halving
+contours and points everywhere: Kogarah's 2 m contours became 4 m ones, and
+the council's 1 m contours would have become 8 m ones -- worse than the
+state's, the site included. Four ways were weighed:
+
+| | |
+|---|---|
+| raise the budget | the same halving, later; nothing measured says what Archicad takes, and the terrain far from the site does not need it |
+| a regular grid, from the state's 5 m elevation model or from the contours | uniform, so as coarse at the site as at the edge, and the 5 m model is the coarser survey |
+| a TIN, stood as a Morph | the most faithful surface, but a new add-on command (`ACAPI_Body_*`) nobody can run until the next build is loaded, and a Morph is not the Mesh the office edits site terrain as |
+| **spend the budget at the site** | the contours as they are, as a Mesh, through the command already proven live; only which vertices are sent changes |
+
+The last was taken (`site.ground.mesh_lines`). Every contour within 100 m of
+the site's boundary is kept, simplified by 0.1 m; past it the tolerance
+grows with distance, and past 100 m and 250 m fewer contours are kept, plan by
+plan until one fits -- far contours before a larger tolerance, because a
+coarse line among many close ones crosses them. At Surry Hills that is 8,272
+vertices: every 1 m contour to 100 m, every 2 m to 250 m, every 5 m beyond.
+At Newtown every contour fits, and at Campsie every 2 m one. Each line is
+carried to the edge of the square rather than stopping at its last vertex
+inside it.
+
+Two things came up building it that are worth keeping. *Simplified lines
+cross.* Douglas-Peucker moves each line on its own, and where the ground is
+steep two of them can pass through each other; a mesh then has to invent the
+ground between them. The spans that cross are simplified again at half the
+tolerance until they do not -- 23 lines at Surry Hills -- and a plan whose
+mending would break the budget gives way to the next (keeping every 1 m
+contour to the edge crosses 228 lines, and mending them would take 50,000
+vertices). *The published lines cross too.* By millimetres, where the ground
+drops at a wall: every one of the 38 pairs still crossing at Surry Hills
+crosses as published. That is the survey's, and a span stops being mended
+once neither side moves a centimetre. Measuring every vertex's gap to its
+neighbours first, which would have prevented new crossings by construction,
+was tried and took 35 to 100 seconds a square; checking the simplified lines
+and mending only what crosses takes under two.
+
+**Levels are read across the slope,** as the generator now reads them
+(`lib/levels.ts`, ported rule for rule): the corner RLs on the sheet, and in
+the model the ground under every slab, kerb and envelope. The two nearest
+contours are not the two either side -- with 1 m contours that put a corner
+half a metre low -- and past the last contour on a slope the ground carries
+on, one interval at most, where it used to stop between the last two. The
+model's slabs beyond the last contour of a fixture stand two metres higher
+than before for that reason; the tests say so.
+
+**Trees are drawn the size of their canopy,** a wash so the kerb under it
+shows, a dot at the trunk, dashed where nobody recorded a size and the nominal
+6 m stands in, so the sheet never claims what it does not know. The
+council's record is in each tree's element ID -- `SA TREE London Plane
+(Platanus x acerifolia), canopy 10 m, 12 m high, trunk 45 cm` -- so a schedule
+can list the trees near the site. An OSM tree within 4 m of an inventory tree
+is the same tree mapped twice, and OSM's tree rows become trees 8 m apart.
+The model does not stand trees up yet: a tree is a library part, not a slab,
+and which one the office wants is a question for it.
+
+*Not yet run in Archicad.* The mesh is built by the command the Kogarah and
+Bondi runs proved, with the same budget; what is new is which vertices it is
+sent, and that the level lines now meet the square's edge. Whether Archicad
+minds level lines that cross by millimetres was never asked -- the old
+thinning sent them too -- and the first run on a City of Sydney site should
+look at the terrain from below and at a wall.
+
+### D120 — An agent drives Loriini over MCP on stdio, spoken here, and the studies stay in a child process
+
+Asked on 28 September 2026 (roadmap R2): could an AI agent operate Loriini
+for more users, to save time and speed the workflow?
+
+**The shape is a tool server, not an assistant in the window.** A server the
+person's own agent client connects to -- Claude Desktop, Claude Code, any
+client of the Model Context Protocol -- exposes the studies as tools. It is
+the cheapest shape to build, because the command line is already the API;
+it puts no model key of ours into the product, so nothing is billed to us
+and nothing of the person's project goes anywhere we chose; and the
+person's own subscription pays for the tokens. An assistant inside the
+window would need a key per user and would make us answerable for what a
+model does in a project. It can be built later on the same tool
+definitions, if it is wanted.
+
+**The protocol is written here, not taken from the official package.** The
+``mcp`` package on PyPI, at 2.2, brings twenty-eight packages with it -- a
+web server, an SSE framework, a JWT library and its cryptography, telemetry
+-- for two transports Loriini does not use, into a one-file executable that
+is already 58 MB; and it renamed its main class this year. What a tool
+server on stdio needs is five methods (``initialize``, ``ping``,
+``tools/list``, ``tools/call``, ``logging/setLevel``) and three
+notifications (progress, log, cancelled), stable across every published
+version of the protocol. ``agent/protocol.py`` is that, in three hundred
+lines, with pydantic -- already a dependency -- giving each tool its schema
+and its validation. The same reasoning as the ``.xlsx`` writer (D106).
+What it gives up is the package's other halves (resources, prompts,
+sampling, elicitation), none of which the agent needs today; the first
+worth adding is elicitation, so that a study could confirm its port and
+project with the person before it runs.
+
+**The studies run in a child process, as the window runs them.** Through
+``app.runner``: the same command line anybody would type, one tested path,
+and no second implementation of what a run means. Two more reasons that
+are the server's own. Stdout is the protocol, and a study prints; a study
+in-process would have to be silenced line by line, where a child's lines
+come back through a pipe and go to the client as log and progress
+messages. And a client can cancel a call; the runner's stop file asks the
+study to stop and lets its ``finally`` blocks put the project's layers
+back, where a thread could only be abandoned.
+
+**Tool calls run on their own thread.** A ping during a six-minute study
+is answered from the reading thread; a client that hears nothing for a
+minute gives the server up for dead. The client leaving -- its stream
+ending -- stops what is running and waits for it, so a study is never
+left holding a project with nobody to stop it.
+
+**Breadth first, typed tools where a study is asked for often.** The three
+studies the office runs most have tools whose arguments are the questions
+the window's pages ask, spelled onto the command line as ``Window.jobs``
+spells them. Everything else is ``run_loriini``, any command line, with
+``loriini_help`` to read the options: the agent-design rule of starting
+with breadth and promoting an action to a typed tool where it needs
+gating, rendering or a schema.
+
+**Not yet tried from a client on a workstation.** The server has been
+driven by a scripted client on its stdin and stdout and by the tests, which
+run a fake command line through the real runner. The windowed executable
+may hand Python no wrapped standard streams; ``serve`` opens the
+descriptors directly then, which is untested until Claude Desktop starts
+``Loriini.exe mcp`` on Windows.
+
+### D121 — The reference image is a window of Loriini's own over Archicad's 3D window, and Pillow comes into the bundle for it
+
+Asked on 28 September 2026 (roadmap R4): a view sometimes has to be set
+up from the angle a photograph was taken at, Archicad cannot show a
+picture in its 3D window, and a tool that lays one over it at reduced
+opacity would do.
+
+**A window of our own, not a drawing in Archicad.** Nothing in the API
+draws into the 3D window, and Trace Reference is for the plan, the
+sections and the elevations. What can be put over the 3D window is a Tk
+toplevel of Loriini's: borderless (``overrideredirect``), always on top
+(``-topmost``), and as see-through as its slider says (``-alpha``, which on
+Windows is a layered window). It touches neither the project nor the
+add-on, works over any version of Archicad, and the Mac has the same three
+window attributes for later. ``app.overlay`` is the whole of it.
+
+**Two windows, because the picture has to let the mouse through.** The
+point of the overlay is to orbit the model *through* it, which on Windows
+is one bit of the window's extended style (``WS_EX_TRANSPARENT`` on the
+layered window Tk already made, set through ``ctypes`` on the window Tk
+wraps every toplevel in). A slider on a window the mouse goes through
+would be a slider the mouse goes through, so the controls are a second
+small toplevel that stays on top with the picture; the picture itself has
+two states, placed (dragged, sized by its corner) and locked (the corner
+gone, the mouse through it).
+
+*Changed on 7 October 2026: one palette to the eye, two windows
+underneath.* The office asked for the picture to be part of the palette,
+as Archicad's own palettes are one floating thing, and for the corner to
+size it from its top-left. The two toplevels stay, for the reason above,
+but are glued: the strip of controls stands on the picture's top edge and
+is as wide as it, moving the strip by its title bar moves the picture,
+dragging the picture moves the strip, and dragging the corner widens the
+strip with the picture while both keep their top-left corner. A single
+toplevel was weighed and refused: ``WS_EX_TRANSPARENT`` is a property of
+the whole window, so a strip in the same window would let the mouse
+through too and nothing could unlock it; and ``HTTRANSPARENT`` from a
+hit-test, which could exempt a region, only passes the mouse to windows
+of the same thread, never to Archicad. *Fit* now keeps the picture in the
+frame's top-left corner rather than centred, so that pulling the corner
+out leaves what was lined up on the model where it was.
+
+**Fit's margins are a colour key.** A picture kept in its own shape inside
+a frame of another shape has margins, and margins over a model have to be
+see-through. Tk's ``-transparentcolor`` asks Windows to leave one colour
+out of the window (``LWA_COLORKEY``, which sits beside the alpha), so the
+margins -- and a PNG's own transparency, laid on the same colour -- are
+holes. The key is nearly black, ``#010203``, rather than black, because a
+photograph's shadows are full of black and every such pixel would be a
+hole. The alternative, a window with per-pixel alpha
+(``UpdateLayeredWindow``), means drawing the whole window by hand outside
+Tk, and margins are not worth it. Off Windows the margins are a dark mat.
+
+**Pillow comes in.** The dependency note in ``pyproject.toml`` said the
+approved set, and Pillow was kept out of the bundle because Tk reads the
+icons' PNGs by itself (``Loriini.spec`` excluded it). A reference is nearly
+always a JPEG photograph, which Tk cannot read; a phone's photograph is
+turned by an EXIF tag rather than in its pixels; and a picture has to be
+resized cleanly to any frame, where Tk scales by whole numbers. Two ways
+round it were weighed. GDI+ through ``ctypes`` reads JPEG on Windows with
+nothing added, but is Windows-only, untestable from here, and leaves the
+orientation and the resampling to be written by hand. Tk's own readers
+cover PNG and GIF and integer zooms, which for a photograph is no tool at
+all. Pillow does all three in three calls, is already used to draw the
+icons, and costs a few megabytes in a 58 MB executable; it is the runtime
+dependency now, and ``PIL`` leaves the spec's excludes.
+
+**Finding the Archicad window is by title, and is only a start.** The
+Archicad window is found among the top-level windows by the word in its
+title, and the one whose title names the project chosen in the picker is
+taken over a bigger one, since two projects open is the ordinary case.
+What is found is the whole area inside its frame; the 3D window is a tab
+inside that, under the toolbars and beside the palettes, and no call names
+where. So the picture starts there and the corner is dragged in, which is
+five seconds against a heuristic on child windows that could not be tested
+here and would be wrong on the next layout of palettes.
+
+**Untested on Windows.** The overlay has been driven by its tests under a
+virtual display on Linux: the fit and the stretch, the opacity, the lock,
+the hide, a file that is not a picture, a phone's orientation tag, a PNG's
+transparency. The colour key and the click-through are Win32 calls made
+blind, and are the first two things to check on a workstation; the third
+is where the frame lands on a high-DPI display, where Tk and the Win32
+calls should be speaking the same scaled coordinates because they are
+asked by the same process.
+
+### D122 — The area calculation measures the slabs' own outlines, and the office's factors take GBA to yield
+
+Asked on 28 September 2026 (roadmap R3), with the office's sheet as the
+expected output: *Area calculation, GFA + Yield* -- GBA, GFA, NSA and FSR,
+total and by use, and the yield in a mix -- from a massing modelled in
+slabs, with the slabs chosen by layer or by the renovation filter, or
+simply the GBA and an approximate GFA.
+
+**The slabs are measured here, from their polygons.** Tapir's
+``GetDetailsOfElements`` gives a slab's outline, its holes and its arcs in
+project metres, with its storey and its layer (``archicad.slabs``); the area
+is the shoelace sum of the corners plus the circular segment of each arc,
+less the holes (``core.plan_area``). The alternative, Archicad's own area
+properties through ``GetPropertyValuesOfElements``, arrives as a display
+string in the project's units and language, and would have to be found by
+its localised name first. The one thing the polygon route takes on trust is
+the sense of an arc's angle -- counter-clockwise positive, as the API and
+GDL document it -- and a curved slab compared with its own area is the
+first thing to check live (``docs/yield.md``).
+
+**Which slabs, three ways, all Archicad's own filters where they can be.**
+By layer, which also says the use: residential layers and non-residential
+layers, a layer in both refused, a slab on neither passed over and listed.
+By the renovation filter, through Tapir's ``IsVisibleByRenovation`` on the
+floor plan -- whatever filter the person has set. And, with no layer named,
+everything on a showing layer (``IsVisibleByLayer``), as residential: the
+quick GBA. Loriini's own context slabs, marked ``SA``, are never counted.
+
+**The arithmetic is the office's, with its numbers as settings.** GBA to GFA
+at 0.75 and 0.9, GFA to NSA at 0.85 and 0.9, FSR over the site; the yield
+is the residential NSA over the mix's average unit, rounded down, split by
+the largest remainder so the types add back up (``rules.area_yield``). The
+office's sheet is the test fixture and comes out exactly, 112 units at 17,
+78 and 17 -- and it showed that sheet's two uses' rows swapped, which is
+said in the docs rather than copied.
+
+**The site and the target come from the address when they are not typed.**
+The Summary of Controls already reads the cadastral lots' area and the LEP's
+FSR (``site.pipeline.run_summary``); the study reads them the same way,
+only for what is left blank.
+
+**Three outputs from one list of rows.** The sheet on a layout, the table in
+the log and the workbook are built from ``report.area_table.rows``, so they
+cannot disagree. The sheet is drawn straight on a layout, as the Summary of
+Controls is -- texts and lines, the legend's swatches as close lines since
+fills are not drawn on paper here -- and a named view is placed with the
+machinery the sun views use (``layout_from_views``, ``ArrangeDrawings``).
+The workbook is written with the standard library (``report.xlsx``, the same
+reasoning as D106) and is live: the inputs are cells and everything else a
+formula, the mix's split included as working columns. LibreOffice Calc,
+recalculating it with every cached value removed, gives Loriini's figures;
+a test does that wherever Calc is installed.
+
+**The window grew a seventh tab, and measures its strip.** Seven tabs need
+more room than the page was sized for, in any font; the strip now says how
+wide it is, the sheets panel folds below that, and the window opens at
+least that wide.
+
+### D123 — A larger model is read from a log; shadow plans are 3D Documents with Archicad's own shadows
+
+Asked on 28 September 2026 (roadmap R1): the shadow analysis failed outright
+on a larger model, and the ideal might be to make the diagrams as 3D
+Documents, the way the sun views are made, so that Loriini prepares and
+Archicad draws the shadows. The roadmap's first step was an assisted session
+to read the failure, with the log the window keeps.
+
+**The window keeps its log, on disk.** It kept every line of a run in memory
+and cleared it on the next run, and showed one line; a failure forty minutes
+in was unreadable after the fact. Now each run is written to
+`%APPDATA%\Loriini\Logs` as it comes, flushed line by line, the newest sixty
+kept, with a head saying which build, on what, with how much memory, and what
+was asked (``app.run_log``). Nothing about it may stop a run: a folder that
+will not take a file costs the transcript and not the study.
+
+**The shadow diagram says what it did, stage by stage.** A ``timing:`` line
+per stage -- export, read, drape, cast, draw, sheets -- with its duration and
+the peak memory so far (``core.resources``, the standard library only, the
+Windows working set through ``ctypes``); the grid's size before the cast, and
+the rays each cast will take; progress every thirty seconds of a long cast.
+The last stage named is the one that was running, and the memory beside it
+says whether the machine ran out.
+
+**Two failures were found by reading, and fixed before a session.** The
+caster gathered an origin and a direction for every (sample, hour) pair
+before casting the first -- about nine gigabytes for a grid two kilometres
+across over three days -- so ``sunlit_matrix`` now casts 65,536 samples at a
+time; the answer is identical, which a test checks against the single batch,
+and the time is unchanged. And the add-on's ``CreateFills`` draws a batch as
+one undo step, so one fill Archicad refused took back 500 and ended the run
+naming nothing; now a refused batch is halved down to the fill, which is left
+out and named, and a refusal of every fill still stops the run. The grid is
+left as large as it was -- it is laid over every solid in the export, and a
+long winter shadow may reach a far one -- but a layer holding a solid more
+than 500 m from every legend row is named, since that is the usual reason a
+grid is enormous. Out of memory is said with the numbers and the ways out.
+
+**Shadow plans: the SDK answers the roadmap's question.** A 3D Document's
+vectorial sun shadows are its own and not its view's -- Tapir refuses a 3D
+style on a view of a document, which is what the add-on's header had
+suggested using -- and the kit reaches them twice: a new document takes
+*Vectorial Sun Shadows* from ``API_DocumentFrom3DDefaults::vectSunShadow``,
+and every document carries its shadow fill in ``attributeOptions``. An
+existing document's switch is somewhere in ``effects3D``, which the kit
+documents as "Effects to apply" and nothing more. So ``CreateDocumentFrom3D``
+takes ``sunShadows`` and switches the defaults for that one creation, putting
+them back whatever happens, writes ``shadowFill`` onto both, and answers the
+document's ``effects3D`` read back; ``SetDocumentFrom3D`` re-aims a document
+already there -- none can be deleted through the API -- and copies
+``effects3D`` whole from a document the run just made with shadows, rather
+than guessing a bit.
+
+**One document per hour, overhead, Archicad's sun.** ``archicad.shadow_plans``
+makes a document per date and hour at altitude 90, which the add-on snaps to
+a top view with the project's +Y up, with the sun as a date so it is
+Archicad's; takes the storey filter off before and after (D98); pins a view of
+each to the layer combination, the planned renovation filter and 1:1000; and
+deals them onto sheets by day, captioned in the fills' words, with the
+placement the sun views use (``sun_eyes.place_on_sheets``, shared). The days
+and hours are the shadow diagram's own, so the two routes draw the same
+instants under the same names, and the window's Shadow diagram tab has both.
+
+**What the documents cannot say, they do not pretend to.** A document shows
+the whole shadow of its layer combination; the split between existing and
+additional shadow is the fills' alone. A set name puts two runs -- two
+combinations -- side by side to be compared sheet against sheet, which is
+how the office compared them by hand. The fills stay the argument, and the
+documents are the record, and the route for a model too big for the caster.
+
+### D124 — Licence keys are time-limited per subscription period, signed with Ed25519 from the standard library, and checked offline
+
+Asked on 28 September 2026 (roadmap R5): licensing that sends a licence code
+to the buyer's email, so that Loriini can be used; and on 29 September, that
+Loriini will be sold by subscription, so the keys should be time-limited.
+
+**A key per paid period.** Every key carries its last day: the end of the
+period paid for, as the shop dates it, plus a week's grace so a renewal email
+that arrives late -- a card retried, a junk folder -- stops nobody on a
+deadline. Each renewal brings a new key. Offline keys cannot be revoked, and
+under a subscription they need not be: one not renewed lapses when its last
+key does. Seats are printed on the key and not counted, since there is
+nothing offline to count them against.
+
+**Ed25519, written here.** The check runs at every start on a workstation
+with no administrator rights, so it is in the bundle, and a runtime
+dependency is a conversation here (D106). RFC 8032's reference algorithm is a
+page of integer arithmetic that Python's ``int`` and ``hashlib.sha512`` do
+exactly (``sun_study.signing``); it passes all five of the RFC's Ed25519 test
+vectors, agreed with the ``cryptography`` package on two hundred random keys
+when written, and makes every decoding check the RFC asks for -- a coordinate
+past the prime, a point off the curve, a zero with its sign set, ``S`` not
+below ``L``. Verification is about 4 ms and touches only public data.
+Signing is the vendor's, on the vendor's machine.
+
+**Written for a person.** ``LORIINI-`` and groups of five in Crockford's base
+32, read case-blind with O as 0 and I and L as 1, spaces, dashes and line
+breaks ignored; a CRC-32 over everything, checked before the signature, so a
+key cut short or mistyped is said as that and not as a forgery; a version
+byte first, so a later format is refused politely; and a domain tag under the
+signature, so no Ed25519 signature made for anything else reads as a licence
+(``sun_study.licence_key``).
+
+**One line decides whether a build takes keys.** ``licence_public_key.py``
+carries the public key, or ``None``. With ``None`` nothing about keys reaches
+the screen and a build runs on its own term, as the office's always have; the
+vendor's ``keygen`` writes the key there, and the next build asks for one. So
+an office build and a sold build are the same code. The private key is never
+in the repository: ``keygen`` writes it to a file the vendor names.
+
+**Where it is asked for.** The window asks before it opens, in a box that
+reads the key as it is pasted and says whose it is and until when, or in red
+what to do instead; the info box changes it. The command line refuses a
+command that touches a project without a usable key, at the door, with exit
+code 5 and the sentence that says how to install one -- and keeps ``--help``,
+``rulesets``, ``info`` and ``licence`` open, so a refusal can always be acted
+on and the handover build's own start-up check still runs keyless. The
+``licence`` command is hidden from the list of commands, as the licence is
+everywhere the program is silent about its terms while they hold.
+
+**The build's own term stays as the floor** (roadmap R5's own words): a key
+good past a build's ``EXPIRES`` does not keep that build running, so a
+prototype that has not been replaced still stops. Set per release, or keep
+subscribers on current builds (R6).
+
+**Not done, on purpose.** Remembering the latest date seen, to defeat a clock
+wound back: a machine whose clock once jumped ahead would then lock a paying
+subscriber out, which is worse than what it prevents. The clock stays the
+speed bump it always was, and ``docs/licensing.md`` says so.
+
+**The vendor's side** is ``sun_study.licence_issue`` -- in the package so it
+is tested, excluded from the bundle so Loriini never carries the code that
+makes keys -- behind ``scripts/licence.py``: ``keygen`` once; ``issue`` per
+paid period, numbered from a CSV ledger beside the private key, read back as
+a subscriber's Loriini will read it before anything is recorded, and the
+email written as an unsent ``.eml`` draft (``X-Unsent: 1``) or sent over SMTP
+with TLS; ``show`` for support. The shop's webhook (R7) will call ``issue``
+with each invoice's paid-through date.
+
+
+### D125 — Online keys, kept in force by signed leases from a licence service of our own
+
+Asked on 29 September 2026: "I think I need something online, for monthly sub or
+revoking the access", then, once docs/licence-model.md had weighed it, "go with
+your recommendations, merge and build the online part".
+
+**A key and a lease.** An online key is an R5 key with a flag set: the licence's
+identity, pasted once, kept while the subscription lasts. On its own it grants
+nothing. What keeps it in force is a *lease* (``sun_study.licence_lease``):
+- what it says: the licence, a one-way hash of the computer, the service's date,
+  the last day it is in force, the paid-to date, the seats and how many are in
+  use, the version it was given to, and a notice;
+- how it is signed: with the same Ed25519 key as the licence keys, under a
+  domain tag of its own, so neither can pass for the other.
+
+A key's last day is the end of the first period paid for, where the service
+starts from. After that Loriini never looks at it. A flag it does not know
+refuses the key as too new rather than reading it as offline.
+
+**Fourteen days, asked once a day.** A lease runs a fortnight past the service's
+date, never past the paid-to date plus the grace, and is in force from the day
+before it was given: the service keeps UTC, and the Americas are a day behind.
+- **When a start asks.** It renews in the background when the lease held was
+  fetched on an earlier day. It waits, up to 15 seconds, only when no lease is
+  in force: the first time, or after a fortnight offline.
+- **How it compares.** Graphisoft's named licences allow 7 days offline, Chaos
+  14, and Adobe, Autodesk and JetBrains 30. The same fortnight is how long a
+  seat stays taken after its computer's last contact.
+
+**A refusal is signed like a grant**, and carries its reason in a sentence:
+withdrawn, lapsed, seats, recalled. Loriini believes it and stops at the next
+contact, and nobody but the vendor can forge one to stop a practice. Anything
+unsigned from the network is only "the service could not be reached", and
+changes nothing.
+
+**Seats are computers used in the last fortnight, with a margin of one.**
+Loriini installs anywhere, and a burst of use rotates the seats. A computer
+that is replaced frees its seat by itself, and ``licence --remove`` frees one
+at once. A computer new to a licence already on as many computers as its
+seats is granted, with a notice that says which seat frees itself when. One
+more is refused, with the names of the computers holding the seats. A computer
+already counted is never refused for seats.
+
+**A recall instead of the fixed term, for online keys.** The service refuses
+versions below a minimum the vendor sets, with the reason and where the
+current one is. A refusal given to another version is ignored, so updating
+lifts it. ``EXPIRES`` keeps binding builds that take no keys, and offline
+keys, where nothing else can reach them. A keyed build with no key is asked
+for one before its term is mentioned.
+
+**The clock.** A computer whose date is earlier than the day before its lease
+was given is told to set its clock right, with the service's date. A clock
+that once ran ahead is never punished afterwards, which was D124's objection
+to remembering dates. Off the network, a clock held inside the fortnight still
+works, as any check made offline would.
+
+**The service is ours** (``sun_study.licence_service``).
+- **What it is.** The standard library, SQLite, a WSGI app behind the host's
+  TLS, one small container (``deploy/licence-service``).
+- **Why ours.** R5's keys and signing were already built and tested, and every
+  service for sale would still need a server of ours for Stripe's webhooks.
+  Its signing key is the trust anchor, pinned in the build, so no third party's
+  outage or certificate can lock a practice out.
+- **The ledger.** It numbers and keeps every licence. A genuine key it has
+  never seen is taken in from what the key says.
+- **The vendor's side.** Behind an admin token: issue, look up, change,
+  withdraw, restore, free a seat, recall, notices, and a backup that is the
+  SQLite file itself.
+- **Kept out of the program.** Nothing Loriini imports reaches it (a test
+  says so), and the bundle leaves it out, as it leaves out ``licence_issue``.
+
+**Stripe, directly, in AUD** (docs/licence-model.md §5).
+- **Webhooks.** Each is checked against the endpoint's secret with a
+  five-minute tolerance, and handled once by event id. What arrives about a
+  subscription before its checkout is noted and taken up when the licence is
+  made.
+- **Checkout.** It makes the licence, issues its online key, and emails it.
+- **Payments.** Only ``invoice.paid`` moves the paid-to date. A subscription
+  starts its next period before the card has paid for it.
+- **A failed payment** puts its date on every lease while Stripe retries.
+- **The grace** is 14 days, Stripe's retry window. A subscription set to end
+  loses it, and gets it back if it is set going again.
+- **Other buyers.** A practice paying by invoice gets ``paid``.
+
+**What the check sends:**
+- the key;
+- the computer's hash: Windows' machine GUID and the user's name, hashed with
+  the product's name, or an identifier made once where there is no GUID;
+- ``user on computer``, so a practice can tell its seats apart;
+- the version.
+
+Nothing about any project is sent. This is a deliberate change from R6's "no
+identifier", and the privacy note says it.
+
+**Whose licence made a result.** The CSV and JSON headers carry a ``licence``
+line, and the Zone property *Solar Analysis Run* carries it beside the time. A
+build that takes no keys writes neither, so its files are unchanged. A trial's
+reads "trial licence".
+
+**Not done, on purpose:**
+- floating seats with heartbeats, and accounts or logins: later, if a large
+  practice asks;
+- seats by Graphisoft ID: once the add-on targets Archicad 28, whose API has
+  the identifiers;
+- obfuscation, which only makes antivirus software more suspicious;
+- rate limiting beyond the host's;
+- a trial stamp drawn on sheets: every sheet already says "not validated for
+  submission" while the prototype notice stands. The stamp is due when that
+  notice goes.
+
+### D126 — A refusal for "ongoing user input" is waited out, not failed
+
+Seen on 7 October 2026, on the site tools. The run had made the Context
+Analysis worksheet, asked for it to be double-clicked in the Project Map,
+seen it come to the front, and sent its next command -- and Archicad
+refused it with code 4001, *Invalid program status (ongoing user input)*.
+The connection read every 4001 as a modal dialog left open, told the person
+to close a dialog that was not there, and stopped the run. The person had
+done exactly what was asked; the mouse was still down from the double-click.
+
+**The same code means two things, and Archicad says which.** With *there is
+an open modal dialog: X* the API is refused until a person closes X, and the
+run can only say so and stop. With *ongoing user input* it is refused for as
+long as a hand is on the mouse or a field is being edited, which is a moment.
+So `ArchicadConnection.run_official`, which every add-on command also passes
+through, sends a request refused for ongoing input again every second for up
+to thirty seconds before it gives up, and gives up in words that say what to
+let go of rather than what to close. The dialog case still fails at once:
+waiting on a dialog nobody is told about would look like a hang.
+
+**Thirty seconds, silently.** Long enough for a drag or a rename; short
+enough that a field left mid-edit is reported within the minute. Nothing is
+printed while it waits: the connection is also used in the agent's server
+process, whose stdout is the protocol (D120), so it has nothing to print
+with. The stop file is not watched either; thirty seconds is less than the
+runner's own patience.
+
+### D127 — The yield analysis is the office's feasibility template, cell for cell, with its efficiencies as the rule
+
+Asked on 8 October 2026 (roadmap R3): the office put its *Feasibility
+template* -- *Preliminary Yield Analysis*, an .xlsx with a sheet per
+option -- in the project folder and asked for the yield study to produce
+that table, for two massing options in the open project, and to follow
+the template's efficiencies strictly.
+
+**The template's arithmetic replaces the earlier sheet's.** The area
+calculation of D122 had two uses at 0.75/0.9 and 0.85/0.9 and a yield
+rounded down and split by the largest remainder. The template has three
+uses -- residential, commercial, retail -- at *BEA to GFA* 0.725, 0.85 and
+0.95 and *GFA to NLA* 0.85, 0.9 and 0.9, a permissible FSR split by use,
+and units that are the residential GFA over the mix's *average GFA* (the
+average NLA over the residential GFA-to-NLA), shared into the mix by its
+shares and between a market and an affordable mix by a share of the GFA,
+*not rounded*: 220.575 units is what the sheet says. Parking is each type's
+units by a rate under the SEPP and under the DCP, visitors over every unit,
+commercial and retail GFA by a space per so many square metres, and the
+basements at 40 m² a space over the share of the site a basement may take.
+``rules.area_yield`` is that, with the template's every figure as a
+default and a setting; the template's own *Option 01* is the test fixture
+and comes out to the cent. The earlier rounding was a view the tool took;
+the office's sheet is the office's view, and it is the one asked for.
+
+**The workbook is the template, filled, not a table of Loriini's own.**
+Somebody who knows the template finds the site in C6, the permissible FSR
+in C10:C12, the units in D29:E33, the efficiencies in C86:E88 and the
+storey table from J113, with the inputs in red as the template has them and
+everything else a formula (``report.area_table``). A mix of other than five
+types moves the rows below it down; the storey table takes as many rows as
+the massing has levels. The columns the office fills by hand -- units per
+level, the ADG counts -- are left empty with their formulas in place. One
+sheet per option: the workbook keeps each option's data as JSON on a hidden
+sheet, so a run reads the options already there and writes them all back
+with its own added or replaced (``report.xlsx`` grew several sheets, a
+hidden one, and a reader for one cell). A workbook without that sheet is
+one Loriini did not write, and is refused rather than overwritten: the
+office's template lives in the same folder.
+
+**A slab stands where its height says, not where its storey does.** The
+Darlinghurst options are stacks of storey-thick slabs -- 4.3 m for the
+ground, 3 m above -- every one homed on the GROUND storey and offset up, so
+a table by home storey would be one row. Tapir gives a slab's reference
+plane (``zCoordinate``), the offset of its top from it and its thickness;
+the underside is worked from those, undersides within half a metre are one
+level, and the levels are named up from the one nearest the project's
+storey called Ground (``rules.area_yield.levels_from``). The floor-to-floor
+is the rise to the level above, and the top level's its own thickness when
+the slabs are storey-thick.
+
+**An option on one layer has its use told by level.** Each Darlinghurst
+option is one layer, podium and tower together, so a layer per use could
+not say what was retail. A *massing* layer's slabs take their use from the
+level they stand on -- the levels named retail, the levels named
+commercial, the rest residential -- beside the layer-per-use way, which
+stays. Which levels are which is the office's to say; a level moved from
+one use to another is also one number moved between columns in the
+workbook's storey table, and the formulas follow.
+
+**The look is the template's, lifted once.** Asked on 9 October, seeing
+the two side by side: the office's sheet is boxed, barred in green, its
+inputs red, and a plain grid of the same numbers is not the same sheet.
+``scripts/extract_feasibility_style.py`` reads the template's style table,
+its theme, its column widths, its row heights and the style index of each
+of its 1,720 cells into ``report/feasibility_style.py``, generated and
+committed, so the program ships no data file and never opens the template;
+``xlsx.Workbook`` takes that style table verbatim and the yield sheet
+styles each cell as the template cell it stands for -- the same address in
+the blocks that do not move, a role's row where a mix has more or fewer
+types, and the first, middle and last level rows for the storey table --
+and writes the template's blank styled cells too, so the boxes close.
+
+**Several options are one run.** Each option is usually its own layer, so
+``--option-layer`` (the *Option layers* picker) takes any number, reads the
+slabs once, and makes every option -- a sheet and a layout each, named
+after the layer's OPT number -- with the levels indexed across all of them
+together, since a tower option with no ground floor of its own would
+otherwise read its lowest floor as the ground. The retail and commercial
+levels are ticked from a list rather than typed, as the layers are.
+
+**What was assumed for the two options.** The office did not say which
+podium levels are retail or commercial. The two sheets were run with the
+ground floor retail, the first level commercial and the rest residential,
+the LEP's one FSR read at the address and written on the residential row
+with a note; the run's log says so, and both are one flag or one cell to
+change.
+
+### D128 — A start proves the model with any element, and moves the database without the window
+
+Reported on 9 October 2026, and there since the beginning: when Loriini
+opens, Archicad's floor plan is left "stuck" -- deaf to the mouse until
+another tab is clicked. The window's first read of a project runs
+``ensure_model_database``, which had to prove that the current database was
+a floor plan before trusting any read, and its proof was the walls. A
+massing project is slabs and has no walls, so on every such project the
+proof failed, the check went to the Project Map and made the ground storey
+current through Tapir's ``ChangeWindow`` -- which ends in
+``ACAPI_Window_ChangeWindow``, a window switch made from inside an API
+command. That switch is what leaves the plan half-activated.
+
+**Any element is the proof.** ``GetAllElements`` -- the walls only where an
+add-on is too old to have it. A massing, a site model, a project of
+zones: all read, and nothing is moved. An empty project reads as empty and
+is moved as before, harmlessly.
+
+**When the database has strayed under a floor plan, only the database is
+moved.** The add-on's own ``SetCurrentDatabase`` (D95) changes the current
+database with ``APIDb_ChangeCurrentDatabaseID`` and touches no window; so
+with a floor plan in front it is tried first, and Tapir's ``ChangeWindow``
+is the fallback -- for an add-on that lacks the command, a refused move,
+or a layout in front, where the window itself has to change for an export
+to see the building. The connection notes the move as it notes
+``ChangeWindow``'s, so the layer guard stays on.
+
+### D129 — The window after its first sale: the terms it was sold under, and nothing learnt by hovering
+
+Asked on 10 October 2026, after the first live purchase, for a review of the
+window as a subscriber meets it, and then for every finding to be fixed.
+The review was made from the window itself, opened over a fake project and
+photographed page by page.
+
+**About shows the terms the build was sold under.** It summarised the
+repository's source-available licence -- the firm it was written for, the
+MIT versions, "passing it outside the firm needs written permission" --
+to a practice that had just accepted the subscription terms, while the
+LICENSE.txt beside the program said otherwise. A build that takes licence
+keys now shows ``licence.TERMS_SUMMARY`` and *Read the full terms* opens
+``site/terms.html`` as text, by ``sun_study.terms``, the renderer that also
+writes the download's LICENSE.txt; the bundle carries the page for it. A
+build without keys, which is the source, keeps the source licence.
+
+**Every control says what it is without being hovered.** The choice tiles
+carry a word beside their drawing (*One layout*, *Floor heat map*, *Project
+location*); labels the review found opaque are spelt out (*TOD envelope*,
+*SEARs envelope*, *Ignore ground below (m)*, *3 zone layers*); the top bar
+says *Connect Claude* and *About* where it said *Add to Claude* and showed a
+bare (i). Every row label carries an icon, or a clear square the size of
+one, so the labels on a page start at one line -- the Yield page had none
+and sat a column to the left of every other page.
+
+**Run says what it will run.** *Run 3 studies*, or *Tick a study to run*
+and off, where it looked ready with nothing ticked and answered a press
+with a line at the foot of the window.
+
+**Space that said nothing is given back.** The sheets panel waits at its
+edge while nothing is ticked and comes out at the first tick, unless it was
+opened by hand; the progress trough is shown only during a run; the licence
+line moved to the right of the run's own line instead of a row of its own.
+
+**The same card in the same place.** *Days studied* is the first card on
+all three sun pages; it was first on one and last on the other two. The
+sun views' hours open lit at the ruleset's window, as the shadow diagram's
+do, and lit exactly so they send nothing, so the ruleset's window stands.
+
+**Smaller.** The no-location notice on a thumbnail is shorter and stops
+short of the title block; the grid of drawings ends clear of the title
+under it; the licence box's text field has the theme's one-pixel edge in
+place of Tk's black focus ring.

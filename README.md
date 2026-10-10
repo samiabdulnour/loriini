@@ -191,7 +191,8 @@ The other end of a DA: the sheets an office draws before there is a building.
 Give it a NSW street address and it draws the **context analysis**, the **site
 analysis** into worksheets and the **summary of controls** onto a layout of
 the open project, from open data -- NSW cadastre, ePlanning, topography and elevation,
-Transport for NSW, OpenStreetMap and Valhalla -- as native fills in the
+Transport for NSW, OpenStreetMap and Valhalla, and inside the City of Sydney the
+council's own 1 m contours and tree inventory -- as native fills in the
 legend's own colours, polylines and texts, at true ground scale in the
 project's own frame, with a view of each at its sheet's scale.
 
@@ -206,7 +207,8 @@ origin for a project whose location is not set yet. Needs the Loriini add-on:
 a worksheet can only be drawn into in the session that made it through the
 add-on's own command.
 
-`--model` adds the context itself: a terrain mesh from the contours and one
+`--model` adds the context itself: a terrain mesh from the contours -- every
+one of them near the site, fewer and simpler towards the edge -- and one
 slab per building footprint, storeys from OpenStreetMap or the LEP height
 control, half a kilometre each way (`--model-radius`), on the `LORIINI`
 layer, and `--set-location` writes the site's coordinates into Project
@@ -295,7 +297,21 @@ and where the results land — written against the FUSE Archicad Manual and laye
 See [`docs/validation.md`](docs/validation.md) for measured residuals,
 [`docs/decisions.md`](docs/decisions.md) for the domain assumptions that change the
 headline compliance percentage, and [`docs/archicad.md`](docs/archicad.md) for what was
-verified about the Archicad protocol and what was not.
+verified about the Archicad protocol and what was not. [`docs/roadmap.md`](docs/roadmap.md)
+is what the office has asked for next, numbered, with where each one stands, and
+[`docs/agent.md`](docs/agent.md) is how an agent such as Claude Desktop drives Loriini
+through `Loriini.exe mcp`, [`docs/overlay.md`](docs/overlay.md) is the reference
+image laid over Archicad's 3D window to set a view up from a photograph,
+[`docs/yield.md`](docs/yield.md) is the yield analysis -- the office's feasibility sheet,
+BEA, GFA, FSR, units and parking -- worked from the massing slabs, [`docs/shadow-plans.md`](docs/shadow-plans.md) is the
+shadow diagram's hours as 3D Documents with Archicad's own shadows, and
+[`docs/larger-models.md`](docs/larger-models.md) is how a shadow run on a big project is
+read from the log every run now keeps, [`docs/licensing.md`](docs/licensing.md) is the
+subscription's licence keys -- installing one, how it is kept in force online, and
+issuing them -- [`docs/licence-service.md`](docs/licence-service.md) is putting the
+licence service up and pointing Stripe at it, and
+[`docs/licence-model.md`](docs/licence-model.md) is the analysis behind the licence model
+as a whole: what is counted, for how long, online leases, payments and price.
 
 ## The fixture
 
