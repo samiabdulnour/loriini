@@ -3319,13 +3319,17 @@ def test_the_palettes_last_button_opens_the_reference_image(hidden_window: Any) 
     from sun_study.app import overlay
 
     assert overlay._open is None
+    # Read again through an Any: mypy narrowed ``overlay._open`` to None at
+    # the assert above and cannot see ask_for opening the palette.
+    opened: Any = None
     try:
         assert hidden_window.ask_for("reference") is True
-        assert overlay._open is not None
-        assert overlay._open.winfo_exists()
+        opened = overlay._open
+        assert opened is not None
+        assert opened.winfo_exists()
     finally:
-        if overlay._open is not None:
-            overlay._open.close()
+        if opened is not None:
+            opened.close()
             hidden_window.root.update()
 
 

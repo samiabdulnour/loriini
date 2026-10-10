@@ -32,7 +32,13 @@ from sun_study.archicad.site_analysis import (
 )
 from sun_study.site import nsw, osm, transport
 from sun_study.site.arcgis import rings_of
-from sun_study.site.geo import Extent, extent_for, lonlat_to_mercator, lonlat_to_mga
+from sun_study.site.geo import (
+    Extent,
+    convex_hull,
+    extent_for,
+    lonlat_to_mercator,
+    lonlat_to_mga,
+)
 from sun_study.site.pipeline import (
     ContextBundle,
     Institution,
@@ -183,19 +189,19 @@ def test_the_site_can_be_squared_to_its_long_boundary_and_set_on_a_corner() -> N
     assert sd.placed_frame(base, rings) == base, "centre and unsquared is the frame as it was"
 
     squared = sd.placed_frame(base, rings, square=True)
-    hull = sd.convex_hull(p for ring in rings for p in squared.ring(ring))
+    hull = convex_hull(p for ring in rings for p in squared.ring(ring))
     angle = sd._edge_bearing(hull)
     assert min(angle, 180.0 - angle) == pytest.approx(0.0, abs=1e-6), "the long side is level"
     turn = (squared.plus_y_bearing_deg - base.plus_y_bearing_deg + 180.0) % 360.0 - 180.0
     assert turn != 0.0 and abs(turn) <= 90.0, "turned the short way, and north went with it"
 
     cornered = sd.placed_frame(base, rings, square=True, origin_at="bottom-left")
-    hull = sd.convex_hull(p for ring in rings for p in cornered.ring(ring))
+    hull = convex_hull(p for ring in rings for p in cornered.ring(ring))
     corner = min(hull, key=lambda p: p[0] + p[1])
     assert corner == pytest.approx((0.0, 0.0), abs=1e-6)
     assert cornered.plus_y_bearing_deg == pytest.approx(squared.plus_y_bearing_deg)
     top_right = sd.placed_frame(base, rings, origin_at="top-right")
-    hull = sd.convex_hull(p for ring in rings for p in top_right.ring(ring))
+    hull = convex_hull(p for ring in rings for p in top_right.ring(ring))
     assert max(hull, key=lambda p: p[0] + p[1]) == pytest.approx((0.0, 0.0), abs=1e-6)
 
     with pytest.raises(ValueError, match="origin_at"):
