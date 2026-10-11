@@ -968,7 +968,7 @@ def _rounded(style: ttk.Style) -> None:
         style.layout("Badge.TLabel", [("Loriini.badge", pill)])
         style.layout("BadgeOpen.TLabel", [("Loriini.badgeopen", pill)])
         for name in ("Badge.TLabel", "BadgeOpen.TLabel"):
-            style.configure(name, padding=(7, 0), anchor="center")
+            style.configure(name, padding=(2, 0), anchor="center")
     if help_card is not None:
         element("Loriini.help", help_card, (), 9)
         style.layout("Help.TFrame", [("Loriini.help", {"sticky": "nswe"})])
@@ -1193,8 +1193,6 @@ def _switches(style: ttk.Style) -> None:
             return
         style.configure(name, background=ground, foreground=BODY, padding=(0, 0), indicatormargin=0)
         style.map(name, background=[("active", ground)], foreground=[("disabled", HINT)])
-    # Room between the switch and its words, where it has any.
-    style.configure("SwitchPanel.TCheckbutton", padding=(0, 2))
 
 
 #: The menu's three lines, one per interpreter, kept because Tk forgets an

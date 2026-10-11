@@ -3141,7 +3141,7 @@ class Window:
                 words = "open"
             pill.configure(text=words, style="BadgeOpen.TLabel" if open_here else "Badge.TLabel")
             if words and not pill.winfo_manager():
-                pill.pack(side="right", padx=(4, 6))
+                pill.pack(side="right", padx=(4, 8))
             elif not words and pill.winfo_manager():
                 pill.pack_forget()
 
@@ -4769,8 +4769,8 @@ class Window:
         self, parent: ttk.Frame, row: int, name: str, share: str, size: str
     ) -> tuple[ttk.Entry, ttk.Entry, int]:
         """One type in the mix: its share of the units and its size, side by side."""
-        label = ttk.Label(parent, text=name)
-        label.grid(row=row, column=0, sticky="w", pady=(6, 0))
+        label = ttk.Label(parent, text=name, anchor="e")
+        label.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
         cells = ttk.Frame(parent)
         cells.grid(row=row, column=1, sticky="w", pady=(6, 0))
         share_box = ttk.Entry(cells, width=6)

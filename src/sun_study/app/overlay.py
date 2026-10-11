@@ -774,29 +774,17 @@ class Palette:
 
         name(placing, 1, "Lock")
         self.locked = tk.BooleanVar(value=False)
-        self.lock = ttk.Checkbutton(
-            placing,
-            text="Clicks go through to Archicad",
-            style="SwitchPanel.TCheckbutton",
-            variable=self.locked,
-            command=self._lock,
+        self.lock = self._switch(
+            placing, 1, "Clicks go through to Archicad", self.locked, self._lock
         )
-        self.lock.grid(row=1, column=1, sticky="w", pady=(6, 0))
 
         name(placing, 2, "Show")
         #: Whether the picture is put away. The switch reads the other way
         #: round -- on is shown -- which is what ``onvalue`` is for.
         self.hidden = tk.BooleanVar(value=False)
-        self.hide = ttk.Checkbutton(
-            placing,
-            text="Picture visible",
-            style="SwitchPanel.TCheckbutton",
-            variable=self.hidden,
-            onvalue=False,
-            offvalue=True,
-            command=self._hide,
+        self.hide = self._switch(
+            placing, 2, "Picture visible", self.hidden, self._hide, shown_when=False
         )
-        self.hide.grid(row=2, column=1, sticky="w", pady=(6, 0))
 
         self.shut = ttk.Button(placing, text="Close picture", command=self.close)
         self.shut.grid(row=3, column=1, sticky="w", pady=(10, 0))
@@ -853,6 +841,34 @@ class Palette:
 
         self._mode(FIT)
         self._slid()
+
+    @staticmethod
+    def _switch(
+        box: ttk.Frame,
+        row: int,
+        words: str,
+        variable: tk.BooleanVar,
+        command: Callable[[], None],
+        *,
+        shown_when: bool = True,
+    ) -> ttk.Checkbutton:
+        """A switch with its words beside it, a gap between the two. The words
+        are a label of their own, and pressing them presses the switch."""
+        held = ttk.Frame(box)
+        held.grid(row=row, column=1, sticky="w", pady=(6, 0))
+        switch = ttk.Checkbutton(
+            held,
+            style="SwitchPanel.TCheckbutton",
+            variable=variable,
+            onvalue=shown_when,
+            offvalue=not shown_when,
+            command=command,
+        )
+        switch.grid(row=0, column=0)
+        said = ttk.Label(held, text=words)
+        said.grid(row=0, column=1, padx=(8, 0))
+        said.bind("<Button-1>", lambda _event: switch.invoke())
+        return switch
 
     @property
     def overlay(self) -> Overlay:
