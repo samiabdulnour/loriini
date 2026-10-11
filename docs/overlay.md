@@ -17,34 +17,36 @@ is built.
 
 ## Using it
 
-1. **Press *Reference image***, beside the project picker at the top of
-   the window -- or the last button on Loriini's palette in Archicad, which
-   starts the window with this already open. A palette opens at the top
-   right of the screen and stays on top: a small palette of controls, the
-   way Archicad's own palettes float.
-2. **Open a picture**: PNG, JPEG, TIFF, BMP, GIF or WebP. A phone's
+1. **Open *Tools › Reference image*** in the sidebar -- or press the last
+   button on Loriini's palette in Archicad, which starts the window on this
+   page. The controls are two panels of the page: *Picture* (the file, the
+   fit, the opacity) and *Over Archicad* (where it is, the lock, whether it
+   shows).
+2. **Open picture…**: PNG, JPEG, TIFF, BMP, GIF or WebP. A phone's
    photograph is turned the way its orientation tag says. The picture
    appears at half opacity, in a window of its own, over the Archicad
    window that shows the chosen project when one can be found (the whole
    area inside its frame), and otherwise in the middle of the screen at
-   three fifths of it. The palette stays where it is.
+   three fifths of it. While it is open, Loriini's window is kept on top
+   and above it, so its controls are never covered; the sidebar marks the
+   page *open*.
 3. **Place it.** Drag the picture to move it; drag the blue corner at its
    bottom right to size it, and it grows from its top-left corner, which
-   stays put. The palette and the picture move on their own: put the
-   palette out of the way by its title bar, and the picture stays lined up.
-   The palette always stays above the picture, so its controls are never
-   covered.
-   *Over Archicad* lays the picture over the Archicad window again. Match the frame to the 3D window's
-   edges. *Fit* keeps the picture's shape in the frame's top-left corner,
-   and the frame's spare margins, to the right or below, are see-through;
-   *Stretch* pulls the picture to the frame's shape, for one already
-   cropped to the 3D window's own.
+   stays put. Move Loriini's window aside if it covers part of the picture.
+   *Over the 3D window* lays the picture over the Archicad window again
+   (Windows only for now; on a Mac, drag it into place). Match the frame to
+   the 3D window's edges. *Fit* keeps the picture's shape in the frame's
+   top-left corner, and the frame's spare margins, to the right or below,
+   are see-through; *Stretch* pulls the picture to the frame's shape, for
+   one already cropped to the 3D window's own.
 4. **Lock it.** The corner and the blue edge go, and the mouse goes through
-   the picture to the model -- on Windows and on a Mac alike. Orbit the model in Archicad until it sits in
-   the picture, moving the opacity slider as you go: low to see the model,
-   high to see the picture. Unlock to move or size the picture again.
-5. **Hide** takes the picture off the screen without closing it; **Close**,
-   or the palette's own close box, closes both.
+   the picture to the model -- on Windows and on a Mac alike. Orbit the
+   model in Archicad until it sits in the picture, moving the opacity
+   slider as you go: low to see the model, high to see the picture. Turn
+   *Lock* off to move or size the picture again.
+5. **Show** off takes the picture off the screen without closing it;
+   **Close picture** puts it away, and Loriini's window goes back to being
+   an ordinary one.
 
 ## What to know
 
@@ -53,9 +55,8 @@ is built.
   neither does a screenshot taken from inside Archicad.
 - **It is over everything**, not only over Archicad: alt-tab to another
   program and the picture is still there. Hide it when it is not wanted.
-- **One picture at a time.** Pressing the button again raises the palette
-  already open. To compare two references, open the second in place of the
-  first.
+- **One picture at a time.** To compare two references, open the second
+  in place of the first.
 - **The picture is kept at most 4096 pixels on its longer side.** A
   48-megapixel photograph is read and then held at that size, which is
   more than any screen shows and keeps sizing the frame instant.
@@ -65,8 +66,9 @@ is built.
   that by eye, which is most of the value.
 - **Off Windows**, the picture, the slider and the fit work wherever Tk
   does, but finding the Archicad window and sending the mouse through the
-  picture are Windows calls. The palette says so when asked; the picture
-  is placed by hand and hidden to reach what is under it.
+  picture are Windows calls -- except that a Mac has a click-through of its
+  own, which the lock uses. The page says so when asked; the picture is
+  placed by hand.
 
 ## What is not here yet
 
