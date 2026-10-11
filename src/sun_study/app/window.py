@@ -1533,8 +1533,10 @@ class Dock(ttk.Frame):
             "when it is dragged too narrow to hold both.",
             title="Fold the sheets away",
         )
+        # Where the sheets are filed, said only when the Layout Book has a
+        # subset to file them in: an empty line here read as a gap under the
+        # header, before the first study.
         self.filed = ttk.Label(self.open_view, text="", style="DockHint.TLabel")
-        self.filed.pack(side="top", fill="x", padx=16, pady=(0, 6))
         self.pane = Scroller(self.open_view, ground=theme.SIDEBAR)
         self.pane.pack(side="top", fill="both", expand=True)
 
@@ -1630,6 +1632,10 @@ class Dock(ttk.Frame):
         self.tally.config(text=str(papers))
         self.spine.itemconfigure(self._spine_text, text=self._spell(papers))
         self.filed.config(text=filed)
+        if filed:
+            self.filed.pack(side="top", fill="x", padx=16, pady=(0, 6), before=self.pane)
+        else:
+            self.filed.pack_forget()
 
         if not sheets:
             empty = ttk.Label(
