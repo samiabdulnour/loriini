@@ -2648,8 +2648,10 @@ class Window:
     #: How wide the sidebar is.
     SIDE_WIDTH = 236
     #: The least the page between the sidebar and the sheets panel is allowed
-    #: before the sheets panel folds away to give it room.
-    PAGE_LEAST = 480
+    #: before the sheets panel folds away to give it room: a label column,
+    #: the widest row of choices beside it, and the panel's margins. Under
+    #: it a page's right-hand controls were cut off at the panel's edge.
+    PAGE_LEAST = 720
 
     #: What each tab says when hovered. The tab carries a drawing at 32 px and
     #: a name, and nothing else -- so the sentence that would otherwise sit

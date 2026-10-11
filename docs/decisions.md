@@ -5003,5 +5003,5 @@ project location" line are gone; at 300 px they were noise.
 ttk label's own ``-font``, which beat the style -- so every bold title in the
 window had been set in the body face. ``*TLabel.Font`` is now left empty.
 
-On a laptop at three quarters of the screen the page needs about 700 px, so
+On a laptop at three quarters of the screen the page needs about 720 px (``PAGE_LEAST``), so
 the sheets panel starts folded at its edge there and opens with its chevron.
