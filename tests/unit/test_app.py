@@ -3948,6 +3948,11 @@ def test_a_narrow_page_rearranges_rather_than_cutting_its_rows_off(hidden_window
     made.root.geometry(f"{made.fold_below + 10}x800")
     made.dock.fold(False)
     made.root.update()
+    if made.root.winfo_width() < made.fold_below:
+        # Windows holds a window to its screen, and CI's is 1024 wide: the
+        # window it gets is too narrow for the panel, which folds, and the
+        # page beside it is no longer the laptop's.
+        pytest.skip("the screen is narrower than a window with the panel open")
     made._show_section(window.Window.GENERAL)
     made._rearrange()
     assert made._narrow_page
