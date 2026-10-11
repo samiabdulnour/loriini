@@ -14,23 +14,24 @@ the picture until the two line up. Nothing about it touches the project or
 the add-on, and it works over any version of Archicad -- or over anything
 else. Roadmap item R4; D121 records how it is built.
 
-One palette, with the picture hanging from it
---------------------------------------------
+A palette and a picture, each where it is put
+---------------------------------------------
 
-What the person sees is one palette, the way Archicad's own float: a
-title bar and a strip of controls -- the opacity slider, the fit, the
-lock and the hide -- with the picture beneath them, as wide as the strip
-or wider. Drag the title bar and the picture comes with it; drag the
-picture and the strip comes with it; drag the picture's blue corner and
-the picture grows from its top-left corner, which stays put, and the
-strip widens to match.
+Two windows, each moved and sized on its own. The palette is the controls
+-- the opacity slider, the fit, the lock and the hide -- and stays wherever
+it is dragged, out of the way. The picture is a borderless frame of its
+own: drag it to move it, drag its blue corner to size it from its top-left
+corner, which stays put. *Over Archicad* lays the picture over the 3D
+window and leaves the palette alone.
 
-Underneath it is two windows, because the picture has to let the mouse
-through. Unlocked, the picture is a thing to place. Locked, it is a thing
-to look through: the corner goes and the mouse goes through it to the
-model; a window the mouse goes through cannot hold a slider, so the
-controls are a toplevel of their own, glued to the picture's top edge by
-``Palette._glue`` and ``Overlay``'s two callbacks.
+They used to be glued, the palette's foot on the picture's top edge, so
+that the pair moved as one -- which put the controls over the model
+wherever the picture went, and made a picture as narrow as the strip
+impossible. A picture is lined up with the model; the controls are not.
+
+Locked, the picture is a thing to look through: the corner goes and the
+mouse goes through it to the model. A window the mouse goes through cannot
+hold a slider, which is why the controls were always a window of their own.
 
 Fit and stretch
 ---------------
@@ -347,27 +348,12 @@ class Overlay(tk.Toplevel):
     see-through as it is told, that the mouse can be sent through.
 
     Built withdrawn. ``show`` puts it on screen, once there is a picture to
-    put there; until then there is nothing to see and nothing to move.
-
-    ``moved`` is told where the person has dragged the frame's top-left
-    corner to, and ``sized`` what they have dragged its size to, so that
-    the palette can come along; ``least_width`` is the narrowest the frame
-    may be dragged to, the palette's own width. Without them the frame
-    moves and sizes itself, which is enough for a test.
+    put there; until then there is nothing to see and nothing to move. It
+    moves and sizes itself, and nothing else moves with it.
     """
 
-    def __init__(
-        self,
-        parent: tk.Misc,
-        *,
-        moved: Callable[[int, int], None] | None = None,
-        sized: Callable[[int, int], None] | None = None,
-        least_width: Callable[[], int] = lambda: LEAST_SIDE,
-    ) -> None:
+    def __init__(self, parent: tk.Misc) -> None:
         super().__init__(parent)
-        self._moved = moved
-        self._sized = sized
-        self._least_width = least_width
         self.withdraw()
         self.overrideredirect(True)
         self.attributes("-topmost", True)
@@ -516,11 +502,7 @@ class Overlay(tk.Toplevel):
         if self.locked:
             return
         dx, dy = self._grab_at
-        x, y = event.x_root - dx, event.y_root - dy
-        if self._moved is not None:
-            self._moved(x, y)
-        else:
-            self.geometry(f"{x:+d}{y:+d}")
+        self.geometry(f"{event.x_root - dx:+d}{event.y_root - dy:+d}")
 
     def _grab_corner(self, event: tk.Event[tk.Misc]) -> None:
         self._corner_at = (event.x_root, event.y_root, self.winfo_width(), self.winfo_height())
@@ -531,11 +513,9 @@ class Overlay(tk.Toplevel):
         if self.locked:
             return
         x0, y0, wide, tall = self._corner_at
-        width = max(LEAST_SIDE, self._least_width(), wide + event.x_root - x0)
+        width = max(LEAST_SIDE, wide + event.x_root - x0)
         height = max(LEAST_SIDE, tall + event.y_root - y0)
         self.geometry(f"{width}x{height}")
-        if self._sized is not None:
-            self._sized(width, height)
 
     # -- drawing ----------------------------------------------------------------
 
@@ -610,20 +590,17 @@ class Overlay(tk.Toplevel):
 
 
 class Palette(tk.Toplevel):
-    """The controls, in a strip the picture hangs from: one palette, the way
-    Archicad's own float.
+    """The controls, in a small palette of their own, the way Archicad's float.
 
     Short on purpose: it sits over Archicad while the model is orbited, and
     every pixel it takes is a pixel of the model it is covering. It has its
     own line of explanation at the foot rather than the window's band,
     because the window is under Archicad while this is in use.
 
-    The picture is ``overlay``, a second toplevel glued to this one's foot:
-    wherever this one goes the picture goes under it, as wide as it;
-    dragging the picture brings this one along; and sizing the picture by
-    its corner widens this one to match (``_glue``, ``_picture_moved``,
-    ``_picture_sized``). ``lay`` puts the pair somewhere by the picture's
-    frame, which is what the Archicad window and the screen are measured in.
+    The picture is ``overlay``, a second toplevel that moves and sizes on
+    its own; ``lay`` puts it somewhere, by its frame, which is what the
+    Archicad window and the screen are measured in. The palette stays where
+    it was put.
     """
 
     def __init__(self, parent: tk.Misc, *, project: Callable[[], str] = lambda: "") -> None:
@@ -640,18 +617,9 @@ class Palette(tk.Toplevel):
                 pass
         self.configure(background=theme.SURFACE)
         self.project = project
-        self.overlay = Overlay(
-            self,
-            moved=self._picture_moved,
-            sized=self._picture_sized,
-            least_width=lambda: self.least_width,
-        )
-        #: The narrowest the strip can be: what its controls need. Set once
-        #: the controls are built; the picture is never dragged narrower.
-        self.least_width = 0
-        #: Whether ``_glue`` is already placing the picture, so that the
-        #: <Configure> its own placing raises is not taken as a move.
-        self._gluing = False
+        # On its own: dragged, it moves itself; sized by its corner, it sizes
+        # itself, down to ``LEAST_SIDE``. Nothing it does moves the palette.
+        self.overlay = Overlay(self)
         #: Where the file dialog opens: where the last picture came from.
         self.folder = Path.home()
 
@@ -750,82 +718,14 @@ class Palette(tk.Toplevel):
         self._slid()
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind("<Destroy>", self._destroyed)
-        self.bind("<Configure>", self._configured)
         # Top right of the screen, out of the way of a 3D window that is
         # nearly always to the left of the palettes Archicad keeps there.
         self.update_idletasks()
-        self.least_width = self.winfo_reqwidth()
-        self.geometry(f"+{max(0, self.winfo_screenwidth() - self.least_width - 24)}+48")
-
-    # -- the picture, glued to the foot of the strip --------------------------------
-
-    def _decoration(self) -> tuple[int, int]:
-        """How far the title bar and the frame the window manager puts round
-        the strip set its own top-left corner in from where ``geometry``
-        places the whole: nothing where there is no frame, the title bar's
-        height with one. ``geometry`` speaks of the outside; ``winfo_rootx``
-        of the inside; the picture is placed by the inside."""
-        self.update_idletasks()
-        outside = Placement.parse(self.geometry())
-        return self.winfo_rootx() - outside.x, self.winfo_rooty() - outside.y
+        self.geometry(f"+{max(0, self.winfo_screenwidth() - self.winfo_reqwidth() - 24)}+48")
 
     def lay(self, frame: Placement) -> None:
-        """Put the picture's frame here, and the strip above it: the strip's
-        foot on the frame's top edge, its left edge the frame's, as wide as
-        the frame or as wide as its controls need. A strip that would stand
-        off the top of the screen is kept on it, and the frame hangs lower."""
-        dx, dy = self._decoration()
-        width = max(frame.width, self.least_width)
-        height = self.winfo_height()
-        self._gluing = True
-        try:
-            self.geometry(f"{width}x{height}{frame.x - dx:+d}{max(0, frame.y - dy - height):+d}")
-            self.update_idletasks()
-            foot = self.winfo_rooty() + self.winfo_height()
-            self.overlay.place_at(Placement(self.winfo_rootx(), foot, width, frame.height))
-        finally:
-            self._gluing = False
-
-    def _configured(self, event: tk.Event[tk.Misc]) -> None:
-        # Every child's <Configure> arrives here too; only the strip's own
-        # is a move or a sizing of the strip.
-        if event.widget is self and not self._gluing:
-            self._glue()
-
-    def _glue(self) -> None:
-        """The picture goes under the strip, as wide as it: wherever the
-        strip has been moved to by its title bar, and however wide it is."""
-        self._gluing = True
-        try:
-            x, y = self.winfo_rootx(), self.winfo_rooty() + self.winfo_height()
-            width = self.winfo_width()
-            at = (self.overlay.winfo_x(), self.overlay.winfo_y(), self.overlay.winfo_width())
-            if at != (x, y, width):
-                self.overlay.geometry(f"{width}x{self.overlay.winfo_height()}{x:+d}{y:+d}")
-        finally:
-            self._gluing = False
-
-    def _picture_moved(self, x: int, y: int) -> None:
-        """The person is dragging the picture: the strip comes along, its
-        foot kept on the picture's top edge."""
-        dx, dy = self._decoration()
-        self._gluing = True
-        try:
-            self.geometry(f"{x - dx:+d}{y - dy - self.winfo_height():+d}")
-            self.overlay.geometry(f"{x:+d}{y:+d}")
-        finally:
-            self._gluing = False
-
-    def _picture_sized(self, width: int, height: int) -> None:
-        """The person is dragging the picture's corner: the strip is made as
-        wide as the picture. Its top-left, and the picture's, stay put."""
-        del height
-        if width != self.winfo_width():
-            self._gluing = True
-            try:
-                self.geometry(f"{width}x{self.winfo_height()}")
-            finally:
-                self._gluing = False
+        """Put the picture's frame here. The palette is not moved."""
+        self.overlay.place_at(frame)
 
     # -- the controls ---------------------------------------------------------------
 

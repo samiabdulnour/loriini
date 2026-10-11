@@ -4935,3 +4935,11 @@ only for its own name in bold; and on a Mac the window opens on at most
 three quarters of the screen either way (``Window.MAC_SHARE``), the sheets
 panel starting folded when that leaves too little room beside the page. On
 a 1512 x 982 laptop the window went from 1471 x 856 to 1090 x 736.
+
+**The reference picture and its palette are two windows again.** Asked the
+same day: the picture "is connected to the reference image option window
+... moving and resizing together". D121's one palette glued the controls'
+foot to the picture's top edge, so the controls went wherever the picture
+was lined up -- over the model -- and the picture could be no narrower than
+the strip. Now each moves and sizes on its own; *Over Archicad* and the
+first placing lay only the picture, and the palette stays where it was put.
