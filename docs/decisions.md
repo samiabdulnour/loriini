@@ -5026,3 +5026,15 @@ from about 1100 px (``PAGE_LEAST``), and folds only below that. The room a
 row has is worked out from the page's width, not read off the panel: a
 panel is as wide as what is in it, and measured from there each wrap made
 the next.
+
+Before a project has a location, the sheets panel draws the sun over Sydney
+(``STAND_IN_PLACE``), Archicad's own preset. Earlier it drew no sun at all,
+because a shadow cast at a guessed latitude looks right without being right.
+In practice a shadow diagram with no shadows on it showed nothing worth
+checking. The card says the sun is Sydney's until the project's location
+is set, and the run itself still uses the project's real location. Shadows
+are clipped to the site, so a long morning shadow stays inside its cell.
+
+The ☰ menu carries About and the web site on both platforms, since the
+menu is where the program's own things now are. Trackpad scrolling follows
+Tk 9's ``<TouchpadScroll>``, which it sends in place of the wheel on a Mac.

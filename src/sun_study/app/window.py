@@ -80,9 +80,9 @@ from itertools import pairwise
 from pathlib import Path
 from tkinter import filedialog, ttk
 from tkinter import font as tkfont
-from typing import ClassVar
+from typing import ClassVar, Literal
 
-from sun_study import ADDON_FILE, PRODUCT, licence
+from sun_study import ADDON_FILE, PRODUCT, WEBSITE, licence
 from sun_study.app import (
     claude_mcp,
     icons,
@@ -139,6 +139,9 @@ TURN_WORDS: dict[str, bool] = {
 #: sun for the same instants the run will use, and two spellings of
 #: "Australia/Sydney" is two answers to what noon means.
 TIMEZONE = "Australia/Sydney"
+#: Where the sheets panel puts the sun before a project says where it is:
+#: Sydney, Archicad's own preset, as latitude and longitude.
+STAND_IN_PLACE = (-33.8688, 151.2093)
 
 #: Where a site run keeps what it fetched when no folder is given, as the
 #: Run folder's hint says it: spelt with this machine's own separator.
@@ -374,6 +377,20 @@ class Scroller(ttk.Frame):
         lines = max(1, abs(delta) // 120)
         self.canvas.yview_scroll(-lines if delta > 0 else lines, "units")
 
+    def glide(self, pixels: float) -> None:
+        """A trackpad's two fingers, by the pixel rather than by the line, so
+        the page follows the fingers the way every other Mac window does.
+        Held inside the scroll region, for the same reason as ``spin``."""
+        if pixels == 0 or not self.scrollable:
+            return
+        region = self.canvas.cget("scrollregion").split()
+        tall = float(region[3]) - float(region[1]) if len(region) == 4 else 0.0
+        if tall <= 0:
+            return
+        first, last = self.canvas.yview()
+        shown = last - first
+        self.canvas.yview_moveto(min(max(first - pixels / tall, 0.0), 1.0 - shown))
+
 
 def wheel_reaches_the_pointer(root: tk.Misc) -> None:
     """Give the wheel to whatever is under the mouse, and to nothing else.
@@ -411,6 +428,31 @@ def wheel_reaches_the_pointer(root: tk.Misc) -> None:
             under = getattr(under, "master", None)
 
     root.bind_all("<MouseWheel>", spin)
+
+    # Tk 9 on a Mac sends a trackpad's two-finger scroll as an event of its
+    # own, not as the wheel: bound to the wheel alone, the page scrolled for
+    # a mouse and stood still under a trackpad. The deltas come packed into
+    # one number, and Tk's own helper unpacks them.
+    def glide(event: tk.Event[tk.Misc]) -> None:
+        try:
+            under = root.winfo_containing(event.x_root, event.y_root)
+            _across, down = (
+                float(part)
+                for part in root.tk.splitlist(root.tk.call("tk::PreciseScrollDeltas", event.delta))
+            )
+        except (KeyError, tk.TclError, ValueError):
+            return
+        while under is not None:
+            if isinstance(under, Scroller):
+                under.glide(down)
+                return
+            under = getattr(under, "master", None)
+
+    try:
+        root.bind_all("<TouchpadScroll>", glide)
+    except tk.TclError:
+        # A Tk before 8.7 has no such event, and its trackpad is the wheel.
+        pass
 
 
 def pickable(names: Sequence[str]) -> list[str]:
@@ -1211,7 +1253,8 @@ class Chips(ttk.Frame):
             self._made.append(chip)
         if not self._values:
             self._made.append(ttk.Label(self, text=self._empty, style="Hint.TLabel"))
-        more = ttk.Button(self, text="+ Add", style="Add.TButton", command=self._add)
+        # As wide as its words: the theme's least button width made it a bar.
+        more = ttk.Button(self, text="+ Add", style="Add.TButton", width=0, command=self._add)
         Tooltip(
             more,
             "Opens the list the project itself holds, with what is already chosen "
@@ -1937,7 +1980,14 @@ def draw_sheet(
 
     face = tkfont.Font(root=paper, font=_face(SHEET_TEXT, False))
 
-    def words(mm_x: float, mm_y: float, text: str, *, room: float = 0) -> int:
+    def words(
+        mm_x: float,
+        mm_y: float,
+        text: str,
+        *,
+        room: float = 0,
+        anchor: Literal["sw", "s"] = "sw",
+    ) -> int:
         # One line, always: a line wrapped on a baseline grows *up*, over
         # whatever is drawn above it. Too long for its room, it is cut short.
         if room and face.measure(text) > x(room):
@@ -1949,7 +1999,7 @@ def draw_sheet(
                 x(mm_x),
                 x(mm_y),
                 text=text,
-                anchor="sw",
+                anchor=anchor,
                 fill=theme.INK,
                 font=_face(SHEET_TEXT, False),
             )
@@ -2013,11 +2063,14 @@ def draw_sheet(
         words(12, second, "   ".join(saying), room=left - 18)
 
     # -- the title block -------------------------------------------------
-    # North at the top, at the block's left edge with the words under it;
-    # the scale and the sheet number level with the two lines beside them.
-    inner = left + 3.5
+    # North at the top and the scale and the sheet number at the foot, all
+    # on the block's middle -- at the left edge, two short words and a ring
+    # in a narrow column read as left behind. A rule over the two closes
+    # them into a box of their own, the way a title block boxes its fields,
+    # and they stay level with the two lines beside them.
+    middle = (left + SHEET_MM_W - inset) / 2
     ring = 5.5
-    north_x, north_y = inner + ring, inset + 6.0 + ring
+    north_x, north_y = middle, inset + 6.0 + ring
     paper.create_oval(
         x(north_x - ring),
         x(north_y - ring),
@@ -2043,8 +2096,11 @@ def draw_sheet(
     # Unwrapped: a scale or a number is one word, and broken over two lines
     # it reads as two.
     # "NTS", as a drawing set says it, for a sheet that has no scale.
-    words(inner, first, sheet.scale or "NTS")
-    words(inner, second, sheet.number)
+    paper.create_line(
+        x(left), x(first - 17.0), x(SHEET_MM_W - inset), x(first - 17.0), fill=theme.INK
+    )
+    words(middle, first, sheet.scale or "NTS", anchor="s")
+    words(middle, second, sheet.number, anchor="s")
 
     # -- the edge, last ------------------------------------------------
     # Over everything, and hollow: lit blue under the pointer, it rims the
@@ -2278,6 +2334,39 @@ def _hatch(
         c += step
 
 
+def _clip_to(
+    points: Sequence[tuple[float, float]], area: tuple[float, float, float, float]
+) -> list[tuple[float, float]]:
+    """A convex polygon cut to a rectangle, one edge at a time
+    (Sutherland-Hodgman): what is left of it inside ``area``."""
+    left, top, right, foot = area
+    edges: tuple[tuple[Callable[[tuple[float, float]], bool], int, float], ...] = (
+        (lambda point: point[0] >= left, 0, left),
+        (lambda point: point[0] <= right, 0, right),
+        (lambda point: point[1] >= top, 1, top),
+        (lambda point: point[1] <= foot, 1, foot),
+    )
+    shape = list(points)
+    for inside, axis, at in edges:
+        if not shape:
+            break
+        kept: list[tuple[float, float]] = []
+        for index, here in enumerate(shape):
+            before = shape[index - 1]
+            if inside(here) != inside(before):
+                share = (at - before[axis]) / (here[axis] - before[axis])
+                kept.append(
+                    (
+                        before[0] + (here[0] - before[0]) * share,
+                        before[1] + (here[1] - before[1]) * share,
+                    )
+                )
+            if inside(here):
+                kept.append(here)
+        shape = kept
+    return shape
+
+
 def _draw_drawing(
     paper: tk.Canvas, study: str, drawing: Drawing, frame: tuple[float, float, float, float]
 ) -> None:
@@ -2381,7 +2470,11 @@ def _draw_drawing(
             for corner_y in (BLOCK_MM[1], BLOCK_MM[3])
             for dx, dy in ((0.0, 0.0), shift)
         ]
-        hatched(_hull(corners))
+        # Held to the site: a long winter-morning shadow otherwise ran out
+        # of its cell and across the hour printed under it.
+        held = _clip_to(_hull(corners), SITE_MM)
+        if len(held) >= 3:
+            hatched(held)
 
     def yard() -> None:
         """The courtyard, gridded the way the study samples it."""
@@ -3004,22 +3097,13 @@ class Window:
 
         brand = ttk.Frame(top, style="Chrome.TFrame")
         brand.pack(side="left", padx=(0, PAD * 2))
-        # The sun, drawn rather than read from the icon set: it is the one
-        # mark in the window that is the program's and nothing else's.
-        sun = tk.Canvas(brand, width=20, height=20, background=theme.CHROME, highlightthickness=0)
-        sun.create_oval(6.5, 6.5, 13.5, 13.5, outline=theme.SUN, width=1.6)
-        for x0, y0, x1, y1 in (
-            (10, 1.5, 10, 4),
-            (10, 16, 10, 18.5),
-            (1.5, 10, 4, 10),
-            (16, 10, 18.5, 10),
-            (4, 4, 5.8, 5.8),
-            (14.2, 14.2, 16, 16),
-            (4, 16, 5.8, 14.2),
-            (14.2, 5.8, 16, 4),
-        ):
-            sun.create_line(x0, y0, x1, y1, fill=theme.SUN, width=1.6)
-        sun.pack(side="left")
+        # The parrot, the program's own mark, as the Dock shows it. Pixel art
+        # on a grid of eight, so one pixel in eight is the whole picture at
+        # 32 and still crisp; anything between would smear its squares.
+        mark = brand_mark(self.root)
+        if mark is not None:
+            self._mark = mark  # Tk forgets a picture nothing in Python holds
+            ttk.Label(brand, image=mark, style="Brand.TLabel").pack(side="left")
         ttk.Label(brand, text=PRODUCT, style="Brand.TLabel").pack(side="left", padx=(8, 0))
 
         # Listed, never assumed: each instance gets its own port, so the
@@ -3077,11 +3161,14 @@ class Window:
         self.settings_menu.add_command(label="Load preset…", command=self._load_preset)
         self.settings_menu.add_separator()
         self.settings_menu.add_command(label="Forget saved settings", command=self._forget)
-        if not theme.MACOS:
-            # On a Mac it is in the program's menu (``_mac_menus``); a Windows
-            # tool has no program menu to put it in.
-            self.settings_menu.add_separator()
-            self.settings_menu.add_command(label=f"About {PRODUCT}", command=self._about)
+        # About here as well as in a Mac's program menu: this is where people
+        # look for it once the menu is the one place the program's own things
+        # are, and the web site beside it.
+        self.settings_menu.add_separator()
+        self.settings_menu.add_command(label=f"About {PRODUCT}", command=self._about)
+        self.settings_menu.add_command(
+            label=f"{WEBSITE.removeprefix('https://')} ↗", command=self._website
+        )
         glyph = theme.menu_glyph(self.root)
         menu = ttk.Button(
             top,
@@ -3100,7 +3187,8 @@ class Window:
             "open project. Save as default remembers every page -- the ticks, "
             "the fields and which page was open -- and fills the window in "
             "with it next time. A preset is the same written to a file you "
-            "name. Forget throws the saved settings away.",
+            "name. Forget throws the saved settings away. About says which "
+            "version this is and whose licence it runs on.",
             title="Menu",
         )
         # The contour under the tool bar.
@@ -3175,6 +3263,13 @@ class Window:
         """Whether the reference picture is on the screen."""
         palette = getattr(self, "palette", None)
         return palette is not None and palette.showing
+
+    @staticmethod
+    def _website() -> None:
+        """The product's site, in the browser."""
+        import webbrowser
+
+        webbrowser.open(WEBSITE)
 
     def _about(self, at: str = "") -> None:
         """Open the info box, at the top or at the data sources.
@@ -5639,7 +5734,10 @@ class Window:
             empty="no names chosen",
             label=label,
         )
-        names.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        # Under the layer, not beside it: beside it the names and their Add
+        # had the narrow end of the row, and wrapped into a column of their
+        # own with the button stretched under them.
+        names.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         line = self._hint(parent, row + 1, hint)
         layer.bind("<<ComboboxSelected>>", lambda _event: self._offer_zone_names())
         for target in (name, layer, names):
@@ -7393,18 +7491,21 @@ class Window:
     def _sun_at(self, day: str, clock: str) -> tuple[float | None, float | None]:
         """Where the sun is, for that day and that hour, at this project.
 
-        ``None`` when nobody has set the project location. The panel then
-        draws the sheet and says on it that there is no sun to draw, which is
-        the honest answer -- a shadow at a guessed latitude is a drawing that
-        looks right and is not.
+        Before a project says where it is, the sun is put over Sydney --
+        Archicad's own preset, and where these studies are made -- so a
+        shadow diagram shows shadows rather than an empty plan. The card says
+        so while the pointer is on the sheet: a miniature is a picture of
+        what the run will make, and the run itself will not start without the
+        project's real location.
 
         The timezone is the one the run itself passes, so the panel and the
         study cannot disagree about what 12:00 means. It matters: in December
         that is daylight saving, solar noon is nearer one o'clock, and a
         summer study set to noon is not a midday study.
         """
-        if self.options.latitude is None or self.options.longitude is None:
-            return (None, None)
+        latitude, longitude = self.options.latitude, self.options.longitude
+        if latitude is None or longitude is None:
+            latitude, longitude = STAND_IN_PLACE
         try:
             month, number = (int(piece) for piece in parse_day(day).split("-"))
             hour, _, minute = clock.partition(":")
@@ -7416,7 +7517,7 @@ class Window:
                 int(minute or 0),
                 tzinfo=resolve_timezone(TIMEZONE),
             )
-            found = solar_position([when], self.options.latitude, self.options.longitude)
+            found = solar_position([when], latitude, longitude)
         except (ValueError, KeyError, TypeError, UnknownTimezoneError):
             # A day nobody can parse, a year that is not one, an hour typed as
             # words. None of those is worth refusing to draw the sheet for --
@@ -7466,10 +7567,7 @@ class Window:
         if not sheet.time:
             detail = _untimed_note(sheet)
         elif sheet.elevation is None:
-            detail = (
-                "No project location, so there is no sun to put on it. Set one in "
-                "Options > Project Preferences > Project Location, then press Refresh."
-            )
+            detail = "No sun can be put on it: the day or the hour is not one."
         elif len(sheet.drawings) == 1:
             detail = f"Sun {sheet.elevation:.1f} degrees up, at azimuth {sheet.azimuth:.0f}."
             if sheet.reach is not None and sheet.study == "Shadow diagram":
@@ -7489,6 +7587,12 @@ class Window:
             detail += f". Sun: {suns}."
         if sheet.kind == COMMUNAL_HOURLY:
             detail += " One such set per storey the space spans."
+        if sheet.time and self.options.latitude is None:
+            # First, so the card's length limit never cuts it off.
+            detail = (
+                "Drawn with Sydney's sun until the project has a location: set one in "
+                "Options > Project Preferences > Project Location, then press Refresh. " + detail
+            )
         if sheet.time:
             short = f"{sheet.kind}, {sheet.day} at {sheet.time}."
         elif sheet.day:
@@ -8072,6 +8176,19 @@ def icon_path() -> Path | None:
     root = Path(packaged) if packaged else Path(__file__).resolve().parents[3]
     found = root / "assets" / "loriini.ico"
     return found if found.is_file() else None
+
+
+def brand_mark(window: tk.Misc) -> tk.PhotoImage | None:
+    """The parrot at 32 pixels for the tool bar, or ``None`` without it."""
+    packaged = getattr(sys, "_MEIPASS", None)
+    root = Path(packaged) if packaged else Path(__file__).resolve().parents[3]
+    found = root / "assets" / MAC_DOCK_ICON
+    if not found.is_file():
+        return None
+    try:
+        return tk.PhotoImage(master=window, file=str(found)).subsample(8)
+    except tk.TclError:
+        return None
 
 
 def wear_the_icon(window: tk.Tk) -> None:

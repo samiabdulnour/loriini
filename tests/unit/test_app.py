@@ -1371,19 +1371,22 @@ def test_the_preset_buttons_wear_their_own_pictures(hidden_window: Any) -> None:
     assert icons.named("load_preset", 16) is not None
 
 
-def test_a_project_with_no_location_draws_the_sheet_and_says_it_has_no_sun(
+def test_a_project_with_no_location_draws_sydneys_sun_and_says_so(
     hidden_window: Any,
 ) -> None:
-    """A shadow at a guessed latitude is a drawing that looks right and is
-    not, which is the one thing this window exists to prevent."""
+    """A shadow diagram with no shadows on it shows nothing worth checking,
+    so before a project has a location the panel puts Sydney's sun on it --
+    Archicad's own preset -- and the card says that is what it is."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
     hidden_window.do_shadows.set(True)
 
     without = hidden_window.planned()
     assert without, "the sheets are still listed"
-    assert all(sheet.elevation is None for sheet in without)
-    assert all(sheet.reach is None for sheet in without), "and nothing to draw with"
+    assert all(sheet.elevation is not None for sheet in without)
+    assert any(sheet.reach is not None for sheet in without), "with shadows to draw"
+    hidden_window._sheet_under(without[0])
+    assert "Sydney" in hidden_window.info.detail.cget("text")
 
     hidden_window.options = replace(hidden_window.options, latitude=-33.9663, longitude=151.1340)
     hidden_window.days["winter"].set(True)
@@ -2183,6 +2186,29 @@ def test_a_touchpad_scrolls_both_ways(hidden_window: Any) -> None:
 
     assert moved > 0.0, "a small gesture down has to move the page"
     assert form.canvas.yview()[0] == 0.0, "and the same gesture up puts it back"
+
+
+def test_a_mac_trackpad_glides_the_page(hidden_window: Any) -> None:
+    """Tk 9 sends a Mac trackpad's two fingers as an event of its own, by the
+    pixel; bound to the wheel alone, the page stood still under them."""
+    form = hidden_window.panes[0]
+    form.canvas.configure(scrollregion=(0, 0, 100, 4000))
+
+    form.glide(-200)  # fingers up: the page moves on
+    moved = form.canvas.yview()[0]
+    form.glide(10_000)  # and far past the top is held at the top
+
+    assert moved > 0.0
+    assert form.canvas.yview()[0] == 0.0
+    if hidden_window.root.tk.call("info", "patchlevel").startswith("9"):
+        assert hidden_window.root.bind_all("<TouchpadScroll>"), "and the event is listened for"
+
+
+def test_a_shadow_is_held_to_the_site() -> None:
+    """A long morning shadow ran out of its cell and over the hour under it."""
+    cut = window._clip_to([(0, 0), (300, 0), (300, 300), (0, 300)], (10, 20, 50, 60))
+
+    assert {(round(x), round(y)) for x, y in cut} == {(10, 20), (50, 20), (50, 60), (10, 60)}
 
 
 def test_the_wheel_over_an_open_dropdown_says_nothing(
@@ -3860,9 +3886,9 @@ def test_the_programs_actions_share_one_menu(hidden_window: Any) -> None:
         "Save preset…",
         "Load preset…",
         "Forget saved settings",
+        f"About {PRODUCT}",
+        "loriini.app ↗",
     ]
-    if not theme.MACOS:
-        expected.append(f"About {PRODUCT}")
     assert labels == expected
 
 

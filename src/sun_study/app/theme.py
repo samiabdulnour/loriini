@@ -1166,15 +1166,10 @@ def _switches(style: ttk.Style) -> None:
                 {
                     "sticky": "nswe",
                     "children": [
+                        # No focus ring: round a switch with no words beside
+                        # it, it was a dotted sliver that stayed after a click.
                         (element, {"side": "left", "sticky": ""}),
-                        (
-                            "Checkbutton.focus",
-                            {
-                                "side": "left",
-                                "sticky": "w",
-                                "children": [("Checkbutton.label", {"sticky": "nswe"})],
-                            },
-                        ),
+                        ("Checkbutton.label", {"side": "left", "sticky": "w"}),
                     ],
                 },
             )
