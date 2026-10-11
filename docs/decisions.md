@@ -4954,3 +4954,54 @@ setIgnoresMouseEvents:]`` on the Cocoa window Tk made for the picture,
 found by its title (``overlay.MAC_TITLE``) among the application's windows
 and called through the Objective-C runtime with ``ctypes``, as the Windows
 half goes through user32.
+
+### D131 — Option A: a sidebar of pages, panels that fold, and the help in the sidebar
+
+Asked after a design review (the "Loriini Design Review" canvas, Option A
+chosen out of two): "modern but still Archicad like". Built as close to the
+mock-ups as Tk allows.
+
+**A sidebar replaces the tab strip.** The strip's 32 px drawings took about
+140 px off every page, and its only mark for *queued* was a blue name and a
+dot. The pages are now rows down the left in three groups -- SET UP, STUDIES,
+TOOLS -- the way Archicad lists the pages of a settings dialog. The open page
+is a rounded blue bar; a study page has a switch that queues it and a pill
+with the sheets it will make. A page with several studies (Solar analysis,
+Shadow diagram) turns its lead study on from the sidebar and all of them off
+(``Window.LEADS``); the others are switched on the page.
+
+**The help is a card at the foot of the sidebar.** The band across the foot
+of the window cost every page three lines of height. The card says the same
+-- what the thing under the pointer is, what it is set to, and what happens
+when it is wrong -- in room the sidebar had spare, and never covers a field.
+The sheets panel's hover goes to it too.
+
+**Panels.** Headed by a fold triangle and their name in sentence case, not
+capitals; a study's header carries its count and a switch where the 12 px
+tick was. A study switched off starts folded; switching it on opens it.
+Labels are right-aligned against their fields and the icon on every row is
+gone. Choice tiles with words are segments: words only, the chosen one blue.
+
+**The bars.** The tool bar is the program, the project picker (as wide as a
+name, not the window), Refresh, and one menu holding Connect Claude… and the
+settings actions. The run bar is one line: the project's status, what is
+queued by study, the build, and Run -- which counts sheets ("Run 6 sheets")
+the way the panel draws them. Stop is shown only during a run.
+
+**Tools › Reference image.** The controls that were a palette window are a
+page; while a picture is open the main window is kept on top and lifted
+over it, so the picture can never cover them. The picture's window is made
+the first time there is a picture.
+
+**Sheet miniatures.** One text style -- one size, regular, ink -- on shared
+baselines: the name and the hours at the foot of the field, level with the
+scale and the number in the title block, with north at the block's top-left.
+The wordmark, the block's placeholder rules, the circled numbers and the "No
+project location" line are gone; at 300 px they were noise.
+
+**A fault found on the way.** ``option_add("*Font", body)`` filled in every
+ttk label's own ``-font``, which beat the style -- so every bold title in the
+window had been set in the body face. ``*TLabel.Font`` is now left empty.
+
+On a laptop at three quarters of the screen the page needs about 700 px, so
+the sheets panel starts folded at its edge there and opens with its chevron.

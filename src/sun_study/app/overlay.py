@@ -14,24 +14,24 @@ the picture until the two line up. Nothing about it touches the project or
 the add-on, and it works over any version of Archicad -- or over anything
 else. Roadmap item R4; D121 records how it is built.
 
-A palette and a picture, each where it is put
----------------------------------------------
+The controls on a page, and the picture where it is put
+-------------------------------------------------------
 
-Two windows, each moved and sized on its own. The palette is the controls
--- the opacity slider, the fit, the lock and the hide -- and stays wherever
-it is dragged, out of the way. The picture is a borderless frame of its
-own: drag it to move it, drag its blue corner to size it from its top-left
-corner, which stays put. *Over Archicad* lays the picture over the 3D
-window and leaves the palette alone.
+The controls -- the file, the fit, the opacity, the lock -- are a page of
+the main window, under Tools in its sidebar: a tool used on the open project
+is a page like any other, and a palette of its own was one more window to
+find. The picture is a borderless frame of its own: drag it to move it,
+drag its blue corner to size it from its top-left corner, which stays put.
+*Over Archicad* lays the picture over the 3D window.
 
-They used to be glued, the palette's foot on the picture's top edge, so
-that the pair moved as one -- which put the controls over the model
-wherever the picture went, and made a picture as narrow as the strip
-impossible. A picture is lined up with the model; the controls are not.
+While a picture is open the main window is kept above it, the way the
+palette used to be: the picture is on top of everything else, and pressing
+it would otherwise bring it over the slider that dims it. Closing the
+picture lets the window go back to being an ordinary one.
 
 Locked, the picture is a thing to look through: the corner goes and the
 mouse goes through it to the model. A window the mouse goes through cannot
-hold a slider, which is why the controls were always a window of their own.
+hold a slider, which is why the controls were never on the picture.
 
 Fit and stretch
 ---------------
@@ -78,7 +78,7 @@ from typing import Final, Literal
 
 from PIL import Image, ImageOps, ImageTk
 
-from sun_study.app import icons, theme
+from sun_study.app import theme
 
 __all__ = [
     "FIT",
@@ -91,7 +91,6 @@ __all__ = [
     "click_through",
     "fitted",
     "pick",
-    "show",
     "stretched",
 ]
 
@@ -145,10 +144,10 @@ FILE_TYPES: tuple[tuple[str, str], ...] = (
 #: product's name since it stopped being written in capitals.
 ARCHICAD = "archicad"
 
-#: What the palette says when nothing is being pointed at.
+#: What the page says when nothing has gone wrong.
 STANDING_HINT = (
-    "Drag the palette or the picture to move them, and the blue corner to size "
-    "the picture. Lock it, then orbit the model under it until the two line up."
+    "Drag the picture to move it, and its blue corner to size it. Lock it, "
+    "then orbit the model under it until the two line up."
 )
 
 #: Win32, for ``click_through``: the slot the extended style is kept in, the
@@ -556,11 +555,11 @@ class Overlay(tk.Toplevel):
         self._under()
 
     def _under(self) -> None:
-        """Put the palette that owns this picture back over it. Both stay on
+        """Put the window that owns this picture back over it. Both stay on
         top of everything else; between the two, the controls are always the
         upper, so the picture can never cover the slider that dims it."""
         owner = self.master
-        if isinstance(owner, tk.Toplevel) and owner.winfo_exists():
+        if isinstance(owner, (tk.Tk, tk.Toplevel)) and owner.winfo_exists():
             owner.lift()
 
     def hide(self) -> None:
@@ -668,62 +667,87 @@ class Overlay(tk.Toplevel):
         self._settle = None
 
 
-# -- the palette -----------------------------------------------------------------
+# -- the controls ----------------------------------------------------------------
 
 
-class Palette(tk.Toplevel):
-    """The controls, in a small palette of their own, the way Archicad's float.
+#: How a control is explained: the widget, its name, and the sentence. The
+#: window hands in its own, which puts the sentence in the card at the foot of
+#: its sidebar like every other control's.
+Explain = Callable[[tk.Widget, str, str], None]
 
-    Short on purpose: it sits over Archicad while the model is orbited, and
-    every pixel it takes is a pixel of the model it is covering. It has its
-    own line of explanation at the foot rather than the window's band,
-    because the window is under Archicad while this is in use.
 
-    The picture is ``overlay``, a second toplevel that moves and sizes on
-    its own; ``lay`` puts it somewhere, by its frame, which is what the
-    Archicad window and the screen are measured in. The palette stays where
-    it was put.
+class Palette:
+    """The controls for the picture, built into two panels of a page.
+
+    ``picture`` holds what the picture is -- the file, the fit, the opacity;
+    ``placing`` holds where it is and what it does -- over Archicad, locked,
+    shown, closed. Both are a window's panels with a label column at nought
+    and the control beside it, so the rows line up with every other page.
+
+    The picture is ``overlay``, a toplevel that moves and sizes on its own;
+    ``lay`` puts it somewhere, by its frame, which is what the Archicad window
+    and the screen are measured in. While it is showing, the window these
+    panels are in is kept on top as well, and above it.
     """
 
-    def __init__(self, parent: tk.Misc, *, project: Callable[[], str] = lambda: "") -> None:
-        super().__init__(parent)
-        self.title("Reference image")
-        self.resizable(False, False)
-        self.attributes("-topmost", True)
-        if sys.platform == "win32":
-            # A narrow title bar, and no place on the task bar: it is a
-            # palette of the window, not a window of its own.
-            try:
-                self.attributes("-toolwindow", True)
-            except tk.TclError:  # pragma: no cover - a Tk without the option
-                pass
-        self.configure(background=theme.SURFACE)
+    def __init__(
+        self,
+        picture: ttk.Frame,
+        placing: ttk.Frame,
+        *,
+        project: Callable[[], str] = lambda: "",
+        explain: Explain | None = None,
+        on_change: Callable[[], None] | None = None,
+    ) -> None:
         self.project = project
-        # On its own: dragged, it moves itself; sized by its corner, it sizes
-        # itself, down to ``LEAST_SIDE``. Nothing it does moves the palette.
-        self.overlay = Overlay(self)
+        self._on_change = on_change
+        explain = explain or (lambda _widget, _title, _text: None)
+        #: The window the controls are in: kept above the picture.
+        self.top = picture.winfo_toplevel()
+        #: The picture's window, made the first time it is wanted: a page
+        #: of the main window is built when the window opens, and a window
+        #: nobody has asked for is not one to make then.
+        self._overlay: Overlay | None = None
+        self._mode_now: Mode = FIT
         #: Where the file dialog opens: where the last picture came from.
         self.folder = Path.home()
 
-        page = ttk.Frame(self, padding=(PAD + 2, PAD, PAD + 2, PAD))
-        page.pack(fill="both", expand=True)
-        page.columnconfigure(1, weight=1)
+        def name(box: ttk.Frame, row: int, text: str) -> ttk.Label:
+            label = ttk.Label(box, text=text, anchor="e")
+            label.grid(row=row, column=0, sticky="e", pady=(6, 0), padx=(0, 12))
+            return label
 
-        self.open = ttk.Button(
-            page,
-            text="Open picture…",
-            command=self._pick,
-            width=15,
-            **icons.button_options("reference"),
-        )
+        # -- the picture ---------------------------------------------------
+        name(picture, 0, "File")
+        held = ttk.Frame(picture)
+        held.grid(row=0, column=1, sticky="w", pady=(6, 0))
+        self.open = ttk.Button(held, text="Open picture…", command=self._pick)
         self.open.grid(row=0, column=0, sticky="w")
-        self.named = ttk.Label(page, text="No picture yet.", style="Hint.TLabel")
-        self.named.grid(row=0, column=1, columnspan=2, sticky="w", padx=(PAD, 0))
+        self.named = ttk.Label(held, text="No picture yet.", style="Hint.TLabel")
+        self.named.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
-        ttk.Label(page, text="Opacity").grid(row=1, column=0, sticky="w", pady=(PAD, 0))
+        name(picture, 1, "Size")
+        ways = ttk.Frame(picture)
+        ways.grid(row=1, column=1, sticky="w", pady=(6, 0))
+        self.fit = ttk.Button(
+            ways, text="Fit", takefocus=False, padding=(14, 1), command=lambda: self._mode(FIT)
+        )
+        self.fit.grid(row=0, column=0, padx=(0, 2))
+        self.stretch = ttk.Button(
+            ways,
+            text="Stretch",
+            takefocus=False,
+            padding=(14, 1),
+            command=lambda: self._mode(STRETCH),
+        )
+        self.stretch.grid(row=0, column=1)
+
+        name(picture, 2, "Opacity")
+        sliding = ttk.Frame(picture)
+        sliding.grid(row=2, column=1, sticky="w", pady=(6, 0))
         self.level = tk.DoubleVar(value=DEFAULT_OPACITY * 100)
         self.slider = ttk.Scale(
-            page,
+            sliding,
             from_=LEAST_OPACITY * 100,
             to=100,
             orient="horizontal",
@@ -731,89 +755,129 @@ class Palette(tk.Toplevel):
             command=self._slid,
             length=220,
         )
-        self.slider.grid(row=1, column=1, sticky="ew", pady=(PAD, 0), padx=(PAD, 0))
-        self.percent = ttk.Label(page, text="", width=5, anchor="e")
-        self.percent.grid(row=1, column=2, sticky="e", pady=(PAD, 0))
+        self.slider.grid(row=0, column=0, sticky="w")
+        self.percent = ttk.Label(sliding, text="", width=5, anchor="e")
+        self.percent.grid(row=0, column=1, sticky="w", padx=(8, 0))
 
-        ways = ttk.Frame(page)
-        ways.grid(row=2, column=0, columnspan=2, sticky="w", pady=(PAD, 0))
-        self.fit = ttk.Button(ways, text="Fit", takefocus=False, command=lambda: self._mode(FIT))
-        self.fit.grid(row=0, column=0, padx=(0, 4))
-        self.stretch = ttk.Button(
-            ways, text="Stretch", takefocus=False, command=lambda: self._mode(STRETCH)
-        )
-        self.stretch.grid(row=0, column=1)
-        self.cover = ttk.Button(page, text="Over Archicad", command=self._cover, width=14)
-        self.cover.grid(row=2, column=2, sticky="e", pady=(PAD, 0), padx=(PAD, 0))
+        # -- where it is, and what it does ---------------------------------
+        name(placing, 0, "Place")
+        held = ttk.Frame(placing)
+        held.grid(row=0, column=1, sticky="w", pady=(6, 0))
+        self.cover = ttk.Button(held, text="Over the 3D window", command=self._cover)
+        self.cover.grid(row=0, column=0, sticky="w")
+        if sys.platform != "win32":
+            ttk.Label(
+                held,
+                text="Windows only for now; on a Mac, drag it into place.",
+                style="Hint.TLabel",
+            ).grid(row=0, column=1, sticky="w", padx=(10, 0))
 
-        ticks = ttk.Frame(page)
-        ticks.grid(row=3, column=0, columnspan=2, sticky="w", pady=(PAD, 0))
+        name(placing, 1, "Lock")
         self.locked = tk.BooleanVar(value=False)
-        self.lock = ttk.Checkbutton(ticks, text="Lock", variable=self.locked, command=self._lock)
-        self.lock.grid(row=0, column=0, padx=(0, PAD + 4))
+        self.lock = ttk.Checkbutton(
+            placing,
+            text="Clicks go through to Archicad",
+            style="SwitchPanel.TCheckbutton",
+            variable=self.locked,
+            command=self._lock,
+        )
+        self.lock.grid(row=1, column=1, sticky="w", pady=(6, 0))
+
+        name(placing, 2, "Show")
+        #: Whether the picture is put away. The switch reads the other way
+        #: round -- on is shown -- which is what ``onvalue`` is for.
         self.hidden = tk.BooleanVar(value=False)
-        self.hide = ttk.Checkbutton(ticks, text="Hide", variable=self.hidden, command=self._hide)
-        self.hide.grid(row=0, column=1)
-        self.shut = ttk.Button(page, text="Close", command=self.close, width=14)
-        self.shut.grid(row=3, column=2, sticky="e", pady=(PAD, 0), padx=(PAD, 0))
+        self.hide = ttk.Checkbutton(
+            placing,
+            text="Picture visible",
+            style="SwitchPanel.TCheckbutton",
+            variable=self.hidden,
+            onvalue=False,
+            offvalue=True,
+            command=self._hide,
+        )
+        self.hide.grid(row=2, column=1, sticky="w", pady=(6, 0))
+
+        self.shut = ttk.Button(placing, text="Close picture", command=self.close)
+        self.shut.grid(row=3, column=1, sticky="w", pady=(10, 0))
 
         self.hint = ttk.Label(
-            page, text=STANDING_HINT, style="Hint.TLabel", wraplength=380, justify="left"
+            placing, text=STANDING_HINT, style="Hint.TLabel", wraplength=460, justify="left"
         )
-        self.hint.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(PAD + 2, 0))
+        self.hint.grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
-        self._explain(
+        explain(
             self.open,
+            "Open picture",
             "A photograph or a rendering to set the view up from: PNG, JPEG, "
             "TIFF, BMP, GIF or WebP.",
         )
-        self._explain(
+        explain(
             self.slider,
+            "Opacity",
             "How much of the picture shows over the model. Halfway is where "
             "both can be read at once.",
         )
-        self._explain(
+        explain(
             self.fit,
+            "Fit",
             "The whole picture inside the frame with its shape kept; the "
             "frame's spare margins are see-through.",
         )
-        self._explain(
+        explain(
             self.stretch,
+            "Stretch",
             "The picture pulled to the frame's shape, for a picture already "
             "cropped to the 3D window's own.",
         )
-        self._explain(
+        explain(
             self.cover,
+            "Over the 3D window",
             "Lays the frame over the Archicad window showing the chosen project "
             "-- the whole of it, inside its frame -- to start from. Then drag "
             "the blue corner in to the 3D window's edges.",
         )
-        self._explain(
+        explain(
             self.lock,
+            "Lock",
             "The mouse goes through the picture to the model under it, and the "
-            "corner goes. Unlock to move the picture or size it again.",
+            "corner goes, so you can orbit and select in Archicad under it. "
+            "Turn Lock off to move or size the picture again.",
         )
-        self._explain(self.hide, "Takes the picture off the screen without closing it.")
-        self._explain(self.shut, "Closes the picture and this palette.")
+        explain(self.hide, "Show", "Takes the picture off the screen without closing it.")
+        explain(
+            self.shut,
+            "Close picture",
+            "Closes the picture. The window goes back to being an ordinary one.",
+        )
 
         self._mode(FIT)
         self._slid()
-        self.protocol("WM_DELETE_WINDOW", self.close)
-        self.bind("<Destroy>", self._destroyed)
-        # Top right of the screen, out of the way of a 3D window that is
-        # nearly always to the left of the palettes Archicad keeps there.
-        self.update_idletasks()
-        self.geometry(f"+{max(0, self.winfo_screenwidth() - self.winfo_reqwidth() - 24)}+48")
+
+    @property
+    def overlay(self) -> Overlay:
+        """The picture's window, made with the page's opacity and fit."""
+        if self._overlay is None or not self._overlay.winfo_exists():
+            self._overlay = Overlay(self.top)
+            self._overlay.set_opacity(self.level.get() / 100)
+            self._overlay.set_mode(self._mode_now)
+        return self._overlay
 
     def lay(self, frame: Placement) -> None:
-        """Put the picture's frame here. The palette is not moved."""
+        """Put the picture's frame here."""
         self.overlay.place_at(frame)
+
+    @property
+    def showing(self) -> bool:
+        """Whether there is a picture on the screen."""
+        made = self._overlay
+        return made is not None and made.picture is not None and made.shown
 
     # -- the controls ---------------------------------------------------------------
 
     def _pick(self) -> None:
         chosen = filedialog.askopenfilename(
-            parent=self,
+            parent=self.top,
             title="Open a reference picture",
             filetypes=FILE_TYPES,
             initialdir=str(self.folder),
@@ -832,13 +896,29 @@ class Palette(tk.Toplevel):
         self.folder = path.parent
         picture = self.overlay.picture
         size = f"{picture.width} \N{MULTIPLICATION SIGN} {picture.height}" if picture else ""
-        self.named.configure(text=f"{path.name}   {size}")
+        self.named.configure(text=f"{path.name} · {size}")
         if not self.overlay.placed:
             self._place_first()
         self.hidden.set(False)
-        self.overlay.show()
+        self._show()
         self.say(STANDING_HINT)
         return ""
+
+    def _show(self) -> None:
+        """The picture on the screen, and this window kept above it."""
+        self._keep_up(True)
+        self.overlay.show()
+        self._changed()
+
+    def _keep_up(self, on: bool) -> None:
+        try:
+            self.top.attributes("-topmost", on)
+        except tk.TclError:  # pragma: no cover - a window already gone
+            pass
+
+    def _changed(self) -> None:
+        if self._on_change is not None:
+            self._on_change()
 
     def _place_first(self) -> None:
         """Over the Archicad window if one can be found; otherwise the middle
@@ -850,7 +930,7 @@ class Palette(tk.Toplevel):
         picture = self.overlay.picture
         if picture is None:
             return
-        wide, tall = self.winfo_screenwidth(), self.winfo_screenheight()
+        wide, tall = self.top.winfo_screenwidth(), self.top.winfo_screenheight()
         box = fitted(picture.size, (wide * 3 // 5, tall * 3 // 5))
         self.lay(
             Placement((wide - box.width) // 2, (tall - box.height) // 2, box.width, box.height)
@@ -859,10 +939,13 @@ class Palette(tk.Toplevel):
     def _slid(self, _value: str = "") -> None:
         level = self.level.get()
         self.percent.configure(text=f"{round(level)} %")
-        self.overlay.set_opacity(level / 100)
+        if self._overlay is not None:
+            self._overlay.set_opacity(level / 100)
 
     def _mode(self, mode: Mode) -> None:
-        self.overlay.set_mode(mode)
+        self._mode_now = mode
+        if self._overlay is not None:
+            self._overlay.set_mode(mode)
         self.fit.configure(style="TileOn.TButton" if mode == FIT else "Tile.TButton")
         self.stretch.configure(style="TileOn.TButton" if mode == STRETCH else "Tile.TButton")
 
@@ -884,10 +967,12 @@ class Palette(tk.Toplevel):
             return
         self.lay(over.client)
         if self.overlay.picture is not None and not self.hidden.get():
-            self.overlay.show()
+            self._show()
         self.say(f"Over “{over.title}”. Drag the blue corner in to the 3D window's edges.")
 
     def _lock(self) -> None:
+        if self._overlay is None:
+            return
         passes = self.overlay.lock(self.locked.get())
         if not self.locked.get():
             self.say(STANDING_HINT)
@@ -900,46 +985,30 @@ class Palette(tk.Toplevel):
             )
 
     def _hide(self) -> None:
+        if self._overlay is None:
+            return
         if self.hidden.get():
             self.overlay.hide()
+            self._keep_up(False)
+            self._changed()
         elif self.overlay.picture is not None:
-            self.overlay.show()
+            self._show()
 
     def say(self, text: str, *, refused: bool = False) -> None:
-        """The line at the foot: what a control does, or what went wrong."""
+        """The line at the foot: what happened, or what went wrong."""
         self.hint.configure(text=text, style="Refused.TLabel" if refused else "Hint.TLabel")
 
-    def _explain(self, widget: tk.Widget, text: str) -> None:
-        widget.bind("<Enter>", lambda _event: self.say(text), add="+")
-        widget.bind("<Leave>", lambda _event: self.say(STANDING_HINT), add="+")
-
     def close(self) -> None:
-        self.destroy()
-
-    def _destroyed(self, event: tk.Event[tk.Misc]) -> None:
-        # Every child's <Destroy> arrives here too; only the palette's own
-        # means the palette is gone.
-        global _open
-        if _open is self and str(event.widget) == str(self):
-            _open = None
-
-
-#: The one palette, whichever button opened it. A second picture over the
-#: first is never what anybody meant, so the open one is raised instead.
-_open: Palette | None = None
-
-
-def show(parent: tk.Misc, *, project: Callable[[], str] = lambda: "") -> Palette:
-    """Open the palette, or raise the one already open, and answer with it."""
-    global _open
-    if _open is not None:
-        try:
-            _open.deiconify()
-            _open.lift()
-            _open.focus_set()
-        except tk.TclError:  # pragma: no cover - destroyed without telling us
-            _open = None
-        else:
-            return _open
-    _open = Palette(parent, project=project)
-    return _open
+        """Put the picture away and forget it; the controls stay."""
+        if self._overlay is None:
+            return
+        self.overlay.hide()
+        self.overlay.picture = None
+        self.overlay.name = ""
+        if self.locked.get():
+            self.locked.set(False)
+            self.overlay.lock(False)
+        self.named.configure(text="No picture yet.")
+        self._keep_up(False)
+        self.say(STANDING_HINT)
+        self._changed()

@@ -79,8 +79,7 @@ from functools import partial
 from itertools import pairwise
 from pathlib import Path
 from tkinter import filedialog, ttk
-from tkinter import font as tkfont
-from typing import ClassVar, Literal
+from typing import ClassVar
 
 from sun_study import ADDON_FILE, PRODUCT, licence
 from sun_study.app import (
@@ -307,8 +306,13 @@ class Scroller(ttk.Frame):
         about it -- the canvas, the frame inside it and the gutter the
         scrollbar runs in -- and a white gutter down a grey panel is what
         forgetting one of them looks like."""
-        on_chrome = ground == theme.CHROME
-        frame_style = {theme.CHROME: "Dock.TFrame", theme.PAGE: "Page.TFrame"}.get(ground, "TFrame")
+        frame_style = {theme.SIDEBAR: "Dock.TFrame", theme.PAGE: "Page.TFrame"}.get(
+            ground, "TFrame"
+        )
+        bar_style = {
+            theme.SIDEBAR: "Dock.Vertical.TScrollbar",
+            theme.PAGE: "Page.Vertical.TScrollbar",
+        }.get(ground, "Vertical.TScrollbar")
         super().__init__(parent, style=frame_style)
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
@@ -318,7 +322,7 @@ class Scroller(ttk.Frame):
             self,
             orient="vertical",
             command=self.canvas.yview,
-            style="Dock.Vertical.TScrollbar" if on_chrome else "Vertical.TScrollbar",
+            style=bar_style,
         )
         self.bar.grid(row=0, column=1, sticky="ns")
         self.canvas.configure(yscrollcommand=self.bar.set)
@@ -837,16 +841,20 @@ class Tiles(ttk.Frame):
             # pictures was only learnable by hovering each one, and the
             # window's rule is that every control says what it is without
             # being asked; the tooltip keeps the longer sentence.
+            # A tile with a word is a segment of a segmented control: the word
+            # alone, the way Archicad's own choice rows read. Only a tile with
+            # no word keeps its drawing, since then the drawing is all it has.
             word = (words or {}).get(value, "")
+            drawing = {} if word else icons.button_options(icon, 16)
             button = ttk.Button(
                 self,
                 text=word,
                 style="Tile.TButton",
                 command=partial(self._pick, value),
-                padding=(8, 1) if word else (4, 1),
-                **icons.button_options(icon, 16),
+                padding=(12, 1) if word else (4, 1),
+                **drawing,
             )
-            button.grid(row=0, column=column, padx=(0, 4))
+            button.grid(row=0, column=column, padx=(0, 2))
             Tooltip(button, detail)
             self._buttons[value] = button
         self._paint()
@@ -1041,15 +1049,17 @@ class Toggles(ttk.Frame):
     def add(self, variable: tk.BooleanVar, label: str, icon: str) -> ttk.Button:
         """One more button, bound to ``variable``. Returned so the caller
         can explain it, as every control in the window is explained."""
+        # Words only, like a tile row: the day's name is the whole of what the
+        # button has to say, and a drawing on a blue face is a smudge.
         button = ttk.Button(
             self,
             text=label,
             style="Tile.TButton",
             takefocus=False,
             command=partial(self._flip, variable),
-            **icons.button_options(icon, 16),
+            padding=(12, 1),
         )
-        button.grid(row=0, column=len(self._items), padx=(0, 4))
+        button.grid(row=0, column=len(self._items), padx=(0, 2))
         self._items.append((variable, button))
         self.paint()
         return button
@@ -1214,7 +1224,7 @@ class Chips(ttk.Frame):
 
 
 class InfoBand(ttk.Frame):
-    """One strip at the foot of the window that explains what you are on.
+    """The card at the foot of the sidebar that explains what you are on.
 
     It replaces two things. The grey line printed under every control, forty
     of which at once is a wall nobody reads; and the ``Tooltip`` Toplevel,
@@ -1222,49 +1232,55 @@ class InfoBand(ttk.Frame):
     thing you were pointing at, went away while you were still reading it, and
     could not be reached from the keyboard at all.
 
-    Fixed height, which matters more than it sounds: a band that grows and
-    shrinks as the pointer crosses the page makes the whole window jump, and a
-    window that moves under the pointer is worse than no explanation.
+    It was a strip across the foot of the window, three lines high and the
+    window wide, which cost every page that much height on a laptop. The
+    sidebar has room to spare under its list of pages, and a card there is
+    always in the same place, never covers a field, and answers Tab as well
+    as the pointer -- so it lives there, and the page gets the height back.
+    It only grows up into the sidebar's empty space, so nothing on the page
+    moves as the pointer crosses it.
     """
 
-    #: Three lines and a heading, and never more. Anything longer is cut
-    #: rather than allowed to push the run bar off the bottom of the screen.
-    HEIGHT = 78
+    #: How wide the words run: the sidebar, less its gutter and the card's.
+    WRAP = 180
+    #: The most a detail is allowed to say before it is cut at a sentence. A
+    #: card taller than the sidebar's spare room would push the pages up.
+    LONGEST = 420
 
     def __init__(self, parent: tk.Misc) -> None:
-        super().__init__(parent, style="Info.TFrame", padding=(12, 7, 12, 7), height=self.HEIGHT)
-        # Both latches. The children are gridded, so `grid_propagate` is the
-        # one that holds the height -- `pack_propagate` alone let the band
-        # collapse to nothing, which is a strip that explains everything by
-        # being invisible.
-        self.pack_propagate(False)
-        self.grid_propagate(False)
+        super().__init__(parent, style="Help.TFrame", padding=(12, 10, 12, 12))
         self.columnconfigure(1, weight=1)
 
-        self.drawing = ttk.Label(self, style="Info.TLabel")
-        self.drawing.grid(row=0, column=0, rowspan=3, sticky="nw", padx=(0, 9))
-        self.title = ttk.Label(self, text="", style="InfoTitle.TLabel")
+        self.drawing = ttk.Label(self, style="Help.TLabel")
+        self.drawing.grid(row=0, column=0, sticky="w", padx=(0, 6))
+        self.title = ttk.Label(self, text="", style="HelpTitle.TLabel")
         self.title.grid(row=0, column=1, sticky="w")
         #: What the thing under the pointer is set to, at the right of the
-        #: band. Not called ``state``: that is ttk's own method on every
+        #: heading. Not called ``state``: that is ttk's own method on every
         #: widget, and a label by that name shadows it.
-        self.aside = ttk.Label(self, text="", style="InfoState.TLabel")
-        self.aside.grid(row=0, column=2, sticky="e")
-        self.short = ttk.Label(self, text="", style="Info.TLabel", justify="left")
-        self.short.grid(row=1, column=1, columnspan=2, sticky="w")
-        self.detail = ttk.Label(self, text="", style="InfoHint.TLabel", justify="left")
-        self.detail.grid(row=2, column=1, columnspan=2, sticky="nw")
+        self.aside = ttk.Label(self, text="", style="HelpState.TLabel")
+        self.aside.grid(row=0, column=2, sticky="e", padx=(6, 0))
+        self.short = ttk.Label(
+            self, text="", style="Help.TLabel", justify="left", wraplength=self.WRAP
+        )
+        self.short.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        self.detail = ttk.Label(
+            self, text="", style="HelpHint.TLabel", justify="left", wraplength=self.WRAP
+        )
+        self.detail.grid(row=2, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
-        #: What it says when the pointer is on nothing. Never empty: a strip
-        #: that blanks itself is dead space at the bottom of the window, which
-        #: is exactly what the log was.
+        #: What it says when the pointer is on nothing. Never empty: a card
+        #: that blanks itself is dead space, which is exactly what the log was.
         self._resting: tuple[str, str, str, str] = ("", "", "", "")
-        self.bind("<Configure>", self._rewrap)
 
-    def _rewrap(self, _event: object = None) -> None:
-        room = max(self.winfo_width() - 60, 200)
-        self.short.config(wraplength=room)
-        self.detail.config(wraplength=room)
+    @classmethod
+    def _cut(cls, text: str) -> str:
+        """At most ``LONGEST`` characters, cut at the end of a sentence."""
+        if len(text) <= cls.LONGEST:
+            return text
+        kept = text[: cls.LONGEST]
+        stop = kept.rfind(". ")
+        return kept[: stop + 1] if stop > 0 else kept.rstrip() + "…"
 
     def show(
         self,
@@ -1276,11 +1292,19 @@ class InfoBand(ttk.Frame):
         state: str = "",
         idle: bool = False,
     ) -> None:
-        self.drawing.config(**icons.state_options(glyph, 20))
-        self.title.config(text=title, style="InfoIdle.TLabel" if idle else "InfoTitle.TLabel")
+        self.drawing.config(**icons.state_options(glyph, 16))
+        self.title.config(text=title, style="HelpIdle.TLabel" if idle else "HelpTitle.TLabel")
         self.aside.config(text=state)
+        if state:
+            self.aside.grid()
+        else:
+            self.aside.grid_remove()
         self.short.config(text=short)
-        self.detail.config(text=detail)
+        self.detail.config(text=self._cut(detail))
+        if detail:
+            self.detail.grid()
+        else:
+            self.detail.grid_remove()
 
     def resting(self, glyph: str, title: str, short: str, detail: str = "") -> None:
         """Set what "nothing under the pointer" means, and say it now."""
@@ -1429,9 +1453,9 @@ class Dock(ttk.Frame):
     """
 
     #: One across. Two side by side made a spread out of two unrelated days.
-    SHEET_W = 300
+    SHEET_W = 288
     #: A4 landscape, 297 x 210.
-    SHEET_H = 212
+    SHEET_H = 204
     #: The sheet, its shadow, its padding and the scrollbar beside it.
     WIDTH = 336
     #: What is left when it is folded: the chevron, the count, and the word.
@@ -1453,11 +1477,11 @@ class Dock(ttk.Frame):
 
         # -- open -----------------------------------------------------------
         self.open_view = ttk.Frame(self, style="Dock.TFrame")
-        head = ttk.Frame(self.open_view, style="Dock.TFrame", padding=(10, 7, 4, 3))
+        head = ttk.Frame(self.open_view, style="Dock.TFrame", padding=(16, 12, 8, 4))
         head.pack(side="top", fill="x")
         ttk.Label(head, text="Sheets", style="DockTitle.TLabel").pack(side="left")
-        self.tally = ttk.Label(head, text="0", style="DockCount.TLabel")
-        self.tally.pack(side="left", padx=(7, 0))
+        self.tally = ttk.Label(head, text="0", style="Badge.TLabel")
+        self.tally.pack(side="left", padx=(8, 0))
         self.fold_button = ttk.Button(
             head,
             text="›",  # noqa: RUF001 - a chevron, not a comparison
@@ -1474,8 +1498,8 @@ class Dock(ttk.Frame):
             title="Fold the sheets away",
         )
         self.filed = ttk.Label(self.open_view, text="", style="DockHint.TLabel")
-        self.filed.pack(side="top", fill="x", padx=10, pady=(0, 5))
-        self.pane = Scroller(self.open_view, ground=theme.CHROME)
+        self.filed.pack(side="top", fill="x", padx=16, pady=(0, 6))
+        self.pane = Scroller(self.open_view, ground=theme.SIDEBAR)
         self.pane.pack(side="top", fill="both", expand=True)
 
         # -- folded ---------------------------------------------------------
@@ -1502,7 +1526,7 @@ class Dock(ttk.Frame):
             self.shut_view,
             width=self.FOLDED - 6,
             height=self.SPINE_TALL,
-            background=theme.CHROME,
+            background=theme.SIDEBAR,
             highlightthickness=0,
             cursor="hand2",
         )
@@ -1592,14 +1616,14 @@ class Dock(ttk.Frame):
             if sheet.study != study:
                 study = sheet.study
                 day = ""
+                # A hairline over each study, then its name and its count:
+                # the groups of the panel, the way the sidebar groups pages.
+                rule = ttk.Frame(self.pane.content, style="Rule.TFrame", height=1)
+                rule.pack(side="top", fill="x", padx=16, pady=(10, 0))
+                self._drawn.append(rule)
                 head = ttk.Frame(self.pane.content, style="Dock.TFrame")
-                head.pack(side="top", fill="x", padx=10, pady=(9, 3))
-                ttk.Label(
-                    head,
-                    text=sheet.study,
-                    style="DockStudy.TLabel",
-                    **icons.button_options(sheet.glyph),
-                ).pack(side="left")
+                head.pack(side="top", fill="x", padx=16, pady=(8, 2))
+                ttk.Label(head, text=sheet.study, style="DockStudy.TLabel").pack(side="left")
                 ttk.Label(
                     head,
                     text=str(sum(1 for other in sheets if other.study == sheet.study)),
@@ -1609,7 +1633,7 @@ class Dock(ttk.Frame):
             if sheet.day and sheet.day != day:
                 day = sheet.day
                 line = ttk.Label(self.pane.content, text=day, style="DockDay.TLabel")
-                line.pack(side="top", anchor="w", padx=10, pady=(4, 2))
+                line.pack(side="top", anchor="w", padx=16, pady=(0, 6))
                 self._drawn.append(line)
             self._drawn.append(self._draw(sheet))
 
@@ -1636,17 +1660,17 @@ class Dock(ttk.Frame):
             self.pane.content,
             width=self.SHEET_W + lift * 2,
             height=self.SHEET_H + lift * 2,
-            background=theme.CHROME,
+            background=theme.SIDEBAR,
             highlightthickness=0,
         )
-        paper.pack(side="top", padx=10 - lift, pady=(0, 9 - lift))
+        paper.pack(side="top", padx=16 - lift, pady=(0, 10 - lift))
         # A model is not a sheet, so it is not drawn as one: the geometry
         # alone, with no paper and no shadow under it.
         (draw_sheet if sheet.paper else draw_model)(paper, sheet, self.SHEET_W, self.SHEET_H)
         paper.move("all", lift, lift - 1)
         # The shadow: three greys, each a pixel further down and out, under
         # everything else. Tk has no blur, and three steps read as one.
-        for step, grey in ((3, "#E9E9E8"), (2, "#E0E0DE"), (1, "#D3D3D0")) if sheet.paper else ():
+        for step, grey in ((3, "#D9D9D9"), (2, "#CFCFCF"), (1, "#BDBDBD")) if sheet.paper else ():
             under = paper.create_rectangle(
                 lift - 1 + step // 2,
                 lift - 1 + step,
@@ -1774,12 +1798,6 @@ def _hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
 #: is where it always sat; a layout carrying several fits this square into
 #: each cell of its grid, the way the run shrinks its drawings to the cells.
 FRAME_MM = (56.0, 28.0, 206.0, 178.0)
-#: What the cells are cut from: the page less the title block, a margin and
-#: the title line along the bottom.
-MARGIN_MM = 8.0
-#: Clear of the drawing's title under the grid, which is set at ten points:
-#: at 180 the bottom row's hour labels sat under its first line.
-CELLS_BOTTOM_MM = 172.0
 
 
 def _grid(
@@ -1841,205 +1859,127 @@ def _untimed_note(sheet: Sheet) -> str:
     )
 
 
+#: The one size every word on a sheet miniature is set in. One size, one
+#: weight, one ink: the sheet's name, its hours, its scale and its number are
+#: read at a glance across the panel, and three sizes in three greys at 300
+#: px read as clutter, not as a hierarchy.
+SHEET_TEXT = 8
+
+
 def draw_sheet(
     paper: tk.Canvas, sheet: Sheet, width: int, height: int, *, block_mm: float = 40.0
 ) -> None:
-    """One layout, drawn on a canvas at the size the panel has room for."""
+    """One layout, drawn on a canvas at the size the panel has room for.
+
+    Laid out the way the run lays the sheet out, and drawn as plainly as a
+    drawing set is: a frame inset from the paper's edge, the drawings in the
+    field, and the title block down the right at the width General sets.
+    Everything that can only be read at print size -- the program's name,
+    the block's fields, a key, a scale bar -- is left off: at 300 px it was
+    grey smudge. What is left is set in one style on three shared baselines.
+    The sheet's name and which of a pair it is at the foot of the field; its
+    scale and its number at the foot of the block, level with them; and the
+    north arrow at the top of the block, on the same left edge as the words.
+    """
     scale = width / SHEET_MM_W
 
     def x(value: float) -> float:
         return value * scale
 
-    def words(
-        mm_x: float,
-        mm_y: float,
-        text: str,
-        size: int,
-        colour: str,
-        *,
-        anchor: Literal["w", "center"] = "w",
-        bold: bool = False,
-        clear_of_block: bool = False,
-    ) -> None:
-        # ``clear_of_block`` stops a line at the drawing area's right edge,
-        # so it cannot run on under the title block strip.
-        paper.create_text(
-            x(mm_x),
-            x(mm_y),
-            text=text,
-            anchor=anchor,
-            fill=colour,
-            font=_face(size, bold),
-            width=x(draw_r - mm_x) if clear_of_block else 0,
+    def words(mm_x: float, mm_y: float, text: str, *, room: float = 0) -> int:
+        return int(
+            paper.create_text(
+                x(mm_x),
+                x(mm_y),
+                text=text,
+                anchor="sw",
+                fill=theme.INK,
+                font=_face(SHEET_TEXT, False),
+                width=x(room) if room else 0,
+            )
         )
 
-    # -- the paper itself ------------------------------------------------
-    # Drawn, not left to the canvas: the canvas is the palette's grey, so the
+    # -- the paper, and the frame inset from its edge ----------------------
+    # Drawn, not left to the canvas: the canvas is the panel's grey, so the
     # sheet can throw a shadow onto it. Its edge is an item of its own, the
-    # last one drawn (at the end of this function), so that the panel can
-    # turn it blue under the pointer and nothing on the sheet lies over the
-    # blue.
+    # last one drawn, so the panel can turn it blue under the pointer and
+    # nothing on the sheet lies over the blue.
     paper.create_rectangle(0, 0, width - 1, height - 1, fill=theme.SURFACE, outline="")
-
-    draw_r = SHEET_MM_W - block_mm - 7.0
+    inset = 5.0
+    paper.create_rectangle(
+        x(inset), x(inset), x(SHEET_MM_W - inset), x(SHEET_MM_H - inset), outline=theme.INK
+    )
+    left = SHEET_MM_W - inset - block_mm
+    paper.create_line(x(left), x(inset), x(left), x(SHEET_MM_H - inset), fill=theme.INK)
 
     # -- the drawings ----------------------------------------------------
     #
-    # One drawing takes the sheet, as it always did. Several are dealt onto
-    # the grid the run will use, each shrunk into its cell with its hour under
-    # it -- and a cell the run leaves empty is drawn empty, because the short
-    # second sheet of a pair really does have a hole in it.
+    # One drawing takes the field. Several are dealt onto the grid the run
+    # will use, each with its hour under it -- and a cell the run leaves
+    # empty is a faint dashed frame, because the short second sheet of a pair
+    # really does have a hole in it.
+    field = (12.0, 12.0, left - 7.0, 152.0)
     if sheet.cells <= 1:
-        frames = [FRAME_MM]
+        frames = [field]
     else:
-        frames = _grid(sheet.cells, (MARGIN_MM, MARGIN_MM, draw_r - 4.0, CELLS_BOTTOM_MM))
+        frames = _grid(sheet.cells, field)
     for index, frame_mm in enumerate(frames):
         frame = (x(frame_mm[0]), x(frame_mm[1]), x(frame_mm[2]), x(frame_mm[3]))
         if index >= len(sheet.drawings):
             paper.create_rectangle(*frame, outline=theme.LINE, dash=(3, 3))
-            words(
-                (frame_mm[0] + frame_mm[2]) / 2,
-                (frame_mm[1] + frame_mm[3]) / 2,
-                "empty",
-                6,
-                theme.HINT,
-                anchor="center",
-            )
             continue
         drawing = sheet.drawings[index]
         if len(frames) > 1:
-            paper.create_rectangle(*frame, outline=theme.LINE)
-            words(frame_mm[0] + 1.5, frame_mm[3] - 3.5, drawing.time, 6, theme.HINT)
-            frame = (frame[0], frame[1], frame[2], frame[3] - x(7.0))
+            words(frame_mm[0], frame_mm[3] + 9.0, drawing.time)
         _draw_drawing(paper, sheet.study, drawing, frame)
 
-    # -- what this drawing is ------------------------------------------
-    #
-    # The drawing's name, large -- "Communal open space by hour", "Shadow
-    # diagram" -- because that is what a person is looking for across the
-    # panel; under it, only what tells this sheet from the next of its
+    # -- what this sheet is, on the two bottom baselines -------------------
+    # The name, and under it what tells this sheet from the next of its
     # study: the hour, and which of a pair it is. Not the day, which the
     # panel prints once over the sheets of that day; not what the sun is
-    # doing, which the band under the panel says while the pointer is on
-    # the sheet. Six-point grey under a thumbnail is read by nobody.
+    # doing, which the card in the sidebar says while the pointer is on it.
     saying = [sheet.time] if sheet.time else []
     if sheet.parts > 1:
         saying.append(f"({sheet.part} of {sheet.parts})")
-    words(10, 181, sheet.kind.upper(), 10, theme.INK, bold=True)
+    first, second = 182.0, 196.0
+    words(12, first, sheet.kind.upper(), room=left - 18)
     if saying:
-        words(10, 192, "   ".join(saying), 7, theme.BODY)
-    if sheet.time and sheet.elevation is None:
-        # The one line still worth its ink: the sheet has no sun to draw,
-        # and a person should not have to hover to learn why.
-        # Short, and kept clear of the title block: the longer sentence ran
-        # on under the strip at the sheet's right.
-        words(10, 201, "No project location: no sun drawn", 6, theme.RED, clear_of_block=True)
+        words(12, second, "   ".join(saying), room=left - 18)
 
-    # -- the title block, at the width General is set to ----------------
-    #
-    # Forty millimetres is forty pixels here, and nothing in it may run out
-    # over the drawing or over the line beneath it. So each line is laid
-    # under the one before by asking the canvas how tall that one came out,
-    # wrapped to the strip: a long drawing title takes two lines and pushes
-    # the date down, rather than printing through it.
-    left = SHEET_MM_W - block_mm
-    box_edge = (left, 0.5, SHEET_MM_W - 0.5, SHEET_MM_H - 0.5)
-    paper.create_rectangle(
-        x(box_edge[0]),
-        x(box_edge[1]),
-        x(box_edge[2]),
-        x(box_edge[3]),
-        fill="#FBFBF9",
-        outline=theme.LINE,
-    )
-    inner = x(left + 3.5)
-    room = x(block_mm - 7.0)
-
-    def stacked(top: float, text: str, size: int, colour: str, *, bold: bool = False) -> float:
-        """One line of the block, under the last. Returns where it ended.
-
-        Wrapped to the strip, and set a point smaller if that is what it
-        takes for its longest word to fit: Tk breaks a word that will not,
-        and "Apartment" over "s" is not a drawing title.
-        """
-        while size > 4 and max(_wide(paper, word, size, bold) for word in text.split()) > room:
-            size -= 1
-        item = paper.create_text(
-            inner,
-            top,
-            text=text,
-            anchor="nw",
-            fill=colour,
-            width=room,
-            font=_face(size, bold),
-        )
-        return float(paper.bbox(item)[3])
-
-    def ruled(at: float) -> None:
-        paper.create_line(inner, at, inner + room, at, fill=theme.LINE)
-
-    foot = stacked(x(5), PRODUCT.upper(), 5, theme.INK, bold=True)
-    ruled(foot + 2)
-    # Not the drawing's name and its day again under that: the name is the
-    # title beside the block, the day is the panel's heading over the
-    # sheets, and at five points the repeat was a grey smudge.
-
-    # -- north, which is up --------------------------------------------
-    #
-    # In the block, beside the drawings and not over them: at the top right
-    # of the drawing area it sat on the corner cell of a sheet carrying four.
-    north_x, north_y = x(left + block_mm / 2), max(x(38), foot + x(26))
-    ring = x(7)
+    # -- the title block -------------------------------------------------
+    # North at the top, at the block's left edge with the words under it;
+    # the scale and the sheet number level with the two lines beside them.
+    inner = left + 4.0
+    ring = 5.5
+    north_x, north_y = inner + ring, inset + 6.0 + ring
     paper.create_oval(
-        north_x - ring,
-        north_y - ring,
-        north_x + ring,
-        north_y + ring,
+        x(north_x - ring),
+        x(north_y - ring),
+        x(north_x + ring),
+        x(north_y + ring),
         fill=theme.SURFACE,
-        outline=theme.EDGE,
+        outline=theme.INK,
     )
     paper.create_polygon(
-        north_x,
-        north_y - x(6),
-        north_x + x(2.6),
-        north_y + x(2.4),
-        north_x,
-        north_y + x(0.6),
-        north_x - x(2.6),
-        north_y + x(2.4),
+        x(north_x),
+        x(north_y - ring + 1.2),
+        x(north_x + 2.4),
+        x(north_y + ring - 1.8),
+        x(north_x),
+        x(north_y + 1.2),
+        x(north_x - 2.4),
+        x(north_y + ring - 1.8),
         fill=theme.INK,
         outline="",
     )
-    paper.create_text(
-        north_x, north_y - x(12), text="N", anchor="center", fill=theme.INK, font=_face(6, False)
-    )
-
-    # The notes and revisions, which at this size are rules on paper too.
-    line = x(62)
-    step = 0
-    while line < x(140):
-        paper.create_line(inner, line, inner + room - (step % 3) * x(6), line, fill="#E7E6E2")
-        line += x(6)
-        step += 1
-    ruled(x(146))
     # The scale the run will place the drawings at, not a number from the
-    # schematic: a reader checks the block for exactly this, so it is set to
-    # be read at this size, like the sheet number under it.
-    stacked(x(149), sheet.scale or "no scale", 8, theme.INK, bold=True)
-    ruled(x(163))
-    paper.create_text(
-        inner,
-        x(SHEET_MM_H - 9),
-        text=sheet.number,
-        anchor="sw",
-        fill=theme.BLUE_DEEP,
-        font=(theme.FACE, theme.points(9), "bold"),
-    )
+    # schematic: a reader checks the block for exactly this.
+    words(inner, first, sheet.scale or "no scale", room=block_mm - 6)
+    words(inner, second, sheet.number, room=block_mm - 6)
 
     # -- the edge, last ------------------------------------------------
     # Over everything, and hollow: lit blue under the pointer, it rims the
-    # whole sheet. Drawn first, the title block's own outline lay over its
-    # right-hand side, and the rim stopped at the block.
+    # whole sheet.
     paper.create_rectangle(0, 0, width - 1, height - 1, fill="", outline=theme.EDGE, tags="edge")
 
 
@@ -2502,26 +2442,6 @@ def _face(size: int, bold: bool) -> tuple[str, int] | tuple[str, int, str]:
     return (theme.FACE, scaled, "bold") if bold else (theme.FACE, scaled)
 
 
-#: How wide a word is, in pixels, by size and weight. Kept because thirty
-#: sheets ask about the same five words on every keystroke, and kept as
-#: numbers rather than as fonts because a font belongs to the interpreter
-#: that made it and this outlives any one of them.
-_WIDTHS: dict[tuple[int, bool, str], int] = {}
-
-
-def _wide(widget: tk.Misc, word: str, size: int, bold: bool) -> int:
-    key = (size, bold, word)
-    if key not in _WIDTHS:
-        face = tkfont.Font(
-            root=widget,
-            family=theme.FACE,
-            size=theme.points(size),
-            weight="bold" if bold else "normal",
-        )
-        _WIDTHS[key] = int(face.measure(word))
-    return _WIDTHS[key]
-
-
 def _lit_flats(azimuth: float | None) -> set[int]:
     """Which flats the sun is in, by where it is.
 
@@ -2625,6 +2545,18 @@ class Window:
         self.fold_below = self.FOLD_BELOW
         #: Every card, so the label column can be set once for all of them.
         self.boxes: list[ttk.Frame] = []
+        #: Each panel's fold: its triangle, whether it is folded, and the rows
+        #: it took off the grid to fold, so opening it puts back only those.
+        self.folders: dict[str, ttk.Button] = {}
+        self.folded: dict[str, bool] = {}
+        self._kept_rows: dict[str, list[tk.Widget]] = {}
+        self._spacers: dict[str, ttk.Frame] = {}
+        #: Each study's name on its panel's header, restyled as it is
+        #: switched on and off.
+        self.study_titles: dict[str, ttk.Label] = {}
+        #: Whether each study was on at the last ``_sync``, so a study is
+        #: opened the moment it is switched on and not on every sync after.
+        self._was_on: dict[str, bool] = {}
         self._build()
         self._line_up_labels()
         # Wide enough for every tab beside the sheets panel, measured rather
@@ -2634,7 +2566,9 @@ class Window:
         # window is a page nobody can open. So the strip says what it needs,
         # the panel folds below that, and the window opens at least that wide.
         self.root.update_idletasks()
-        self.fold_below = max(self.FOLD_BELOW, self.strip.winfo_reqwidth() + Dock.WIDTH + 1)
+        self.fold_below = max(
+            self.FOLD_BELOW, self.strip.winfo_reqwidth() + self.PAGE_LEAST + Dock.WIDTH + 2
+        )
         if self.fold_below > self.OPENING_WIDTH:
             self.root.geometry(self._on_the_screen(self.fold_below, self.OPENING_HEIGHT))
         #: What the window opens with when nothing has been saved. Taken
@@ -2642,6 +2576,11 @@ class Window:
         #: something to go back to that is not "whatever was on screen".
         self.factory = self.settings()
         self._restore()
+        # A study nobody has switched on starts folded to its header: the page
+        # opens on what will run, and on the one line of each study that won't.
+        for name, tick, _where in self._studies():
+            if name in self.study_boxes and not tick.get():
+                self._fold(self.study_boxes[name][0], True)
         self.refresh()
         self.root.after(80, self._drain)
 
@@ -2687,16 +2626,30 @@ class Window:
     SHADOWS = "Shadow diagram"
     EYE = "Sun views"
     YIELD = "Yield"
+    #: Not an output and not set-up: a tool used on the open project, which
+    #: is why it is a third group of its own.
+    REFERENCE = "Reference image"
 
-    #: The two kinds, in strip order, under the word that names each. Two
-    #: words of chrome, and they are the only text in the strip that is not
-    #: the name of a page.
+    #: The three kinds, in sidebar order, under the word that names each.
+    #: Pages that set the job up, pages that each draw something and can be
+    #: queued, and tools that act on Archicad there and then.
     SET_UP = "SET UP"
-    DRAWS = "WHAT IT DRAWS"
+    DRAWS = "STUDIES"
+    TOOLS = "TOOLS"
     GROUPS: ClassVar[tuple[tuple[str, tuple[str, ...]], ...]] = (
         (SET_UP, (GENERAL, MODEL)),
         (DRAWS, (SITE, DIAGRAMS, SHADOWS, EYE, YIELD)),
+        (TOOLS, (REFERENCE,)),
     )
+    #: The study a page's switch in the sidebar turns on, on a page that has
+    #: more than one. The apartments are what Solar analysis is opened for,
+    #: and the hourly diagram is what Shadow diagram is.
+    LEADS: ClassVar[dict[str, str]] = {DIAGRAMS: PLANS_JOB, SHADOWS: SHADOW_JOB}
+    #: How wide the sidebar is.
+    SIDE_WIDTH = 236
+    #: The least the page between the sidebar and the sheets panel is allowed
+    #: before the sheets panel folds away to give it room.
+    PAGE_LEAST = 480
 
     #: What each tab says when hovered. The tab carries a drawing at 32 px and
     #: a name, and nothing else -- so the sentence that would otherwise sit
@@ -2734,6 +2687,23 @@ class Window:
             "The office's feasibility sheet from the massing slabs: BEA, GFA, NLA and "
             "FSR by use, the units, the parking -- a sheet an option, and a live workbook."
         ),
+        REFERENCE: (
+            "A photograph or a rendering laid over Archicad's 3D window, as "
+            "see-through as you like, so the model can be orbited under it "
+            "until the two line up. Nothing is written into the project."
+        ),
+    }
+    #: The one line under a page's name, at the top of the page. The blurb
+    #: above is the longer sentence, for the card in the sidebar.
+    SECTION_SHORT: ClassVar[dict[str, str]] = {
+        GENERAL: "The sheet every output lands on, and where the results are filed.",
+        MODEL: "What geometry leaves Archicad, and what is kept off the drawings.",
+        SITE: "The context and site sheets, and a context model, from an address.",
+        DIAGRAMS: "Hours of direct sun on the days below.",
+        SHADOWS: "Shadows cast by each massing, hour by hour.",
+        EYE: "3D documents aimed down the sun, dealt onto sheets.",
+        YIELD: "The feasibility sheet from the massing slabs, and a live workbook.",
+        REFERENCE: "A picture laid over Archicad, to trace or check against.",
     }
     #: The facade study lives in the Solar analysis section now; the name
     #: stays for the settings files and tests that knew it as a tab.
@@ -2749,33 +2719,38 @@ class Window:
         wheel_reaches_the_pointer(self.root)
 
         # The bottom of the window is built first and packed to the bottom,
-        # so it stays put while the settings above it change tab and scroll.
-        # Run has to be findable without hunting through sections, and the one
-        # line a run has to say about itself has to stay where it was put.
-        base = ttk.Frame(self.root, style="Chrome.TFrame", padding=(PAD, 6, PAD, PAD))
+        # so it stays put while the page above it changes and scrolls. Run
+        # has to be findable without hunting through pages, and the one line
+        # a run has to say about itself has to stay where it was put.
+        base = ttk.Frame(self.root, style="Chrome.TFrame", padding=(PAD * 2, 8, PAD * 2, 8))
         base.pack(side="bottom", fill="x")
         base.columnconfigure(0, weight=1)
-        # The contours: a one-pixel rule above the run bar, and another above
-        # the band, so the three regions across the bottom read as three.
         ttk.Frame(self.root, style="Rule.TFrame", height=1).pack(side="bottom", fill="x")
-
-        # Above it, the one strip that explains whatever is under the pointer.
-        # Packed to the bottom too, so it sits between the settings and Run and
-        # cannot be scrolled away from either.
-        self.info = InfoBand(self.root)
-        self.info.pack(side="bottom", fill="x")
-        ttk.Frame(self.root, style="Rule.TFrame", height=1).pack(side="bottom", fill="x")
-        Tooltip.band = self.info
 
         self._project_picker()
         if theme.MACOS:
             self._mac_menus()
 
-        # The working area is two panes. The section you are filling in, and
-        # every sheet the run will make -- which belongs to the run and not to
-        # a page, so it sits outside the tabs and stays put while they change.
-        middle = ttk.Frame(self.root, style="Chrome.TFrame")
+        # Three columns: the pages down the left, the open page, and every
+        # sheet the run will make down the right -- which belongs to the run
+        # and not to a page, so it stays put while the pages change.
+        middle = ttk.Frame(self.root, style="Page.TFrame")
         middle.pack(side="top", fill="both", expand=True)
+        self.side = ttk.Frame(
+            middle, style="Side.TFrame", width=self.SIDE_WIDTH, padding=(10, 12, 10, 12)
+        )
+        self.side.pack(side="left", fill="y")
+        self.side.pack_propagate(False)
+        #: Kept by its old name: what the window measures to know how wide it
+        #: has to be before the sheets panel can stay open beside the page.
+        self.strip = self.side
+        ttk.Frame(middle, style="Rule.TFrame", width=1).pack(side="left", fill="y")
+        # At the foot of the sidebar, the card that explains whatever is under
+        # the pointer. Packed before the pages so it keeps the bottom.
+        self.info = InfoBand(self.side)
+        self.info.pack(side="bottom", fill="x")
+        Tooltip.band = self.info
+
         self.dock = Dock(middle, on_pick=self._sheet_under, on_fold=self._dock_folded)
         #: Whether the window is too narrow to hold both panes. Crossing the
         #: line folds the panel or brings it back; in between, the chevron
@@ -2791,7 +2766,7 @@ class Window:
         self.dock.pack(side="right", fill="y")
         # The contour between the page and the dock: one pixel, and thin.
         ttk.Frame(middle, style="Rule.TFrame", width=1).pack(side="right", fill="y")
-        self.pane = ttk.Frame(middle, style="Chrome.TFrame")
+        self.pane = ttk.Frame(middle, style="Page.TFrame")
         self.pane.pack(side="left", fill="both", expand=True)
 
         self._sections()
@@ -2805,130 +2780,124 @@ class Window:
         self._sync()
 
     def _project_picker(self) -> None:
-        """Which Archicad, above the tabs and belonging to none of them.
+        """The tool bar: the program, which Archicad, and the menu.
 
-        Every list in every section is read out of the chosen project and
-        every study runs against it, so it is not a setting of one output. It
-        also has to stay visible while a section is being filled in: a
-        colleague naming zones for the diagrams should not have to leave the
-        page to see which project they are naming them in.
+        Which Archicad belongs to no page. Every list in every section is read
+        out of the chosen project and every study runs against it, so it is
+        not a setting of one output, and it has to stay in view while a page
+        is being filled in.
+
+        Nothing else sits up here. The reference image is a tool, so it is a
+        page under Tools in the sidebar; Connect Claude is set up once and
+        then forgotten, so it is in the menu with the other things that act
+        on the program rather than on the project. What was a row of five
+        buttons of three different kinds is a name, a picker and a menu.
         """
-        top = ttk.Frame(self.root, style="Chrome.TFrame", padding=(PAD, PAD, PAD, 2))
+        top = ttk.Frame(self.root, style="Chrome.TFrame", padding=(PAD * 2, 8, PAD * 2, 8))
         top.pack(side="top", fill="x")
-        top.columnconfigure(1, weight=1)
-        row = 0
+
+        brand = ttk.Frame(top, style="Chrome.TFrame")
+        brand.pack(side="left", padx=(0, PAD * 2))
+        # The sun, drawn rather than read from the icon set: it is the one
+        # mark in the window that is the program's and nothing else's.
+        sun = tk.Canvas(brand, width=20, height=20, background=theme.CHROME, highlightthickness=0)
+        sun.create_oval(6.5, 6.5, 13.5, 13.5, outline=theme.SUN, width=1.6)
+        for x0, y0, x1, y1 in (
+            (10, 1.5, 10, 4),
+            (10, 16, 10, 18.5),
+            (1.5, 10, 4, 10),
+            (16, 10, 18.5, 10),
+            (4, 4, 5.8, 5.8),
+            (14.2, 14.2, 16, 16),
+            (4, 16, 5.8, 14.2),
+            (14.2, 5.8, 16, 4),
+        ):
+            sun.create_line(x0, y0, x1, y1, fill=theme.SUN, width=1.6)
+        sun.pack(side="left")
+        ttk.Label(brand, text=PRODUCT, style="Brand.TLabel").pack(side="left", padx=(8, 0))
 
         # Listed, never assumed: each instance gets its own port, so the
         # default is right only for whichever started first, and two projects
-        # open is the ordinary case in an office.
-        label = ttk.Label(top, text="Archicad", style="Chrome.TLabel")
-        label.grid(row=row, column=0, sticky="w")
-        picker = ttk.Frame(top, style="Chrome.TFrame")
-        picker.grid(row=row, column=1, sticky="ew", pady=2)
-        picker.columnconfigure(0, weight=1)
-        self.instance = ttk.Combobox(picker, state="readonly", values=[], style="Chrome.TCombobox")
-        self.instance.grid(row=0, column=0, sticky="ew")
+        # open is the ordinary case in an office. As wide as a project's name,
+        # not as wide as the window: the picker used to stretch across most
+        # of the bar for a name a third that long.
+        self.instance = ttk.Combobox(
+            top, state="readonly", values=[], style="Chrome.TCombobox", width=34
+        )
+        self.instance.pack(side="left")
         self.instance.bind("<<ComboboxSelected>>", lambda _event: self.refresh())
+        Tooltip(
+            self.instance,
+            "Archicad gives every open instance its own port, so there is no "
+            "single right one to guess at. The study reads and draws in "
+            "whichever project is chosen here — pick the wrong one and it "
+            "measures the wrong building and says nothing. Press Refresh "
+            "after opening or closing a project.",
+            title="Archicad",
+        )
         rescan = ttk.Button(
-            picker,
-            text="Refresh",
+            top,
             style="Chrome.TButton",
             command=self.refresh,
-            width=11,
+            padding=(6, 0),
+            width=0,
             **icons.button_options("refresh"),
         )
-        rescan.grid(row=0, column=1, padx=(6, 0))
+        rescan.pack(side="left", padx=(6, 0))
         Tooltip(
             rescan,
             "Looks again for running Archicads and re-reads the chosen "
             "project. Press it after opening a project, or after adding a "
             "layer or a Layout Book subset that should appear in the lists "
             "in the sections below.",
+            title="Refresh",
         )
-        # The one button up here that changes nothing. It belongs beside the
-        # picker rather than in a section for the same reason the picker does:
-        # what the program is, and whose data it draws, is not a property of
-        # one output. Icon and no word, because it is the only thing in the
-        # window nobody is looking for until they need it, and a labelled
-        # button would take room from the project name, which everybody is.
-        # A picture laid over Archicad's 3D window, to set a view up from
-        # the angle a photograph was taken at. Up here with the picker
-        # because it is a tool on the chosen Archicad and a setting of no
-        # study; ``overlay`` is the whole of it.
-        picture = ttk.Button(
-            picker,
-            text="Reference image",
-            style="Tool.TButton",
-            command=self._reference,
-            **icons.button_options("reference"),
-        )
-        picture.grid(row=0, column=2, padx=(6, 0))
-        Tooltip(
-            picture,
-            "Lays a photograph or a rendering over Archicad's 3D window, as "
-            "see-through as you like, so the model can be orbited under it "
-            "until the two line up. Nothing is written into the project.",
-        )
-        # Loriini as an MCP server in the Claude a person already has. Up
-        # here with the picker because it is about the program, not a study;
-        # ``claude_mcp`` is the whole of it.
+
+        # The things that act on the program rather than on the project, in
+        # one menu at the end of the bar. They were four buttons as big as
+        # Run on the run bar and two more up here. "Save as default" is for
+        # what belongs to the practice; a preset is for what belongs to a job
+        # or a colleague -- the Silverwater setup, the shadow set the council
+        # asked for -- and goes wherever a job's files go.
+        self.settings_menu = tk.Menu(self.root, tearoff=False)
+        # Loriini as an MCP server in the Claude a person already has.
         # "Connect Claude" rather than "Add to Claude": what it does to the
         # Claude a person already has, in the words of somebody who has not
-        # read what an MCP server is.
-        claude = ttk.Button(
-            picker,
-            text="Connect Claude",
-            style="Tool.TButton",
-            command=self._add_to_claude,
-            **icons.button_options("claude"),
-        )
-        claude.grid(row=0, column=3, padx=(6, 0))
-        Tooltip(
-            claude,
-            "Registers this program as an MCP server with Claude Desktop (in its "
-            "settings file; restart it afterwards) and with Claude Code (through "
-            "claude mcp add, when that command is on the path), so an agent can "
-            "run the studies into the open project. docs/agent.md says what it "
-            "can then do.",
-        )
-        # Named as well as drawn. A lone (i) at the end of the bar was the
-        # one button up here that did not say what it was.
-        # On a Mac it is in the program's menu instead (``_mac_menus``).
+        # read what an MCP server is. ``claude_mcp`` is the whole of it.
+        self.settings_menu.add_command(label="Connect Claude…", command=self._add_to_claude)
+        self.settings_menu.add_separator()
+        self.settings_menu.add_command(label="Save as default", command=self._remember)
+        self.settings_menu.add_command(label="Save preset…", command=self._save_preset)
+        self.settings_menu.add_command(label="Load preset…", command=self._load_preset)
+        self.settings_menu.add_separator()
+        self.settings_menu.add_command(label="Forget saved settings", command=self._forget)
         if not theme.MACOS:
-            tell = ttk.Button(
-                picker,
-                text="About",
-                style="Tool.TButton",
-                command=self._about,
-                **icons.button_options("info"),
-            )
-            tell.grid(row=0, column=4, padx=(6, 0))
-            Tooltip(
-                tell,
-                "What this program is, the licence it is used under, and the "
-                "public registers the site analysis fetches its data from — with "
-                "the credit line a sheet drawn from them should carry.",
-            )
-        row += 1
-        # No line under this one. What it needs to say -- which project, and
-        # check it if two are open -- the hover says at length, and the status
-        # line below already reports what was read out of whichever is chosen.
-        for target in (label, self.instance):
-            Tooltip(
-                target,
-                "Archicad gives every open instance its own port, so there is no "
-                "single right one to guess at. The study reads and draws in "
-                "whichever project is chosen here — pick the wrong one and it "
-                "measures the wrong building and says nothing. Press Refresh "
-                "after opening or closing a project.",
-            )
-
-        self.status = ttk.Label(
-            top, text="", style="ChromeHint.TLabel", wraplength=620, justify="left"
+            # On a Mac it is in the program's menu (``_mac_menus``); a Windows
+            # tool has no program menu to put it in.
+            self.settings_menu.add_separator()
+            self.settings_menu.add_command(label=f"About {PRODUCT}", command=self._about)
+        glyph = theme.menu_glyph(self.root)
+        menu = ttk.Button(
+            top,
+            style="Chrome.TButton",
+            padding=(6, 0),
+            width=0,
+            command=lambda: self._post(self.settings_menu, menu),
+            **({"image": glyph} if glyph is not None else {"text": "Menu"}),
         )
-        self.status.grid(row=row, column=1, sticky="w", pady=(0, 4))
-        # The contour under the project bar: which Archicad is one question,
-        # asked once, and everything below it is the study.
+        menu.pack(side="right")
+        self.menu_button = menu
+        Tooltip(
+            menu,
+            "Connect Claude registers this program as an MCP server with Claude "
+            "Desktop and Claude Code, so an agent can run the studies into the "
+            "open project. Save as default remembers every page -- the ticks, "
+            "the fields and which page was open -- and fills the window in "
+            "with it next time. A preset is the same written to a file you "
+            "name. Forget throws the saved settings away.",
+            title="Menu",
+        )
+        # The contour under the tool bar.
         ttk.Frame(self.root, style="Rule.TFrame", height=1).pack(side="top", fill="x")
 
     def _mac_menus(self) -> None:
@@ -2969,13 +2938,37 @@ class Window:
         self._tell("Connect Claude", added.describe())
 
     def _reference(self) -> None:
-        """Open the reference-image palette, or raise the one already open.
+        """Open the reference image's page, under Tools."""
+        self._show_section(self.REFERENCE)
 
+    def _reference_page(self, frame: ttk.Frame) -> None:
+        """The reference image: a picture laid over Archicad's 3D window.
+
+        Two panels, what the picture is and where it is, built by ``overlay``
+        into this window's own panels so they line up with every other page.
         It is told which project is chosen up here, as a question rather
         than a name, so that the Archicad window it looks for is the one
-        chosen at the moment the button on the palette is pressed.
+        chosen at the moment the button is pressed.
         """
-        overlay.show(self.root, project=lambda: self.options.project)
+        picture = self._panel(frame, 0, title="Picture")
+        placing = self._panel(frame, 1, title="Over Archicad")
+        self.palette = overlay.Palette(
+            picture,
+            placing,
+            project=lambda: self.options.project,
+            explain=self._explain,
+            on_change=self._paint_tabs,
+        )
+
+    @staticmethod
+    def _explain(widget: tk.Widget, title: str, text: str) -> None:
+        """Explain a control in the sidebar's card, under that name."""
+        Tooltip(widget, text, title=title)
+
+    def _picture_open(self) -> bool:
+        """Whether the reference picture is on the screen."""
+        palette = getattr(self, "palette", None)
+        return palette is not None and palette.showing
 
     def _about(self, at: str = "") -> None:
         """Open the info box, at the top or at the data sources.
@@ -2990,34 +2983,24 @@ class Window:
         about.show(self.root, at=at)
 
     def _sections(self) -> None:
-        """One page per output, reached from a strip of tabs across the top.
+        """One page per output, reached from a list of pages down the left.
 
-        The launcher of cards this replaces was right about one thing and
-        wrong about everything else. Right: a drawing big enough to recognise
-        beats a 20 px smudge beside a word, and six of them in view beats a
-        row of small words. Wrong in three ways that a strip fixes at once.
+        A sidebar rather than the strip of tabs that was here, for three
+        reasons. The strip's drawings and names took 140 px of height off
+        every page, which on a laptop was a fifth of the window. Its one
+        mark for *queued* was a blue name and a dot, on the smallest thing in
+        it. And it had no room to say how much a page would make.
 
-        It cost a click to reach any page and two to reach the next one,
-        because the way from one tool to another ran through the front door.
-
-        It had nowhere to say which page you were on, since the cards were
-        gone by the time you were on one -- so the one thing a colleague looks
-        for first, *where am I*, had to be read off a breadcrumb that was
-        itself the only thing left of the navigation.
-
-        And its single mark, the blue tint, was spent on *queued*, which left
-        *chosen* with no mark at all. One colour cannot carry two facts.
-
-        The strip keeps the drawings -- 32 px, over the name rather than
-        beside it, which is what makes the size free -- and gets all three
-        back. Every page is one click from every other. The open tab is white
-        and capped in blue, joined to the page beneath it, and stays on screen
-        saying so. Queued is a separate mark on a separate axis: the name goes
-        blue and takes a dot. A tab can be open, queued, both or neither, and
-        all four read without being read.
+        A row in the sidebar says all three without being opened. The open
+        page is the blue bar; a page that draws something has a switch that
+        queues it, and a pill with the sheets it will make; and the three
+        kinds of page -- set-up, studies, tools -- are three groups under
+        their own captions, the way Archicad lists the pages of a settings
+        dialog. The card that explains what is under the pointer sits in the
+        room left at the foot.
         """
-        #: The sections, in strip order, the two kinds flattened into one
-        #: list. The kinds are drawn by ``_strip``; everything else -- the
+        #: The sections, in sidebar order, the groups flattened into one list.
+        #: The groups are drawn by ``_strip``; everything else -- the
         #: settings file, the studies, the wheel, the tests -- wants them flat.
         self.titles: list[str] = [title for _kind, group in self.GROUPS for title in group]
         #: The four that used to live inside Solar tools. Kept because
@@ -3030,22 +3013,22 @@ class Window:
         #: needs.
         self.panes: list[Scroller] = []
         self.pane_of: dict[str, Scroller] = {}
-        #: The tab buttons. Which one is open is in the style each wears: the
-        #: open tab's face is the page's white under a blue cap, rounded where
-        #: it meets nothing and square where it meets the page.
+        #: The pages' names in the sidebar, by title: the button that opens
+        #: each. Which one is open is in the style it wears.
         self.tabs: dict[str, ttk.Button] = {}
+        #: And the rest of each row: the row itself, its pill, and its switch
+        #: with the variable the switch shows -- for a page that has a study.
+        self.side_rows: dict[
+            str, tuple[ttk.Frame, ttk.Label, ttk.Checkbutton | None, tk.BooleanVar]
+        ] = {}
         #: Which section is showing. Never empty: there is no state of this
-        #: window with no page open, which is what the launcher was.
+        #: window with no page open.
         self.showing = self.GENERAL
 
-        # Packed before the stack, so it lands above it.
         self._strip()
 
-        # The page is a card of its own on the chrome -- the lighter grey,
-        # one thin edge, rounded -- a gap below the strip. The sections are
-        # laid out inside it, inset past its corners.
-        self.stack = ttk.Frame(self.pane, style="PageCard.TFrame", padding=6)
-        self.stack.pack(side="top", fill="both", expand=True, padx=(PAD, PAD), pady=(6, PAD))
+        self.stack = ttk.Frame(self.pane, style="Page.TFrame")
+        self.stack.pack(side="top", fill="both", expand=True)
 
         builders = {
             self.GENERAL: self._general,
@@ -3055,94 +3038,112 @@ class Window:
             self.SHADOWS: self._shadows,
             self.EYE: self._sun_eyes,
             self.YIELD: self._yield,
+            self.REFERENCE: self._reference_page,
         }
         for title in self.titles:
             builders[title](self._section(title))
         self._show_section(self.GENERAL)
 
     def _strip(self) -> None:
-        """The seven tabs, in their two kinds, across the top of the window.
-
-        Grouped rather than flat because the taxonomy is the thing equal
-        cards could not say: two of these pages set the job up and five of
-        them draw something, and only the five can be queued. A colleague
-        hunting for the queued mark can rule out two tabs without looking.
-        """
-        strip = ttk.Frame(self.pane, style="Chrome.TFrame", padding=(PAD, 4, PAD, 0))
-        #: Kept so the window can ask how wide the tabs need to be.
-        self.strip = strip
-        strip.pack(side="top", fill="x")
-
-        column = 0
-        for _kind, group in self.GROUPS:
-            if column:
-                # Between the kinds, a rule rather than a wider gap: at this
-                # size a gap reads as two tabs that happen to sit apart, and
-                # the split is the whole point of the arrangement. The rule
-                # says it alone; the words that used to sit over each group
-                # were a second way of saying it.
-                ttk.Separator(strip, orient="vertical").grid(
-                    row=0, column=column, sticky="ns", padx=12, pady=(6, 6)
-                )
-                column += 1
-            for title in group:
-                self._tab(strip, title, column)
-                column += 1
-        # The strip ends where the tabs do; the rest of the row is chrome.
-        strip.columnconfigure(column, weight=1)
-
-    def _tab(self, strip: ttk.Frame, title: str, column: int) -> None:
-        """One tab: a drawing at 32 px and the page's name under it.
-
-        The mark that means *open* used to be three pixels of blue frame sat
-        on top of a square button, because ttk has no way to give one edge of
-        a widget its own colour. It is in the tab's face now -- the page's
-        white under a blue cap, rounded where it meets nothing and square
-        where it meets the page -- which is the same fact drawn as one shape
-        instead of two, and still a thing the tint used for *queued* can never
-        be confused with.
-        """
-        tab = ttk.Button(
-            strip,
-            style="Tab.TButton",
-            text=title,
-            command=partial(self._show_section, title),
-            **icons.tab_options(title, 32),
-        )
-        tab.grid(row=0, column=column, sticky="nsew", padx=(0, 4))
-        # Room for the name as it is drawn open and queued -- bold, with the
-        # dot -- held whether it is or not. Sized to the plain name, the strip
-        # moved every tab after the open one sideways as tabs were opened.
-        tab.configure(style="TabOpenQueued.TButton", text=f"{title} •")
-        tab.update_idletasks()
-        strip.columnconfigure(column, minsize=tab.winfo_reqwidth())
-        tab.configure(style="Tab.TButton", text=title)
-        Tooltip(tab, self.SECTION_BLURB[title])
-        self.tabs[title] = tab
-
-    def _paint_tabs(self) -> None:
-        """Say which tab is open and which tabs will run, in two ways that
-        cannot be read as each other.
-
-        Open is the white tab under the blue rule. Queued is the blue name and
-        the dot after it. Two marks on two axes, so a tab that is both says
-        both -- where the launcher had one tint that had to mean both and
-        therefore meant neither.
-        """
-        running = {where for _name, tick, where in self._studies() if tick.get()}
-        styles = {
-            (False, False): "Tab.TButton",
-            (True, False): "TabOpen.TButton",
-            (False, True): "TabQueued.TButton",
-            (True, True): "TabOpenQueued.TButton",
-        }
-        for title, tab in self.tabs.items():
-            open_here = title == self.showing
-            queued_here = title in running
-            tab.configure(
-                style=styles[(open_here, queued_here)],
-                text=f"{title} •" if queued_here else title,
+        """The pages, in their three groups, down the sidebar."""
+        pages = ttk.Frame(self.side, style="Side.TFrame")
+        pages.pack(side="top", fill="x")
+        first = True
+        for kind, group in self.GROUPS:
+            ttk.Label(pages, text=kind, style="Group.TLabel").pack(
+                side="top", anchor="w", padx=10, pady=(4 if first else 14, 4)
             )
+            first = False
+            for title in group:
+                self._tab(pages, title, queues=kind == self.DRAWS)
+
+    def _tab(self, pages: ttk.Frame, title: str, *, queues: bool) -> None:
+        """One page in the sidebar: its name, what it will make, its switch.
+
+        The whole row opens the page; the switch, on a study's row, queues
+        the study without opening anything. The row is a frame so that the
+        open one can wear a rounded blue face under all three.
+        """
+        row = ttk.Frame(pages, style="SideRow.TFrame", padding=(8, 2, 6, 2), height=32)
+        row.pack(side="top", fill="x", pady=1)
+        row.pack_propagate(False)
+        name = ttk.Button(
+            row,
+            text=title,
+            style="Side.TButton",
+            command=partial(self._show_section, title),
+        )
+        lit = tk.BooleanVar(value=False)
+        switch: ttk.Checkbutton | None = None
+        if queues:
+            switch = ttk.Checkbutton(
+                row,
+                style="Switch.TCheckbutton",
+                variable=lit,
+                command=partial(self._flip_section, title),
+            )
+            switch.pack(side="right")
+            Tooltip(
+                switch,
+                "Queues this page's study for the next run, or takes every study "
+                "on the page out of it. A page with more than one study turns "
+                "its main one on; the others are switched on the page itself.",
+                title=f"Run {title.lower()}",
+            )
+        pill = ttk.Label(row, text="", style="Badge.TLabel")
+        name.pack(side="left", fill="both", expand=True)
+        row.bind("<Button-1>", lambda _event: self._show_section(title))
+        Tooltip(name, self.SECTION_BLURB[title], title=title)
+        self.tabs[title] = name
+        self.side_rows[title] = (row, pill, switch, lit)
+
+    def _flip_section(self, title: str) -> None:
+        """The sidebar switch of one page: every study on it off, if any is
+        on; otherwise its lead study on."""
+        studies = [(name, tick) for name, tick, where in self._studies() if where == title]
+        if any(tick.get() for _name, tick in studies):
+            for _name, tick in studies:
+                tick.set(False)
+        elif studies:
+            lead = self.LEADS.get(title, studies[0][0])
+            for name, tick in studies:
+                if name == lead:
+                    tick.set(True)
+        self._sync()
+
+    def _paint_tabs(self, sheets: Sequence[Sheet] | None = None) -> None:
+        """Say which page is open, which will run, and how much each makes.
+
+        Open is the blue bar. Queued is the switch, and what it is worth is
+        the pill beside it -- two marks on two things, so a page that is both
+        says both.
+        """
+        if sheets is None:
+            sheets = self.planned()
+        where_of = {name: where for name, _tick, where in self._studies()}
+        running = {where for _name, tick, where in self._studies() if tick.get()}
+        made: dict[str, int] = {}
+        for sheet in sheets:
+            if sheet.paper and sheet.job in where_of:
+                page = where_of[sheet.job]
+                made[page] = made.get(page, 0) + 1
+        for title, (row, pill, switch, lit) in self.side_rows.items():
+            open_here = title == self.showing
+            row.configure(style="SideRowOpen.TFrame" if open_here else "SideRow.TFrame")
+            self.tabs[title].configure(style="SideOpen.TButton" if open_here else "Side.TButton")
+            if switch is not None:
+                lit.set(title in running)
+                switch.configure(
+                    style="SwitchOpen.TCheckbutton" if open_here else "Switch.TCheckbutton"
+                )
+            words = str(made[title]) if made.get(title) else ""
+            if title == self.REFERENCE and self._picture_open():
+                words = "open"
+            pill.configure(text=words, style="BadgeOpen.TLabel" if open_here else "Badge.TLabel")
+            if words and not pill.winfo_manager():
+                pill.pack(side="right", padx=(4, 6))
+            elif not words and pill.winfo_manager():
+                pill.pack_forget()
 
     def _section(self, title: str) -> ttk.Frame:
         """One page, and the frame its settings are built into.
@@ -3153,15 +3154,20 @@ class Window:
         the longest and leave every short page with a bar that moves nothing.
 
         Built now and shown later. Every page exists from the moment the
-        window opens, so reading the project fills all six at once and moving
-        between them costs nothing.
+        window opens, so reading the project fills all of them at once and
+        moving between them costs nothing. Headed by its name and one line,
+        so the page says where you are without the sidebar.
         """
         pane = Scroller(self.stack, ground=theme.PAGE)
         self.panes.append(pane)
         self.pane_of[title] = pane
-        # The page: light grey, with the cards sixteen pixels in from its
-        # edge on the left and eight on the right, where the bar runs.
-        frame = ttk.Frame(pane.content, style="Page.TFrame", padding=(PAD, 10, PAD, 12))
+        head = ttk.Frame(pane.content, style="Page.TFrame", padding=(PAD * 3, 16, PAD * 3, 4))
+        head.pack(side="top", fill="x")
+        ttk.Label(head, text=title, style="PageTitle.TLabel").pack(side="left")
+        ttk.Label(head, text=self.SECTION_SHORT[title], style="PageBlurb.TLabel").pack(
+            side="left", padx=(12, 0), pady=(2, 0)
+        )
+        frame = ttk.Frame(pane.content, style="Page.TFrame", padding=(PAD * 3, 8, PAD * 3, 16))
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
         return frame
@@ -3436,8 +3442,11 @@ class Window:
         """
         frame = self._panel(outer, row, title="Days studied")
         row = 0
+        ttk.Label(frame, text="Days", anchor="e").grid(
+            row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0)
+        )
         toggles = Toggles(frame, on_change=self._sync)
-        toggles.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        toggles.grid(row=row, column=1, sticky="w", pady=(6, 0))
         self.toggle_rows.append(toggles)
         for name, (_, title) in ASSESSMENT_DAYS.items():
             state = tk.BooleanVar(value=name == "winter")
@@ -4327,8 +4336,8 @@ class Window:
                 ),
             ),
         ):
-            name = ttk.Label(frame, text=label, **icons.options(label))
-            name.grid(row=row, column=0, sticky="w", pady=(6, 0))
+            name = ttk.Label(frame, text=label, anchor="e")
+            name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
             buttons = Toggles(frame, on_change=self._sync)
             buttons.grid(row=row, column=1, sticky="w", pady=(6, 0))
             self.toggle_rows.append(buttons)
@@ -4728,8 +4737,8 @@ class Window:
         as chips: the same control as a layer list, over the levels the run
         names rather than the project's storeys, which a massing homed on
         the ground storey and offset up does not follow."""
-        name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="nw", pady=(6, 0))
+        name = ttk.Label(parent, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="ne", padx=(0, 12), pady=(6, 0))
         box = Chips(
             parent,
             add=lambda: self._choose(
@@ -4795,8 +4804,8 @@ class Window:
         is genuinely typed, or pasted, and the entry is the honest record of
         what gets passed. The button is what makes it bearable.
         """
-        name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="w", pady=(3, 0))
+        name = ttk.Label(parent, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(3, 0))
         holder = ttk.Frame(parent)
         holder.grid(row=row, column=1, sticky="ew", pady=(3, 0))
         holder.columnconfigure(0, weight=1)
@@ -4833,8 +4842,8 @@ class Window:
         cleared, which is the one edit it is for -- blank is the tables
         folder's own file.
         """
-        name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="w", pady=(3, 0))
+        name = ttk.Label(parent, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(3, 0))
         holder = ttk.Frame(parent)
         holder.grid(row=row, column=1, sticky="ew", pady=(3, 0))
         holder.columnconfigure(0, weight=1)
@@ -4898,100 +4907,24 @@ class Window:
         )
 
     def _controls(self, base: ttk.Frame) -> None:
-        """Run, the progress bar and the log, under every section alike."""
-        #: What pressing Run will actually do. With the ticks spread across
-        #: sections there is otherwise nowhere on screen that answers it: a
-        # The row of queued study names that used to sit here is gone. It
-        # existed because nothing on screen said what Run would do; the panel
-        # of sheets down the right says it in sheets, which is the unit the
-        # question is really asked in.
+        """The run bar: what the project is, what is queued, and Run.
+
+        One line, the way the design has it. At the left, which project is
+        read and what came out of it -- the line that sat under the picker.
+        Then what Run will make, by study. At the right, the build, and Run,
+        which is the one filled button in the window and says in sheets what
+        pressing it does. Stop is there only while there is something to
+        stop. While a run is going the bar gets a second line above it, the
+        progress; after one, a third under it, the run's last line and the
+        way to the whole log.
+        """
+        # Above the bar, while a run is under way and not otherwise: an empty
+        # trough between runs was a strip of nothing at the foot of every page.
         progress_row = ttk.Frame(base, style="Chrome.TFrame")
-        progress_row.grid(row=2, column=0, sticky="ew", pady=(2, 6))
+        progress_row.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         progress_row.columnconfigure(0, weight=1)
-        #: Shown while a run is under way and not otherwise: an empty trough
-        #: between runs was a strip of nothing at the foot of every page,
-        #: on a window whose pages already scroll for want of height.
         self.progress_row = progress_row
         progress_row.grid_remove()
-
-        buttons = ttk.Frame(base, style="Chrome.TFrame")
-        buttons.grid(row=1, column=0, sticky="ew", pady=(2, 2))
-        # The gap between the two kinds of control takes the slack: Run and
-        # Stop act on the project at the left, the settings menu acts on this
-        # window at the right.
-        buttons.columnconfigure(2, weight=1)
-        # Filled, and the white disc on it; off, the grey face and the blue
-        # disc every other icon in the window wears.
-        lit = icons.named("run_on", 16)
-        dim = icons.named("run", 16)
-        run_image: dict[str, object] = {}
-        if lit is not None and dim is not None:
-            run_image = {"image": (lit, "disabled", dim), "compound": "left"}
-        self.go = ttk.Button(
-            buttons,
-            text="Run study",
-            command=self._start,
-            style="Run.TButton",
-            # Wide enough for "Tick a study to run", so the button does not
-            # change size under the pointer as studies are ticked.
-            width=22,
-            **run_image,  # type: ignore[arg-type]
-        )
-        self.go.grid(row=0, column=0, sticky="w")
-        Tooltip(
-            self.go,
-            "Runs every ticked study in the project chosen above, one after "
-            "the other. Minutes rather than seconds: the export alone takes a "
-            "couple. Nothing is saved — look at the result in Archicad and "
-            "save it yourself if you want to keep it.",
-        )
-        self.cancel = ttk.Button(
-            buttons,
-            text="Stop",
-            style="Chrome.TButton",
-            command=self._stop,
-            state="disabled",
-            **icons.button_options("stop"),
-        )
-        self.cancel.grid(row=0, column=1, padx=(6, 0))
-        Tooltip(
-            self.cancel,
-            "Asks the run to stop and lets it put the project's layer state "
-            "back on the way out. It can take a few seconds to come to a halt.",
-        )
-        # The four things that act on this window's settings, in one menu.
-        # They were four buttons as big as Run, which made six equal buttons
-        # on the bar and the one that mattered no easier to find than Forget.
-        # "Save as default" is for what belongs to the practice; a preset is
-        # for what belongs to a job or a colleague -- the Silverwater setup,
-        # the shadow set the council asked for -- and goes wherever a job's
-        # files go rather than into a profile.
-        self.settings_menu = tk.Menu(self.root, tearoff=False)
-        self.settings_menu.add_command(label="Save as default", command=self._remember)
-        self.settings_menu.add_command(label="Save preset…", command=self._save_preset)
-        self.settings_menu.add_command(label="Load preset…", command=self._load_preset)
-        self.settings_menu.add_separator()
-        self.settings_menu.add_command(label="Forget saved settings", command=self._forget)
-        settings = ttk.Button(
-            buttons,
-            text="Settings ▾",
-            style="Chrome.TButton",
-            command=lambda: self._post(self.settings_menu, settings),
-            **icons.button_options("save_default"),
-        )
-        settings.grid(row=0, column=3, sticky="e")
-        Tooltip(
-            settings,
-            "Save as default remembers every section -- the ticks, the fields "
-            "and which section was open -- and fills the window in with it next "
-            "time. A preset is the same page written to a file you name, to load "
-            "on another job or machine. Forget throws the saved settings away. "
-            "Anything the open project disagrees with is overruled by the "
-            "project, so a saved layer name cannot make a run measure a layer "
-            "that is not there.",
-            title="Settings",
-        )
-
         self.progress = ttk.Progressbar(progress_row, mode="determinate", maximum=100)
         self.progress.grid(row=0, column=0, sticky="ew")
         #: What the bar is actually at, in words. An indeterminate bar says
@@ -5000,20 +4933,72 @@ class Window:
         self.progress_count = ttk.Label(progress_row, text="", style="ChromeHint.TLabel")
         self.progress_count.grid(row=0, column=1, sticky="e", padx=(8, 0))
 
-        #: The newest line out of a run, and the only one on screen.
-        #:
-        #: Eight lines of scrolling log used to sit here: a sixth of the
-        #: window given to a transcript that, between runs, was eight empty
-        #: lines, and during one was read by nobody -- a run is minutes long
-        #: and the question the whole time is "where is it up to", which is
-        #: one line and a bar, not a page.
-        #:
-        #: Nothing is thrown away. Every line is still kept, in ``self.lines``,
-        #: and in a file, so a run that failed can be read back; it is simply
-        #: not what the bottom of the window is made of.
+        bar = ttk.Frame(base, style="Chrome.TFrame")
+        bar.grid(row=1, column=0, sticky="ew")
+        bar.columnconfigure(1, weight=1)
+        #: What the chosen project is, or why there is none: the line that
+        #: says what was read, with the plug in front of it seated or struck.
+        self.status = ttk.Label(bar, text="", style="Chrome.TLabel")
+        self.status.grid(row=0, column=0, sticky="w")
+        #: What Run will make, by study, in words: the panel down the right
+        #: draws it, and this says it for a window whose panel is folded.
+        self.queue_line = ttk.Label(bar, text="", style="ChromeHint.TLabel")
+        self.queue_line.grid(row=0, column=1, sticky="w", padx=(PAD * 2, 0))
+        # Whose build this is, and until when. The prototype disclaimer is
+        # still on every sheet and in every export, where the numbers are.
+        ttk.Label(bar, text=credential(), style="ChromeHint.TLabel").grid(
+            row=0, column=2, sticky="e", padx=(PAD, PAD * 2)
+        )
+        self.cancel = ttk.Button(
+            bar,
+            text="Stop",
+            style="Chrome.TButton",
+            command=self._stop,
+            state="disabled",
+            **icons.button_options("stop"),
+        )
+        self.cancel.grid(row=0, column=3, padx=(0, 6))
+        self.cancel.grid_remove()
+        Tooltip(
+            self.cancel,
+            "Asks the run to stop and lets it put the project's layer state "
+            "back on the way out. It can take a few seconds to come to a halt.",
+        )
+        # Filled, and the white disc on it; off, the grey face and the blue
+        # disc every other icon in the window wears.
+        lit = icons.named("run_on", 16)
+        dim = icons.named("run", 16)
+        run_image: dict[str, object] = {}
+        if lit is not None and dim is not None:
+            run_image = {"image": (lit, "disabled", dim), "compound": "left"}
+        self.go = ttk.Button(
+            bar,
+            text="Run study",
+            command=self._start,
+            style="Run.TButton",
+            # Wide enough for "Tick a study to run", so the button does not
+            # change size under the pointer as studies are ticked.
+            width=20,
+            **run_image,  # type: ignore[arg-type]
+        )
+        self.go.grid(row=0, column=4, sticky="e")
+        Tooltip(
+            self.go,
+            "Runs every queued study in the project chosen above, one after "
+            "the other. Minutes rather than seconds: the export alone takes a "
+            "couple. Nothing is saved — look at the result in Archicad and "
+            "save it yourself if you want to keep it.",
+        )
+
+        #: The newest line out of a run, and the only one on screen, under
+        #: the bar once there is one. Every line is still kept, in
+        #: ``self.lines``, and in a file, so a run that failed can be read
+        #: back; it is simply not what the bottom of the window is made of.
         note_row = ttk.Frame(base, style="Chrome.TFrame")
-        note_row.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        note_row.grid(row=2, column=0, sticky="ew", pady=(6, 0))
         note_row.columnconfigure(0, weight=1)
+        self.note_row = note_row
+        note_row.grid_remove()
         self.note = ttk.Label(note_row, text="", style="Note.TLabel")
         self.note.grid(row=0, column=0, sticky="ew")
         #: The way to the whole transcript, beside the one line of it. Shown
@@ -5032,15 +5017,11 @@ class Window:
             title="Whole log",
         )
 
-        # The one line of text down here that is not about this run: whose
-        # build this is, and until when. The prototype disclaimer is still on
-        # every sheet and in every export, where the numbers are; the foot of
-        # the window carries the licence instead of shouting it. At the right
-        # of the run's own line rather than on a line of its own, which was a
-        # row of the window spent on one short sentence.
-        ttk.Label(note_row, text=credential(), style="ChromeHint.TLabel").grid(
-            row=0, column=2, sticky="e", padx=(12, 0)
-        )
+    def _say(self, line: str) -> None:
+        """Put one line of a run under the bar, showing the row if it was not."""
+        self.note.config(text=line)
+        if line:
+            self.note_row.grid()
 
     @staticmethod
     def _post(menu: tk.Menu, under: tk.Misc) -> None:
@@ -5079,59 +5060,111 @@ class Window:
             box.columnconfigure(0, minsize=widest)
 
     def _panel(self, outer: ttk.Frame, row: int, *, title: str = "") -> ttk.Frame:
-        """One box on a page: a study, or a group of settings that go together.
+        """One panel on a page: a study, or a group of settings that go together.
 
-        A page was a flat run of rows with a rule between the groups, which is
-        what made it read as a form. A box says the same grouping as a shape:
-        a rounded border, a tinted header, and the rows that belong to it
-        inside. The border and the header's tint are one nine-slice picture
-        (``theme._rounded``), so the tint's corners are the box's corners.
+        A rounded border with its header drawn into the top of it, the way
+        Archicad sets out the panels of a settings dialog: a triangle that
+        folds the panel to its header, and the panel's name beside it. The
+        border and the header's tint are one nine-slice picture
+        (``theme._rounded``), so the tint's corners are the panel's corners.
 
         The rows are built by the code that always built them. The caller
         points its own ``frame`` at what this returns and starts ``row`` again
         at nought, and the helpers beneath it neither know nor care.
 
-        ``title`` heads a box that has no tick to head it -- General and Model
-        are set up, not switched on. A study's box is headed by ``_head``.
+        ``title`` heads a panel that has no study to head it -- General and
+        Model are set up, not switched on. A study's panel is headed by
+        ``_head``, which puts its name and its switch where this puts a title.
         """
         head = theme.PANEL_HEAD
-        # A settings card wears the grey band: it is not switched on, and the
-        # tint means switched on. A study's card is restyled by ``_sync``.
+        # A settings panel wears the plain header: it is not switched on, and
+        # the tint means switched on. A study's panel is restyled by ``_sync``.
         box = ttk.Frame(
             outer,
             style="BoxOff.TFrame" if title else "Box.TFrame",
-            padding=(14, head + 12, 14, 14),
+            padding=self.OPEN_PANEL,
         )
         box.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         box.columnconfigure(0, minsize=self.LABEL_COLUMN)
         box.columnconfigure(1, weight=1)
         self.boxes.append(box)
+        # Placed, not gridded: the padding above keeps the rows clear of the
+        # header, and the header itself sits in that padding. Measured from
+        # the *outside* of the box, because a ttk frame tells Tk its padding is
+        # a border and ``place`` otherwise starts inside it -- which puts the
+        # header on top of the first row instead of over it.
+        fold = ttk.Button(
+            box,
+            text="▾",
+            style="Disclose.TButton",
+            takefocus=False,
+            command=lambda: self._fold(box, not self.folded.get(str(box), False)),
+        )
+        fold.place(bordermode="outside", x=8, y=2, width=20, height=head - 3)
+        self.folders[str(box)] = fold
+        Tooltip(
+            fold,
+            "Folds the panel to its header, or opens it again. Folding changes "
+            "nothing about what runs: a study runs by its switch, open or folded.",
+            title=title or "Fold",
+        )
         if title:
-            # Placed, not gridded: the padding above keeps the rows clear of
-            # the header, and the header itself sits in that padding. Measured
-            # from the *outside* of the box, because a ttk frame tells Tk its
-            # padding is a border and ``place`` otherwise starts inside it --
-            # which puts the header on top of the first row instead of over it.
-            # Set in capitals, the way Archicad heads a section of a dialog.
-            ttk.Label(box, text=title.upper(), style="BoxTitle.TLabel").place(
-                bordermode="outside", x=10, y=2, height=head - 3, relwidth=1.0, width=-20
+            ttk.Label(box, text=title, style="BoxTitle.TLabel").place(
+                bordermode="outside", x=30, y=2, height=head - 3, relwidth=1.0, width=-44
             )
         return box
 
-    def _head(self, box: ttk.Frame, tick: ttk.Checkbutton, job: str) -> None:
-        """Put a study's tick at the head of its box, and remember both.
+    #: A panel's padding open, and folded to its header.
+    OPEN_PANEL = (14, theme.PANEL_HEAD + 10, 14, 12)
+    FOLDED_PANEL = (14, theme.PANEL_HEAD, 14, 6)
 
-        The tick *is* the header: the study's name, its drawing and the box
-        that switches it on, across the tinted top of its own panel. At the
-        right, what the tick is worth in sheets -- which is the figure the
+    def _fold(self, box: ttk.Frame, shut: bool) -> None:
+        """Fold a panel to its header, or open it again.
+
+        Its rows are taken off the grid and put back where they were, which
+        ``grid_remove`` remembers; the header is placed, so it stays.
+        """
+        if self.folded.get(str(box), False) == shut:
+            return
+        self.folded[str(box)] = shut
+        if shut:
+            rows = box.grid_slaves()
+            self._kept_rows[str(box)] = rows
+            for child in rows:
+                child.grid_remove()
+            # Grid leaves a frame at its last size when its last row goes, so
+            # one empty row stays to let the panel shrink to its header.
+            spacer = ttk.Frame(box, height=1)
+            spacer.grid(row=0, column=0)
+            self._spacers[str(box)] = spacer
+        else:
+            if str(box) in self._spacers:
+                self._spacers.pop(str(box)).destroy()
+            for child in self._kept_rows.pop(str(box), []):
+                child.grid()
+        box.configure(padding=self.FOLDED_PANEL if shut else self.OPEN_PANEL)
+        self.folders[str(box)].configure(text="▸" if shut else "▾")
+
+    def _head(self, box: ttk.Frame, tick: ttk.Checkbutton, job: str) -> None:
+        """Put a study's name and its switch at the head of its panel.
+
+        The tick that was the header -- a 12 px box beside the study's name
+        -- is a switch now, at the right of the header, where a pointer finds
+        it without looking. The name is a label beside the fold's triangle,
+        and between them, what the switch is worth in sheets: the figure the
         panel down the side of the window draws, said where the decision is.
         """
         head = theme.PANEL_HEAD
-        tick.place(bordermode="outside", x=8, y=2, height=head - 3, relwidth=1.0, width=-16)
-        says = ttk.Label(box, text="", style="PanelSays.TLabel")
-        says.place(bordermode="outside", relx=1.0, x=-11, y=2, height=head - 3, anchor="ne")
+        name = str(tick.cget("text"))
+        tick.configure(text="", image="", style="SwitchHeadOff.TCheckbutton")
+        tick.place(bordermode="outside", relx=1.0, x=-12, y=2, height=head - 3, anchor="ne")
+        says = ttk.Label(box, text="", style="PanelSaysOff.TLabel")
+        says.place(bordermode="outside", relx=1.0, x=-50, y=2, height=head - 3, anchor="ne")
+        title = ttk.Label(box, text=name, style="StudyTitleOff.TLabel")
+        title.place(bordermode="outside", x=30, y=2, height=head - 3)
         self.study_bars[job] = tick
         self.study_boxes[job] = (box, says)
+        self.study_titles[job] = title
 
     def _hint(self, parent: ttk.Frame, row: int, text: str) -> ttk.Label:
         """The one-line explanation of a control.
@@ -5174,8 +5207,8 @@ class Window:
     def _combo(
         self, parent: ttk.Frame, row: int, label: str, hint: str, detail: str
     ) -> tuple[ttk.Combobox, int]:
-        name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="w", pady=(3, 0))
+        name = ttk.Label(parent, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(3, 0))
         # As wide as a long Archicad name, not as wide as the card: a list of
         # layouts or combinations a metre across is mostly empty box.
         box = ttk.Combobox(parent, values=[], width=self.NAME_WIDTH)
@@ -5216,8 +5249,8 @@ class Window:
         the right control for typed text, and there are eleven of them left
         where there were forty.
         """
-        name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="w", pady=(6, 0))
+        name = ttk.Label(parent, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
         wide = label in self.TEXT_FIELDS
         box = ttk.Entry(parent) if wide else ttk.Entry(parent, width=self.NUMBER_WIDTH)
         box.insert(0, initial)
@@ -5242,8 +5275,8 @@ class Window:
         hundred pixels wide, which is the least readable way to show the one
         thing a person checks here.
         """
-        name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="nw", pady=(6, 0))
+        name = ttk.Label(parent, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="ne", padx=(0, 12), pady=(6, 0))
         holder = ttk.Frame(parent)
         holder.grid(row=row, column=1, sticky="ew", pady=(6, 0))
         holder.columnconfigure(1, weight=1)
@@ -5273,8 +5306,8 @@ class Window:
         without its caller changing, and it is returned as the same kind of
         thing as far as everything that reads it is concerned.
         """
-        name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="w", pady=(6, 0))
+        name = ttk.Label(parent, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
         made = Tiles(
             parent,
             self.TILE_CHOICES[label],
@@ -5307,8 +5340,8 @@ class Window:
         as far as everything that reads it is concerned, so the fields that
         moved off the keyboard did not have to move anywhere else.
         """
-        name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="w", pady=(6, 0))
+        name = ttk.Label(parent, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
         made = Ticks(parent, choices, key=key, span=span, on_change=self._sync)
         made.insert(0, initial)
         made.grid(row=row, column=1, sticky="w", pady=(6, 0))
@@ -5327,8 +5360,8 @@ class Window:
         run off the end of any field that fits on the page. The chips are the
         same record, with a way out of each one, and they wrap.
         """
-        name = ttk.Label(parent, text=label, **icons.options(label))
-        name.grid(row=row, column=0, sticky="nw", pady=(6, 0))
+        name = ttk.Label(parent, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="ne", padx=(0, 12), pady=(6, 0))
         box = Chips(
             parent,
             add=lambda: self._choose(box, label, hint),
@@ -5581,19 +5614,32 @@ class Window:
         """
         self.floors_box.config(state="normal" if self.do_facade.get() else "disabled")
 
-        # A tab whose study will run says so, without anybody opening it.
-        self._paint_tabs()
+        # A page whose study will run says so, without anybody opening it.
+        sheets = self.planned()
+        self._paint_tabs(sheets)
         for toggles in self.toggle_rows:
             toggles.paint()
-        sheets = self.planned()
         for name, tick, _where in self._studies():
             on = tick.get()
             bar = self.study_bars.get(name)
             if bar is not None:
-                bar.configure(style="Study.TCheckbutton" if on else "StudyOff.TCheckbutton")
+                bar.configure(
+                    style="SwitchHead.TCheckbutton" if on else "SwitchHeadOff.TCheckbutton"
+                )
+            title = self.study_titles.get(name)
+            if title is not None:
+                title.configure(style="StudyTitle.TLabel" if on else "StudyTitleOff.TLabel")
             if name in self.study_boxes:
                 box, says = self.study_boxes[name]
                 box.configure(style="Box.TFrame" if on else "BoxOff.TFrame")
+                self.folders[str(box)].configure(
+                    style="DiscloseOn.TButton" if on else "Disclose.TButton"
+                )
+                # A study switched on opens to show what it will be run with;
+                # one switched off is left as it was, open or folded.
+                if on and not self._was_on.get(name, False):
+                    self._fold(box, False)
+                self._was_on[name] = on
                 made = sum(1 for sheet in sheets if sheet.job == name and sheet.paper)
                 models = sum(1 for sheet in sheets if sheet.job == name and not sheet.paper)
                 worth = f"{made} sheet" + ("" if made == 1 else "s")
@@ -5604,39 +5650,56 @@ class Window:
                     style="PanelSays.TLabel" if on else "PanelSaysOff.TLabel",
                 )
         self._refill_dock(sheets)
-        self._paint_run()
+        self._paint_run(sheets)
 
-    def _paint_run(self) -> None:
+    def _paint_run(self, sheets: Sequence[Sheet] | None = None) -> None:
         """Say on the Run button what pressing it will do, and switch it off
         when the answer is nothing.
 
-        A Run button that looked ready with nothing ticked answered a press
-        with a line at the foot of the window and nothing else. So it counts
-        the ticked studies and says so -- "Run 3 studies" -- and is off, and
-        says why, while there is nothing to run; while a run is going; and
-        while the open Archicad lacks the add-on, which ``_offer`` says in
-        the status line.
+        A Run button that looked ready with nothing switched on answered a
+        press with a line at the foot of the window and nothing else. So it
+        counts what the run will make and says so -- "Run 6 sheets", the same
+        number the sheets panel draws -- and is off, and says why, while there
+        is nothing to run; while a run is going; and while the open Archicad
+        lacks the add-on, which ``_offer`` says in the status line. The line
+        beside it says the same by study, for a window whose panel is folded.
         """
         if not hasattr(self, "go"):  # pragma: no cover - a tick before the bar is built
             return
-        ticked = sum(1 for _name, tick, _where in self._studies() if tick.get())
-        if not ticked:
-            text = "Tick a study to run"
-        elif ticked == 1:
+        if sheets is None:
+            sheets = self.planned()
+        queued = [name for name, tick, _where in self._studies() if tick.get()]
+        paper = sum(1 for sheet in sheets if sheet.paper)
+        if not queued:
+            text = "Switch on a study"
+        elif paper:
+            text = f"Run {paper} sheet" + ("" if paper == 1 else "s")
+        elif len(queued) == 1:
             text = "Run study"
         else:
-            text = f"Run {ticked} studies"
-        off = self._running or self._tapir_missing or not ticked
+            text = f"Run {len(queued)} studies"
+        off = self._running or self._tapir_missing or not queued
         self.go.config(text=text, state="disabled" if off else "normal")
+
+        said = []
+        for name in queued:
+            made = sum(1 for sheet in sheets if sheet.job == name and sheet.paper)
+            # The study's own name, without the page it is filed under:
+            # "solar analysis: apartments" reads as "Apartments".
+            short = name.split(": ", 1)[-1]
+            short = short[:1].upper() + short[1:]
+            said.append(f"{short} ({made})" if made else short)
+        self.queue_line.config(text=f"Queued: {' · '.join(said)}" if said else "")
 
     #: Under this many pixels the window cannot hold the page and the sheets
     #: panel side by side: the page is left with less than a chip row needs.
     #: The least of it: ``fold_below`` is the one in force, which is more when
     #: the tab strip needs more room than this leaves it.
-    FOLD_BELOW = 960
+    FOLD_BELOW = 1056
     #: The size the window opens at on a screen with room for it: see
-    #: ``__init__`` for where the numbers come from.
-    OPENING_WIDTH = 1072
+    #: ``__init__`` for where the numbers come from. The sidebar, a page and
+    #: the sheets panel side by side.
+    OPENING_WIDTH = 1240
     OPENING_HEIGHT = 856
 
     def _fit(self, event: tk.Event[tk.Misc]) -> None:
@@ -5683,6 +5746,11 @@ class Window:
             # The first tick: the sheets come out, unless the window is too
             # narrow to hold them, which is the other reason it folds.
             self._dock_opened_empty = False
+            # Asked of the window as it is, not of the last crossing: the
+            # first <Configure> comes before the window has its size, and
+            # would otherwise leave the panel folded on a window wide enough.
+            if self.root.winfo_ismapped():
+                self._narrow = self.root.winfo_width() < self.fold_below
             if not self._narrow:
                 self.dock.fold(False, by_hand=False)
 
@@ -7527,6 +7595,7 @@ class Window:
         self._running = True
         self._paint_run()
         self.cancel.config(state="normal")
+        self.cancel.grid()
         self.progress_row.grid()
         self.progress.config(mode="indeterminate")
         self.progress.start(12)
@@ -7561,6 +7630,7 @@ class Window:
         self._running = False
         self._paint_run()
         self.cancel.config(state="disabled")
+        self.cancel.grid_remove()
         if self.log is not None:
             self.log.close()
             self.log = None
@@ -7578,10 +7648,10 @@ class Window:
     def _open_log(self) -> None:
         """Open the last run's transcript, or say why it cannot be."""
         if self.last_log is None or not self.last_log.is_file():
-            self.note.config(text="No log to open yet: the transcript is written from a run.")
+            self._say("No log to open yet: the transcript is written from a run.")
             return
         if not run_log.open_file(self.last_log):
-            self.note.config(text=f"The log is {self.last_log}")
+            self._say(f"The log is {self.last_log}")
 
     def _drain(self) -> None:
         """Move the worker's lines into the widget, on the UI thread."""
@@ -7619,7 +7689,7 @@ class Window:
         if self.log is not None:
             self.log.write(line)
         if line.strip(" ─"):
-            self.note.config(text=line)
+            self._say(line)
 
 
 #: The artwork a Mac window started from a checkout wears in the Dock. A

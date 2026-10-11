@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 else:
     tk = pytest.importorskip("tkinter", reason="this machine has no tkinter")
 
+from sun_study import PRODUCT
 from sun_study.app import icons, preferences, probe, run_log, theme, window
 from sun_study.app.runner import CLI_MARKER, child_environment, command_prefix
 from sun_study.archicad import naming
@@ -993,34 +994,33 @@ def test_the_blue_edge_rims_the_whole_sheet(hidden_window: Any) -> None:
         assert paper.itemcget(edge, "fill") == "", "and hollow, so that it covers nothing"
 
 
-def test_the_scale_is_set_to_be_read_and_north_is_beside_the_drawings(hidden_window: Any) -> None:
-    """A reader checks the block for the scale, so it is set like the sheet
-    number and not in the block's five-point grey. And the north arrow is in
-    the block: at the top right of the drawing area it sat on the corner
-    cell of a sheet carrying four."""
+def test_a_sheet_is_lettered_in_one_style_on_shared_lines(hidden_window: Any) -> None:
+    """One size, one weight, one ink for every word on a miniature: at 300
+    px, three sizes in three greys read as clutter. The scale and the number
+    sit in the block level with the two lines of the sheet's name beside
+    them, and north is at the top of the block, on the block's left edge with
+    the words -- clear of every drawing."""
     paper: Any = tk.Canvas(hidden_window.root)
-    # A short scale, so the size it is set at is the size it keeps whatever
-    # typeface this machine has: a long one is shrunk to fit the strip.
     window.draw_sheet(paper, replace(FOUR_HOUR_SHEET, scale="1:50"), 300, 212)
-    block_left = 300 * (1 - 40.0 / window.SHEET_MM_W)
+    block_left = 300 * (1 - 45.0 / window.SHEET_MM_W)
     items = paper.find_all()
+    texts = [i for i in items if str(paper.type(i)) == "text"]
 
-    (scale,) = [
-        i for i in items if str(paper.type(i)) == "text" and paper.itemcget(i, "text") == "1:50"
-    ]
-    face = hidden_window.root.tk.splitlist(paper.itemcget(scale, "font"))
-    assert int(face[1]) >= 8, face
-    assert paper.bbox(scale)[0] >= block_left
+    assert len({paper.itemcget(i, "font") for i in texts}) == 1, "one size and weight"
+    assert {paper.itemcget(i, "fill") for i in texts} == {theme.INK}, "one ink"
 
-    (north,) = [
-        i for i in items if str(paper.type(i)) == "text" and paper.itemcget(i, "text") == "N"
-    ]
+    def at(text: str) -> Any:
+        (found,) = [i for i in texts if paper.itemcget(i, "text") == text]
+        return paper.coords(found)
+
+    assert at("1:50")[0] >= block_left and at("SD.01")[0] >= block_left
+    assert at("1:50")[1] == at("SHADOW DIAGRAM")[1], "the scale beside the name"
+    assert at("SD.01")[1] == at("09:00-12:00   (1 of 2)")[1], "the number beside the hours"
+
     ring = [i for i in items if str(paper.type(i)) == "oval" and paper.bbox(i)[0] >= block_left]
-    assert paper.bbox(north)[0] >= block_left and len(ring) == 1, "in the block, not on a cell"
-    cells = [
-        i for i in items if str(paper.type(i)) == "rectangle" and paper.bbox(i)[2] < block_left
-    ]
-    assert all(paper.bbox(i)[2] < paper.bbox(ring[0])[0] for i in cells), "clear of every cell"
+    assert len(ring) == 1, "north, in the block"
+    assert paper.bbox(ring[0])[1] < 300 * 20 / window.SHEET_MM_W, "at its top"
+    assert not [i for i in texts if paper.itemcget(i, "text") in {"N", "LORIINI"}]
 
 
 def test_each_site_sheet_follows_its_own_tick(hidden_window: Any) -> None:
@@ -1082,25 +1082,18 @@ def test_the_foot_of_the_window_carries_the_licence_not_a_warning(hidden_window:
     assert not [line for line in said if "PROTOTYPE" in line], "the warning lives on the sheets"
 
 
-def test_the_reference_image_opens_one_palette_for_the_chosen_project(
+def test_the_reference_image_is_a_page_under_tools_for_the_chosen_project(
     hidden_window: Any,
 ) -> None:
-    """The button above the tabs opens the picture's palette, told which
-    project is chosen so that the Archicad window it looks for is that one.
-    A second press raises the same palette rather than opening a twin."""
-    from sun_study.app import overlay
-
+    """The reference image is a tool, so it is a page of its own under
+    Tools: pressing for it opens that page, and its controls are told which
+    project is chosen so that the Archicad window they look for is that one.
+    No picture window is made until there is a picture to show."""
     hidden_window._reference()
-    opened = overlay._open
-    assert opened is not None
-    try:
-        assert opened.project() == "SAMPLE"
-        hidden_window._reference()
-        assert overlay._open is opened
-    finally:
-        opened.close()
-        hidden_window.root.update()
-    assert overlay._open is None
+    assert hidden_window.showing == window.Window.REFERENCE
+    assert hidden_window.palette.project() == "SAMPLE"
+    assert hidden_window.palette._overlay is None
+    assert not hidden_window._picture_open()
 
 
 def only_yield(hidden_window: Any) -> None:
@@ -2974,7 +2967,7 @@ def test_the_site_outputs_are_buttons_over_the_same_ticks(hidden_window: Any) ->
         "Set the project location from the address",
     ]
     assert buttons["Context Model in 3D (terrain, blocks, neighbours)"].cget("text") == "3D context"
-    assert all(button.cget("image") for button in buttons.values()), "each wears its drawing"
+    assert not any(button.cget("image") for button in buttons.values()), "words, not drawings"
 
     assert hidden_window.do_site_model.get() is False
     buttons["Context Model in 3D (terrain, blocks, neighbours)"].invoke()
@@ -3203,20 +3196,15 @@ def test_every_labelled_icon_matches_a_label_the_window_really_uses(
     assert not orphans, f"in BY_LABEL but no such label in the window: {orphans}"
 
 
-def test_every_tab_carries_its_own_drawing_above_its_name(hidden_window: Any) -> None:
-    """A tab is a drawing and a name. Without the drawing it is a small word.
-
-    Above the name and not beside it, which is what lets the drawing be 32 px:
-    beside it, an icon can be no taller than one line of text, and that is how
-    the strip this replaces ended up with six pictures nobody could tell apart.
-    """
+def test_every_page_is_a_named_row_in_the_sidebar(hidden_window: Any) -> None:
+    """A page in the sidebar is its name, in three groups under their own
+    captions; the drawing that sat over each tab took the page's height."""
     for title in hidden_window.titles:
         tab = hidden_window.tabs[title]
-        assert tab.cget("image"), f"{title} has no icon"
-        assert str(tab.cget("compound")) == "top", f"{title} wears its icon beside the name"
-        # A tab whose study is queued also carries a dot, which `_sync` puts
-        # there -- the fixture opens with the facade study on.
-        assert tab.cget("text").rstrip(" •") == title, f"{title} is not named"
+        assert tab.cget("text") == title, f"{title} is not named"
+        assert not tab.cget("image"), f"{title} still wears a drawing"
+    assert [kind for kind, _group in window.Window.GROUPS] == ["SET UP", "STUDIES", "TOOLS"]
+    assert dict(window.Window.GROUPS)["TOOLS"] == (window.Window.REFERENCE,)
 
 
 def test_the_strip_always_has_exactly_one_tab_open(hidden_window: Any) -> None:
@@ -3240,56 +3228,74 @@ def test_open_and_queued_are_two_marks_and_never_the_same_one(hidden_window: Any
     """The fault the launcher had: one blue tint that had to mean both "this
     is the page you are on" and "this will run", and so meant neither.
 
-    Four styles, two axes. A tab can be open, queued, both or neither, and all
-    four are told apart -- and only the open ones wear the face with the blue
-    cap, which is a shape and so cannot be mistaken for the queued tint.
+    Two marks on two things. Open is the row's blue bar; queued is the row's
+    switch, with what it is worth in the pill beside it. A row can be open,
+    queued, both or neither, and all four are told apart.
     """
-    capped = {name for name, worn in theme.WEARS.items() if worn == "tabopen"}
     hidden_window._show_section(window.Window.GENERAL)
-    tab = hidden_window.tabs[window.Window.SHADOWS]
+    row, pill, switch, lit = hidden_window.side_rows[window.Window.SHADOWS]
+    name = hidden_window.tabs[window.Window.SHADOWS]
 
     hidden_window.do_shadows.set(False)
     hidden_window._sync()
-    assert tab.cget("style") == "Tab.TButton", "neither"
-    assert tab.cget("style") not in capped
+    assert row.cget("style") == "SideRow.TFrame", "neither"
+    assert lit.get() is False and not pill.winfo_manager()
 
     hidden_window.do_shadows.set(True)
     hidden_window._sync()
-    assert tab.cget("style") == "TabQueued.TButton", "queued but not open"
-    assert tab.cget("text").endswith("•")
+    assert row.cget("style") == "SideRow.TFrame", "queued but not open"
+    assert lit.get() is True and pill.cget("text"), "the switch, and what it will make"
 
     hidden_window._show_section(window.Window.SHADOWS)
-    assert tab.cget("style") == "TabOpenQueued.TButton", "open and queued"
-    assert tab.cget("style") in capped, "and it is the capped face that says open"
+    assert row.cget("style") == "SideRowOpen.TFrame", "open and queued"
+    assert name.cget("style") == "SideOpen.TButton"
+    assert switch.cget("style") == "SwitchOpen.TCheckbutton" and lit.get() is True
 
     hidden_window.do_shadows.set(False)
+    hidden_window.do_shadow_plans.set(False)
     hidden_window._sync()
-    assert tab.cget("style") == "TabOpen.TButton", "open but not queued"
-    assert hidden_window.tabs[window.Window.GENERAL].cget("style") not in capped
+    assert row.cget("style") == "SideRowOpen.TFrame", "open but not queued"
+    assert lit.get() is False
 
 
-def test_only_the_tabs_that_draw_something_can_be_queued(hidden_window: Any) -> None:
-    """The taxonomy, and the reason the strip is grouped rather than flat: two
-    pages set the job up and four draw something, and a tick belongs only to
-    the four. A queued mark on General would be a promise nothing keeps."""
-    setting_up = dict(window.Window.GROUPS)[window.Window.SET_UP]
-    drawn = dict(window.Window.GROUPS)[window.Window.DRAWS]
+def test_only_the_pages_that_draw_something_can_be_queued(hidden_window: Any) -> None:
+    """The taxonomy, and the reason the sidebar is grouped rather than flat:
+    two pages set the job up, five draw something, and one is a tool. A
+    switch belongs only to the five; one on General would be a promise
+    nothing keeps."""
+    groups = dict(window.Window.GROUPS)
+    setting_up = groups[window.Window.SET_UP]
+    drawn = groups[window.Window.DRAWS]
+    tools = groups[window.Window.TOOLS]
 
-    assert set(setting_up) | set(drawn) == set(hidden_window.titles), "every tab in a group"
-    assert not set(setting_up) & set(drawn), "and in only one"
+    assert set(setting_up) | set(drawn) | set(tools) == set(hidden_window.titles)
+    assert len(setting_up) + len(drawn) + len(tools) == len(hidden_window.titles)
 
     for _name, tick, _where in hidden_window._studies():
         tick.set(True)
     hidden_window._sync()
 
-    for title in setting_up:
-        assert hidden_window.tabs[title].cget("style") in {"Tab.TButton", "TabOpen.TButton"}, (
-            f"{title} sets the job up and cannot be queued"
-        )
+    for title in (*setting_up, *tools):
+        assert hidden_window.side_rows[title][2] is None, f"{title} cannot be queued"
     for title in drawn:
-        assert hidden_window.tabs[title].cget("style").endswith("Queued.TButton"), (
-            f"{title} draws something and every one of its studies is ticked"
-        )
+        assert hidden_window.side_rows[title][3].get() is True, f"{title} is queued"
+
+
+def test_a_pages_switch_turns_its_lead_study_on_and_every_study_off(
+    hidden_window: Any,
+) -> None:
+    """The switch on a page with several studies turns its main one on --
+    the apartments, on Solar analysis -- and, pressed again, every study on
+    the page off."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window._sync()
+    hidden_window._flip_section(window.Window.DIAGRAMS)
+    assert hidden_window.do_plans.get() is True
+    assert hidden_window.do_facade.get() is False and hidden_window.do_communal.get() is False
+    hidden_window.do_communal.set(True)
+    hidden_window._flip_section(window.Window.DIAGRAMS)
+    assert not (hidden_window.do_plans.get() or hidden_window.do_communal.get())
 
 
 def test_a_coarseness_nobody_offered_is_kept_rather_than_rounded(
@@ -3328,23 +3334,10 @@ def test_a_palette_button_ticks_its_study_and_opens_its_section(
 
 
 def test_the_palettes_last_button_opens_the_reference_image(hidden_window: Any) -> None:
-    """Not a study: the add-on's eighth button starts the window with the
-    reference-image palette already up, so the next click is Open picture."""
-    from sun_study.app import overlay
-
-    assert overlay._open is None
-    # Read again through an Any: mypy narrowed ``overlay._open`` to None at
-    # the assert above and cannot see ask_for opening the palette.
-    opened: Any = None
-    try:
-        assert hidden_window.ask_for("reference") is True
-        opened = overlay._open
-        assert opened is not None
-        assert opened.winfo_exists()
-    finally:
-        if opened is not None:
-            opened.close()
-            hidden_window.root.update()
+    """Not a study: the add-on's eighth button starts the window on the
+    reference image's page, so the next click is Open picture."""
+    assert hidden_window.ask_for("reference") is True
+    assert hidden_window._open_section() == window.Window.REFERENCE
 
 
 def test_a_study_nobody_has_heard_of_leaves_the_window_alone(hidden_window: Any) -> None:
@@ -3511,24 +3504,24 @@ def test_an_empty_sheets_panel_waits_at_its_edge(hidden_window: Any) -> None:
 
 
 def test_run_says_what_it_will_run(hidden_window: Any) -> None:
-    """A Run button that looked ready with nothing ticked answered a press
-    with a line at the foot of the window. It now counts, and is off when
-    the count is nought."""
+    """A Run button that looked ready with nothing switched on answered a
+    press with a line at the foot of the window. It now counts the sheets
+    the panel draws, and is off when there are none to make."""
     go = hidden_window.go
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
     hidden_window._sync()
     assert str(go.cget("state")) == "disabled"
-    assert go.cget("text") == "Tick a study to run"
+    assert go.cget("text") == "Switch on a study"
+    assert hidden_window.queue_line.cget("text") == ""
 
     hidden_window.do_shadows.set(True)
     hidden_window._sync()
+    made = sum(1 for sheet in hidden_window.planned() if sheet.paper)
+    assert made > 1
     assert str(go.cget("state")) == "normal"
-    assert go.cget("text") == "Run study"
-
-    hidden_window.do_sun_eyes.set(True)
-    hidden_window._sync()
-    assert go.cget("text") == "Run 2 studies"
+    assert go.cget("text") == f"Run {made} sheets"
+    assert hidden_window.queue_line.cget("text") == f"Queued: Shadow diagram ({made})"
 
 
 def test_the_progress_bar_is_there_only_while_a_run_is(hidden_window: Any) -> None:
@@ -3836,14 +3829,25 @@ def test_an_archicad_found_after_none_is_chosen(
     assert hidden_window.instance.get().startswith("SAMPLE")
 
 
-def test_the_four_settings_actions_share_one_menu(hidden_window: Any) -> None:
+def test_the_programs_actions_share_one_menu(hidden_window: Any) -> None:
+    """Connect Claude is set up once and then forgotten, so it is in the menu
+    with the settings rather than a button in the tool bar."""
     menu = hidden_window.settings_menu
     labels = [
         menu.entrycget(index, "label")
         for index in range(menu.index("end") + 1)
         if menu.type(index) == "command"
     ]
-    assert labels == ["Save as default", "Save preset…", "Load preset…", "Forget saved settings"]
+    expected = [
+        "Connect Claude…",
+        "Save as default",
+        "Save preset…",
+        "Load preset…",
+        "Forget saved settings",
+    ]
+    if not theme.MACOS:
+        expected.append(f"About {PRODUCT}")
+    assert labels == expected
 
 
 def test_run_is_the_one_filled_button(hidden_window: Any) -> None:
