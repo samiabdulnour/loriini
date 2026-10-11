@@ -4921,3 +4921,17 @@ first Refresh to find an Archicad no longer stops there.
 The drop-down's arrow is a drawn chevron rather than clam's boxed arrow,
 which inside a rounded field read as a second button. The orange marks on
 the sun studies' icons were looked at and kept: ochre is the sun.
+
+**The Mac window was a third too big, and opened across the screen.** Asked
+the same day, from the built program on a laptop: "the font and window is
+too big ... ideally 75 or 50 percent". ``MAC_POINTS`` assumed a Mac's Tk
+counts a point as a pixel and scaled every size by four thirds; Tk 9 already
+counts 1.33 pixels to the point, so the type came out a third larger than
+it was drawn, and every measurement taken from it -- the tabs, the label
+column, the width the window opens at -- grew with it. The factor is now
+worked out from the Tk's own ``scaling`` (``theme._fit_points``). Clam's
+floor of eleven characters under every tab is gone, each tab keeping room
+only for its own name in bold; and on a Mac the window opens on at most
+three quarters of the screen either way (``Window.MAC_SHARE``), the sheets
+panel starting folded when that leaves too little room beside the page. On
+a 1512 x 982 laptop the window went from 1471 x 856 to 1090 x 736.

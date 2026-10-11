@@ -231,14 +231,32 @@ MONO = "Menlo" if MACOS else "Consolas"
 
 #: How many of a Mac's points make one of this window's.
 #:
-#: Tk sizes type in points and turns a point into pixels at the screen's own
-#: rate. Windows counts 96 pixels to the inch against a point's 72, so the 9
-#: points this window is set in are 12 pixels there, and every measurement in
-#: it -- the rows, the cards, the thumbnails' lettering -- was drawn against
-#: those 12. Tk on a Mac counts a point as one pixel, as the Mac does, so the
-#: same 9 came out a quarter smaller. Asking a Mac for four thirds as much
-#: puts the same 12 pixels on its screen.
+#: Every size in this window was drawn against Windows, where 9 points are 12
+#: pixels (96 to the inch against a point's 72). What a Mac's Tk makes of a
+#: point depends on the Tk: an older one counts a point as one pixel, so the
+#: same 9 came out a quarter smaller and wanted four thirds; Tk 9 already
+#: counts 1.33 pixels to the point, and four thirds on top of that set every
+#: word a third too big -- a window that filled a laptop's screen. So the
+#: factor is worked out from the Tk's own ``scaling`` when the theme is
+#: applied (``_fit_points``). Four thirds is the answer for the old Tk, and
+#: stands until then.
 MAC_POINTS = 4 / 3
+
+#: The pixels a Windows point is, which is the size everything was drawn at.
+_DESIGN_PIXELS_PER_POINT = 96 / 72
+
+
+def _fit_points(root: tk.Misc) -> None:
+    """Set ``MAC_POINTS`` so a point here is as many pixels as on Windows."""
+    global MAC_POINTS
+    if not MACOS:
+        return
+    try:
+        scaling = float(root.tk.call("tk", "scaling"))
+    except (tk.TclError, ValueError):
+        return
+    if scaling > 0:
+        MAC_POINTS = _DESIGN_PIXELS_PER_POINT / scaling
 
 
 def points(size: int) -> int:
@@ -267,6 +285,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     first with the same values.
     """
     style = ttk.Style(root)
+    _fit_points(root)
 
     # clam is the themeable one. Without it every `configure` below is
     # accepted and then ignored by the platform engine, which is worse than
@@ -513,7 +532,10 @@ def apply(root: tk.Misc) -> ttk.Style:
         # below): chrome at rest, a rounded tint under the pointer, white
         # under a blue cap when open. An open tab has one picture and so does
         # not light up under the pointer -- you are already there.
-        style.configure(name, foreground=text, padding=tab_pad, anchor="center", font=face)
+        # ``width=0``: as wide as the drawing and the name, no wider. Clam
+        # gives every button a floor of eleven characters, which made a tab
+        # called "Yield" as wide as one called "Shadow diagram".
+        style.configure(name, foreground=text, padding=tab_pad, anchor="center", font=face, width=0)
 
     #: The word over a group of tabs -- the only text in the strip that is not
     #: the name of a page. It says which of the two kinds the tabs under it

@@ -43,13 +43,39 @@ def _root() -> tk.Tk:
 
 
 def test_a_mac_asks_for_four_thirds_of_each_size(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The same pixels as Windows: 9 points are 12 pixels there, and a Mac's
-    Tk counts a point as a pixel. Off a Mac, nothing changes at all."""
+    """The same pixels as Windows: 9 points are 12 pixels there, and an older
+    Mac Tk counts a point as a pixel. Off a Mac, nothing changes at all."""
     monkeypatch.setattr(theme, "MACOS", True)
+    monkeypatch.setattr(theme, "MAC_POINTS", 4 / 3)
     assert [theme.points(size) for size in (5, 7, 8, 9, 10)] == [7, 9, 11, 12, 13]
 
     monkeypatch.setattr(theme, "MACOS", False)
     assert [theme.points(size) for size in range(4, 16)] == list(range(4, 16))
+
+
+class _Scaled:
+    """Stands in for a root: answers ``tk scaling`` and nothing else."""
+
+    def __init__(self, scaling: float) -> None:
+        self.tk = self
+        self.scaling = scaling
+
+    def call(self, *_args: object) -> float:
+        return self.scaling
+
+
+@pytest.mark.parametrize(("scaling", "nine"), [(1.0, 12), (96 / 72, 9), (2.0, 6)])
+def test_a_mac_point_is_fitted_to_what_its_tk_makes_of_one(
+    monkeypatch: pytest.MonkeyPatch, scaling: float, nine: int
+) -> None:
+    """Tk 9 already counts 1.33 pixels to a Mac point, and four thirds on top
+    of that set every word a third too big. The factor comes from the Tk, so
+    9 points are 12 pixels whichever Tk it is."""
+    monkeypatch.setattr(theme, "MACOS", True)
+    monkeypatch.setattr(theme, "MAC_POINTS", 4 / 3)
+    theme._fit_points(_Scaled(scaling))  # type: ignore[arg-type]
+    assert theme.points(9) == nine
+    assert round(theme.points(9) * scaling) == 12
 
 
 def test_the_window_is_set_at_the_size_its_platform_asks_for() -> None:
@@ -77,6 +103,7 @@ def test_the_lettering_on_a_thumbnail_is_measured_at_the_size_it_is_drawn(
     root = _root()
     try:
         monkeypatch.setattr(theme, "MACOS", True)
+        monkeypatch.setattr(theme, "MAC_POINTS", 4 / 3)
         monkeypatch.setattr(window, "_WIDTHS", {})
         drawn = window._face(9, True)
         assert drawn[1] == 12

@@ -2654,7 +2654,18 @@ class Window:
         """
         wide = min(want_wide, self.root.winfo_screenwidth() - 40)
         tall = min(want_tall, self.root.winfo_screenheight() - 120)
+        if theme.MACOS:
+            # A Mac is most often a laptop, and a window that opens across the
+            # whole of one is a window in the way of Archicad, which is the
+            # program this one works beside. Three quarters of the screen at
+            # most; below the width the sheets panel needs, the panel starts
+            # folded at its edge and the page has the room.
+            wide = min(wide, round(self.root.winfo_screenwidth() * self.MAC_SHARE))
+            tall = min(tall, round(self.root.winfo_screenheight() * self.MAC_SHARE))
         return f"{max(wide, 880)}x{max(tall, 620)}"
+
+    #: The most of a Mac's screen the window opens across, either way.
+    MAC_SHARE = 0.75
 
     # -- layout ------------------------------------------------------------
     #: The seven pages, and the two kinds they come in. That split is the
@@ -3099,10 +3110,13 @@ class Window:
             **icons.tab_options(title, 32),
         )
         tab.grid(row=0, column=column, sticky="nsew", padx=(0, 4))
-        # Every tab as wide as the widest. The open tab's name is set bold,
-        # which is wider, so a strip sized tab by tab moved every tab after
-        # the open one sideways each time another was opened.
-        strip.columnconfigure(column, uniform="tab")
+        # Room for the name as it is drawn open and queued -- bold, with the
+        # dot -- held whether it is or not. Sized to the plain name, the strip
+        # moved every tab after the open one sideways as tabs were opened.
+        tab.configure(style="TabOpenQueued.TButton", text=f"{title} •")
+        tab.update_idletasks()
+        strip.columnconfigure(column, minsize=tab.winfo_reqwidth())
+        tab.configure(style="Tab.TButton", text=title)
         Tooltip(tab, self.SECTION_BLURB[title])
         self.tabs[title] = tab
 

@@ -3863,3 +3863,28 @@ def test_the_folded_sheets_strip_says_what_it_holds_in_words() -> None:
     assert window.Dock._spell(0) == "No sheets yet"
     assert window.Dock._spell(1) == "1 sheet"
     assert window.Dock._spell(21) == "21 sheets"
+
+
+@pytest.mark.skipif(not theme.MACOS, reason="the cap is a Mac's")
+def test_on_a_mac_the_window_opens_on_at_most_three_quarters_of_the_screen(
+    hidden_window: Any,
+) -> None:
+    root = hidden_window.root
+    wide, tall = (int(n) for n in hidden_window._on_the_screen(5000, 5000).split("x"))
+    assert wide <= max(880, round(root.winfo_screenwidth() * 0.75))
+    assert tall <= max(620, round(root.winfo_screenheight() * 0.75))
+
+
+def test_opening_a_tab_moves_no_other_tab(hidden_window: Any) -> None:
+    """The open tab's name is bold. Each tab keeps the room for that, so the
+    strip stands still as tabs are opened."""
+    root = hidden_window.root
+
+    def where() -> list[int]:
+        root.update_idletasks()
+        return [tab.winfo_x() for tab in hidden_window.tabs.values()]
+
+    hidden_window._show_section(hidden_window.GENERAL)
+    first = where()
+    hidden_window._show_section(hidden_window.SHADOWS)
+    assert where() == first
