@@ -163,6 +163,10 @@ WEARS: dict[str, str] = {
     "ChipDrop.TButton": "flat",
     # The chevron that folds the sheets panel away: a mark, not a button face.
     "Fold.TButton": "flat",
+    # A tool in the project bar that is not about the project: the reference
+    # image, Claude, About. Words and a drawing on the chrome, tinted under
+    # the pointer, so Refresh beside the picker is the one button up there.
+    "Tool.TButton": "flat",
 }
 
 #: What each faced style stands on, which is the colour its corners take.
@@ -445,17 +449,41 @@ def apply(root: tk.Misc) -> ttk.Style:
     )
     style.map("Fold.TButton", foreground=[("active", BLUE_DEEP)], background=[("active", CHROME)])
 
-    #: Run. The one emphasised control in the window, tinted rather than
-    #: filled: a solid blue button next to three grey ones reads as a warning.
+    #: A tool on the project bar: no face until the pointer is on it.
+    style.configure(
+        "Tool.TButton",
+        background=CHROME,
+        foreground=BODY,
+        bordercolor=CHROME,
+        lightcolor=CHROME,
+        darkcolor=CHROME,
+        relief="flat",
+        padding=(8, 2),
+        font=body,
+    )
+    style.map(
+        "Tool.TButton",
+        background=[("pressed", BLUE_EDGE), ("active", BLUE_TINT)],
+        bordercolor=[("active", BLUE_TINT)],
+        lightcolor=[("active", BLUE_TINT)],
+        darkcolor=[("active", BLUE_TINT)],
+        foreground=[("active", BLUE_DEEP)],
+    )
+
+    #: Run. The one filled control in the window. It was tinted, on the
+    #: grounds that solid blue beside grey reads as a warning; in use the tint
+    #: read as one more of the six buttons on the bar, and the action every
+    #: page leads to was the hardest thing on it to find. Off, it wears the
+    #: grey face every button does, and its words say why.
     style.configure(
         "Run.TButton",
-        foreground=BLUE_DEEP,
+        foreground=SURFACE,
         padding=(12, 0),
         font=strong,
     )
     style.map(
         "Run.TButton",
-        foreground=[("disabled", HINT)],
+        foreground=[("disabled", HINT), ("!disabled", SURFACE)],
     )
 
     #: A tab in the strip: one drawing at 32 px with the section's name under
@@ -586,12 +614,19 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: heading face on a tinted bar across the page. Switched off, the bar
     #: goes grey -- a study nobody has turned on should not look like a live
     #: form with a cleared box somewhere above it.
+    # The header is placed at a fixed height (``PANEL_HEAD``, which the panel
+    # faces are drawn to), so the tick has to fit it rather than ask for more.
+    # At a Mac's four-thirds type the heading face is 20 px a line, and with
+    # six above and below it wanted 34 of the 29 it is given: the descenders
+    # were cut off every study's name. Placed, the content is centred anyway,
+    # so a Mac simply goes without the padding.
+    study_pad = (7, 0) if MACOS else (7, 6)
     style.configure(
         "Study.TCheckbutton",
         background=BLUE_TINT,
         foreground=INK,
         font=heading,
-        padding=(7, 6),
+        padding=study_pad,
     )
     style.map("Study.TCheckbutton", background=[("active", BLUE_TINT)])
     style.configure(
@@ -599,7 +634,7 @@ def apply(root: tk.Misc) -> ttk.Style:
         background=HEAD_OFF,
         foreground=BODY,
         font=heading,
-        padding=(7, 6),
+        padding=study_pad,
     )
     style.map("StudyOff.TCheckbutton", background=[("active", HEAD_OFF)])
 
@@ -781,7 +816,7 @@ def _rounded(style: ttk.Style) -> None:
     if plain is None or running is None or fields is None:
         return
     adding = worn("add", "add_hover", "add_down")
-    tiles = worn("face_up", "face_hover", "face_run")
+    tiles = worn("face_up", "face_hover", "face_chosen")
     chip = worn("chip")
     tabs = worn("tab_rest", "tab_hover", "tab_open")
     bars = worn("bar_trough", "bar_fill")
@@ -850,6 +885,7 @@ def _rounded(style: ttk.Style) -> None:
         element("Loriini.page", page, (), 7)
         style.layout("PageCard.TFrame", [("Loriini.page", {"sticky": "nswe"})])
 
+    chevron = _chevron(style)
     for kind in ("TEntry", "TCombobox"):
         part = kind.split("T", 1)[1]
         # The arrow goes *inside* the field element, not beside it. Clam has
@@ -858,7 +894,8 @@ def _rounded(style: ttk.Style) -> None:
         # second little button parked next to the field.
         children: list[tuple[str, dict[str, object]]] = []
         if kind == "TCombobox":
-            children.append((f"{part}.downarrow", {"side": "right", "sticky": "ns"}))
+            arrow = chevron or f"{part}.downarrow"
+            children.append((arrow, {"side": "right", "sticky": "ns"}))
         children.append((f"{part}.padding", inside((f"{part}.textarea", {"sticky": "nswe"}))))
         style.layout(kind, [("Loriini.field", inside(*children))])
 
@@ -907,6 +944,41 @@ def _rounded(style: ttk.Style) -> None:
             # Still painted by its background, which is what makes it white.
             ground = SURFACE
         style.configure(name, background=ground)
+
+
+#: The chevrons made, one per interpreter, kept because Tk forgets an image
+#: nothing in Python holds.
+_CHEVRON: list[tk.PhotoImage] = []
+
+
+def _chevron(style: ttk.Style) -> str | None:
+    """A drop-down's mark: a bare chevron, drawn on nothing.
+
+    Clam's arrow is a little bordered box filled with the style's background.
+    Inside a rounded field that box read as a second button parked in the
+    first, and on the project picker -- whose background is the chrome, for
+    its corners -- it was a grey square in a white field. An image element
+    paints only its own pixels, so the field's face shows round the mark.
+
+    Returns the element's name, or ``None`` to keep clam's arrow.
+    """
+    name = "Loriini.chevron"
+    if name in style.element_names():
+        # This interpreter has it already: ``apply`` was called twice.
+        return name
+    # Nine wide and five tall, two pixels thick, then six of air on the right
+    # so the mark sits inside the field's rounded end rather than on it.
+    wide, tall, air = 9, 5, 6
+    try:
+        image = tk.PhotoImage(width=wide + air, height=tall + 1)
+        for x in range(wide):
+            y = min(x, wide - 1 - x)
+            image.put(BODY, to=(x, y, x + 1, y + 2))
+        style.element_create(name, "image", image, sticky="")
+    except tk.TclError:
+        return None
+    _CHEVRON.append(image)
+    return name
 
 
 def _own_tick(style: ttk.Style) -> None:

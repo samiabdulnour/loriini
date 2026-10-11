@@ -170,7 +170,16 @@ def test_the_combobox_arrow_is_inside_the_field(styled: object) -> None:
     root, spec = layout[0]
     assert root == "Loriini.field"
     inside = [name for name, _ in spec["children"]]
-    assert "Combobox.downarrow" in inside, inside
+    assert {"Loriini.chevron", "Combobox.downarrow"} & set(inside), inside
+
+
+def test_the_combobox_arrow_is_a_bare_chevron(styled: object) -> None:
+    """Clam's arrow is a bordered box filled with the style's background, which
+    on the project picker was a grey square in a white field. The drawn
+    chevron paints nothing but itself."""
+    layout = styled.layout("TCombobox")  # type: ignore[attr-defined]
+    inside = [name for name, _ in layout[0][1]["children"]]
+    assert "Loriini.chevron" in inside, inside
 
 
 # -- the third trap: the corners take the style's colour, not the parent's ---

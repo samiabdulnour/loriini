@@ -474,8 +474,9 @@ def footprint(
     ]
 
 
-def plug(live: bool = True) -> list[Shape]:
-    """The Archicad link: seated and blue, or drained and struck out."""
+def plug(live: bool = True, *, struck: bool | None = None) -> list[Shape]:
+    """The Archicad link: seated and blue, or drained and struck out -- or
+    drained and not struck, which is nothing wrong yet, only nothing open."""
     body = BLUE_T if live else FACE
     cap = BLUE if live else FOLD
     edge = INK if live else GREY_D
@@ -486,7 +487,7 @@ def plug(live: bool = True) -> list[Shape]:
         Line(((16, 18.5), (16, 22)), fill=edge, width=1.8),
         rect(11.5, 22, 9, 5.5, fill=cap, outline=edge, width=1.2),
     ]
-    if not live:
+    if (not live) if struck is None else struck:
         out.append(Line(((6, 27), (26, 6)), fill=RED, width=2.6))
     return out
 
@@ -806,6 +807,17 @@ def controls() -> list[Icon]:
                 Poly(((12.8, 9.8), (22.2, 16.0), (12.8, 22.2)), fill=PAPER, outline=None),
             ],
         ),
+        # The same verb on the filled Run button: the disc knocked out white
+        # and the triangle in the button's own blue, since a blue disc on a
+        # blue face is no disc at all.
+        Icon(
+            "run_on",
+            "the play button reversed out of the filled Run face",
+            [
+                Disc(16, 16, 12, fill=PAPER),
+                Poly(((12.8, 9.8), (22.2, 16.0), (12.8, 22.2)), fill=BLUE, outline=None),
+            ],
+        ),
         Icon(
             "stop",
             "a plain red square, the set's only other verb",
@@ -831,6 +843,12 @@ def controls() -> list[Icon]:
         ),
         Icon("connected", "the plug seated, and blue", plug(live=True)),
         Icon("disconnected", "the same plug drained, with the red mark", plug(live=False)),
+        Icon(
+            "waiting",
+            "the same plug drained but not struck -- no Archicad open yet, which "
+            "is where every session starts and is not a fault",
+            plug(live=False, struck=False),
+        ),
         Icon(
             "info",
             "the one button that explains rather than does -- a blue badge "
@@ -1585,9 +1603,16 @@ FACES: dict[str, Face] = {
     "face_hover": Face("#FFFFFF", "#F7F6F2", BLUE_EDGE, lift=True, **RAISED),
     "face_down": Face("#E4E4E4", "#E4E4E4", BLUE_EDGE, **RAISED),
     "face_off": Face("#E4E4E4", "#E4E4E4", "#DCDCDC", **RAISED),
-    "face_run": Face("#EFF5FE", "#E1EBFA", BLUE, lift=True, **RAISED),
-    "face_run_hover": Face("#F8FBFF", "#EAF1FC", BLUE, lift=True, **RAISED),
-    "face_run_down": Face(BLUE_EDGE, BLUE_EDGE, BLUE_D, **RAISED),
+    # Run is the one filled control in the window: the action every page
+    # leads to, so it is the one thing on the run bar that does not look like
+    # the four settings buttons beside it. Off, it wears ``face_off`` like any
+    # other button and says why in its words.
+    "face_run": Face("#2A6FD4", BLUE, BLUE_D, lift=True, **RAISED),
+    "face_run_hover": Face("#3A7DE0", "#2369CF", BLUE_D, lift=True, **RAISED),
+    "face_run_down": Face(BLUE_D, BLUE_D, BLUE_D, **RAISED),
+    # The chosen tile keeps the tint Run used to wear: a choice made is not
+    # an action waiting.
+    "face_chosen": Face("#EFF5FE", "#E1EBFA", BLUE, lift=True, **RAISED),
     "field": Face("#FFFFFF", "#FFFFFF", CONTROL_EDGE, **BUTTON),
     # Focus is the edge going blue and thickening, not a glow. A ring outside
     # the border would have to live inside the nine-slice, and every pixel it
