@@ -79,6 +79,7 @@ from functools import partial
 from itertools import pairwise
 from pathlib import Path
 from tkinter import filedialog, ttk
+from tkinter import font as tkfont
 from typing import ClassVar
 
 from sun_study import ADDON_FILE, PRODUCT, licence
@@ -1833,6 +1834,8 @@ def _hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
 #: is where it always sat; a layout carrying several fits this square into
 #: each cell of its grid, the way the run shrinks its drawings to the cells.
 FRAME_MM = (56.0, 28.0, 206.0, 178.0)
+#: The site and its neighbours, with a margin: what a drawing is fitted to.
+SITE_FIT_MM = (62.0, 36.0, 200.0, 172.0)
 
 
 def _grid(
@@ -1902,7 +1905,7 @@ SHEET_TEXT = 8
 
 
 def draw_sheet(
-    paper: tk.Canvas, sheet: Sheet, width: int, height: int, *, block_mm: float = 40.0
+    paper: tk.Canvas, sheet: Sheet, width: int, height: int, *, block_mm: float = 48.0
 ) -> None:
     """One layout, drawn on a canvas at the size the panel has room for.
 
@@ -1921,7 +1924,15 @@ def draw_sheet(
     def x(value: float) -> float:
         return value * scale
 
+    face = tkfont.Font(root=paper, font=_face(SHEET_TEXT, False))
+
     def words(mm_x: float, mm_y: float, text: str, *, room: float = 0) -> int:
+        # One line, always: a line wrapped on a baseline grows *up*, over
+        # whatever is drawn above it. Too long for its room, it is cut short.
+        if room and face.measure(text) > x(room):
+            while text and face.measure(text + "…") > x(room):
+                text = text[:-1]
+            text = text.rstrip(" ,") + "…"
         return int(
             paper.create_text(
                 x(mm_x),
@@ -1930,7 +1941,6 @@ def draw_sheet(
                 anchor="sw",
                 fill=theme.INK,
                 font=_face(SHEET_TEXT, False),
-                width=x(room) if room else 0,
             )
         )
 
@@ -1953,19 +1963,29 @@ def draw_sheet(
     # will use, each with its hour under it -- and a cell the run leaves
     # empty is a faint dashed frame, because the short second sheet of a pair
     # really does have a hole in it.
-    field = (12.0, 12.0, left - 7.0, 152.0)
+    field = (10.0, 10.0, left - 5.0, 166.0)
     if sheet.cells <= 1:
         frames = [field]
     else:
-        frames = _grid(sheet.cells, field)
+        frames = _grid(sheet.cells, field, gap=2.5)
     for index, frame_mm in enumerate(frames):
-        frame = (x(frame_mm[0]), x(frame_mm[1]), x(frame_mm[2]), x(frame_mm[3]))
         if index >= len(sheet.drawings):
-            paper.create_rectangle(*frame, outline=theme.LINE, dash=(3, 3))
+            paper.create_rectangle(
+                x(frame_mm[0]),
+                x(frame_mm[1]),
+                x(frame_mm[2]),
+                x(frame_mm[3]),
+                outline=theme.LINE,
+                dash=(3, 3),
+            )
             continue
         drawing = sheet.drawings[index]
         if len(frames) > 1:
-            words(frame_mm[0], frame_mm[3] + 9.0, drawing.time)
+            # The hour inside its own cell, under the drawing: under the
+            # cell, it sat on the drawing below.
+            words(frame_mm[0], frame_mm[3], drawing.time, room=frame_mm[2] - frame_mm[0])
+            frame_mm = (frame_mm[0], frame_mm[1], frame_mm[2], frame_mm[3] - 14.0)
+        frame = (x(frame_mm[0]), x(frame_mm[1]), x(frame_mm[2]), x(frame_mm[3]))
         _draw_drawing(paper, sheet.study, drawing, frame)
 
     # -- what this sheet is, on the two bottom baselines -------------------
@@ -1984,7 +2004,7 @@ def draw_sheet(
     # -- the title block -------------------------------------------------
     # North at the top, at the block's left edge with the words under it;
     # the scale and the sheet number level with the two lines beside them.
-    inner = left + 4.0
+    inner = left + 3.5
     ring = 5.5
     north_x, north_y = inner + ring, inset + 6.0 + ring
     paper.create_oval(
@@ -2011,7 +2031,8 @@ def draw_sheet(
     # schematic: a reader checks the block for exactly this.
     # Unwrapped: a scale or a number is one word, and broken over two lines
     # it reads as two.
-    words(inner, first, sheet.scale or "no scale")
+    # "NTS", as a drawing set says it, for a sheet that has no scale.
+    words(inner, first, sheet.scale or "NTS")
     words(inner, second, sheet.number)
 
     # -- the edge, last ------------------------------------------------
@@ -2167,27 +2188,83 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     #
     # Named first, like a sheet; then the day or the reach, and what the
     # geometry is, in a line -- not what it is not.
+    # In the sheets' one style and on their two baselines, so a model in the
+    # panel reads as one more item in the same set.
+    mm = width / SHEET_MM_W
     paper.create_text(
-        10,
-        height * 0.875,
+        12 * mm,
+        182 * mm,
         text=sheet.kind.upper(),
-        anchor="w",
+        anchor="sw",
         fill=theme.INK,
-        font=_face(10, True),
+        font=_face(SHEET_TEXT, False),
     )
+    # Short enough for one line at the panel's width: a second line would
+    # grow up into the name over it.
     if facade:
-        what = "the building's skin, banded by hours of sun"
+        what = "skin banded by hours of sun"
     elif future:
-        what = "the envelopes the controls allow around the site"
+        what = "envelopes the controls allow"
     else:
-        what = "terrain and neighbours, in 3D"
+        what = "terrain and neighbours in 3D"
     line = f"{sheet.day} \u00b7 {what}" if sheet.day else what
     paper.create_text(
-        10, height * 0.935, text=line, anchor="w", fill=theme.BODY, font=_face(7, False)
+        12 * mm,
+        196 * mm,
+        text=line,
+        anchor="sw",
+        fill=theme.INK,
+        font=_face(SHEET_TEXT, False),
     )
     # The hover edge, invisible at rest: the item the panel turns blue, drawn
     # last so that it lies over the model.
     paper.create_rectangle(0, 0, width - 1, height - 1, fill="", outline="", tags="edge")
+
+
+#: The drawing set's palette on a miniature, the same one the design review
+#: drew them in: the site boundary red and dash-dotted, the massing grey in a
+#: heavy line, the neighbours light, sun amber, and shade and shadow hatched.
+BOUNDARY = "#C0392B"
+BOUNDARY_DASH = (6, 2, 1, 2)
+MASSING = "#E4E4E4"
+NEIGHBOUR = "#EDEDED"
+NEIGHBOUR_EDGE = "#8D8D8D"
+LIT = "#F2C86B"
+HATCH = "#5A5A5A"
+#: Hours of sun, least to most, and the two answers to the ADG's two hours --
+#: told apart by how light they are as well as by hue.
+HOURS_RAMP = ("#F7F4EE", "#F3DDB0", "#E9B865", "#D48A2A")
+MEETS, FALLS_SHORT = "#A9C6EE", "#FBE3CC"
+
+
+def _hatch(
+    paper: tk.Canvas, points: Sequence[tuple[float, float]], *, spacing: float = 3.0
+) -> None:
+    """Hatch a convex outline -- canvas pixels -- with lines at 45 degrees.
+
+    Tk on a Mac draws no stipple, so a shadow is hatched by hand: each line
+    ``y = x + c`` is cut where it crosses the outline's edges. The outlines
+    are convex (a hull, or a rectangle), so each line crosses twice.
+    """
+    if len(points) < 3:
+        return
+    offsets = [py - px for px, py in points]
+    step = spacing * math.sqrt(2)
+    c = min(offsets) + step / 2
+    edges = list(zip(points, [*points[1:], points[0]], strict=True))
+    while c < max(offsets):
+        hits: list[tuple[float, float]] = []
+        for (x0, y0), (x1, y1) in edges:
+            denominator = (y1 - y0) - (x1 - x0)
+            if abs(denominator) < 1e-9:
+                continue
+            along = (c - (y0 - x0)) / denominator
+            if 0.0 <= along <= 1.0:
+                hits.append((x0 + along * (x1 - x0), y0 + along * (y1 - y0)))
+        if len(hits) >= 2:
+            first, last = min(hits), max(hits)
+            paper.create_line(*first, *last, fill=HATCH)
+        c += step
 
 
 def _draw_drawing(
@@ -2202,10 +2279,16 @@ def _draw_drawing(
     a miniature of something the run will not make.
     """
     fx0, fy0, fx1, fy1 = frame
-    frame_w, frame_h = FRAME_MM[2] - FRAME_MM[0], FRAME_MM[3] - FRAME_MM[1]
+    # Fitted to the site and what stands round it, not to the whole square
+    # the drawing sits in on a sheet: in a cell of four that margin was a
+    # third of the cell, and the plan a postage stamp in the middle of it.
+    # The context and the office's sheet reach past the site, so they keep
+    # the square.
+    fit = FRAME_MM if drawing.kind in (AREA_SHEET, "Context Analysis") else SITE_FIT_MM
+    frame_w, frame_h = fit[2] - fit[0], fit[3] - fit[1]
     k = min((fx1 - fx0) / frame_w, (fy1 - fy0) / frame_h)
-    ox = fx0 + ((fx1 - fx0) - frame_w * k) / 2 - FRAME_MM[0] * k
-    oy = fy0 + ((fy1 - fy0) - frame_h * k) / 2 - FRAME_MM[1] * k
+    ox = fx0 + ((fx1 - fx0) - frame_w * k) / 2 - fit[0] * k
+    oy = fy0 + ((fy1 - fy0) - frame_h * k) / 2 - fit[1] * k
 
     def px(mm: float) -> float:
         return ox + mm * k
@@ -2238,6 +2321,35 @@ def _draw_drawing(
             flat += [px(point_x), py(point_y)]
         paper.create_polygon(flat, fill=fill, outline=outline)
 
+    def hatched(points: Sequence[tuple[float, float]]) -> None:
+        _hatch(paper, [(px(point_x), py(point_y)) for point_x, point_y in points])
+
+    def massing() -> None:
+        """The building: grey, in the heaviest line on the drawing."""
+        box(BLOCK_MM, fill=MASSING, outline=theme.INK, width=1.5)
+
+    def plate(tints: Sequence[str], shaded: set[int] = frozenset()) -> None:  # type: ignore[assignment]
+        """The flats of a plate as one block of cells, edge to edge, in the
+        building's heavy outline; ``shaded`` are hatched."""
+        left = min(flat[0] for flat in FLATS_MM)
+        top = min(flat[1] for flat in FLATS_MM)
+        right = max(flat[2] for flat in FLATS_MM)
+        foot = max(flat[3] for flat in FLATS_MM)
+        wide, tall = (right - left) / 3, (foot - top) / 2
+        for index, tint in enumerate(tints):
+            cell = (
+                left + (index % 3) * wide,
+                top + (index // 3) * tall,
+                left + (index % 3 + 1) * wide,
+                top + (index // 3 + 1) * tall,
+            )
+            box(cell, fill=tint, outline=theme.INK, width=0.6)
+            if index in shaded:
+                hatched(
+                    ((cell[0], cell[1]), (cell[2], cell[1]), (cell[2], cell[3]), (cell[0], cell[3]))
+                )
+        box((left, top, right, foot), outline=theme.INK, width=1.5)
+
     def line(x0: float, y0: float, x1: float, y1: float, fill: str) -> None:
         paper.create_line(px(x0), py(y0), px(x1), py(y1), fill=fill)
 
@@ -2258,43 +2370,54 @@ def _draw_drawing(
             for corner_y in (BLOCK_MM[1], BLOCK_MM[3])
             for dx, dy in ((0.0, 0.0), shift)
         ]
-        poly(_hull(corners), fill="#C7C6C1", outline="")
+        hatched(_hull(corners))
 
     def yard() -> None:
         """The courtyard, gridded the way the study samples it."""
         court = (BLOCK_MM[0] - 14, BLOCK_MM[1] + 4, BLOCK_MM[2] + 14, BLOCK_MM[3] + 16)
-        box(court, fill="#F6E2BE", outline=theme.SUN)
+        box(court, fill=HOURS_RAMP[1], outline=theme.SUN)
         for step in range(1, 6):
             along = court[0] + (court[2] - court[0]) * step / 6
-            line(along, court[1], along, court[3], "#E9C98F")
+            line(along, court[1], along, court[3], HOURS_RAMP[2])
         for step in range(1, 4):
             down = court[1] + (court[3] - court[1]) * step / 4
-            line(court[0], down, court[2], down, "#E9C98F")
+            line(court[0], down, court[2], down, HOURS_RAMP[2])
 
-    box(SITE_MM, fill="#FCFCFA", outline=SHADOW_GREY, dash=(3, 2))
+    # The site's boundary, red and dash-dotted as a drawing set draws it, and
+    # the neighbours light beside it.
+    paper.create_rectangle(
+        px(SITE_MM[0]),
+        py(SITE_MM[1]),
+        px(SITE_MM[2]),
+        py(SITE_MM[3]),
+        outline=BOUNDARY,
+        dash=BOUNDARY_DASH,
+    )
     for neighbour in NEIGHBOURS_MM:
-        box(neighbour, fill="#EFEEEA", outline=SHADOW_GREY)
+        box(neighbour, fill=NEIGHBOUR, outline=NEIGHBOUR_EDGE)
 
     kind = drawing.kind
-    if kind.startswith("Apartments") and drawing.azimuth is None:
-        # The whole day: the flats in their bands, most sun to least.
-        tints = ("#EBC27C", "#F6E2BE", "#FBF0DA", "#F6E2BE", "#E7E6E2", "#EBC27C")
-        for index, flat in enumerate(FLATS_MM):
-            box(flat, fill=tints[index], outline=theme.EDGE)
+    if kind.startswith("Apartments") and "total" in kind.lower():
+        # Each flat against the two hours: the share that meets it blue,
+        # the share that falls short orange.
+        plate((MEETS, MEETS, FALLS_SHORT, MEETS, FALLS_SHORT, MEETS))
+    elif kind.startswith("Apartments") and drawing.azimuth is None:
+        # The whole day: the flats in bands of hours, most sun to least.
+        ramp = HOURS_RAMP
+        plate((ramp[3], ramp[2], ramp[1], ramp[2], ramp[0], ramp[3]))
     elif kind.startswith("Apartments"):
+        # One hour: the flats in the sun amber, the rest hatched in shade.
         lit = _lit_flats(drawing.azimuth)
-        for index, flat in enumerate(FLATS_MM):
-            box(
-                flat,
-                fill="#F6E2BE" if index in lit else theme.SURFACE,
-                outline=theme.SUN if index in lit else theme.EDGE,
-            )
+        plate(
+            [LIT if index in lit else theme.SURFACE for index in range(len(FLATS_MM))],
+            {index for index in range(len(FLATS_MM)) if index not in lit},
+        )
     elif kind == COMMUNAL_HOURLY:
         # The space at one hour: the yard, and the shadow the block throws
         # across it -- which is what the hourly plan measures.
         yard()
         shadow()
-        box(BLOCK_MM, fill=theme.BLUE_TINT, outline=theme.BLUE, width=2)
+        massing()
     elif kind in (COMMUNAL_AREAS, "Summary of Controls"):
         # A schedule: a heading rule, then a row per space or per control.
         table = (SITE_MM[0] + 16, SITE_MM[1] + 18, SITE_MM[2] - 16, SITE_MM[3] - 18)
@@ -2345,7 +2468,7 @@ def _draw_drawing(
             py(mid_y - 62),
             px(mid_x + 62),
             py(mid_y + 62),
-            outline=theme.BLUE,
+            outline=NEIGHBOUR_EDGE,
             dash=(4, 3),
         )
         for street in (mid_y - 28, mid_y + 32):
@@ -2366,17 +2489,25 @@ def _draw_drawing(
             width=3,
         )
         for block in CONTEXT_MM:
-            box(block, fill="#E4E3DE", outline=SHADOW_GREY)
-        box(BLOCK_MM, fill=theme.BLUE_TINT, outline=theme.BLUE, width=2)
+            box(block, fill=NEIGHBOUR, outline=NEIGHBOUR_EDGE)
+        massing()
     elif kind == "Site Analysis":
         # The site itself: its boundary, the setbacks dashed inside it, the
         # frontage dimensioned, and the pin where the address lands.
         lot = (BLOCK_MM[0] - 22, BLOCK_MM[1] - 16, BLOCK_MM[2] + 22, BLOCK_MM[3] + 16)
-        box(lot, fill="#E8F0FC", outline=theme.BLUE, width=2)
-        box(BLOCK_MM, fill="", outline=theme.BLUE, dash=(4, 2))
-        line(lot[0], lot[1] - 7, lot[2], lot[1] - 7, theme.HINT)
+        paper.create_rectangle(
+            px(lot[0]),
+            py(lot[1]),
+            px(lot[2]),
+            py(lot[3]),
+            outline=BOUNDARY,
+            dash=BOUNDARY_DASH,
+            width=1.5,
+        )
+        box(BLOCK_MM, fill="", outline=NEIGHBOUR_EDGE, dash=(4, 2))
+        line(lot[0], lot[1] - 7, lot[2], lot[1] - 7, theme.INK)
         for end in (lot[0], lot[2]):
-            line(end, lot[1] - 10, end, lot[1] - 4, theme.HINT)
+            line(end, lot[1] - 10, end, lot[1] - 4, theme.INK)
         pin_x, pin_y = (BLOCK_MM[0] + BLOCK_MM[2]) / 2, BLOCK_MM[1] + 12
         poly(
             ((pin_x - 5, pin_y - 7), (pin_x + 5, pin_y - 7), (pin_x, pin_y + 6)),
@@ -2398,7 +2529,7 @@ def _draw_drawing(
         yard()
     elif kind == "Facade bands":
         # The skin in its bands of sun hours, least to most.
-        bands = ("#E7E6E2", "#FBF0DA", "#F6E2BE", "#EBC27C")
+        bands = HOURS_RAMP
         wide = (BLOCK_MM[2] - BLOCK_MM[0]) / len(bands)
         for index, tint in enumerate(bands):
             box(
@@ -2426,7 +2557,7 @@ def _draw_drawing(
                     (mid_x, waist),
                     (mid_x - half, top + rise),
                 ),
-                "#F4F3EE",
+                "#F7F7F7",
             ),
             (
                 (
@@ -2435,7 +2566,7 @@ def _draw_drawing(
                     (mid_x, waist + tall),
                     (mid_x - half, top + rise + tall),
                 ),
-                "#C6C5BE",
+                "#BDBDBD",
             ),
             (
                 (
@@ -2444,13 +2575,13 @@ def _draw_drawing(
                     (mid_x, waist + tall),
                     (mid_x + half, top + rise + tall),
                 ),
-                "#DEDDD6",
+                MASSING,
             ),
         ):
             poly(points, fill=tint, outline=theme.INK)
     elif study == "Site analysis":
         # The site itself, outlined, with the address dropped on it.
-        box(BLOCK_MM, fill="#E8F0FC", outline=theme.BLUE, dash=(4, 2))
+        box(BLOCK_MM, fill="", outline=BOUNDARY, dash=BOUNDARY_DASH)
         pin_x, pin_y = (BLOCK_MM[0] + BLOCK_MM[2]) / 2, BLOCK_MM[1] + 12
         poly(
             ((pin_x - 5, pin_y - 7), (pin_x + 5, pin_y - 7), (pin_x, pin_y + 6)),
@@ -2470,7 +2601,7 @@ def _draw_drawing(
         )
     else:
         shadow()
-        box(BLOCK_MM, fill=theme.BLUE_TINT, outline=theme.BLUE, width=2)
+        massing()
 
 
 def _face(size: int, bold: bool) -> tuple[str, int] | tuple[str, int, str]:

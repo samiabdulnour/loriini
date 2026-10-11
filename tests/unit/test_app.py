@@ -1002,7 +1002,7 @@ def test_a_sheet_is_lettered_in_one_style_on_shared_lines(hidden_window: Any) ->
     the words -- clear of every drawing."""
     paper: Any = tk.Canvas(hidden_window.root)
     window.draw_sheet(paper, replace(FOUR_HOUR_SHEET, scale="1:50"), 300, 212)
-    block_left = 300 * (1 - 45.0 / window.SHEET_MM_W)
+    block_left = 300 * (1 - 53.0 / window.SHEET_MM_W)
     items = paper.find_all()
     texts = [i for i in items if str(paper.type(i)) == "text"]
 

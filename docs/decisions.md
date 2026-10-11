@@ -4999,6 +4999,16 @@ scale and the number in the title block, with north at the block's top-left.
 The wordmark, the block's placeholder rules, the circled numbers and the "No
 project location" line are gone; at 300 px they were noise.
 
+**The drawings on them, in the drawing set's own palette.** Checked with every
+study on, against the review's mock-up: the site boundary red and dash-dotted,
+the massing grey in the heaviest line, neighbours light, a flat in the sun
+amber and one in shade hatched, the ADG total blue or orange, and every
+shadow hatched -- by hand, ``_hatch``, since Tk on a Mac draws no stipple.
+A cell's hour is inside the cell (under it, it sat on the drawing below); a
+drawing is fitted to the site, not to the square around it; a title too long
+for its line is cut short rather than wrapped up over the drawings; and the
+title block is wide enough for 1:3000, with "NTS" for a sheet with no scale.
+
 **A fault found on the way.** ``option_add("*Font", body)`` filled in every
 ttk label's own ``-font``, which beat the style -- so every bold title in the
 window had been set in the body face. ``*TLabel.Font`` is now left empty.
