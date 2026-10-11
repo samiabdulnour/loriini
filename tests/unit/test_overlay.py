@@ -307,7 +307,10 @@ def test_locking_takes_the_corner_away_and_says_whether_the_mouse_goes_through(
     assert palette.overlay.grip.winfo_manager() == ""
     said = palette.hint.cget("text")
     assert said.startswith("Locked.")
-    if sys.platform != "win32":
+    if sys.platform in {"win32", "darwin"}:
+        assert palette.overlay.passes
+        assert "goes through" in said
+    else:
         # Nothing here can send the mouse through a window, and the palette
         # says so rather than promising it.
         assert not palette.overlay.passes
@@ -316,6 +319,37 @@ def test_locking_takes_the_corner_away_and_says_whether_the_mouse_goes_through(
     palette._lock()
     assert palette.overlay.grip.winfo_manager() == "place"
     assert palette.hint.cget("text") == STANDING_HINT
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="the Mac's own click-through")
+def test_on_a_mac_a_locked_picture_lets_the_mouse_through_and_unlocked_takes_it_back(
+    palette: Any, root: Any, photograph: Path
+) -> None:
+    palette.take(photograph)
+    root.update()
+    assert overlay._mac_ignores_mouse(palette.overlay, True)
+    assert overlay._mac_ignores_mouse(palette.overlay, False)
+    palette.locked.set(True)
+    palette._lock()
+    assert palette.overlay.passes
+    palette.locked.set(False)
+    palette._lock()
+    assert not palette.overlay.locked
+
+
+def test_the_palette_stays_over_its_picture(palette: Any, root: Any, photograph: Path) -> None:
+    """Pressing the picture brings it to the front; the palette is put back
+    over it, so the slider that dims the picture is never under it."""
+    palette.take(photograph)
+    palette.lay(Placement(200, 200, 500, 300))
+    root.update()
+    where = palette.overlay.placement
+    palette.overlay.face.event_generate("<ButtonPress-1>", x=10, y=10)
+    palette.overlay.face.event_generate("<ButtonRelease-1>", x=10, y=10)
+    root.update()
+    order = [str(name) for name in root.tk.splitlist(root.tk.call("wm", "stackorder", palette))]
+    assert order[-1] == str(palette), order
+    assert palette.overlay.placement == where
 
 
 def test_hide_takes_the_picture_off_the_screen_and_back(
@@ -393,7 +427,8 @@ def test_off_windows_no_archicad_window_is_found_and_the_palette_says_so(
     palette: Any, root: Any
 ) -> None:
     assert archicad_windows() == []
-    assert click_through(palette.overlay, True) is False
+    # A Mac has a click-through of its own; anything else has none.
+    assert click_through(palette.overlay, True) is (sys.platform == "darwin")
     palette._cover()
     assert "works on Windows" in palette.hint.cget("text")
     assert str(palette.hint.cget("style")) == "Refused.TLabel"

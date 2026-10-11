@@ -32,13 +32,15 @@ is built.
    bottom right to size it, and it grows from its top-left corner, which
    stays put. The palette and the picture move on their own: put the
    palette out of the way by its title bar, and the picture stays lined up.
+   The palette always stays above the picture, so its controls are never
+   covered.
    *Over Archicad* lays the picture over the Archicad window again. Match the frame to the 3D window's
    edges. *Fit* keeps the picture's shape in the frame's top-left corner,
    and the frame's spare margins, to the right or below, are see-through;
    *Stretch* pulls the picture to the frame's shape, for one already
    cropped to the 3D window's own.
 4. **Lock it.** The corner and the blue edge go, and the mouse goes through
-   the picture to the model. Orbit the model in Archicad until it sits in
+   the picture to the model -- on Windows and on a Mac alike. Orbit the model in Archicad until it sits in
    the picture, moving the opacity slider as you go: low to see the model,
    high to see the picture. Unlock to move or size the picture again.
 5. **Hide** takes the picture off the screen without closing it; **Close**,

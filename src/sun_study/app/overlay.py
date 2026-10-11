@@ -57,10 +57,12 @@ Off Windows
 -----------
 
 The window, the picture, the slider and the fit work anywhere Tk does.
-Finding the Archicad window and the click-through are Win32 calls made
-through ``ctypes``; elsewhere they answer "nothing found" and "not
-possible", the palette says so, and the picture is placed by hand and
-hidden to reach what is under it.
+Finding the Archicad window is a Win32 call made through ``ctypes``; on a
+Mac it answers "nothing found", the palette says so, and the picture is
+placed by hand. The click-through works on both: Win32's window style on
+Windows, ``-[NSWindow setIgnoresMouseEvents:]`` through the Objective-C
+runtime on a Mac. Anywhere else the picture is hidden to reach what is
+under it.
 """
 
 from __future__ import annotations
@@ -300,8 +302,8 @@ def archicad_windows() -> list[Found]:
 
 def click_through(window: tk.Toplevel, on: bool) -> bool:
     """Let the mouse fall through the window to whatever is under it, or
-    take it back. True if the window now does as asked; False off Windows,
-    where nothing can be done and the caller says so.
+    take it back. True if the window now does as asked; False where nothing
+    can be done -- neither Windows nor a Mac -- and the caller says so.
 
     Two bits of the window's extended style: ``WS_EX_TRANSPARENT`` is the
     click-through, and it takes effect only on a ``WS_EX_LAYERED`` window,
@@ -337,7 +339,61 @@ def click_through(window: tk.Toplevel, on: bool) -> bool:
             write(handle, _GWL_EXSTYLE, wanted)
             user32.SetWindowPos(handle, 0, 0, 0, 0, 0, _SWP_REDRAW_FRAME)
         done = True
+    elif sys.platform == "darwin":
+        done = _mac_ignores_mouse(window, on)
     return done
+
+
+#: What the picture's window is titled, so that a Mac's own list of windows
+#: can be searched for it. A borderless window shows no title anywhere.
+MAC_TITLE = "Loriini reference picture"
+
+
+def _mac_ignores_mouse(window: tk.Toplevel, on: bool) -> bool:
+    """The Mac's click-through: ``-[NSWindow setIgnoresMouseEvents:]`` on the
+    Cocoa window Tk made for this toplevel, found by its title among the
+    application's windows. Through the Objective-C runtime with ``ctypes``,
+    as the Windows half goes through user32, so nothing is added to the
+    bundle. False if the window cannot be found or the runtime refuses.
+    """
+    import ctypes
+
+    try:
+        runtime = ctypes.cdll.LoadLibrary("/usr/lib/libobjc.dylib")
+    except OSError:  # pragma: no cover - not a Mac after all
+        return False
+    runtime.objc_getClass.restype = ctypes.c_void_p
+    runtime.objc_getClass.argtypes = [ctypes.c_char_p]
+    runtime.sel_registerName.restype = ctypes.c_void_p
+    runtime.sel_registerName.argtypes = [ctypes.c_char_p]
+
+    def send(restype: object, *argtypes: object) -> Callable[..., object]:
+        # On Apple silicon ``objc_msgSend`` must be called through a pointer
+        # cast to each method's exact signature, never as a variadic.
+        return ctypes.CFUNCTYPE(restype, ctypes.c_void_p, ctypes.c_void_p, *argtypes)(  # type: ignore[arg-type]
+            ("objc_msgSend", runtime)
+        )
+
+    def selector(name: str) -> int:
+        return int(runtime.sel_registerName(name.encode()))
+
+    title = str(window.wm_title()).encode()
+    window.update_idletasks()
+    application = send(ctypes.c_void_p)(
+        runtime.objc_getClass(b"NSApplication"), selector("sharedApplication")
+    )
+    windows = send(ctypes.c_void_p)(application, selector("windows"))
+    if not application or not windows:
+        return False
+    count = int(send(ctypes.c_ulong)(windows, selector("count")) or 0)  # type: ignore[call-overload]
+    for index in range(count):
+        each = send(ctypes.c_void_p, ctypes.c_ulong)(windows, selector("objectAtIndex:"), index)
+        named = send(ctypes.c_void_p)(each, selector("title"))
+        text = send(ctypes.c_char_p)(named, selector("UTF8String")) if named else None
+        if text == title:
+            send(None, ctypes.c_bool)(each, selector("setIgnoresMouseEvents:"), on)
+            return bool(send(ctypes.c_bool)(each, selector("ignoresMouseEvents"))) == on
+    return False
 
 
 # -- the picture ---------------------------------------------------------------
@@ -355,6 +411,7 @@ class Overlay(tk.Toplevel):
     def __init__(self, parent: tk.Misc) -> None:
         super().__init__(parent)
         self.withdraw()
+        self.title(MAC_TITLE)
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         #: Whether the margins are see-through. Only Windows has a colour
@@ -391,6 +448,7 @@ class Overlay(tk.Toplevel):
         self._settle: str | None = None
         self._grab_at = (0, 0)
         self._corner_at = (0, 0, 0, 0)
+        self._pinned = (0, 0)
 
         self.face = tk.Label(self, bd=0, highlightthickness=0, background=ground)
         self.face.place(x=0, y=0)
@@ -408,11 +466,17 @@ class Overlay(tk.Toplevel):
             movable.bind("<B1-Motion>", self._drag)
         self.grip.bind("<ButtonPress-1>", self._grab_corner)
         self.grip.bind("<B1-Motion>", self._resize)
+        # A press on the picture brings it to the front, over the palette,
+        # and a palette under its own picture cannot be reached. So the
+        # palette is put back on top after every press and every release.
+        for pressed in (self, self.face, self.grip):
+            pressed.bind("<ButtonPress-1>", lambda _event: self._under(), add="+")
+            pressed.bind("<ButtonRelease-1>", lambda _event: self._under(), add="+")
         self.bind("<Configure>", self._configured)
         # Tk makes the window Windows knows when it maps this one, and makes
         # it again after some changes, so the click-through is put back at
         # every mapping rather than trusted to stay.
-        self.bind("<Map>", lambda _event: self._apply_lock())
+        self.bind("<Map>", self._mapped)
         self.bind("<Destroy>", self._destroyed)
         self.set_opacity(DEFAULT_OPACITY)
         self.geometry(Placement(120, 120, 640, 400).geometry)
@@ -454,7 +518,7 @@ class Overlay(tk.Toplevel):
     def lock(self, on: bool) -> bool:
         """Locked, the corner goes and the mouse goes through the picture;
         unlocked, the picture can be moved and sized again. Answers whether
-        the mouse does go through, which off Windows it cannot."""
+        the mouse does go through: on Windows and on a Mac it does."""
         self.locked = on
         if on:
             self.grip.place_forget()
@@ -485,6 +549,19 @@ class Overlay(tk.Toplevel):
         self.update_idletasks()
         self._apply_lock()
         self._redraw()
+        self._under()
+
+    def _mapped(self, _event: object = None) -> None:
+        self._apply_lock()
+        self._under()
+
+    def _under(self) -> None:
+        """Put the palette that owns this picture back over it. Both stay on
+        top of everything else; between the two, the controls are always the
+        upper, so the picture can never cover the slider that dims it."""
+        owner = self.master
+        if isinstance(owner, tk.Toplevel) and owner.winfo_exists():
+            owner.lift()
 
     def hide(self) -> None:
         self.withdraw()
@@ -506,6 +583,7 @@ class Overlay(tk.Toplevel):
 
     def _grab_corner(self, event: tk.Event[tk.Misc]) -> None:
         self._corner_at = (event.x_root, event.y_root, self.winfo_width(), self.winfo_height())
+        self._pinned = (self.winfo_x(), self.winfo_y())
 
     def _resize(self, event: tk.Event[tk.Misc]) -> None:
         """The corner sizes the frame from its top-left, which stays where it
@@ -515,7 +593,11 @@ class Overlay(tk.Toplevel):
         x0, y0, wide, tall = self._corner_at
         width = max(LEAST_SIDE, wide + event.x_root - x0)
         height = max(LEAST_SIDE, tall + event.y_root - y0)
-        self.geometry(f"{width}x{height}")
+        # The top-left said outright, as it was when the corner was taken: a
+        # size alone lets a Mac keep the window's *bottom*-left where it was,
+        # its own origin, and the picture walked up the screen as it grew.
+        left, top = self._pinned
+        self.geometry(f"{width}x{height}{left:+d}{top:+d}")
 
     # -- drawing ----------------------------------------------------------------
 

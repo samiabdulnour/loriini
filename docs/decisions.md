@@ -4943,3 +4943,14 @@ foot to the picture's top edge, so the controls went wherever the picture
 was lined up -- over the model -- and the picture could be no narrower than
 the strip. Now each moves and sizes on its own; *Over Archicad* and the
 first placing lay only the picture, and the palette stays where it was put.
+
+Tried on the Mac, three more: the corner must hold the top-left, the
+palette must never be under its picture, and a locked picture must let the
+mouse through. The corner now sets the frame's position with its size --
+given a size alone, a Mac kept the window's bottom-left, its own origin. A
+press or release on the picture, and every showing of it, lifts the palette
+back over it. And a Mac has a click-through of its own: ``-[NSWindow
+setIgnoresMouseEvents:]`` on the Cocoa window Tk made for the picture,
+found by its title (``overlay.MAC_TITLE``) among the application's windows
+and called through the Objective-C runtime with ``ctypes``, as the Windows
+half goes through user32.
