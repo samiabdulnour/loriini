@@ -1751,7 +1751,9 @@ class Dock(ttk.Frame):
 SHEET_MM_W, SHEET_MM_H = 297.0, 210.0
 #: The site and what sits on it, at 1:1000, so a metre is a millimetre.
 SITE_MM = (66.0, 40.0, 196.0, 168.0)
-BLOCK_MM = (104.0, 78.0, 164.0, 118.0)
+#: The block and the plate of flats sit in the middle of the site: a plan
+#: pushed to one side of its boundary read as a drawing laid out wrong.
+BLOCK_MM = (101.0, 84.0, 161.0, 124.0)
 BLOCK_HEIGHT_M = 21.0
 NEIGHBOURS_MM = ((74.0, 48.0, 100.0, 70.0), (170.0, 126.0, 190.0, 160.0))
 #: The blocks around the site on the context sheet, which shows a
@@ -1766,13 +1768,16 @@ CONTEXT_MM = (
     (118.0, 134.0, 150.0, 160.0),
     (166.0, 126.0, 190.0, 160.0),
 )
-#: Six flats to a plate, for the apartment sheets.
+#: Six flats to a plate, for the apartment sheets, centred on the site.
 FLATS_MM = tuple(
-    (78.0 + across * 40.0, 62.0 + down * 42.0, 114.0 + across * 40.0, 100.0 + down * 42.0)
+    (83.0 + across * 32.0, 71.0 + down * 33.0, 115.0 + across * 32.0, 104.0 + down * 33.0)
     for down in range(2)
     for across in range(3)
 )
 SHADOW_GREY = "#8F8E87"
+#: The office yield sheet's legend: the podium lilac, the tower yellow.
+PODIUM = "#DCCBF7"
+TOWER = "#FFF4A8"
 
 
 def _hours_in(text: str) -> list[str]:
@@ -2380,7 +2385,7 @@ def _draw_drawing(
 
     def yard() -> None:
         """The courtyard, gridded the way the study samples it."""
-        court = (BLOCK_MM[0] - 14, BLOCK_MM[1] + 4, BLOCK_MM[2] + 14, BLOCK_MM[3] + 16)
+        court = (BLOCK_MM[0] - 14, BLOCK_MM[1] - 10, BLOCK_MM[2] + 14, BLOCK_MM[3] + 10)
         box(court, fill=HOURS_RAMP[1], outline=theme.SUN)
         for step in range(1, 6):
             along = court[0] + (court[2] - court[0]) * step / 6
@@ -2389,20 +2394,32 @@ def _draw_drawing(
             down = court[1] + (court[3] - court[1]) * step / 4
             line(court[0], down, court[2], down, HOURS_RAMP[2])
 
-    # The site's boundary, red and dash-dotted as a drawing set draws it, and
-    # the neighbours light beside it.
-    paper.create_rectangle(
-        px(SITE_MM[0]),
-        py(SITE_MM[1]),
-        px(SITE_MM[2]),
-        py(SITE_MM[3]),
-        outline=BOUNDARY,
-        dash=BOUNDARY_DASH,
-    )
-    for neighbour in NEIGHBOURS_MM:
-        box(neighbour, fill=NEIGHBOUR, outline=NEIGHBOUR_EDGE)
-
     kind = drawing.kind
+    # The site's boundary, red and dash-dotted as a drawing set draws it, on
+    # the plans -- not round a schedule or the yield sheet, which are not
+    # drawings of the site, nor round the site sheet, which draws its own lot
+    # with the frontage dimensioned. The neighbours light beside it, only where
+    # something falls on them: a shadow, or the sun's own view of the block.
+    # A plate of flats or the open space is the site alone, centred in it.
+    # The context sheet rings the site alone, in the middle of what is around it.
+    if kind not in (
+        AREA_SHEET,
+        COMMUNAL_AREAS,
+        "Summary of Controls",
+        "Site Analysis",
+        "Context Analysis",
+    ):
+        paper.create_rectangle(
+            px(SITE_MM[0]),
+            py(SITE_MM[1]),
+            px(SITE_MM[2]),
+            py(SITE_MM[3]),
+            outline=BOUNDARY,
+            dash=BOUNDARY_DASH,
+        )
+        if not kind.startswith(("Apartments", "Communal open space")):
+            for neighbour in NEIGHBOURS_MM:
+                box(neighbour, fill=NEIGHBOUR, outline=NEIGHBOUR_EDGE)
     if kind.startswith("Apartments") and "total" in kind.lower():
         # Each flat against the two hours: the share that meets it blue,
         # the share that falls short orange.
@@ -2441,30 +2458,32 @@ def _draw_drawing(
             theme.LINE,
         )
     elif kind == AREA_SHEET:
-        # The office's sheet: the table down the left, and the massing beside
-        # it floor on floor, the tower in the legend's yellow over a lilac
-        # podium.
-        box(FRAME_MM, fill=theme.SURFACE, outline="")
-        table = (FRAME_MM[0] + 6, FRAME_MM[1] + 16, FRAME_MM[0] + 64, FRAME_MM[3] - 14)
-        line(table[0], table[1] - 8, table[0] + 40, table[1] - 8, theme.INK)
-        down = table[1]
-        while down < table[3]:
-            line(table[0], down, table[0] + 22, down, theme.EDGE)
-            line(table[0] + 32, down, table[2], down, theme.EDGE)
-            down += 8
-        left, foot = FRAME_MM[0] + 84, FRAME_MM[3] - 18
-        for storey in range(2):
+        # The office's sheet, as what it tells: the building in section,
+        # floor on floor -- the podium in the legend's lilac, the tower in
+        # its yellow -- and beside each floor a bar as long as its area, so
+        # the schedule reads as the building it adds up. The bars stand on
+        # the same ground line, and a heavy rule under them is the total.
+        storey, floors, podium = 9.0, 13, 2
+        ground = FRAME_MM[3] - 16
+        section = (FRAME_MM[0] + 14, FRAME_MM[0] + 62)
+        tower = (section[0] + 8, section[1] - 8)
+        bars = FRAME_MM[0] + 76
+        for floor in range(floors):
+            low, high = ground - storey * floor, ground - storey * (floor + 1)
+            under = floor < podium
+            tint = PODIUM if under else TOWER
+            left, right = section if under else tower
+            box((left, high, right, low), fill=tint, outline=theme.INK, width=0.6)
+            # The area: the podium's wide floors long, the tower's shorter,
+            # and the top floors stepping back a little.
+            reach = 62.0 if under else 44.0 - max(0, floor - 9) * 4.0
             box(
-                (left, foot - 9 * (storey + 1), left + 56, foot - 9 * storey - 2),
-                fill="#DCCBF7",
-                outline=theme.EDGE,
+                (bars, high + 1.8, bars + reach, low - 1.8), fill=tint, outline=theme.INK, width=0.6
             )
-        for storey in range(2, 13):
-            box(
-                (left + 8, foot - 9 * (storey + 1), left + 44, foot - 9 * storey - 2),
-                fill="#FFF4A8",
-                outline=theme.EDGE,
-            )
+        line(FRAME_MM[0] + 6, ground, FRAME_MM[2] - 6, ground, theme.INK)
+        paper.create_line(
+            px(bars), py(ground + 6), px(bars + 70), py(ground + 6), fill=theme.INK, width=2
+        )
     elif kind == "Context Analysis":
         # The neighbourhood: the site in the middle of the radius the data
         # is fetched for, the blocks around it, and the streets between.
@@ -2497,6 +2516,11 @@ def _draw_drawing(
         for block in CONTEXT_MM:
             box(block, fill=NEIGHBOUR, outline=NEIGHBOUR_EDGE)
         massing()
+        box(
+            (BLOCK_MM[0] - 6, BLOCK_MM[1] - 6, BLOCK_MM[2] + 6, BLOCK_MM[3] + 6),
+            outline=BOUNDARY,
+            dash=BOUNDARY_DASH,
+        )
     elif kind == "Site Analysis":
         # The site itself: its boundary, the setbacks dashed inside it, the
         # frontage dimensioned, and the pin where the address lands.
