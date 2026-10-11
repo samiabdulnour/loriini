@@ -38,6 +38,9 @@ PRODUCT = "Loriini"
 #: mailbox the licence service sends from, on the product's own domain.
 SUPPORT_EMAIL = "sami@loriini.app"
 
+#: The product's web site, on the same domain.
+WEBSITE = "https://loriini.app"
+
 #: The copyright line, kept beside the author for the same reason: the window,
 #: the executable's file properties and every sheet must say the same thing.
 #: Clause 2(e) of the licence requires that it not be removed from either the

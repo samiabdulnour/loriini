@@ -1532,12 +1532,9 @@ PANEL_HEAD = 32
 #: window's ``Study.TCheckbutton`` styles sit on top of these and must match
 #: them to the digit, or the tick shows as a patch on its own header.
 HEAD_ON = "#E8F0FC"
-HEAD_OFF = "#F1F1F0"
-#: The window's chrome, behind the tabs and under the scrollbar in the dock.
-CHROME = "#F0F0F0"
-#: The page a section sits on, a shade lighter than the surround. The open
-#: tab's face is drawn in it so the tab joins the page. ``theme.PAGE``.
-PAGE = "#F5F5F5"
+HEAD_OFF = "#FFFFFF"
+#: A panel's edge when it is not switched on. ``theme.PANEL_EDGE``.
+PANEL_EDGE = "#CFCFCF"
 
 
 @dataclass(frozen=True)
@@ -1590,7 +1587,6 @@ class Face:
 #: shows as a pale band under the label.
 BUTTON = {"wide": 192, "tall": 44}
 RAISED = {**BUTTON, "room_for_lift": True}
-TAB = {"wide": 128, "tall": 88}
 #: How much of a box is drawn under its header, for the same reason.
 PANEL_BODY = 288
 
@@ -1612,7 +1608,9 @@ FACES: dict[str, Face] = {
     "face_run_down": Face(BLUE_D, BLUE_D, BLUE_D, **RAISED),
     # The chosen tile keeps the tint Run used to wear: a choice made is not
     # an action waiting.
-    "face_chosen": Face("#EFF5FE", "#E1EBFA", BLUE, lift=True, **RAISED),
+    # Chosen is filled, the way a segmented control in Archicad marks the
+    # segment that is on: blue, with the word knocked out white.
+    "face_chosen": Face("#2A6FD4", BLUE, BLUE_D, lift=True, **RAISED),
     "field": Face("#FFFFFF", "#FFFFFF", CONTROL_EDGE, **BUTTON),
     # Focus is the edge going blue and thickening, not a glow. A ring outside
     # the border would have to live inside the nine-slice, and every pixel it
@@ -1623,17 +1621,6 @@ FACES: dict[str, Face] = {
     "add": Face("#FFFFFF", "#FFFFFF", CONTROL_EDGE, **BUTTON),
     "add_hover": Face("#F2F7FE", "#E8F0FC", BLUE, **BUTTON),
     "add_down": Face(BLUE_EDGE, BLUE_EDGE, BLUE_D, **BUTTON),
-    # The strip. At rest a tab is the chrome it sits on; under the pointer it
-    # is a rounded tint; open, it is the page's own white under a blue cap,
-    # rounded where it meets nothing and square where it meets its page.
-    "tab_rest": Face(CHROME, CHROME, radius=0, **TAB),
-    # A tab is a rounded card on the chrome: tinted under the pointer, white
-    # with a thin edge and a blue cap when open. It no longer joins the page,
-    # which has a contour of its own and sits a gap below the strip.
-    "tab_hover": Face("#E8F0FC", "#E8F0FC", radius=6, **TAB),
-    "tab_open": Face("#FFFFFF", "#FFFFFF", "#DCDCDC", radius=6, cap=BLUE, cap_tall=3, **TAB),
-    # The page a section sits on: the lighter grey, one thin edge, rounded.
-    "page": Face(PAGE, PAGE, "#DCDCDC", wide=480, tall=320, radius=6),
     # A pill, and the only one: a bar is the single control whose ends mean
     # nothing, so nothing is lost by rounding them away.
     "bar_trough": Face("#FFFFFF", "#FFFFFF", "#DCDCDC", wide=256, tall=10, radius=5),
@@ -1657,7 +1644,7 @@ FACES: dict[str, Face] = {
     "panel_off": Face(
         "#FFFFFF",
         "#FFFFFF",
-        "#DCDCDC",
+        PANEL_EDGE,
         wide=480,
         tall=PANEL_HEAD + PANEL_BODY,
         radius=6,
@@ -1665,6 +1652,17 @@ FACES: dict[str, Face] = {
         cap_tall=PANEL_HEAD,
         cap_rule="#DCDCDC",
     ),
+    # The open page in the sidebar: a rounded blue bar the row's words and
+    # switch sit on, white on blue, the way Archicad marks the chosen page of
+    # a settings dialog.
+    "side_open": Face(BLUE, BLUE, wide=256, tall=40, radius=6),
+    # The count beside a page in the sidebar, as a pill: tinted on the grey,
+    # and the deep blue on the open row's blue.
+    "badge": Face("#CFDDF5", "#CFDDF5", wide=96, tall=24, radius=8),
+    "badge_open": Face(BLUE_D, BLUE_D, wide=96, tall=24, radius=8),
+    # The card at the foot of the sidebar that explains whatever is under the
+    # pointer: a shade off white, one thin edge, rounded like a panel.
+    "helpcard": Face("#F7F7F7", "#F7F7F7", PANEL_EDGE, wide=256, tall=320, radius=8),
 }
 
 #: What the first rounded build wrote, with a size in the name. Removed on the
@@ -1733,6 +1731,34 @@ def face(spec: Face) -> Image.Image:
     # reads as a bright hairline just inside the border -- a bevel nobody
     # asked for. The scale is a whole number, so a box is exact.
     return image.resize((spec.wide, tall), Image.BOX)
+
+
+#: The switch a study is turned on with: a pill and a knob, 28 by 16, drawn
+#: at its size rather than as a nine-slice -- it is never stretched. Three of
+#: them: off is grey with a white knob, on is blue with a white knob, and on
+#: the open sidebar row, which is blue already, on is white with a blue knob.
+SWITCHES: dict[str, tuple[str, str, bool]] = {
+    "switch_off": ("#B5B5B5", "#FFFFFF", False),
+    "switch_on": (BLUE, "#FFFFFF", True),
+    "switch_on_light": ("#FFFFFF", BLUE, True),
+    "switch_off_light": ("#7FA6E3", "#FFFFFF", False),
+}
+
+
+def switch(track: str, knob: str, on: bool) -> Image.Image:
+    """One switch, supersampled so the pill's ends and the knob are round."""
+    scale = SUPERSAMPLE
+    wide, tall = 28, 16
+    image = Image.new("RGBA", (wide * scale, tall * scale), (0, 0, 0, 0))
+    pen = ImageDraw.Draw(image)
+    pen.rounded_rectangle(
+        (0, 0, wide * scale - 1, tall * scale - 1), radius=tall * scale / 2, fill=track
+    )
+    inset = 2 * scale
+    size = tall * scale - 2 * inset
+    left = wide * scale - inset - size if on else inset
+    pen.ellipse((left, inset, left + size - 1, inset + size - 1), fill=knob)
+    return image.resize((wide, tall), Image.BOX)
 
 
 def every_icon() -> list[Icon]:
@@ -1970,6 +1996,9 @@ def main() -> None:
         written += 1
     for name in STALE_FACES:
         (out / f"{name}-16.png").unlink(missing_ok=True)
+    for name, (track, knob, on) in SWITCHES.items():
+        switch(track, knob, on).save(out / f"{name}.png")
+        written += 1
 
     # The add-on's palette, as SVG, from the same coordinates.
     by_name = {icon.name: icon for icon in icons}

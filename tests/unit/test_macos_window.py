@@ -94,23 +94,15 @@ def test_the_window_is_set_at_the_size_its_platform_asks_for() -> None:
         root.destroy()
 
 
-def test_the_lettering_on_a_thumbnail_is_measured_at_the_size_it_is_drawn(
+def test_the_lettering_on_a_thumbnail_is_scaled_like_the_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A sheet's words are shrunk until they fit their box, by measuring them.
-    Measured at one size and drawn at another, they would overflow on a Mac by
-    exactly the four thirds the type is scaled by."""
-    root = _root()
-    try:
-        monkeypatch.setattr(theme, "MACOS", True)
-        monkeypatch.setattr(theme, "MAC_POINTS", 4 / 3)
-        monkeypatch.setattr(window, "_WIDTHS", {})
-        drawn = window._face(9, True)
-        assert drawn[1] == 12
-        measured = window._wide(root, "Loriini", 9, True)
-        assert measured == tkfont.Font(root=root, font=drawn).measure("Loriini")
-    finally:
-        root.destroy()
+    """A sheet's words are set at the window's own scale, so on a Mac they
+    grow by the same factor as every other word on the screen."""
+    monkeypatch.setattr(theme, "MACOS", True)
+    monkeypatch.setattr(theme, "MAC_POINTS", 4 / 3)
+    drawn = window._face(9, True)
+    assert drawn[1] == 12
 
 
 # -- the Dock's icon ----------------------------------------------------------

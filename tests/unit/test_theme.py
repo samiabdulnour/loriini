@@ -94,21 +94,15 @@ def test_what_each_style_says_it_wears_is_what_it_wears(styled: object) -> None:
     assert not wrong, wrong
 
 
-def test_a_tab_wears_a_tab_and_never_a_button(styled: object) -> None:
-    """Named on its own, because this is the one that actually happened.
-
-    The first rounded build changed ``TButton`` and the six tabs, being
-    ``*.TButton``, came out as six rounded buttons. A tab has a face of its
-    own now -- chrome at rest, white under a blue cap when open -- and what it
-    must never do again is inherit the button's.
-    """
-    for name in ("Tab.TButton", "TabOpen.TButton", "TabQueued.TButton", "TabOpenQueued.TButton"):
-        assert theme.WEARS[name] in {"tab", "tabopen"}
-        assert styled.layout(name)[0][0] != "Loriini.button"  # type: ignore[attr-defined]
-    # Open and queued are two marks on two axes. The cap is the open mark, so
-    # it goes with open-ness and not with being queued.
-    assert theme.WEARS["TabOpen.TButton"] == theme.WEARS["TabOpenQueued.TButton"] == "tabopen"
-    assert theme.WEARS["Tab.TButton"] == theme.WEARS["TabQueued.TButton"] == "tab"
+def test_the_sidebar_rows_take_their_rows_colour(styled: object) -> None:
+    """A page's name in the sidebar is a flat button on its row, and the open
+    row is the faced thing -- a rounded blue bar. The name must never wear a
+    button's face of its own, which would be a box inside the bar."""
+    for name in ("Side.TButton", "SideOpen.TButton"):
+        assert theme.WEARS[name] == "flat"
+    assert styled.layout("SideRowOpen.TFrame")[0][0] == "Loriini.sideopen"  # type: ignore[attr-defined]
+    assert styled.lookup("SideOpen.TButton", "background") == theme.BLUE  # type: ignore[attr-defined]
+    assert theme.INSIDE["SideRowOpen.TFrame"] == theme.BLUE
 
 
 # -- the second trap: an image element ignores ``background`` ---------------
@@ -254,8 +248,8 @@ def test_no_face_is_drawn_small_enough_to_be_stamped_a_thousand_times() -> None:
             wide, tall = face.width(), face.height()
             # A scrollbar thumb is as wide as its gutter and a bar is as tall
             # as itself: neither is ever tiled along that side.
-            tiled_across = not path.stem.startswith("thumb")
-            tiled_down = not path.stem.startswith("bar_")
+            tiled_across = not path.stem.startswith(("thumb", "switch_"))
+            tiled_down = not path.stem.startswith(("bar_", "switch_"))
             if (tiled_across and wide < 96) or (tiled_down and tall < 24):
                 small.append(f"{path.name} is {wide}x{tall}")
     finally:

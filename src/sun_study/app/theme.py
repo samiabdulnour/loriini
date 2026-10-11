@@ -81,16 +81,28 @@ from typing import Any
 #: white, and its field edges are around #8D8D8D. This window sits inside
 #: Archicad all day and an earlier warm grey made it look like a different
 #: program parked on top of it.
-CHROME = "#F0F0F0"
+CHROME = "#F4F4F4"
 
 #: Where the settings are. White, because the icons are drawn on white and a
 #: sheet of paper on grey is not a sheet of paper. Archicad's panels agree.
 SURFACE = "#FFFFFF"
 
-#: The page a section is laid out on: a shade lighter than the surround, so
-#: the white cards on it read as cards and the empty page reads as page. The
-#: open tab's face is drawn in it, which is what joins the tab to the page.
-PAGE = "#F5F5F5"
+#: The page a section is laid out on: a step darker than the bars, so the
+#: white panels on it read as panels, the way Archicad's settings dialogs set
+#: their panels on a grey ground.
+PAGE = "#E9E9E9"
+
+#: The sidebar of pages down the left, and the sheets panel down the right:
+#: the two columns either side of the page, a step darker again.
+SIDEBAR = "#E1E1E1"
+#: The panel at the foot of the sidebar that explains what is under the
+#: pointer. A shade off white, so it reads as a note rather than a panel.
+HELP = "#F7F7F7"
+#: A panel's edge when its study is off, or it has no study.
+PANEL_EDGE = "#CFCFCF"
+#: The grey of a sidebar group's caption -- SET UP, STUDIES, TOOLS. Darker
+#: than ``HINT`` because it sits on the sidebar's grey, not on white.
+CAPTION = "#5A5A5A"
 
 #: A control nobody has chosen, and the trough of the progress bar.
 MUTED = "#E4E4E4"
@@ -131,7 +143,7 @@ PANEL_HEAD = 32
 #: The tint behind a study's header, on and off. Drawn into the panel faces
 #: and worn by the tick that sits on them, so they have to match to the digit.
 HEAD_ON = BLUE_TINT
-HEAD_OFF = "#F1F1F0"
+HEAD_OFF = SURFACE
 
 #: Every button style this theme defines, and which face it wears.
 #:
@@ -152,12 +164,15 @@ WEARS: dict[str, str] = {
     "Add.TButton": "add",
     "Tile.TButton": "tile",
     "TileOn.TButton": "tileon",
-    # A tab wears a tab, not a button: chrome at rest, a rounded tint under
-    # the pointer, and the page's own white under a blue cap when it is open.
-    "Tab.TButton": "tab",
-    "TabQueued.TButton": "tab",
-    "TabOpen.TButton": "tabopen",
-    "TabOpenQueued.TButton": "tabopen",
+    # A page in the sidebar: its name, on the row's own ground. The row is
+    # the faced thing -- a rounded blue bar when it is the open page -- so the
+    # name on it is a flat button that takes the row's colour.
+    "Side.TButton": "flat",
+    "SideOpen.TButton": "flat",
+    # The triangle that folds a panel, on its header, the way Archicad folds
+    # the panels of a settings dialog.
+    "Disclose.TButton": "flat",
+    "DiscloseOn.TButton": "flat",
     # The cross on a chip is inside a rounded box already, and a second one
     # around a 13 px glyph is a box around a box.
     "ChipDrop.TButton": "flat",
@@ -183,10 +198,12 @@ STANDS_ON: dict[str, str] = {
     "Add.TButton": SURFACE,
     "Tile.TButton": SURFACE,
     "TileOn.TButton": SURFACE,
-    "Tab.TButton": CHROME,
-    "TabQueued.TButton": CHROME,
-    "TabOpen.TButton": CHROME,
-    "TabOpenQueued.TButton": CHROME,
+    # The sidebar's open row, its count pills, and the card at its foot all
+    # stand on the sidebar's grey.
+    "SideRowOpen.TFrame": SIDEBAR,
+    "Badge.TLabel": SIDEBAR,
+    "BadgeOpen.TLabel": BLUE,
+    "Help.TFrame": SIDEBAR,
     "TEntry": SURFACE,
     "TCombobox": SURFACE,
     "Chrome.TCombobox": CHROME,
@@ -195,8 +212,6 @@ STANDS_ON: dict[str, str] = {
     # otherwise show four white nicks on the grey.
     "Box.TFrame": PAGE,
     "BoxOff.TFrame": PAGE,
-    # The page itself is a card on the chrome.
-    "PageCard.TFrame": CHROME,
     # The progress bar is a pill, and a pill is nearly all corner. It used to
     # carry ``background=BLUE`` from the days clam drew it, and the first
     # rounded build showed the trough outlined in blue: not a border, but this
@@ -211,7 +226,8 @@ STANDS_ON: dict[str, str] = {
 INSIDE: dict[str, str] = {
     "Box.TFrame": SURFACE,
     "BoxOff.TFrame": SURFACE,
-    "PageCard.TFrame": PAGE,
+    "SideRowOpen.TFrame": BLUE,
+    "Help.TFrame": HELP,
 }
 
 
@@ -308,6 +324,11 @@ def apply(root: tk.Misc) -> ttk.Style:
 
     try:
         root.option_add("*Font", body)
+        # But not on a ttk label. A ttk label has a ``-font`` of its own,
+        # and the line above filled it in on every one -- which beat the
+        # style's font, so every bold title and heading in the window was
+        # set in the body face. Empty, the label takes its style's.
+        root.option_add("*TLabel.Font", "")
     except tk.TclError:
         pass
 
@@ -457,16 +478,16 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: the window and the one used least.
     style.configure(
         "Fold.TButton",
-        background=CHROME,
-        foreground=HINT,
-        bordercolor=CHROME,
-        lightcolor=CHROME,
-        darkcolor=CHROME,
+        background=SIDEBAR,
+        foreground=BODY,
+        bordercolor=SIDEBAR,
+        lightcolor=SIDEBAR,
+        darkcolor=SIDEBAR,
         relief="flat",
         padding=(5, 0),
         font=strong,
     )
-    style.map("Fold.TButton", foreground=[("active", BLUE_DEEP)], background=[("active", CHROME)])
+    style.map("Fold.TButton", foreground=[("active", BLUE_DEEP)], background=[("active", SIDEBAR)])
 
     #: A tool on the project bar: no face until the pointer is on it.
     style.configure(
@@ -505,43 +526,75 @@ def apply(root: tk.Misc) -> ttk.Style:
         foreground=[("disabled", HINT), ("!disabled", SURFACE)],
     )
 
-    #: A tab in the strip: one drawing at 32 px with the section's name under
-    #: it. No border and no fill when it is not the open one, because six
-    #: outlined boxes in a row read as six boxes rather than as one strip.
-    #:
-    #: Four styles rather than one style with two maps, because a tab carries
-    #: two facts that must never be drawn as the same thing -- which is the
-    #: fault this replaces, where a tinted card meant "queued" and there was
-    #: nothing at all for "you are here".
-    #:
-    #: *Open* is the white surface, the same white as the page beneath it, so
-    #: the tab and its page read as one sheet; a blue rule over the tab closes
-    #: it. *Queued* is the blue label and the dot after the name. A tab can be
-    #: both at once, and then it says both.
-    # Three more pixels at the top than at the sides: that is where the open
-    # tab's blue cap is drawn, and every tab keeps the room so that opening
-    # one does not move its drawing down.
-    tab_pad = (10, 10, 10, 7)
-    for name, text, face in (
-        ("Tab.TButton", BODY, body),
-        ("TabOpen.TButton", INK, strong),
-        ("TabQueued.TButton", BLUE_DEEP, body),
-        ("TabOpenQueued.TButton", BLUE_DEEP, strong),
+    # -- the sidebar ------------------------------------------------------
+    #
+    # The pages down the left, in three groups under small capitals, the way
+    # Archicad lists the pages of a settings dialog. A row is a frame -- the
+    # open one wears a rounded blue face -- holding the page's name, what it
+    # will make, and the switch that queues it; each of those takes the row's
+    # colour, so there are two of every style: on the grey, and on the blue.
+    caption = (family, points(8), "bold")
+    style.configure("Side.TFrame", background=SIDEBAR)
+    style.configure("SideRow.TFrame", background=SIDEBAR)
+    style.configure("SideRowOpen.TFrame", background=SIDEBAR)
+    style.configure("Group.TLabel", background=SIDEBAR, foreground=CAPTION, font=caption)
+    for name, ground, text, face in (
+        ("Side.TButton", SIDEBAR, INK, body),
+        ("SideOpen.TButton", BLUE, SURFACE, strong),
     ):
-        # No background and no border here. The tab wears a face (``_rounded``
-        # below): chrome at rest, a rounded tint under the pointer, white
-        # under a blue cap when open. An open tab has one picture and so does
-        # not light up under the pointer -- you are already there.
-        # ``width=0``: as wide as the drawing and the name, no wider. Clam
-        # gives every button a floor of eleven characters, which made a tab
-        # called "Yield" as wide as one called "Shadow diagram".
-        style.configure(name, foreground=text, padding=tab_pad, anchor="center", font=face, width=0)
+        style.configure(
+            name,
+            background=ground,
+            foreground=text,
+            bordercolor=ground,
+            lightcolor=ground,
+            darkcolor=ground,
+            relief="flat",
+            padding=(2, 4),
+            anchor="w",
+            font=face,
+            width=0,
+            focuscolor=text,
+        )
+        style.map(name, background=[("active", ground)], foreground=[("active", text)])
+    #: What a page will make, as a pill beside its name: the tinted pill on
+    #: the grey, the deep blue one on the open row.
+    style.configure("Badge.TLabel", background=SIDEBAR, foreground=BLUE_DEEP, font=small)
+    style.configure("BadgeOpen.TLabel", background=BLUE, foreground=SURFACE, font=small)
 
-    #: The word over a group of tabs -- the only text in the strip that is not
-    #: the name of a page. It says which of the two kinds the tabs under it
-    #: are, which is the whole taxonomy: two pages set the job up, four draw
-    #: something.
-    style.configure("Group.TLabel", background=CHROME, foreground=HINT, font=small)
+    #: The card at the foot of the sidebar: whatever is under the pointer,
+    #: what it is, and what happens when it is wrong.
+    style.configure("Help.TFrame", background=SIDEBAR)
+    style.configure("HelpTitle.TLabel", background=HELP, foreground=INK, font=strong)
+    style.configure("HelpIdle.TLabel", background=HELP, foreground=CAPTION, font=strong)
+    style.configure("Help.TLabel", background=HELP, foreground=INK)
+    style.configure("HelpHint.TLabel", background=HELP, foreground="#4A4A4A", font=small)
+    style.configure(
+        "HelpState.TLabel", background=BLUE_TINT, foreground=BLUE_DEEP, font=small, padding=(6, 0)
+    )
+
+    #: The page's own name over its panels, and the one line under it.
+    style.configure("PageTitle.TLabel", background=PAGE, foreground=INK, font=heading)
+    style.configure("PageBlurb.TLabel", background=PAGE, foreground=CAPTION)
+
+    #: The tool bar's name of the program.
+    style.configure("Brand.TLabel", background=CHROME, foreground=INK, font=heading)
+
+    #: The triangle on a panel's header that folds it.
+    for name, ground in (("Disclose.TButton", HEAD_OFF), ("DiscloseOn.TButton", HEAD_ON)):
+        style.configure(
+            name,
+            background=ground,
+            foreground=BODY,
+            bordercolor=ground,
+            lightcolor=ground,
+            darkcolor=ground,
+            relief="flat",
+            padding=(0, 0),
+            width=0,
+            font=body,
+        )
+        style.map(name, background=[("active", ground)], foreground=[("active", BLUE_DEEP)])
 
     #: The newest line out of a run, and the only one shown. Monospaced
     #: because it prints layer names and tallies that want to line up.
@@ -563,7 +616,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure(
         "TileOn.TButton",
         padding=(4, 1),
+        foreground=SURFACE,
     )
+    style.map("TileOn.TButton", foreground=[("disabled", HINT), ("!disabled", SURFACE)])
 
     # -- chips: a chosen name, and the button that drops it ----------------
     #
@@ -621,12 +676,12 @@ def apply(root: tk.Misc) -> ttk.Style:
     #
     # Its own grey, so the white sheets sit on it the way pages sit in
     # InDesign's panel rather than reading as part of the page beside it.
-    style.configure("Dock.TFrame", background=CHROME)
-    style.configure("DockTitle.TLabel", background=CHROME, foreground=INK, font=strong)
-    style.configure("DockCount.TLabel", background=CHROME, foreground=BLUE_DEEP)
-    style.configure("DockHint.TLabel", background=CHROME, foreground=HINT, font=small)
-    style.configure("DockStudy.TLabel", background=CHROME, foreground=INK, font=strong)
-    style.configure("DockDay.TLabel", background=CHROME, foreground=HINT, font=small)
+    style.configure("Dock.TFrame", background=SIDEBAR)
+    style.configure("DockTitle.TLabel", background=SIDEBAR, foreground=INK, font=strong)
+    style.configure("DockCount.TLabel", background=SIDEBAR, foreground=BLUE_DEEP, font=strong)
+    style.configure("DockHint.TLabel", background=SIDEBAR, foreground=CAPTION, font=small)
+    style.configure("DockStudy.TLabel", background=SIDEBAR, foreground=INK, font=strong)
+    style.configure("DockDay.TLabel", background=SIDEBAR, foreground=CAPTION, font=small)
 
     #: A study's block on a settings page: its tick, its name, and what it
     #: will make, on a tinted bar with a rule under it. Not a box with a
@@ -668,11 +723,15 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: A settings card's title, on the grey band: it is not switched on, so
     #: it does not wear the tint. Set the way Archicad heads a section.
     style.configure("BoxTitle.TLabel", background=HEAD_OFF, foreground=INK, font=strong)
+    #: A study's name on its panel's header, on the tint and off it.
+    style.configure("StudyTitle.TLabel", background=HEAD_ON, foreground=INK, font=strong)
+    style.configure("StudyTitleOff.TLabel", background=HEAD_OFF, foreground=INK, font=strong)
     #: What the box will make, at the right of its header.
     style.configure("PanelSays.TLabel", background=HEAD_ON, foreground=BLUE_DEEP)
     style.configure("PanelSaysOff.TLabel", background=HEAD_OFF, foreground=HINT)
 
     _own_tick(style)
+    _switches(style)
 
     style.configure(
         "Horizontal.TProgressbar",
@@ -712,7 +771,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     )
     style.map("Vertical.TScrollbar", background=[("active", "#CFCCC2")])
     #: The same bar in the sheets panel, whose gutter is the panel's grey.
-    style.configure("Dock.Vertical.TScrollbar", troughcolor=CHROME, bordercolor=CHROME)
+    style.configure("Dock.Vertical.TScrollbar", troughcolor=SIDEBAR, bordercolor=SIDEBAR)
+    #: And on a page, whose gutter is the page's grey.
+    style.configure("Page.Vertical.TScrollbar", troughcolor=PAGE, bordercolor=PAGE)
 
     # Last, and it has to be. It sets the background of everything that wears
     # a face to the colour that thing stands on, and any ``configure`` after
@@ -840,7 +901,9 @@ def _rounded(style: ttk.Style) -> None:
     adding = worn("add", "add_hover", "add_down")
     tiles = worn("face_up", "face_hover", "face_chosen")
     chip = worn("chip")
-    tabs = worn("tab_rest", "tab_hover", "tab_open")
+    side = worn("side_open")
+    badges = worn("badge", "badge_open")
+    help_card = worn("helpcard")
     bars = worn("bar_trough", "bar_fill")
     thumbs = worn("thumb", "thumb_hover")
     panels = worn("panel_on", "panel_off")
@@ -858,11 +921,6 @@ def _rounded(style: ttk.Style) -> None:
         # The chosen tile is a different *picture*, not a different
         # background. Two faces, never one face and a colour.
         element("Loriini.tileon", [tiles[2]], (), lifted)
-    if tabs is not None:
-        # A tab is a rounded card on the chrome, all four corners: it sits a
-        # gap above the page rather than joining it.
-        element("Loriini.tab", tabs[:2], ("active",), FACE_SLICE)
-        element("Loriini.tabopen", [tabs[2]], (), FACE_SLICE)
 
     #: Which faces actually loaded. A style whose face is missing is left on
     #: clam's border rather than left with no layout at all.
@@ -872,8 +930,6 @@ def _rounded(style: ttk.Style) -> None:
         "add": adding is not None,
         "tile": tiles is not None,
         "tileon": tiles is not None,
-        "tab": tabs is not None,
-        "tabopen": tabs is not None,
     }
     #: The same innards without the focus ring. A tab or a tile is pressed
     #: with the mouse and shows its state in its face; the dotted rectangle
@@ -882,7 +938,7 @@ def _rounded(style: ttk.Style) -> None:
     for name, worn_as in WEARS.items():
         if worn_as == "flat" or not ready.get(worn_as, False):
             style.layout(name, flat)
-        elif worn_as in {"tab", "tabopen", "tile", "tileon"}:
+        elif worn_as in {"tile", "tileon"}:
             style.layout(name, [(f"Loriini.{worn_as}", inside(quiet))])
         else:
             style.layout(name, [(f"Loriini.{worn_as}", inside(label))])
@@ -900,12 +956,22 @@ def _rounded(style: ttk.Style) -> None:
         style.layout("Box.TFrame", [("Loriini.box", {"sticky": "nswe"})])
         style.layout("BoxOff.TFrame", [("Loriini.boxoff", {"sticky": "nswe"})])
 
-    page = worn("page")
-    if page is not None:
-        # The page: the lighter grey with one thin edge, a card on the chrome
-        # under the strip. Its inside is what the sections stand on.
-        element("Loriini.page", page, (), 7)
-        style.layout("PageCard.TFrame", [("Loriini.page", {"sticky": "nswe"})])
+    # The sidebar: the open row's blue bar, the count pills, and the card at
+    # the foot that explains what is under the pointer.
+    if side is not None:
+        element("Loriini.sideopen", side, (), 7)
+        style.layout("SideRowOpen.TFrame", [("Loriini.sideopen", {"sticky": "nswe"})])
+    if badges is not None:
+        pill: Any = inside(("Label.padding", inside(("Label.label", {"sticky": "nswe"}))))
+        element("Loriini.badge", [badges[0]], (), 8)
+        element("Loriini.badgeopen", [badges[1]], (), 8)
+        style.layout("Badge.TLabel", [("Loriini.badge", pill)])
+        style.layout("BadgeOpen.TLabel", [("Loriini.badgeopen", pill)])
+        for name in ("Badge.TLabel", "BadgeOpen.TLabel"):
+            style.configure(name, padding=(2, 0), anchor="center")
+    if help_card is not None:
+        element("Loriini.help", help_card, (), 9)
+        style.layout("Help.TFrame", [("Loriini.help", {"sticky": "nswe"})])
 
     chevron = _chevron(style)
     for kind in ("TEntry", "TCombobox"):
@@ -962,9 +1028,6 @@ def _rounded(style: ttk.Style) -> None:
             # Still clam's own bar, which is drawn *in* its background colour:
             # the chrome here would be a bar nobody can see filling.
             continue
-        if tabs is None and name.startswith("TabOpen"):
-            # Still painted by its background, which is what makes it white.
-            ground = SURFACE
         style.configure(name, background=ground)
 
 
@@ -1062,6 +1125,92 @@ def _own_tick(style: ttk.Style) -> None:
         return
     # The drawn box carries its own margin, so clam's is no longer wanted.
     style.configure("TCheckbutton", indicatormargin=(0, 0, 6, 0))
+
+
+def _switches(style: ttk.Style) -> None:
+    """The switch a study is turned on with, as a checkbutton's indicator.
+
+    A tick in a 12 px box was the most important control on every page and
+    the smallest thing on it. A switch says the same yes or no at a size a
+    pointer finds without looking, and reads as *on* from across the room --
+    which is what the sidebar needs, where it is the whole of what a row says
+    about its study.
+
+    Two pictures each way: the blue switch on the sidebar's grey and on a
+    panel's header, and the white one on the open row, which is blue already.
+    Leaves the checkbuttons as they are on any failure.
+    """
+    from sun_study.app import icons
+
+    pictures: dict[str, tk.PhotoImage] = {}
+    for name in ("switch_off", "switch_on", "switch_off_light", "switch_on_light"):
+        picture = icons.face(name)
+        if picture is None:
+            return
+        pictures[name] = picture
+    for element, off, on in (
+        ("Loriini.switch", "switch_off", "switch_on"),
+        ("Loriini.switchlight", "switch_off_light", "switch_on_light"),
+    ):
+        try:
+            style.element_create(
+                element, "image", pictures[off], ("selected", pictures[on]), sticky="", border=0
+            )
+        except tk.TclError:
+            pass  # made already: ``apply`` called twice on this interpreter
+
+    def laid(element: str) -> Any:
+        return [
+            (
+                "Checkbutton.padding",
+                {
+                    "sticky": "nswe",
+                    "children": [
+                        # No focus ring: round a switch with no words beside
+                        # it, it was a dotted sliver that stayed after a click.
+                        (element, {"side": "left", "sticky": ""}),
+                        ("Checkbutton.label", {"side": "left", "sticky": "w"}),
+                    ],
+                },
+            )
+        ]
+
+    for name, ground, element in (
+        ("Switch.TCheckbutton", SIDEBAR, "Loriini.switch"),
+        ("SwitchOpen.TCheckbutton", BLUE, "Loriini.switchlight"),
+        ("SwitchHead.TCheckbutton", HEAD_ON, "Loriini.switch"),
+        ("SwitchHeadOff.TCheckbutton", HEAD_OFF, "Loriini.switch"),
+        ("SwitchPanel.TCheckbutton", SURFACE, "Loriini.switch"),
+    ):
+        try:
+            style.layout(name, laid(element))
+        except tk.TclError:  # pragma: no cover - a Tk that will not take a layout
+            return
+        style.configure(name, background=ground, foreground=BODY, padding=(0, 0), indicatormargin=0)
+        style.map(name, background=[("active", ground)], foreground=[("disabled", HINT)])
+
+
+#: The menu's three lines, one per interpreter, kept because Tk forgets an
+#: image nothing in Python holds.
+_MENU: dict[str, tk.PhotoImage] = {}
+
+
+def menu_glyph(root: tk.Misc) -> tk.PhotoImage | None:
+    """Three lines, the mark every program puts on the button that opens its
+    menu. Drawn here rather than in the icon set because it is three
+    rectangles, and fourteen pixels of them."""
+    key = str(root.tk)
+    made = _MENU.get(key)
+    if made is not None:
+        return made
+    try:
+        image = tk.PhotoImage(master=root, width=14, height=12)
+        for y in (1, 5, 9):
+            image.put(BODY, to=(0, y, 14, y + 2))
+    except tk.TclError:
+        return None
+    _MENU[key] = image
+    return image
 
 
 def log_font() -> tuple[str, int]:

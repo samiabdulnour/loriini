@@ -3,7 +3,7 @@
 Two things are worth testing. The geometry -- where a picture sits in its
 frame, and which window it is laid over -- because a picture fitted to the
 wrong shape is a view set up from the wrong angle, quietly. And the
-palette's promises: that a file which is not a picture is said and not
+controls' promises: that a file which is not a picture is said and not
 raised, that the lock says whether the mouse goes through, that hiding and
 closing do what they say. The Win32 calls themselves are not tested here;
 off Windows they answer "nothing" and "no", and the tests say that much.
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     import tkinter as tk
 else:
     tk = pytest.importorskip("tkinter", reason="this machine has no tkinter")
+from tkinter import ttk
 
 from sun_study.app import overlay
 from sun_study.app.overlay import (
@@ -113,7 +114,7 @@ def test_no_windows_is_nothing_to_cover() -> None:
     assert pick([], "Kogarah") is None
 
 
-# -- the picture and its palette, on a screen nobody sees -------------------
+# -- the picture and its controls, on a screen nobody sees ------------------
 
 
 @pytest.fixture
@@ -132,10 +133,21 @@ def root() -> Any:
 
 @pytest.fixture
 def palette(root: Any) -> Any:
-    made = overlay.Palette(root, project=lambda: "Kogarah")
+    """The controls, built into two panels of a page the way the window
+    builds them, with what each control says kept where a test can read it."""
+    picture, placing = ttk.Frame(root), ttk.Frame(root)
+    picture.pack()
+    placing.pack()
+    explained: dict[str, str] = {}
+    made = overlay.Palette(
+        picture,
+        placing,
+        project=lambda: "Kogarah",
+        explain=lambda widget, _title, text: explained.__setitem__(str(widget), text),
+    )
+    made.explained = explained  # type: ignore[attr-defined]
     yield made
-    if made.winfo_exists():
-        made.close()
+    made.close()
 
 
 @pytest.fixture
@@ -199,12 +211,11 @@ def test_the_first_frame_is_the_middle_of_the_screen_at_the_pictures_shape(
     palette: Any, root: Any, photograph: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """With no Archicad window to lay it over, the picture opens centred,
-    three fifths of the screen wide, its shape kept. The palette stays where
-    it opened. No Archicad window is *made sure of*: on a workstation with
-    one open, the picture is laid over it instead, which is the feature."""
+    three fifths of the screen wide, its shape kept. No Archicad window is
+    *made sure of*: on a workstation with one open, the picture is laid over
+    it instead, which is the feature."""
     monkeypatch.setattr(overlay, "archicad_windows", lambda: [])
     root.update()
-    palette_before = Placement.parse(palette.geometry())
     palette.take(photograph)
     root.update()
     where = palette.overlay.placement
@@ -213,8 +224,6 @@ def test_the_first_frame_is_the_middle_of_the_screen_at_the_pictures_shape(
     assert (where.width, where.height) == (expected.width, expected.height)
     assert (where.x, where.y) == ((wide - expected.width) // 2, (tall - expected.height) // 2)
     assert palette.overlay.placed
-    palette_after = Placement.parse(palette.geometry())
-    assert (palette_after.x, palette_after.y) == (palette_before.x, palette_before.y)
 
 
 def pointer(x: int, y: int) -> Any:
@@ -222,42 +231,44 @@ def pointer(x: int, y: int) -> Any:
     return SimpleNamespace(x_root=x, y_root=y)
 
 
-def test_moving_the_palette_leaves_the_picture_where_it_is(
+def test_the_window_is_kept_on_top_while_a_picture_is_open(
     palette: Any, root: Any, photograph: Path
 ) -> None:
-    """Two windows, not one: the controls are put out of the way, and the
-    picture stays lined up with the model."""
+    """The picture is on top of everything, so the window its controls are
+    in is too while it is open -- and goes back to an ordinary window when
+    the picture is hidden or closed."""
+    assert not int(root.attributes("-topmost"))
     palette.take(photograph)
-    palette.lay(Placement(200, 200, 500, 300))
     root.update()
-    before = palette.overlay.placement
-    palette.geometry("+100+120")
-    root.update()
-    assert palette.overlay.placement == before
+    assert int(root.attributes("-topmost"))
+    palette.hidden.set(True)
+    palette._hide()
+    assert not int(root.attributes("-topmost"))
+    palette.hidden.set(False)
+    palette._hide()
+    assert int(root.attributes("-topmost"))
+    palette.close()
+    assert not int(root.attributes("-topmost"))
 
 
-def test_dragging_the_picture_leaves_the_palette_where_it_is(
-    palette: Any, root: Any, photograph: Path
-) -> None:
+def test_dragging_the_picture_moves_it(palette: Any, root: Any, photograph: Path) -> None:
     palette.take(photograph)
     palette.lay(Placement(300, 300, 600, 400))
     root.update()
-    strip = Placement.parse(palette.geometry())
     before = palette.overlay.placement
     palette.overlay._grab(pointer(before.x + 40, before.y + 40))
     palette.overlay._drag(pointer(before.x + 90, before.y + 70))
     root.update()
     after = palette.overlay.placement
     assert (after.x, after.y) == (before.x + 50, before.y + 30)
-    assert Placement.parse(palette.geometry()) == strip
 
 
 def test_the_corner_sizes_the_picture_from_its_top_left_and_nothing_else(
     palette: Any, root: Any, photograph: Path
 ) -> None:
     """Pull the corner out and the top-left corner stays put and the picture
-    keeps its top-left in the frame; the palette keeps its size. Push it in
-    and the frame stops at ``LEAST_SIDE``, however narrow the palette is not.
+    keeps its top-left in the frame. Push it in and the frame stops at
+    ``LEAST_SIDE``.
 
     Sized to fit a 1024 by 768 screen: Windows clamps a window to the
     screen, and a CI runner's is small, so a frame asked to reach past its
@@ -265,7 +276,6 @@ def test_the_corner_sizes_the_picture_from_its_top_left_and_nothing_else(
     palette.take(photograph)
     palette.lay(Placement(200, 200, 500, 300))
     settled(root)
-    strip = Placement.parse(palette.geometry())
     before = palette.overlay.placement
     palette.overlay._grab_corner(pointer(before.x + before.width, before.y + before.height))
     palette.overlay._resize(pointer(before.x + before.width + 200, before.y + before.height + 100))
@@ -273,7 +283,6 @@ def test_the_corner_sizes_the_picture_from_its_top_left_and_nothing_else(
     after = palette.overlay.placement
     assert (after.x, after.y) == (before.x, before.y)
     assert (after.width, after.height) == (before.width + 200, before.height + 100)
-    assert Placement.parse(palette.geometry()) == strip
     face = palette.overlay.face
     assert (face.winfo_x(), face.winfo_y()) == (1, 1)
     palette.overlay._resize(pointer(before.x - 1000, before.y - 1000))
@@ -337,9 +346,11 @@ def test_on_a_mac_a_locked_picture_lets_the_mouse_through_and_unlocked_takes_it_
     assert not palette.overlay.locked
 
 
-def test_the_palette_stays_over_its_picture(palette: Any, root: Any, photograph: Path) -> None:
-    """Pressing the picture brings it to the front; the palette is put back
-    over it, so the slider that dims the picture is never under it."""
+def test_the_window_stays_over_its_picture(palette: Any, root: Any, photograph: Path) -> None:
+    """Pressing the picture brings it to the front; the window with the
+    controls is put back over it, so the slider that dims the picture is
+    never under it."""
+    root.deiconify()
     palette.take(photograph)
     palette.lay(Placement(200, 200, 500, 300))
     root.update()
@@ -347,8 +358,8 @@ def test_the_palette_stays_over_its_picture(palette: Any, root: Any, photograph:
     palette.overlay.face.event_generate("<ButtonPress-1>", x=10, y=10)
     palette.overlay.face.event_generate("<ButtonRelease-1>", x=10, y=10)
     root.update()
-    order = [str(name) for name in root.tk.splitlist(root.tk.call("wm", "stackorder", palette))]
-    assert order[-1] == str(palette), order
+    order = [str(name) for name in root.tk.splitlist(root.tk.call("wm", "stackorder", root))]
+    assert order[-1] == str(root), order
     assert palette.overlay.placement == where
 
 
@@ -434,39 +445,42 @@ def test_off_windows_no_archicad_window_is_found_and_the_palette_says_so(
     assert str(palette.hint.cget("style")) == "Refused.TLabel"
 
 
-def test_pointing_at_a_control_explains_it_and_leaving_puts_the_standing_line_back(
-    palette: Any,
-) -> None:
-    palette.lock.event_generate("<Enter>")
-    assert "mouse goes through" in palette.hint.cget("text")
-    palette.lock.event_generate("<Leave>")
-    assert palette.hint.cget("text") == STANDING_HINT
+def test_every_control_is_explained_where_the_window_explains_things(palette: Any) -> None:
+    """The sentence goes to whatever the window hands in -- its card in the
+    sidebar -- like every other control's."""
+    for control in (palette.open, palette.slider, palette.fit, palette.stretch, palette.cover):
+        assert palette.explained.get(str(control)), str(control)
+    assert "mouse goes through" in palette.explained[str(palette.lock)]
 
 
-def test_one_palette_however_often_the_button_is_pressed(root: Any) -> None:
-    first = overlay.show(root, project=lambda: "Kogarah")
-    try:
-        assert overlay.show(root) is first
-        assert first.project() == "Kogarah"
-    finally:
-        first.close()
-    root.update()
-    assert overlay._open is None
-    # Closed, the next press opens a fresh one rather than a dead one.
-    second = overlay.show(root)
-    try:
-        assert second is not first
-        assert second.winfo_exists()
-    finally:
-        second.close()
+def test_no_picture_window_is_made_before_there_is_a_picture(palette: Any) -> None:
+    """The page is built when the main window opens; the picture's window is
+    made the first time there is something to show in it. The slider and
+    the fit are kept and given to it then."""
+    assert palette._overlay is None
+    palette.level.set(40)
+    palette._slid()
+    palette._mode(STRETCH)
+    palette.locked.set(True)
+    palette._lock()
+    palette._hide()
+    assert palette._overlay is None
+    assert palette.percent.cget("text") == "40 %"
+    assert palette.overlay.opacity == pytest.approx(0.4)
+    assert palette.overlay.mode == STRETCH
 
 
-def test_closing_the_palette_closes_the_picture_with_it(
+def test_closing_puts_the_picture_away_and_keeps_the_controls(
     palette: Any, root: Any, photograph: Path
 ) -> None:
     palette.take(photograph)
     root.update()
-    picture = palette.overlay
+    palette.locked.set(True)
+    palette._lock()
     palette.close()
     root.update()
-    assert not picture.winfo_exists()
+    assert not palette.showing
+    assert palette.overlay.picture is None
+    assert not palette.locked.get() and not palette.overlay.locked
+    assert palette.named.cget("text") == "No picture yet."
+    assert palette.open.winfo_exists()
