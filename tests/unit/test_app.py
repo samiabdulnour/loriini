@@ -3449,15 +3449,26 @@ def test_a_site_sheet_is_not_at_an_hour_of_the_day(hidden_window: Any) -> None:
     assert all(sheet.elevation is None for sheet in sheets)
 
 
+class Resized:
+    """What a <Configure> event says: which widget, and how wide."""
+
+    def __init__(self, widget: Any, width: int) -> None:
+        self.widget, self.width = widget, width
+
+
+def roomy(made: Any) -> None:
+    """The window wide enough for the page and the sheets panel side by side,
+    whatever the screen of the machine the tests run on."""
+    made.root.geometry(f"{made.fold_below + 40}x800")
+    made.root.update_idletasks()
+    made._fit(Resized(made.root, made.fold_below + 40))
+
+
 def test_the_sheets_panel_folds_when_the_window_cannot_hold_both(hidden_window: Any) -> None:
     """Only on *crossing* the line. In between, the chevron is the user's:
     somebody who opened the panel in a narrow window meant to, and having it
     snap shut on the next pixel of a resize would be the window arguing."""
-
-    class Resized:
-        def __init__(self, widget: Any, width: int) -> None:
-            self.widget, self.width = widget, width
-
+    roomy(hidden_window)
     root, dock = hidden_window.root, hidden_window.dock
     # With a sheet to show; an empty panel waits at its edge (the test below).
     hidden_window.do_shadows.set(True)
@@ -3484,6 +3495,7 @@ def test_an_empty_sheets_panel_waits_at_its_edge(hidden_window: Any) -> None:
     """Nothing ticked is nothing to draw, and a third of the window saying so
     on every page was a third of the window. The first tick brings it out,
     the last one puts it away, and a panel opened by hand stays open."""
+    roomy(hidden_window)
     dock = hidden_window.dock
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
