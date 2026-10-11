@@ -3801,3 +3801,90 @@ def test_the_shadow_plans_draw_the_diagrams_days_and_hours_as_documents(
     saved = hidden_window.settings()
     assert saved["study_shadow_plans"] is True
     assert saved["shadow_plan_label"] == "Proposed"
+
+
+# -- the run bar, the project bar and the sheets strip, after the design review
+
+
+def test_with_no_archicad_open_the_window_says_what_to_do_not_that_it_failed(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No Archicad is where a session starts. The picker names the state and
+    the line under it gives the next step, without the red mark kept for a
+    project that answered and could not be read."""
+    monkeypatch.setattr(probe, "running", lambda: [])
+    hidden_window.refresh()
+
+    assert hidden_window.instance.get() == "No Archicad open"
+    assert hidden_window.status.cget("text") == "Open a project in Archicad, then press Refresh."
+    shown = hidden_window.root.tk.splitlist(hidden_window.status.cget("image"))
+    assert list(shown) == [str(icons.named("waiting", 16))]
+
+
+def test_an_archicad_found_after_none_is_chosen(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The placeholder is not one of the picker's values, so the first
+    Archicad to answer replaces it -- and Tk 9's empty answer to ``current``
+    for text outside the list must not stop that."""
+    found = [Instance(port=19723, project="SAMPLE")]
+    monkeypatch.setattr(probe, "running", lambda: [])
+    hidden_window.refresh()
+    monkeypatch.setattr(probe, "running", lambda: found)
+    hidden_window.refresh()
+
+    assert hidden_window.instance.get().startswith("SAMPLE")
+
+
+def test_the_four_settings_actions_share_one_menu(hidden_window: Any) -> None:
+    menu = hidden_window.settings_menu
+    labels = [
+        menu.entrycget(index, "label")
+        for index in range(menu.index("end") + 1)
+        if menu.type(index) == "command"
+    ]
+    assert labels == ["Save as default", "Save preset…", "Load preset…", "Forget saved settings"]
+
+
+def test_run_is_the_one_filled_button(hidden_window: Any) -> None:
+    style = tk.ttk.Style(hidden_window.root)
+    assert hidden_window.go.cget("style") == "Run.TButton"
+    assert style.lookup("Run.TButton", "foreground") == theme.SURFACE
+
+
+@pytest.mark.skipif(not theme.MACOS, reason="the program menu is a Mac's")
+def test_on_a_mac_about_is_in_the_programs_own_menu(hidden_window: Any) -> None:
+    bar = hidden_window.menu_bar
+    own = hidden_window.root.nametowidget(bar.entrycget(0, "menu"))
+    assert own.entrycget(0, "label") == "About Loriini"
+
+
+def test_the_folded_sheets_strip_says_what_it_holds_in_words() -> None:
+    assert window.Dock._spell(0) == "No sheets yet"
+    assert window.Dock._spell(1) == "1 sheet"
+    assert window.Dock._spell(21) == "21 sheets"
+
+
+@pytest.mark.skipif(not theme.MACOS, reason="the cap is a Mac's")
+def test_on_a_mac_the_window_opens_on_at_most_three_quarters_of_the_screen(
+    hidden_window: Any,
+) -> None:
+    root = hidden_window.root
+    wide, tall = (int(n) for n in hidden_window._on_the_screen(5000, 5000).split("x"))
+    assert wide <= max(880, round(root.winfo_screenwidth() * 0.75))
+    assert tall <= max(620, round(root.winfo_screenheight() * 0.75))
+
+
+def test_opening_a_tab_moves_no_other_tab(hidden_window: Any) -> None:
+    """The open tab's name is bold. Each tab keeps the room for that, so the
+    strip stands still as tabs are opened."""
+    root = hidden_window.root
+
+    def where() -> list[int]:
+        root.update_idletasks()
+        return [tab.winfo_x() for tab in hidden_window.tabs.values()]
+
+    hidden_window._show_section(hidden_window.GENERAL)
+    first = where()
+    hidden_window._show_section(hidden_window.SHADOWS)
+    assert where() == first

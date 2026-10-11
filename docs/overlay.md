@@ -20,25 +20,27 @@ is built.
 1. **Press *Reference image***, beside the project picker at the top of
    the window -- or the last button on Loriini's palette in Archicad, which
    starts the window with this already open. A palette opens at the top
-   right of the screen and stays on top: a strip of controls, the way
-   Archicad's own palettes float, that the picture will hang from.
+   right of the screen and stays on top: a small palette of controls, the
+   way Archicad's own palettes float.
 2. **Open a picture**: PNG, JPEG, TIFF, BMP, GIF or WebP. A phone's
    photograph is turned the way its orientation tag says. The picture
-   appears at half opacity under the strip, over the Archicad window that
-   shows the chosen project when one can be found (the whole area inside
-   its frame), and otherwise in the middle of the screen at three fifths
-   of it. The strip stands on the picture's top edge, as wide as it.
-3. **Place it.** Drag the strip by its title bar, or drag the picture, and
-   the two move together; drag the blue corner at the picture's bottom
-   right to size it, and the picture grows from its top-left corner, which
-   stays put, with the strip widening to match; *Over Archicad* lays it
-   over the Archicad window again. Match the frame to the 3D window's
+   appears at half opacity, in a window of its own, over the Archicad
+   window that shows the chosen project when one can be found (the whole
+   area inside its frame), and otherwise in the middle of the screen at
+   three fifths of it. The palette stays where it is.
+3. **Place it.** Drag the picture to move it; drag the blue corner at its
+   bottom right to size it, and it grows from its top-left corner, which
+   stays put. The palette and the picture move on their own: put the
+   palette out of the way by its title bar, and the picture stays lined up.
+   The palette always stays above the picture, so its controls are never
+   covered.
+   *Over Archicad* lays the picture over the Archicad window again. Match the frame to the 3D window's
    edges. *Fit* keeps the picture's shape in the frame's top-left corner,
    and the frame's spare margins, to the right or below, are see-through;
    *Stretch* pulls the picture to the frame's shape, for one already
    cropped to the 3D window's own.
 4. **Lock it.** The corner and the blue edge go, and the mouse goes through
-   the picture to the model. Orbit the model in Archicad until it sits in
+   the picture to the model -- on Windows and on a Mac alike. Orbit the model in Archicad until it sits in
    the picture, moving the opacity slider as you go: low to see the model,
    high to see the picture. Unlock to move or size the picture again.
 5. **Hide** takes the picture off the screen without closing it; **Close**,

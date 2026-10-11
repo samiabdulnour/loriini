@@ -1494,27 +1494,53 @@ class Dock(ttk.Frame):
             "drawn at the hour and the day it is for.",
             title="Show the sheets",
         )
-        self.shut_tally = ttk.Label(self.shut_view, text="0", style="DockCount.TLabel")
-        self.shut_tally.pack(side="top", pady=(6, 4))
-        # Tk cannot turn a label on its side, and a canvas can turn its text.
-        spine = tk.Canvas(
+        # The spine says what is behind it in words, not as a bare figure: a
+        # lone "0" over a sideways "Sheets" read as a counter of something
+        # nobody could name. And all of it opens the panel, not only the
+        # chevron -- the strip is thirty pixels wide and the chevron eleven.
+        self.spine = tk.Canvas(
             self.shut_view,
-            width=self.FOLDED - 8,
-            height=60,
+            width=self.FOLDED - 6,
+            height=self.SPINE_TALL,
             background=theme.CHROME,
             highlightthickness=0,
+            cursor="hand2",
         )
-        spine.create_text(
-            (self.FOLDED - 8) // 2,
-            30,
-            text="Sheets",
+        self._spine_text = self.spine.create_text(
+            (self.FOLDED - 6) // 2,
+            self.SPINE_TALL // 2,
+            text=self._spell(0),
             angle=90,
-            fill=theme.HINT,
-            font=(theme.FACE, theme.points(8)),
+            fill=theme.BODY,
+            font=(theme.FACE, theme.points(9)),
         )
-        spine.pack(side="top")
+        self.spine.pack(side="top", pady=(6, 0))
+        for widget in (self.shut_view, self.spine):
+            widget.bind("<Button-1>", lambda _event: self.fold(False))
+        self.spine.bind("<Enter>", lambda _event: self._light(True))
+        self.spine.bind("<Leave>", lambda _event: self._light(False))
+        Tooltip(
+            self.spine,
+            "Brings the panel back: every sheet the ticked studies will make, "
+            "drawn at the hour and the day it is for.",
+            title="Show the sheets",
+        )
 
         self.open_view.pack(fill="both", expand=True)
+
+    #: How tall the folded spine is: room for "No sheets yet" set sideways.
+    SPINE_TALL = 140
+
+    @staticmethod
+    def _spell(papers: int) -> str:
+        """What the folded spine says about the sheets behind it."""
+        if not papers:
+            return "No sheets yet"
+        return "1 sheet" if papers == 1 else f"{papers} sheets"
+
+    def _light(self, on: bool) -> None:
+        """Tint the spine's words under the pointer, as a link is."""
+        self.spine.itemconfigure(self._spine_text, fill=theme.BLUE_DEEP if on else theme.BODY)
 
     def fold(self, shut: bool, *, by_hand: bool = True) -> None:
         """Put the panel away, or bring it back."""
@@ -1542,7 +1568,7 @@ class Dock(ttk.Frame):
         # the run makes it, and not counted here because it is not one.
         papers = sum(1 for sheet in sheets if sheet.paper)
         self.tally.config(text=str(papers))
-        self.shut_tally.config(text=str(papers))
+        self.spine.itemconfigure(self._spine_text, text=self._spell(papers))
         self.filed.config(text=filed)
 
         if not sheets:
@@ -2597,7 +2623,10 @@ class Window:
         #: The width under which the sheets panel folds away. At least
         #: ``FOLD_BELOW``, and measured once the tabs exist: see below.
         self.fold_below = self.FOLD_BELOW
+        #: Every card, so the label column can be set once for all of them.
+        self.boxes: list[ttk.Frame] = []
         self._build()
+        self._line_up_labels()
         # Wide enough for every tab beside the sheets panel, measured rather
         # than assumed. Seven tabs need more than the 728 the page was sized
         # for, and a font wider than Segoe UI -- the one a machine without it
@@ -2625,7 +2654,18 @@ class Window:
         """
         wide = min(want_wide, self.root.winfo_screenwidth() - 40)
         tall = min(want_tall, self.root.winfo_screenheight() - 120)
+        if theme.MACOS:
+            # A Mac is most often a laptop, and a window that opens across the
+            # whole of one is a window in the way of Archicad, which is the
+            # program this one works beside. Three quarters of the screen at
+            # most; below the width the sheets panel needs, the panel starts
+            # folded at its edge and the page has the room.
+            wide = min(wide, round(self.root.winfo_screenwidth() * self.MAC_SHARE))
+            tall = min(tall, round(self.root.winfo_screenheight() * self.MAC_SHARE))
         return f"{max(wide, 880)}x{max(tall, 620)}"
+
+    #: The most of a Mac's screen the window opens across, either way.
+    MAC_SHARE = 0.75
 
     # -- layout ------------------------------------------------------------
     #: The seven pages, and the two kinds they come in. That split is the
@@ -2728,6 +2768,8 @@ class Window:
         Tooltip.band = self.info
 
         self._project_picker()
+        if theme.MACOS:
+            self._mac_menus()
 
         # The working area is two panes. The section you are filling in, and
         # every sheet the run will make -- which belongs to the run and not to
@@ -2816,9 +2858,8 @@ class Window:
         picture = ttk.Button(
             picker,
             text="Reference image",
-            style="Chrome.TButton",
+            style="Tool.TButton",
             command=self._reference,
-            width=16,
             **icons.button_options("reference"),
         )
         picture.grid(row=0, column=2, padx=(6, 0))
@@ -2837,9 +2878,8 @@ class Window:
         claude = ttk.Button(
             picker,
             text="Connect Claude",
-            style="Chrome.TButton",
+            style="Tool.TButton",
             command=self._add_to_claude,
-            width=15,
             **icons.button_options("claude"),
         )
         claude.grid(row=0, column=3, padx=(6, 0))
@@ -2853,21 +2893,22 @@ class Window:
         )
         # Named as well as drawn. A lone (i) at the end of the bar was the
         # one button up here that did not say what it was.
-        tell = ttk.Button(
-            picker,
-            text="About",
-            style="Chrome.TButton",
-            command=self._about,
-            width=8,
-            **icons.button_options("info"),
-        )
-        tell.grid(row=0, column=4, padx=(6, 0))
-        Tooltip(
-            tell,
-            "What this program is, the licence it is used under, and the "
-            "public registers the site analysis fetches its data from — with "
-            "the credit line a sheet drawn from them should carry.",
-        )
+        # On a Mac it is in the program's menu instead (``_mac_menus``).
+        if not theme.MACOS:
+            tell = ttk.Button(
+                picker,
+                text="About",
+                style="Tool.TButton",
+                command=self._about,
+                **icons.button_options("info"),
+            )
+            tell.grid(row=0, column=4, padx=(6, 0))
+            Tooltip(
+                tell,
+                "What this program is, the licence it is used under, and the "
+                "public registers the site analysis fetches its data from — with "
+                "the credit line a sheet drawn from them should carry.",
+            )
         row += 1
         # No line under this one. What it needs to say -- which project, and
         # check it if two are open -- the hover says at length, and the status
@@ -2889,6 +2930,37 @@ class Window:
         # The contour under the project bar: which Archicad is one question,
         # asked once, and everything below it is the study.
         ttk.Frame(self.root, style="Rule.TFrame", height=1).pack(side="top", fill="x")
+
+    def _mac_menus(self) -> None:
+        """The Mac's menu bar: About where every Mac program keeps it.
+
+        Tk gives a window with no menu of its own a bare File, Edit, Window
+        and Help, none of which did anything here, while About sat as a button
+        in the project bar. On a Mac the program's own menu is where somebody
+        looks for it, so it goes there and the bar is left to the project.
+        Windows keeps the button: a Windows tool has no program menu to put
+        it in.
+        """
+        bar = tk.Menu(self.root)
+        # Named ``apple``: Tk makes that menu the program's own, the bold one
+        # after the Apple logo.
+        own = tk.Menu(bar, name="apple", tearoff=False)
+        own.add_command(label=f"About {PRODUCT}", command=self._about)
+        own.add_separator()
+        bar.add_cascade(menu=own)
+        # Named ``window`` and ``help``: Tk fills the first with the Mac's own
+        # window list, and gives the second the system's search field.
+        bar.add_cascade(label="Window", menu=tk.Menu(bar, name="window", tearoff=False))
+        helping = tk.Menu(bar, name="help", tearoff=False)
+        helping.add_command(label=f"About {PRODUCT}", command=self._about)
+        helping.add_command(
+            label="Where the site data comes from", command=lambda: self._about("sources")
+        )
+        helping.add_separator()
+        helping.add_command(label="Open the last run's log", command=self._open_log)
+        bar.add_cascade(label="Help", menu=helping)
+        self.root.configure(menu=bar)
+        self.menu_bar = bar
 
     def _add_to_claude(self) -> None:
         """Register the program with Claude Desktop and Claude Code, and say
@@ -3038,6 +3110,13 @@ class Window:
             **icons.tab_options(title, 32),
         )
         tab.grid(row=0, column=column, sticky="nsew", padx=(0, 4))
+        # Room for the name as it is drawn open and queued -- bold, with the
+        # dot -- held whether it is or not. Sized to the plain name, the strip
+        # moved every tab after the open one sideways as tabs were opened.
+        tab.configure(style="TabOpenQueued.TButton", text=f"{title} •")
+        tab.update_idletasks()
+        strip.columnconfigure(column, minsize=tab.winfo_reqwidth())
+        tab.configure(style="Tab.TButton", text=title)
         Tooltip(tab, self.SECTION_BLURB[title])
         self.tabs[title] = tab
 
@@ -4126,7 +4205,9 @@ class Window:
             command=partial(self._about, "sources"),
             **icons.button_options("info"),
         )
-        where_from.grid(row=row, column=0, sticky="w", pady=(2, 6))
+        # Across both columns: it is not a label, and as wide as it is it
+        # would otherwise set this card's label column wider than every other.
+        where_from.grid(row=row, column=0, columnspan=2, sticky="w", pady=(2, 6))
         Tooltip(
             where_from,
             "The six public registers a site analysis run fetches from, what "
@@ -4835,15 +4916,28 @@ class Window:
 
         buttons = ttk.Frame(base, style="Chrome.TFrame")
         buttons.grid(row=1, column=0, sticky="ew", pady=(2, 2))
-        buttons.columnconfigure(0, weight=1)
+        # The gap between the two kinds of control takes the slack: Run and
+        # Stop act on the project at the left, the settings menu acts on this
+        # window at the right.
+        buttons.columnconfigure(2, weight=1)
+        # Filled, and the white disc on it; off, the grey face and the blue
+        # disc every other icon in the window wears.
+        lit = icons.named("run_on", 16)
+        dim = icons.named("run", 16)
+        run_image: dict[str, object] = {}
+        if lit is not None and dim is not None:
+            run_image = {"image": (lit, "disabled", dim), "compound": "left"}
         self.go = ttk.Button(
             buttons,
             text="Run study",
             command=self._start,
             style="Run.TButton",
-            **icons.button_options("run"),
+            # Wide enough for "Tick a study to run", so the button does not
+            # change size under the pointer as studies are ticked.
+            width=22,
+            **run_image,  # type: ignore[arg-type]
         )
-        self.go.grid(row=0, column=0, sticky="ew")
+        self.go.grid(row=0, column=0, sticky="w")
         Tooltip(
             self.go,
             "Runs every ticked study in the project chosen above, one after "
@@ -4865,85 +4959,37 @@ class Window:
             "Asks the run to stop and lets it put the project's layer state "
             "back on the way out. It can take a few seconds to come to a halt.",
         )
-        keep = ttk.Button(
+        # The four things that act on this window's settings, in one menu.
+        # They were four buttons as big as Run, which made six equal buttons
+        # on the bar and the one that mattered no easier to find than Forget.
+        # "Save as default" is for what belongs to the practice; a preset is
+        # for what belongs to a job or a colleague -- the Silverwater setup,
+        # the shadow set the council asked for -- and goes wherever a job's
+        # files go rather than into a profile.
+        self.settings_menu = tk.Menu(self.root, tearoff=False)
+        self.settings_menu.add_command(label="Save as default", command=self._remember)
+        self.settings_menu.add_command(label="Save preset…", command=self._save_preset)
+        self.settings_menu.add_command(label="Load preset…", command=self._load_preset)
+        self.settings_menu.add_separator()
+        self.settings_menu.add_command(label="Forget saved settings", command=self._forget)
+        settings = ttk.Button(
             buttons,
-            text="Save as default",
+            text="Settings ▾",
             style="Chrome.TButton",
-            command=self._remember,
-            width=18,
+            command=lambda: self._post(self.settings_menu, settings),
             **icons.button_options("save_default"),
         )
-        # A clear gap between the two kinds of button: Run and Stop act on
-        # the project, the four to the right act on this window's settings.
-        buttons.columnconfigure(2, minsize=28)
-        keep.grid(row=0, column=3, padx=(6, 0))
+        settings.grid(row=0, column=3, sticky="e")
         Tooltip(
-            keep,
-            "Remembers every section -- the ticks, the fields and which "
-            "section was open -- and fills the window in with it next time. "
-            "Meant for what belongs to the practice rather than to one job: "
-            "the layer prefix, the living-room suffix, the Archicad wait, "
-            "which studies you run. Anything the open project disagrees with "
-            "is overruled by the project, so a saved layer name cannot make a "
-            "run measure a layer that is not there.",
-        )
-        drop = ttk.Button(
-            buttons,
-            text="Forget",
-            style="Chrome.TButton",
-            command=self._forget,
-            width=11,
-            **icons.button_options("forget"),
-        )
-        drop.grid(row=0, column=4, padx=(6, 0))
-        Tooltip(
-            drop,
-            "Throws the saved settings away and puts every section back to "
-            "what it opens with on a machine that has never been set up. The "
-            "project is then read again, so the lists fill from the open "
-            "Archicad as they did the first time.",
-        )
-        # Presets: the same page, written to a file of the person's choosing
-        # and read back from one. "Save as default" is for what belongs to
-        # the practice; a preset is for what belongs to a job or a colleague
-        # -- the Silverwater setup, the shadow set the council asked for --
-        # and it goes wherever a job's files go rather than into a profile.
-        keep_as = ttk.Button(
-            buttons,
-            text="Save preset…",
-            style="Chrome.TButton",
-            command=self._save_preset,
-            width=14,
-            **icons.button_options("save_preset"),
-        )
-        keep_as.grid(row=0, column=5, padx=(6, 0))
-        Tooltip(
-            keep_as,
-            "Writes every section -- the ticks, the fields and which section "
-            "is open -- to a file you name, to load again later or on another "
-            "machine. The same file as the saved defaults, so one can be "
-            "copied over the other. Nothing about which Archicad is open is "
-            "in it.",
-            title="Save preset",
-        )
-        take = ttk.Button(
-            buttons,
-            text="Load preset…",
-            style="Chrome.TButton",
-            command=self._load_preset,
-            width=14,
-            **icons.button_options("load_preset"),
-        )
-        take.grid(row=0, column=6, padx=(6, 0))
-        Tooltip(
-            take,
-            "Fills the window in from a preset file. Only what the file names "
-            "changes; the rest stays as it is. Anything the open project "
-            "disagrees with is overruled by the project, so a layer saved on "
-            "another job cannot make a run measure a layer that is not here. "
-            "The saved defaults are not touched -- press Save as default to "
-            "keep it.",
-            title="Load preset",
+            settings,
+            "Save as default remembers every section -- the ticks, the fields "
+            "and which section was open -- and fills the window in with it next "
+            "time. A preset is the same page written to a file you name, to load "
+            "on another job or machine. Forget throws the saved settings away. "
+            "Anything the open project disagrees with is overruled by the "
+            "project, so a saved layer name cannot make a run measure a layer "
+            "that is not there.",
+            title="Settings",
         )
 
         self.progress = ttk.Progressbar(progress_row, mode="determinate", maximum=100)
@@ -4996,11 +5042,41 @@ class Window:
             row=0, column=2, sticky="e", padx=(12, 0)
         )
 
+    @staticmethod
+    def _post(menu: tk.Menu, under: tk.Misc) -> None:
+        """Drop a menu down from under the button that opened it."""
+        x = under.winfo_rootx()
+        y = under.winfo_rooty() + under.winfo_height()
+        try:
+            menu.tk_popup(x, y)
+        finally:
+            menu.grab_release()
+
     #: How wide the label column is inside a box. Every box has a grid of its
     #: own, so without a number they would each size the column to their own
     #: longest label and no two boxes' fields would line up down the page.
     #: This is "Subset — time-of-day sheets" with its drawing beside it.
     LABEL_COLUMN = 208
+
+    def _line_up_labels(self) -> None:
+        """One label column for every card in the window, as wide as the
+        widest label in any of them.
+
+        ``LABEL_COLUMN`` is the floor, measured against Segoe UI. A Mac sets
+        the same words a third larger, so the longest labels outgrew it and
+        each card widened its own column to fit -- and the fields started at a
+        different place on every card, and on every page.
+        """
+        widest = self.LABEL_COLUMN
+        for box in self.boxes:
+            for child in box.grid_slaves(column=0):
+                if child.winfo_class() != "TLabel":
+                    continue
+                if int(child.grid_info().get("columnspan", 1)) > 1:
+                    continue
+                widest = max(widest, child.winfo_reqwidth())
+        for box in self.boxes:
+            box.columnconfigure(0, minsize=widest)
 
     def _panel(self, outer: ttk.Frame, row: int, *, title: str = "") -> ttk.Frame:
         """One box on a page: a study, or a group of settings that go together.
@@ -5029,6 +5105,7 @@ class Window:
         box.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         box.columnconfigure(0, minsize=self.LABEL_COLUMN)
         box.columnconfigure(1, weight=1)
+        self.boxes.append(box)
         if title:
             # Placed, not gridded: the padding above keeps the rows clear of
             # the header, and the header itself sits in that padding. Measured
@@ -5099,12 +5176,34 @@ class Window:
     ) -> tuple[ttk.Combobox, int]:
         name = ttk.Label(parent, text=label, **icons.options(label))
         name.grid(row=row, column=0, sticky="w", pady=(3, 0))
-        box = ttk.Combobox(parent, values=[])
-        box.grid(row=row, column=1, sticky="ew", pady=(3, 0))
+        # As wide as a long Archicad name, not as wide as the card: a list of
+        # layouts or combinations a metre across is mostly empty box.
+        box = ttk.Combobox(parent, values=[], width=self.NAME_WIDTH)
+        box.grid(row=row, column=1, sticky="w", pady=(3, 0))
         line = self._hint(parent, row + 1, hint)
         for target in (name, box):
             Tooltip(target, detail, title=label, short=self._saying(line))
         return box, row + 1
+
+    #: The typed fields that hold words, and so run the width of their card.
+    #: Every other ``_entry`` holds a number or a short prefix -- a scale, a
+    #: ratio, ``14 |`` -- and a three-character value in a box the width of
+    #: the window reads as a sentence nobody has written yet.
+    TEXT_FIELDS = frozenset(
+        {
+            "Address",
+            "Custom day",
+            "Option",
+            "Set name",
+            "View beside the table",
+        }
+    )
+    #: How many characters wide a number's field is: room for ``1:3000`` or
+    #: ``0.725`` with a margin, and the same on every page.
+    NUMBER_WIDTH = 12
+    #: And a list of the project's own names: a layout, a combination, a
+    #: storey, a pen set.
+    NAME_WIDTH = 36
 
     def _entry(
         self, parent: ttk.Frame, row: int, label: str, initial: str, hint: str, detail: str
@@ -5119,9 +5218,10 @@ class Window:
         """
         name = ttk.Label(parent, text=label, **icons.options(label))
         name.grid(row=row, column=0, sticky="w", pady=(6, 0))
-        box = ttk.Entry(parent)
+        wide = label in self.TEXT_FIELDS
+        box = ttk.Entry(parent) if wide else ttk.Entry(parent, width=self.NUMBER_WIDTH)
         box.insert(0, initial)
-        box.grid(row=row, column=1, sticky="ew", pady=(6, 0))
+        box.grid(row=row, column=1, sticky="ew" if wide else "w", pady=(6, 0))
         line = self._hint(parent, row + 1, hint)
         for target in (name, box):
             Tooltip(target, detail, title=label, short=self._saying(line))
@@ -5879,6 +5979,19 @@ class Window:
         return True
 
     # -- reading the project -------------------------------------------------
+    def _picked(self) -> int:
+        """Which Archicad in the list is chosen, or -1 for none.
+
+        Tk 9 answers ``current`` with an empty string rather than -1 when the
+        box holds nothing from its list, and ``Combobox.current`` hands that
+        straight to ``getint`` -- so on a Mac's Tk the first Refresh that
+        found an Archicad raised instead of choosing it.
+        """
+        try:
+            return self.instance.current()
+        except tk.TclError:
+            return -1
+
     def refresh(self) -> None:
         found = probe.running()
         self.ports = [instance.port for instance in found]
@@ -5886,18 +5999,23 @@ class Window:
             values=[f"{instance.project}  ·  port {instance.port}" for instance in found]
         )
         if not found:
+            # Where every session starts, not a fault: the plug drained but
+            # not struck through, and the next step in plain words. The red
+            # mark is kept for the project that answered and then could not
+            # be read, which is something actually wrong.
+            self.instance.set("No Archicad open")
             self.status.config(
-                text="no Archicad answering. Open a project, then Refresh.",
-                **icons.state_options("disconnected"),
+                text="Open a project in Archicad, then press Refresh.",
+                **icons.state_options("waiting"),
             )
             self.options = probe.ProjectOptions()
             return
-        if self.instance.current() < 0:
+        if self._picked() < 0:
             self.instance.current(0)
 
         self.status.config(text="reading the project ...", **icons.state_options("connected"))
         self.root.update_idletasks()
-        self.options = probe.options(self.ports[max(self.instance.current(), 0)])
+        self.options = probe.options(self.ports[max(self._picked(), 0)])
         self._offer()
 
     def _offer(self) -> None:
@@ -6955,7 +7073,7 @@ class Window:
     def jobs(self) -> list[Job]:
         """The command lines the ticked boxes mean. Public, and pure, because
         this is the part worth testing without a window on screen."""
-        port = str(self.ports[max(self.instance.current(), 0)]) if self.ports else ""
+        port = str(self.ports[max(self._picked(), 0)]) if self.ports else ""
         common = ["--port", port, "--timeout", self._wait_seconds()]
         made: list[Job] = []
 

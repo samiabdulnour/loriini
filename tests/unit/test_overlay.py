@@ -199,24 +199,22 @@ def test_the_first_frame_is_the_middle_of_the_screen_at_the_pictures_shape(
     palette: Any, root: Any, photograph: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """With no Archicad window to lay it over, the picture opens centred,
-    three fifths of the screen wide, its shape kept, with the strip of
-    controls standing on its top edge. Where the strip would stand off the
-    top of the screen, it is kept on it and the picture hangs that much
-    lower. No Archicad window is *made sure of*: on a workstation with one
-    open, the picture is laid over it instead, which is the feature."""
+    three fifths of the screen wide, its shape kept. The palette stays where
+    it opened. No Archicad window is *made sure of*: on a workstation with
+    one open, the picture is laid over it instead, which is the feature."""
     monkeypatch.setattr(overlay, "archicad_windows", lambda: [])
+    root.update()
+    palette_before = Placement.parse(palette.geometry())
     palette.take(photograph)
+    root.update()
     where = palette.overlay.placement
     wide, tall = root.winfo_screenwidth(), root.winfo_screenheight()
     expected = fitted((1600, 900), (wide * 3 // 5, tall * 3 // 5))
     assert (where.width, where.height) == (expected.width, expected.height)
-    assert where.x == (wide - expected.width) // 2
-    assert where.x == palette.winfo_rootx()
-    foot = palette.winfo_rooty() + palette.winfo_height()
-    assert where.y == foot
-    top = Placement.parse(palette.geometry()).y
-    assert top == max(0, (tall - expected.height) // 2 - (foot - top))
+    assert (where.x, where.y) == ((wide - expected.width) // 2, (tall - expected.height) // 2)
     assert palette.overlay.placed
+    palette_after = Placement.parse(palette.geometry())
+    assert (palette_after.x, palette_after.y) == (palette_before.x, palette_before.y)
 
 
 def pointer(x: int, y: int) -> Any:
@@ -224,52 +222,50 @@ def pointer(x: int, y: int) -> Any:
     return SimpleNamespace(x_root=x, y_root=y)
 
 
-def test_the_picture_hangs_from_the_strip_and_follows_it(
+def test_moving_the_palette_leaves_the_picture_where_it_is(
     palette: Any, root: Any, photograph: Path
 ) -> None:
-    """One palette: move the strip by its title bar and the picture goes
-    with it, under its foot, as wide as it."""
+    """Two windows, not one: the controls are put out of the way, and the
+    picture stays lined up with the model."""
     palette.take(photograph)
+    palette.lay(Placement(200, 200, 500, 300))
     root.update()
+    before = palette.overlay.placement
     palette.geometry("+100+120")
     root.update()
-    where = palette.overlay.placement
-    assert where.x == palette.winfo_rootx()
-    assert where.y == palette.winfo_rooty() + palette.winfo_height()
-    assert where.width == palette.winfo_width()
+    assert palette.overlay.placement == before
 
 
-def test_dragging_the_picture_brings_the_strip_along(
+def test_dragging_the_picture_leaves_the_palette_where_it_is(
     palette: Any, root: Any, photograph: Path
 ) -> None:
     palette.take(photograph)
+    palette.lay(Placement(300, 300, 600, 400))
     root.update()
-    palette.lay(Placement(300, 300, 900, 500))
-    root.update()
+    strip = Placement.parse(palette.geometry())
     before = palette.overlay.placement
     palette.overlay._grab(pointer(before.x + 40, before.y + 40))
     palette.overlay._drag(pointer(before.x + 90, before.y + 70))
     root.update()
     after = palette.overlay.placement
     assert (after.x, after.y) == (before.x + 50, before.y + 30)
-    assert after.x == palette.winfo_rootx()
-    assert after.y == palette.winfo_rooty() + palette.winfo_height()
+    assert Placement.parse(palette.geometry()) == strip
 
 
-def test_the_corner_sizes_the_picture_from_its_top_left_and_widens_the_strip(
+def test_the_corner_sizes_the_picture_from_its_top_left_and_nothing_else(
     palette: Any, root: Any, photograph: Path
 ) -> None:
-    """Pull the corner out and the top-left corner stays put, the picture
-    keeps its top-left in the frame, and the strip is as wide as the frame.
-    Push it in and the frame stops at the strip's own width.
+    """Pull the corner out and the top-left corner stays put and the picture
+    keeps its top-left in the frame; the palette keeps its size. Push it in
+    and the frame stops at ``LEAST_SIDE``, however narrow the palette is not.
 
     Sized to fit a 1024 by 768 screen: Windows clamps a window to the
     screen, and a CI runner's is small, so a frame asked to reach past its
     edge comes back narrower than asked."""
     palette.take(photograph)
-    root.update()
     palette.lay(Placement(200, 200, 500, 300))
     settled(root)
+    strip = Placement.parse(palette.geometry())
     before = palette.overlay.placement
     palette.overlay._grab_corner(pointer(before.x + before.width, before.y + before.height))
     palette.overlay._resize(pointer(before.x + before.width + 200, before.y + before.height + 100))
@@ -277,15 +273,13 @@ def test_the_corner_sizes_the_picture_from_its_top_left_and_widens_the_strip(
     after = palette.overlay.placement
     assert (after.x, after.y) == (before.x, before.y)
     assert (after.width, after.height) == (before.width + 200, before.height + 100)
-    assert palette.winfo_width() == after.width
-    assert palette.winfo_rootx() == after.x
+    assert Placement.parse(palette.geometry()) == strip
     face = palette.overlay.face
     assert (face.winfo_x(), face.winfo_y()) == (1, 1)
-    palette.overlay._resize(pointer(before.x + 10, before.y + before.height))
+    palette.overlay._resize(pointer(before.x - 1000, before.y - 1000))
     settled(root)
-    narrow = palette.overlay.placement
-    assert narrow.width == palette.least_width
-    assert palette.winfo_width() == palette.least_width
+    smallest = palette.overlay.placement
+    assert (smallest.width, smallest.height) == (overlay.LEAST_SIDE, overlay.LEAST_SIDE)
 
 
 def test_the_slider_sets_how_much_shows_and_says_it_in_percent(palette: Any) -> None:
@@ -313,7 +307,10 @@ def test_locking_takes_the_corner_away_and_says_whether_the_mouse_goes_through(
     assert palette.overlay.grip.winfo_manager() == ""
     said = palette.hint.cget("text")
     assert said.startswith("Locked.")
-    if sys.platform != "win32":
+    if sys.platform in {"win32", "darwin"}:
+        assert palette.overlay.passes
+        assert "goes through" in said
+    else:
         # Nothing here can send the mouse through a window, and the palette
         # says so rather than promising it.
         assert not palette.overlay.passes
@@ -322,6 +319,37 @@ def test_locking_takes_the_corner_away_and_says_whether_the_mouse_goes_through(
     palette._lock()
     assert palette.overlay.grip.winfo_manager() == "place"
     assert palette.hint.cget("text") == STANDING_HINT
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="the Mac's own click-through")
+def test_on_a_mac_a_locked_picture_lets_the_mouse_through_and_unlocked_takes_it_back(
+    palette: Any, root: Any, photograph: Path
+) -> None:
+    palette.take(photograph)
+    root.update()
+    assert overlay._mac_ignores_mouse(palette.overlay, True)
+    assert overlay._mac_ignores_mouse(palette.overlay, False)
+    palette.locked.set(True)
+    palette._lock()
+    assert palette.overlay.passes
+    palette.locked.set(False)
+    palette._lock()
+    assert not palette.overlay.locked
+
+
+def test_the_palette_stays_over_its_picture(palette: Any, root: Any, photograph: Path) -> None:
+    """Pressing the picture brings it to the front; the palette is put back
+    over it, so the slider that dims the picture is never under it."""
+    palette.take(photograph)
+    palette.lay(Placement(200, 200, 500, 300))
+    root.update()
+    where = palette.overlay.placement
+    palette.overlay.face.event_generate("<ButtonPress-1>", x=10, y=10)
+    palette.overlay.face.event_generate("<ButtonRelease-1>", x=10, y=10)
+    root.update()
+    order = [str(name) for name in root.tk.splitlist(root.tk.call("wm", "stackorder", palette))]
+    assert order[-1] == str(palette), order
+    assert palette.overlay.placement == where
 
 
 def test_hide_takes_the_picture_off_the_screen_and_back(
@@ -399,7 +427,8 @@ def test_off_windows_no_archicad_window_is_found_and_the_palette_says_so(
     palette: Any, root: Any
 ) -> None:
     assert archicad_windows() == []
-    assert click_through(palette.overlay, True) is False
+    # A Mac has a click-through of its own; anything else has none.
+    assert click_through(palette.overlay, True) is (sys.platform == "darwin")
     palette._cover()
     assert "works on Windows" in palette.hint.cget("text")
     assert str(palette.hint.cget("style")) == "Refused.TLabel"

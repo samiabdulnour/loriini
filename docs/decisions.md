@@ -4868,3 +4868,89 @@ do, and lit exactly so they send nothing, so the ruleset's window stands.
 short of the title block; the grid of drawings ends clear of the title
 under it; the licence box's text field has the theme's one-pixel edge in
 place of Tk's black focus ring.
+
+### D130 — The window on a Mac: one label column, Run filled, About in the program menu
+
+Asked on 11 October 2026 for a review of the Mac build's window, page by
+page, and then for every finding to be fixed. The review was made from the
+window opened from source on a Retina Mac and photographed tab by tab.
+
+**Nothing is cut off.** A study's header is placed at ``PANEL_HEAD`` and
+the tick heading it asked for 34 px of the 29 it is given at a Mac's
+four-thirds type, so every study's name lost its descenders. On a Mac the
+tick has no vertical padding and is centred in its slot; Windows is as it was.
+
+**One label column.** ``LABEL_COLUMN`` was measured against Segoe UI, and
+the Mac's longer labels outgrew it, so each card widened its own column and
+the fields started at a different place on every card. After the build,
+every card takes the width of the widest label in any of them.
+
+**A field is as wide as what goes in it.** Numbers and prefixes are twelve
+characters; lists of the project's names thirty-six; the address, the
+custom day and the other worded fields still run the card.
+
+**The strip stands still.** The open tab's bold name is wider, so every tab
+after it moved as tabs were opened. The tabs share one width.
+
+**Run is filled.** D109 had it tinted, on the grounds that solid blue beside
+grey reads as a warning; in use it read as the sixth of six equal buttons.
+It is now the one filled control, with the play disc knocked out white, and
+the grey face when there is nothing to run. Save as default, the presets
+and Forget act on the window rather than the project and share one
+*Settings* menu at the right of the bar. The chosen tile keeps the tint Run
+used to wear (``face_chosen``).
+
+**The project bar is about the project.** Refresh is the one button beside
+the picker; the reference image and Claude are flat tools that tint under
+the pointer. On a Mac, About is in the program's menu with the data
+sources and the last log under Help; Windows keeps the button, having no
+program menu to put it in.
+
+**No Archicad is not a fault.** The picker says *No Archicad open* and the
+line under it gives the next step beside a drained plug with no red mark
+(``waiting``); the red mark stays for a project that answered and could not
+be read.
+
+**The folded sheets panel says what it holds** -- *No sheets yet*, *21
+sheets* -- in body type, and the whole strip opens it, not only its chevron.
+
+**Tk 9.** ``Combobox.current`` raises on Tk 9 when the text is not one of the
+values, which a Mac's Tk is; ``_picked`` reads it as none chosen, and the
+first Refresh to find an Archicad no longer stops there.
+
+The drop-down's arrow is a drawn chevron rather than clam's boxed arrow,
+which inside a rounded field read as a second button. The orange marks on
+the sun studies' icons were looked at and kept: ochre is the sun.
+
+**The Mac window was a third too big, and opened across the screen.** Asked
+the same day, from the built program on a laptop: "the font and window is
+too big ... ideally 75 or 50 percent". ``MAC_POINTS`` assumed a Mac's Tk
+counts a point as a pixel and scaled every size by four thirds; Tk 9 already
+counts 1.33 pixels to the point, so the type came out a third larger than
+it was drawn, and every measurement taken from it -- the tabs, the label
+column, the width the window opens at -- grew with it. The factor is now
+worked out from the Tk's own ``scaling`` (``theme._fit_points``). Clam's
+floor of eleven characters under every tab is gone, each tab keeping room
+only for its own name in bold; and on a Mac the window opens on at most
+three quarters of the screen either way (``Window.MAC_SHARE``), the sheets
+panel starting folded when that leaves too little room beside the page. On
+a 1512 x 982 laptop the window went from 1471 x 856 to 1090 x 736.
+
+**The reference picture and its palette are two windows again.** Asked the
+same day: the picture "is connected to the reference image option window
+... moving and resizing together". D121's one palette glued the controls'
+foot to the picture's top edge, so the controls went wherever the picture
+was lined up -- over the model -- and the picture could be no narrower than
+the strip. Now each moves and sizes on its own; *Over Archicad* and the
+first placing lay only the picture, and the palette stays where it was put.
+
+Tried on the Mac, three more: the corner must hold the top-left, the
+palette must never be under its picture, and a locked picture must let the
+mouse through. The corner now sets the frame's position with its size --
+given a size alone, a Mac kept the window's bottom-left, its own origin. A
+press or release on the picture, and every showing of it, lifts the palette
+back over it. And a Mac has a click-through of its own: ``-[NSWindow
+setIgnoresMouseEvents:]`` on the Cocoa window Tk made for the picture,
+found by its title (``overlay.MAC_TITLE``) among the application's windows
+and called through the Objective-C runtime with ``ctypes``, as the Windows
+half goes through user32.
