@@ -762,6 +762,8 @@ class Palette:
         # -- where it is, and what it does ---------------------------------
         name(placing, 0, "Place")
         held = ttk.Frame(placing)
+        # Wraps, on a narrow page, rather than running off its edge.
+        held.flows = True  # type: ignore[attr-defined]
         held.grid(row=0, column=1, sticky="w", pady=(6, 0))
         self.cover = ttk.Button(held, text="Over the 3D window", command=self._cover)
         self.cover.grid(row=0, column=0, sticky="w")

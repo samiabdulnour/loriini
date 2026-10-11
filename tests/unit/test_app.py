@@ -2249,7 +2249,11 @@ def test_a_window_opened_afterwards_is_already_filled_in(
     hidden_window.wait_min.insert(0, "45")
     hidden_window._remember()
 
-    reopened = window.Window(tk.Toplevel(hidden_window.root))  # type: ignore[arg-type]
+    # Never shown, like the window it reopens: what is read back is the
+    # point, and a window on the screen is laid out and drawn for nothing.
+    top = tk.Toplevel(hidden_window.root)
+    top.withdraw()
+    reopened = window.Window(top)  # type: ignore[arg-type]
 
     assert reopened.livable.get() == "_L"
     assert reopened.wait_min.get() == "45"
@@ -3904,3 +3908,52 @@ def test_opening_a_tab_moves_no_other_tab(hidden_window: Any) -> None:
     first = where()
     hidden_window._show_section(hidden_window.SHADOWS)
     assert where() == first
+
+
+def test_a_narrow_page_rearranges_rather_than_cutting_its_rows_off(hidden_window: Any) -> None:
+    """With the sheets panel open on a laptop the page is about 560 px wide:
+    less than a row of choices beside a 200 px label column. The label column
+    narrows and wraps, every row of buttons wraps inside its panel, and the
+    fields still start at one place down the page."""
+    made = hidden_window
+    # Shown for this one: a page is rearranged for the width it has on the
+    # screen, and a window never shown has none.
+    made.root.deiconify()
+    made.root.geometry(f"{made.fold_below + 10}x800")
+    made.dock.fold(False)
+    made.root.update()
+    made._show_section(window.Window.GENERAL)
+    made._rearrange()
+    assert made._narrow_page
+    for row in made._flowing():
+        holder = made._box_of(row)
+        if holder is None or not row.winfo_ismapped():
+            continue
+        right = row.winfo_rootx() + row.winfo_reqwidth()
+        assert right <= holder.winfo_rootx() + holder.winfo_width(), f"{row} runs off its panel"
+    assert len({line for line, _column in made.sheets._flow_lines}) > 1, "Sheets wraps"
+    starts = {
+        child.winfo_x()
+        for box in made.boxes
+        if box.winfo_ismapped()
+        for child in box.grid_slaves(column=1)
+        if int(child.grid_info().get("columnspan", 1)) == 1 and child.winfo_ismapped()
+    }
+    assert len(starts) == 1, starts
+
+    made.root.geometry("1800x900")
+    made.root.update()
+    made._rearrange()
+    assert not made._narrow_page
+    assert len({line for line, _column in made.sheets._flow_lines}) == 1, "one line again"
+
+
+def test_a_long_queue_is_counted_rather_than_listed(hidden_window: Any) -> None:
+    """Every study queued is a line that runs into the build's; the sidebar
+    and the panel already say which, so the bar says how many."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(True)
+    hidden_window._sync()
+    said = hidden_window.queue_line.cget("text")
+    assert len(said) <= window.Window.QUEUE_LONGEST
+    assert said.startswith(f"Queued: {len(hidden_window._studies())} studies")

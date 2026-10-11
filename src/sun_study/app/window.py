@@ -794,6 +794,41 @@ SHADOW_LEGEND_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
 )
 
 
+def _wrap(row: tk.Misc, room: int) -> None:
+    """Lay a row of buttons out in as many lines as ``room`` takes.
+
+    The row's children are taken in the order they were laid out in, once,
+    and dealt into lines left to right. Gridded, not placed, so the second
+    line's buttons sit under the first's, which on a row of hours keeps the
+    hours in columns. Nothing moves when the lines are the lines already.
+    """
+    kept: list[tuple[tk.Widget, int]] | None = getattr(row, "_flow_items", None)
+    if kept is None:
+        laid = [child for child in row.grid_slaves() if int(child.grid_info()["row"]) == 0]
+        laid.sort(key=lambda child: int(child.grid_info()["column"]))
+        kept = []
+        for child in laid:
+            padx = child.grid_info()["padx"]
+            given = padx if isinstance(padx, (tuple, list)) else row.tk.splitlist(str(padx))
+            pads = [int(float(pad)) for pad in given]
+            kept.append((child, sum(pads) * (2 if len(pads) == 1 else 1)))
+        row._flow_items = kept  # type: ignore[attr-defined]
+    lines: list[tuple[int, int]] = []
+    x = line = column = 0
+    for child, pad in kept:
+        need = child.winfo_reqwidth() + pad
+        if column and x + need > room:
+            line, column, x = line + 1, 0, 0
+        lines.append((line, column))
+        x += need
+        column += 1
+    if getattr(row, "_flow_lines", None) == lines:
+        return
+    row._flow_lines = lines  # type: ignore[attr-defined]
+    for (child, _pad), (line, column) in zip(kept, lines, strict=True):
+        child.grid_configure(row=line, column=column, pady=(2 if line else 0, 0))
+
+
 class Tiles(ttk.Frame):
     """A row of drawn choices, in place of a dropdown with three phrasings.
 
@@ -1974,8 +2009,10 @@ def draw_sheet(
     )
     # The scale the run will place the drawings at, not a number from the
     # schematic: a reader checks the block for exactly this.
-    words(inner, first, sheet.scale or "no scale", room=block_mm - 6)
-    words(inner, second, sheet.number, room=block_mm - 6)
+    # Unwrapped: a scale or a number is one word, and broken over two lines
+    # it reads as two.
+    words(inner, first, sheet.scale or "no scale")
+    words(inner, second, sheet.number)
 
     # -- the edge, last ------------------------------------------------
     # Over everything, and hollow: lit blue under the pointer, it rims the
@@ -2554,6 +2591,11 @@ class Window:
         #: Each study's name on its panel's header, restyled as it is
         #: switched on and off.
         self.study_titles: dict[str, ttk.Label] = {}
+        #: The page's own rearranging: whether it is narrow, the rows that
+        #: wrap (found once the pages are built), and a pending pass.
+        self._narrow_page = False
+        self._flows: list[tk.Misc] | None = None
+        self._responding: str | None = None
         #: Whether each study was on at the last ``_sync``, so a study is
         #: opened the moment it is switched on and not on every sync after.
         self._was_on: dict[str, bool] = {}
@@ -2648,10 +2690,10 @@ class Window:
     #: How wide the sidebar is.
     SIDE_WIDTH = 236
     #: The least the page between the sidebar and the sheets panel is allowed
-    #: before the sheets panel folds away to give it room: a label column,
-    #: the widest row of choices beside it, and the panel's margins. Under
-    #: it a page's right-hand controls were cut off at the panel's edge.
-    PAGE_LEAST = 720
+    #: before the sheets panel folds away to give it room. Below
+    #: ``ROOMY_PAGE`` the page rearranges itself to fit (``_rearrange``);
+    #: below this there is too little left even for that.
+    PAGE_LEAST = 520
 
     #: What each tab says when hovered. The tab carries a drawing at 32 px and
     #: a name, and nothing else -- so the sentence that would otherwise sit
@@ -2770,6 +2812,7 @@ class Window:
         ttk.Frame(middle, style="Rule.TFrame", width=1).pack(side="right", fill="y")
         self.pane = ttk.Frame(middle, style="Page.TFrame")
         self.pane.pack(side="left", fill="both", expand=True)
+        self.pane.bind("<Configure>", self._respond, add="+")
 
         self._sections()
         self._controls(base)
@@ -3163,6 +3206,10 @@ class Window:
         pane = Scroller(self.stack, ground=theme.PAGE)
         self.panes.append(pane)
         self.pane_of[title] = pane
+        # The page's own width is what it rearranges for, so it is the
+        # page's resizing that asks: the frame round it is resized first, and
+        # asked from there the page had not yet been told its new width.
+        pane.canvas.bind("<Configure>", self._respond, add="+")
         head = ttk.Frame(pane.content, style="Page.TFrame", padding=(PAD * 3, 16, PAD * 3, 4))
         head.pack(side="top", fill="x")
         ttk.Label(head, text=title, style="PageTitle.TLabel").pack(side="left")
@@ -4774,6 +4821,7 @@ class Window:
         label = ttk.Label(parent, text=name, anchor="e")
         label.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
         cells = ttk.Frame(parent)
+        cells.flows = True  # type: ignore[attr-defined]
         cells.grid(row=row, column=1, sticky="w", pady=(6, 0))
         share_box = ttk.Entry(cells, width=6)
         share_box.insert(0, share)
@@ -5060,6 +5108,144 @@ class Window:
                 widest = max(widest, child.winfo_reqwidth())
         for box in self.boxes:
             box.columnconfigure(0, minsize=widest)
+        #: The column as wide as its widest label, for a page with room.
+        self._label_wide = widest
+
+    # -- a page narrower than its rows -------------------------------------
+    #
+    # The page between the sidebar and the sheets panel is as wide as the
+    # window leaves it, and on a laptop with the panel open that is about
+    # 560 px -- less than a row of fourteen hours, or three choices side by
+    # side, beside a 200 px label column. Cut off at the panel's edge, the
+    # last buttons of a row could not be reached. So the page rearranges
+    # itself instead: the label column narrows and its labels wrap; a row of
+    # buttons wraps onto a second line, the way the layer chips always did;
+    # and a list of the project's names gives up the width it asked for.
+
+    #: The label column on a narrow page, and how wide its words may run.
+    LABEL_NARROW = 132
+    #: How wide the page has to be for the label column to keep its width:
+    #: the column, the widest row of choices beside it, and the margins.
+    ROOMY_PAGE = 720
+
+    def _flowing(self) -> list[tk.Misc]:
+        """Every row that wraps: the choice tiles, the toggles, the hours,
+        and any frame that asks to by carrying ``flows``."""
+        found: list[tk.Misc] = []
+
+        def walk(widget: tk.Misc) -> None:
+            for child in widget.winfo_children():
+                if isinstance(child, (Tiles, Toggles, Ticks)) or getattr(child, "flows", False):
+                    found.append(child)
+                else:
+                    walk(child)
+
+        walk(self.stack)
+        return found
+
+    def _box_of(self, widget: tk.Misc) -> ttk.Frame | None:
+        """The panel a widget sits in."""
+        boxes = {str(box): box for box in self.boxes}
+        at: tk.Misc | None = widget
+        while at is not None:
+            if str(at) in boxes:
+                return boxes[str(at)]
+            at = at.master
+        return None
+
+    def _room_beside(self, box: ttk.Frame, wide: int) -> int:
+        """How wide a row beside the label column of ``box`` may run, on a
+        page ``wide`` pixels across."""
+        column = int(box.grid_columnconfigure(0)["minsize"])
+        return wide - PAD * 6 - 28 - column - 12 - 16
+
+    def _respond(self, _event: object = None) -> None:
+        """Rearrange the open page for the width it has now."""
+        if self._responding is not None:
+            return
+        self._responding = self.root.after_idle(self._rearrange)
+
+    def _rearrange(self) -> None:
+        self._responding = None
+        pane = self.pane_of.get(self.showing)
+        if pane is None:
+            return
+        wide = pane.canvas.winfo_width()
+        if wide <= 1:
+            return
+        narrow = wide < self.ROOMY_PAGE
+        if narrow != self._narrow_page:
+            self._narrow_page = narrow
+            labels = [
+                child
+                for panel in self.boxes
+                for child in panel.grid_slaves(column=0)
+                if isinstance(child, ttk.Label)
+                and not str(child.cget("style"))
+                and int(child.grid_info().get("columnspan", 1)) == 1
+            ]
+            for label in labels:
+                label.configure(wraplength=self.LABEL_NARROW - 4 if narrow else 0, justify="right")
+            # One column for every panel, as wide as the widest label in it
+            # now -- wrapped or not -- so the fields line up down the page.
+            column = getattr(self, "_label_wide", 0)
+            if narrow:
+                # The label and the 12 px it keeps from its field. A wrapped
+                # label is never wider than its wrap, so this is known before
+                # Tk has laid the new lines out.
+                column = max(
+                    [
+                        self.LABEL_NARROW,
+                        *(
+                            min(label.winfo_reqwidth(), self.LABEL_NARROW - 4) + 12
+                            for label in labels
+                        ),
+                    ]
+                )
+            for panel in self.boxes:
+                panel.columnconfigure(0, minsize=column)
+            # The rows beside the column are measured on the next pass, once
+            # Tk has moved them. Asked from here, inside an idle handler, a
+            # layout pass ran the window's whole idle queue inside itself.
+            self._respond()
+            return
+        if self._flows is None:
+            self._flows = self._flowing()
+        # Measured against the page, not against the panel: a panel is as
+        # wide as what is in it once that is wider than the page, so a room
+        # taken from the panel shrank with every row wrapped to fit it, and
+        # the page rearranged itself down to a word a line.
+        # Worked out rather than read off the screen: just after the label
+        # column changes, Tk has not yet moved the rows beside it, and a row
+        # measured from where it was would be given the room it had before.
+        # The page's margins, the panel's, the label column and its gap.
+        # Every page, not only the one showing: they are all as wide as each
+        # other, and a row on a page not yet drawn -- or in a folded panel --
+        # is then laid out already when it is opened.
+        for row in self._flows:
+            holder = self._box_of(row)
+            if holder is not None:
+                _wrap(row, self._room_beside(holder, wide))
+        # A study's one line under its header runs the width of its panel.
+        room = max(wide - PAD * 6 - 90, 200)
+        for box in self.boxes:
+            for child in box.grid_slaves(column=0):
+                if (
+                    isinstance(child, ttk.Label)
+                    and int(child.grid_info().get("columnspan", 1)) > 1
+                    and int(str(child.cget("wraplength")) or 0) not in (0, room)
+                ):
+                    child.configure(wraplength=room)
+        # A list of the project's names asked for 36 characters; on a page
+        # that has not got them it takes the width there is instead.
+        for box in self.boxes:
+            for child in box.grid_slaves(column=1):
+                if child.winfo_class() != "TCombobox":
+                    continue
+                room = self._room_beside(box, wide)
+                sticky = "ew" if child.winfo_reqwidth() > room else "w"
+                if str(child.grid_info().get("sticky")) != sticky:
+                    child.grid_configure(sticky=sticky)
 
     def _panel(self, outer: ttk.Frame, row: int, *, title: str = "") -> ttk.Frame:
         """One panel on a page: a study, or a group of settings that go together.
@@ -5539,6 +5725,8 @@ class Window:
             pane.pack_forget()
         self.pane_of[title].pack(side="top", fill="both", expand=True)
         self.showing = title
+        if hasattr(self, "_responding"):
+            self._respond()
         self._paint_tabs()
         # With nothing under the pointer the band says what this page is for.
         # A strip that blanks itself is dead space at the foot of the window,
@@ -5691,7 +5879,15 @@ class Window:
             short = name.split(": ", 1)[-1]
             short = short[:1].upper() + short[1:]
             said.append(f"{short} ({made})" if made else short)
-        self.queue_line.config(text=f"Queued: {' · '.join(said)}" if said else "")
+        line = f"Queued: {' · '.join(said)}" if said else ""
+        if len(line) > self.QUEUE_LONGEST:
+            # Past this it runs into the build's line; the sidebar and the
+            # panel say which, so the bar says how many.
+            line = f"Queued: {len(said)} studies, {paper} sheets"
+        self.queue_line.config(text=line)
+
+    #: The longest the run bar's line of queued studies is let run.
+    QUEUE_LONGEST = 64
 
     #: Under this many pixels the window cannot hold the page and the sheets
     #: panel side by side: the page is left with less than a chip row needs.

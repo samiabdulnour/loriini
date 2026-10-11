@@ -5003,5 +5003,16 @@ project location" line are gone; at 300 px they were noise.
 ttk label's own ``-font``, which beat the style -- so every bold title in the
 window had been set in the body face. ``*TLabel.Font`` is now left empty.
 
-On a laptop at three quarters of the screen the page needs about 720 px (``PAGE_LEAST``), so
-the sheets panel starts folded at its edge there and opens with its chevron.
+**A narrow page rearranges itself.** With the sheets panel open on a laptop
+the page is about 560 px wide -- less than a row of hours beside a 200 px
+label column -- and the first build cut the rows off at the panel's edge.
+Asked the same day: "the sheet panel can't overlay the middle panel like
+that ... restructure the middle panel". Below ``ROOMY_PAGE`` the label
+column narrows and its labels wrap, every row of buttons wraps inside its
+panel (``_wrap``: the choice tiles, the days, the hours, the unit mix), a
+study's caption wraps to the panel, and a list of the project's names gives
+up the 36 characters it asked for. So the panel stays open beside the page
+from about 1100 px (``PAGE_LEAST``), and folds only below that. The room a
+row has is worked out from the page's width, not read off the panel: a
+panel is as wide as what is in it, and measured from there each wrap made
+the next.
