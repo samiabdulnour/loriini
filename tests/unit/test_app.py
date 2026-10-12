@@ -3984,6 +3984,54 @@ def test_a_narrow_page_rearranges_rather_than_cutting_its_rows_off(hidden_window
     assert len({line for line, _column in made.sheets._flow_lines}) == 1, "one line again"
 
 
+def test_labels_keep_one_line_while_their_fields_have_room(hidden_window: Any) -> None:
+    """The labels wrap to make room for their fields, not because the page
+    is under some fixed width: on a laptop with the sheets panel open the
+    page is about 640 px, and the fields beside full-width labels still had
+    a third of it spare while every label wrapped onto two lines."""
+    made = hidden_window
+    roomy = made._label_wide + made.FIELD_LEAST + 400
+    cramped = made._label_wide + made.FIELD_LEAST + 50
+    assert made._room_with_full_labels(roomy) >= made.FIELD_LEAST
+    assert made._room_with_full_labels(cramped) < made.FIELD_LEAST
+    assert made._room_with_full_labels(640) >= made.FIELD_LEAST, "the laptop page keeps its labels"
+
+
+def test_the_sheets_panel_is_not_redrawn_when_nothing_on_it_changed(
+    hidden_window: Any,
+) -> None:
+    """Every keystroke syncs the window; redrawing a dozen miniatures for a
+    keystroke that changed none of them was the lag felt typing."""
+    made = hidden_window
+    made.do_shadows.set(True)
+    made._sync()
+    drawn = list(made.dock._drawn)
+    assert drawn
+    made._sync()
+    assert all(a is b for a, b in zip(made.dock._drawn, drawn, strict=True)), "drawn again"
+    made.do_shadows.set(False)
+    made._sync()
+    assert not any(a is b for a, b in zip(made.dock._drawn, drawn, strict=False))
+
+
+def test_the_project_picker_is_as_wide_as_the_longest_project(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An office names its project files for the job and the street, and 34
+    characters cut most of them off before the port."""
+    made = hidden_window
+    assert int(made.instance.cget("width")) == made.PICKER_LEAST
+    long_name = "2524_Maroubra_86-90 Maroubra Rd_Temp_Project_File"
+    monkeypatch.setattr(probe, "running", lambda: [Instance(port=19723, project=long_name)])
+    made.refresh()
+    width = int(made.instance.cget("width"))
+    assert width >= len(f"{long_name}  ·  port 19723")
+    assert width <= made.PICKER_MOST
+    monkeypatch.setattr(probe, "running", lambda: [Instance(port=19723, project="x" * 200)])
+    made.refresh()
+    assert int(made.instance.cget("width")) == made.PICKER_MOST
+
+
 def test_a_long_queue_is_counted_rather_than_listed(hidden_window: Any) -> None:
     """Every study queued is a line that runs into the build's; the sidebar
     and the panel already say which, so the bar says how many."""

@@ -5035,6 +5035,19 @@ checking. The card says the sun is Sydney's until the project's location
 is set, and the run itself still uses the project's real location. Shadows
 are clipped to the site, so a long morning shadow stays inside its cell.
 
+On 12 October 2026, from the Windows build: "there is no reason to have
+archicad layers in two rows. there is plenty of space even with sheets open".
+A page under 720 px wrapped every label, and with the sheets panel open on a
+1260 px window the page is about 690 -- beside fields with a third of it
+spare. The labels now give up their width only when the fields beside a
+full-width column would have less than ``FIELD_LEAST`` (280 px); the rows of
+buttons still wrap to whatever room they have. The same sitting found the
+window slow: every keystroke and tick redrew all of the sheets panel's
+miniatures, about 70 ms of a 180 ms sync, and now the panel is redrawn only
+when its sheets or its filing line change. The project picker is as wide as
+the longest project's name, from 34 to 72 characters, because an office's
+file names ran past 34 before the port.
+
 The ☰ menu carries About and the web site on both platforms, since the
 menu is where the program's own things now are. Trackpad scrolling follows
 Tk 9's ``<TouchpadScroll>``, which it sends in place of the wheel on a Mac.

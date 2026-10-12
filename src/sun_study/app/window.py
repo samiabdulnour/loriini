@@ -1552,6 +1552,9 @@ class Dock(ttk.Frame):
         self._on_pick = on_pick
         self._on_fold = on_fold
         self._drawn: list[tk.Misc] = []
+        #: The sheets and filing line last drawn, so a refill that would draw
+        #: the same panel again does nothing.
+        self._shown: tuple[tuple[Sheet, ...], str] | None = None
         self.folded = False
 
         # -- open -----------------------------------------------------------
@@ -1666,6 +1669,15 @@ class Dock(ttk.Frame):
         """Redraw the panel. Cheap enough to do on every tick and keystroke:
         the drawing is a few dozen canvas items and the geometry is a numpy
         call that never leaves this process."""
+        # Asked on every tick and keystroke, and most of those change nothing
+        # the panel shows. Redrawing it anyway cost a sync about 70 ms of
+        # destroying and drawing a dozen canvases on Windows, which is the lag
+        # felt typing into a field. The miniatures read nothing but the sheets
+        # and the filing line, so those two say whether it is the same panel.
+        shown = (tuple(sheets), filed)
+        if shown == self._shown:
+            return
+        self._shown = shown
         for old in self._drawn:
             old.destroy()
         self._drawn = []
@@ -2943,9 +2955,13 @@ class Window:
     LEADS: ClassVar[dict[str, str]] = {DIAGRAMS: PLANS_JOB, SHADOWS: SHADOW_JOB}
     #: How wide the sidebar is.
     SIDE_WIDTH = 236
+    #: The project picker's width in characters: never narrower than this,
+    #: and never wider than the most, however long a project's name.
+    PICKER_LEAST = 34
+    PICKER_MOST = 72
     #: The least the page between the sidebar and the sheets panel is allowed
     #: before the sheets panel folds away to give it room. Below
-    #: ``ROOMY_PAGE`` the page rearranges itself to fit (``_rearrange``);
+    #: ``FIELD_LEAST`` beside its labels the page rearranges itself to fit (``_rearrange``);
     #: below this there is too little left even for that.
     PAGE_LEAST = 520
 
@@ -3112,7 +3128,7 @@ class Window:
         # not as wide as the window: the picker used to stretch across most
         # of the bar for a name a third that long.
         self.instance = ttk.Combobox(
-            top, state="readonly", values=[], style="Chrome.TCombobox", width=34
+            top, state="readonly", values=[], style="Chrome.TCombobox", width=self.PICKER_LEAST
         )
         self.instance.pack(side="left")
         self.instance.bind("<<ComboboxSelected>>", lambda _event: self.refresh())
@@ -5380,9 +5396,14 @@ class Window:
 
     #: The label column on a narrow page, and how wide its words may run.
     LABEL_NARROW = 132
-    #: How wide the page has to be for the label column to keep its width:
-    #: the column, the widest row of choices beside it, and the margins.
-    ROOMY_PAGE = 720
+    #: The least room the fields beside a full-width label column need before
+    #: the labels give some of theirs up and wrap. A row of choices wraps on
+    #: its own and a list of names narrows to fit, so this is room for an
+    #: ordinary field and a row of three tiles -- not for the widest row on
+    #: any page. Measured against the page as it is, rather than a fixed page
+    #: width: a fixed 720 px wrapped every label on a laptop with the sheets
+    #: panel open, beside fields that had a third of the page spare.
+    FIELD_LEAST = 280
 
     def _flowing(self) -> list[tk.Misc]:
         """Every row that wraps: the choice tiles, the toggles, the hours,
@@ -5415,6 +5436,13 @@ class Window:
         column = int(box.grid_columnconfigure(0)["minsize"])
         return wide - PAD * 6 - 28 - column - 12 - 16
 
+    def _room_with_full_labels(self, wide: int) -> int:
+        """How wide a row beside a label column at its full width may run,
+        on a page ``wide`` pixels across: ``_room_beside`` for the column as
+        it is when nothing wraps."""
+        column = getattr(self, "_label_wide", self.LABEL_COLUMN)
+        return wide - PAD * 6 - 28 - column - 12 - 16
+
     def _respond(self, _event: object = None) -> None:
         """Rearrange the open page for the width it has now."""
         if self._responding is not None:
@@ -5429,7 +5457,7 @@ class Window:
         wide = pane.canvas.winfo_width()
         if wide <= 1:
             return
-        narrow = wide < self.ROOMY_PAGE
+        narrow = self._room_with_full_labels(wide) < self.FIELD_LEAST
         if narrow != self._narrow_page:
             self._narrow_page = narrow
             labels = [
@@ -6522,8 +6550,14 @@ class Window:
     def refresh(self) -> None:
         found = probe.running()
         self.ports = [instance.port for instance in found]
+        names = [f"{instance.project}  ·  port {instance.port}" for instance in found]
+        # As wide as the longest name it holds, within reason: an office's
+        # project files are named for the job and the street, and 34
+        # characters cut most of them off before the port.
+        longest = max((len(name) for name in names), default=0)
         self.instance.config(
-            values=[f"{instance.project}  ·  port {instance.port}" for instance in found]
+            values=names,
+            width=min(max(self.PICKER_LEAST, longest + 2), self.PICKER_MOST),
         )
         if not found:
             # Where every session starts, not a fault: the plug drained but
