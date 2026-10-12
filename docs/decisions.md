@@ -5048,6 +5048,16 @@ when its sheets or its filing line change. The project picker is as wide as
 the longest project's name, from 34 to 72 characters, because an office's
 file names ran past 34 before the port.
 
+The same day, two more from Windows. The reference picture's corner slid the
+picture as it sized it: a Toplevel's bindings fire for every widget inside it,
+so a pull on the corner ran the picture's move as well as its resize, and the
+top-left followed the pull. The move now ignores a press that starts on the
+corner, and a test drives the corner through Tk's own events rather than
+calling the handlers, which is how the first test missed it. And a sidebar row
+drew Tk's dotted focus box after it was clicked, beside the blue bar of the
+open row: the rows now go without the ring (``theme.NO_RING``), as the tabs
+and tiles already did.
+
 The ☰ menu carries About and the web site on both platforms, since the
 menu is where the program's own things now are. Trackpad scrolling follows
 Tk 9's ``<TouchpadScroll>``, which it sends in place of the wheel on a Mac.

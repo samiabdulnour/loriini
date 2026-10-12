@@ -291,6 +291,40 @@ def test_the_corner_sizes_the_picture_from_its_top_left_and_nothing_else(
     assert (smallest.width, smallest.height) == (overlay.LEAST_SIDE, overlay.LEAST_SIDE)
 
 
+def test_pulling_the_corner_by_hand_holds_the_top_left_where_it_was(
+    palette: Any, root: Any, photograph: Path
+) -> None:
+    """The way a window on a PC is sized from its corner: the top-left stays
+    put. Sent through Tk's own bindings rather than to the handlers, because
+    that is where it went wrong -- a Toplevel's bindings fire for everything
+    inside it, so the corner's drag also ran the picture's own move, and the
+    picture slid by every pixel the corner was pulled."""
+    palette.take(photograph)
+    palette.lay(Placement(200, 200, 500, 300))
+    settled(root)
+    before = palette.overlay.placement
+    grip = palette.overlay.grip
+    corner_x, corner_y = before.x + before.width - 4, before.y + before.height - 4
+    grip.event_generate("<ButtonPress-1>", x=2, y=2, rootx=corner_x, rooty=corner_y)
+    for step in (20, 60, 120):
+        grip.event_generate(
+            "<Motion>",
+            x=2 + step,
+            y=2 + step // 2,
+            rootx=corner_x + step,
+            rooty=corner_y + step // 2,
+            state=0x100,
+        )
+        root.update()
+        during = palette.overlay.placement
+        assert (during.x, during.y) == (before.x, before.y), f"moved after {step} px"
+    grip.event_generate("<ButtonRelease-1>", x=122, y=62, rootx=corner_x + 120, rooty=corner_y + 60)
+    settled(root)
+    after = palette.overlay.placement
+    assert (after.x, after.y) == (before.x, before.y)
+    assert (after.width, after.height) == (before.width + 120, before.height + 60)
+
+
 def test_the_slider_sets_how_much_shows_and_says_it_in_percent(palette: Any) -> None:
     palette.level.set(30)
     palette._slid()

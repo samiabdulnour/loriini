@@ -94,6 +94,24 @@ def test_what_each_style_says_it_wears_is_what_it_wears(styled: object) -> None:
     assert not wrong, wrong
 
 
+def test_a_sidebar_row_draws_no_focus_ring(styled: object) -> None:
+    """A row shows it is open in its blue bar. The dotted box Tk draws round
+    a focused button stayed on the last row clicked, beside the bar, as a
+    second selection mark that pointed at the wrong page."""
+
+    def elements(layout: object) -> list[str]:
+        found: list[str] = []
+        for name, options in layout:  # type: ignore[attr-defined]
+            found.append(name)
+            found.extend(elements(options.get("children", [])))
+        return found
+
+    for name in theme.NO_RING:
+        drawn = elements(styled.layout(name))  # type: ignore[attr-defined]
+        assert not any(element.endswith(".focus") for element in drawn), (name, drawn)
+        assert "Button.label" in drawn, "the row still says its name"
+
+
 def test_the_sidebar_rows_take_their_rows_colour(styled: object) -> None:
     """A page's name in the sidebar is a flat button on its row, and the open
     row is the faced thing -- a rounded blue bar. The name must never wear a

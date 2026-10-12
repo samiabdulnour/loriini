@@ -157,6 +157,10 @@ HEAD_OFF = SURFACE
 #:
 #: ``"flat"`` means the style is painted by its own ``background`` and keeps
 #: clam's drawn border. Everything else names an element made in ``_rounded``.
+#: Buttons drawn without Tk's dotted focus ring: their face already says
+#: which one is chosen, and the ring stayed on whichever was clicked last.
+NO_RING = frozenset({"Side.TButton", "SideOpen.TButton"})
+
 WEARS: dict[str, str] = {
     "TButton": "button",
     "Chrome.TButton": "button",
@@ -935,8 +939,14 @@ def _rounded(style: ttk.Style) -> None:
     #: with the mouse and shows its state in its face; the dotted rectangle
     #: Tk draws round a focused button read as a second selection mark.
     quiet: Any = ("Button.padding", inside(("Button.label", {"sticky": "nswe"})))
+    #: Flat, and without the ring: a sidebar row is clicked to open its page
+    #: and shows that in its blue bar, so the dotted box Tk drew round the
+    #: last one clicked stood beside the bar as a second, stale selection.
+    flat_quiet: Any = [("Button.border", {"sticky": "nswe", "border": "1", "children": [quiet]})]
     for name, worn_as in WEARS.items():
-        if worn_as == "flat" or not ready.get(worn_as, False):
+        if name in NO_RING:
+            style.layout(name, flat_quiet)
+        elif worn_as == "flat" or not ready.get(worn_as, False):
             style.layout(name, flat)
         elif worn_as in {"tile", "tileon"}:
             style.layout(name, [(f"Loriini.{worn_as}", inside(quiet))])

@@ -572,13 +572,26 @@ class Overlay(tk.Toplevel):
     # -- moving and sizing by hand --------------------------------------------
 
     def _grab(self, event: tk.Event[tk.Misc]) -> None:
+        if self._on_corner(event):
+            return
         self._grab_at = (event.x_root - self.winfo_x(), event.y_root - self.winfo_y())
 
     def _drag(self, event: tk.Event[tk.Misc]) -> None:
-        if self.locked:
+        if self.locked or self._on_corner(event):
             return
         dx, dy = self._grab_at
         self.geometry(f"{event.x_root - dx:+d}{event.y_root - dy:+d}")
+
+    def _on_corner(self, event: tk.Event[tk.Misc]) -> bool:
+        """Whether the mouse is on the corner, which sizes and does not move.
+
+        A Toplevel's bindings fire for every widget inside it as well as for
+        itself -- Tk lists the toplevel among each child's bindtags -- so a
+        pull on the corner reached the move as well as the resize. The resize
+        pinned the top-left, the move then slid it by the pull, and the
+        picture walked off what it was lined up on as it was sized.
+        """
+        return getattr(event, "widget", None) is self.grip
 
     def _grab_corner(self, event: tk.Event[tk.Misc]) -> None:
         self._corner_at = (event.x_root, event.y_root, self.winfo_width(), self.winfo_height())
