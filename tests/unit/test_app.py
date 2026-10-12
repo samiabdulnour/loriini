@@ -3943,9 +3943,15 @@ def test_a_narrow_page_rearranges_rather_than_cutting_its_rows_off(hidden_window
     fields still start at one place down the page."""
     made = hidden_window
     # Shown for this one: a page is rearranged for the width it has on the
-    # screen, and a window never shown has none.
+    # screen, and a window never shown has none. Windows keeps a window on
+    # its screen, and GitHub's Windows runners have a 1024 px one: there the
+    # window comes out narrower than asked, the sheets panel rightly folds,
+    # and the page is wide again -- which is the window working, not failing.
+    wanted = made.fold_below + 10
+    if made.root.winfo_screenwidth() < wanted:
+        pytest.skip(f"needs a screen at least {wanted} px wide")
     made.root.deiconify()
-    made.root.geometry(f"{made.fold_below + 10}x800")
+    made.root.geometry(f"{wanted}x800")
     made.dock.fold(False)
     made.root.update()
     made._show_section(window.Window.GENERAL)
