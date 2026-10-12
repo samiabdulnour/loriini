@@ -5447,15 +5447,17 @@ class Window:
             column = getattr(self, "_label_wide", 0)
             if narrow:
                 # The label and the 12 px it keeps from its field. A wrapped
-                # label is never wider than its wrap, so this is known before
-                # Tk has laid the new lines out.
+                # label's words are never wider than its wrap, so this is known
+                # before Tk has laid the new lines out. The label is its words
+                # and the 4 px the wrap leaves for its own edges: capped at the
+                # wrap alone, a wrapped label on Windows -- whose ttk draws
+                # those edges, where a Mac's does not -- came out wider than
+                # the column allowed for and pushed its fields 2 px right of
+                # every other panel's.
                 column = max(
                     [
                         self.LABEL_NARROW,
-                        *(
-                            min(label.winfo_reqwidth(), self.LABEL_NARROW - 4) + 12
-                            for label in labels
-                        ),
+                        *(min(label.winfo_reqwidth(), self.LABEL_NARROW) + 12 for label in labels),
                     ]
                 )
             for panel in self.boxes:

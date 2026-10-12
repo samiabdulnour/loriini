@@ -3950,7 +3950,11 @@ def test_a_narrow_page_rearranges_rather_than_cutting_its_rows_off(hidden_window
     made.root.update()
     made._show_section(window.Window.GENERAL)
     made._rearrange()
-    assert made._narrow_page
+    page = made.pane_of[made.showing].canvas.winfo_width()
+    assert made._narrow_page, (
+        f"page {page} px in a window {made.root.winfo_width()} px wide, asked for "
+        f"{made.fold_below + 10} on a screen {made.root.winfo_screenwidth()} px wide"
+    )
     for row in made._flowing():
         holder = made._box_of(row)
         if holder is None or not row.winfo_ismapped():
