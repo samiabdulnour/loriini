@@ -45,7 +45,7 @@ WEBSITE = "https://loriini.app"
 #: the executable's file properties and every sheet must say the same thing.
 #: Clause 2(e) of the licence requires that it not be removed from either the
 #: software or its output.
-COPYRIGHT = "Copyright (c) 2026 Sami Abdulnour. All rights reserved."
+COPYRIGHT = "Copyright (c) 2026 Sami Abdulnour and Zofia Kosova. All rights reserved."
 
 #: Where a run is told to look for its stop request. The window writes the
 #: file; the run watches for it and raises, so its ``finally`` blocks put the

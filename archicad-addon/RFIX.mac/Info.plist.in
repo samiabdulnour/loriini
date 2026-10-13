@@ -35,6 +35,6 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>@LORIINI_MINIMUM_MACOS@</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2026 Sami Abdulnour. All rights reserved.</string>
+	<string>Copyright © 2026 Sami Abdulnour and Zofia Kosova. All rights reserved.</string>
 </dict>
 </plist>
