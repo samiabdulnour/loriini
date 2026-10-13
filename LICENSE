@@ -1,11 +1,11 @@
-Copyright (c) 2026 Sami Abdulnour <hi@samiabdulnour.com>
+Copyright (c) 2026 Sami Abdulnour <hi@samiabdulnour.com> and Zofia Kosova
 All rights reserved.
 
 SOURCE-AVAILABLE LICENCE
 
 This software is source-available, not open source. The source may be read by
 anyone. No rights are granted beyond those stated below, and all rights not
-expressly granted are reserved by the copyright holder.
+expressly granted are reserved by the copyright holders.
 
 1. GRANT — INTERNAL USE AT FUSE ARCHITECTS
 
@@ -40,7 +40,7 @@ expressly granted are reserved by the copyright holder.
 
 4. RESERVED RIGHTS
 
-   The copyright holder retains every right not granted above, including the
+   The copyright holders retain every right not granted above, including the
    right to license this software to any party on any terms, commercial or
    otherwise.
 
@@ -49,14 +49,14 @@ expressly granted are reserved by the copyright holder.
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+   COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
    OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE.
 
    In particular, this software computes figures that bear on planning
-   compliance. It is not validated for submission, and the copyright holder
-   accepts no liability for any use of its output in a development
+   compliance. It is not validated for submission, and the copyright holders
+   accept no liability for any use of its output in a development
    application or any other regulatory process.
 
 6. CONTACT

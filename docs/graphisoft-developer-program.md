@@ -99,7 +99,7 @@ automation interface does not expose.
 | Standard assessed | NSW Apartment Design Guide 4A-1, as a versioned data file with a citation per threshold |
 | Validation | Sun positions checked against NREL/TP-560-34302 and NOAA's published spreadsheet; geometry against six closed-form analytic cases; whole-tool comparison against a Grasshopper/Ladybug chain agreeing to 0.19 percentage points |
 | Status | Prototype. Not validated for DA submission — design-stage iteration only |
-| Licence | Source-available; copyright Sami Abdulnour |
+| Licence | Source-available; copyright Sami Abdulnour and Zofia Kosova |
 
 ## What was hardest, and why it argues for a real Add-On
 
