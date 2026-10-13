@@ -26,6 +26,8 @@ on:
       # How the folder is made, so a change to that is proved by making one.
       - "Loriini.spec"
       - "scripts/build_app.py"
+      # What the .exe wears, carved into it at build time.
+      - "assets/loriini.ico"
   pull_request:
     paths:
       - "archicad-addon/**"

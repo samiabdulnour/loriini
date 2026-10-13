@@ -3113,9 +3113,10 @@ class Window:
 
         brand = ttk.Frame(top, style="Chrome.TFrame")
         brand.pack(side="left", padx=(0, PAD * 2))
-        # The parrot, the program's own mark, as the Dock shows it. Pixel art
-        # on a grid of eight, so one pixel in eight is the whole picture at
-        # 32 and still crisp; anything between would smear its squares.
+        # The parrot, the program's own mark, as the Dock shows it. Its own
+        # 32-pixel file, reduced from the artwork by ``make_icon.py``: Tk
+        # can only shrink a picture by dropping pixels, which leaves the
+        # tile's rounded corners stepped and the eye in pieces.
         mark = brand_mark(self.root)
         if mark is not None:
             self._mark = mark  # Tk forgets a picture nothing in Python holds
@@ -8195,6 +8196,9 @@ class Window:
 #: PNG, because a Mac does nothing with an .ico.
 MAC_DOCK_ICON = "loriini-icon-256.png"
 
+#: The same artwork at the size the tool bar shows it.
+BRAND_MARK = "loriini-icon-32.png"
+
 
 def icon_path() -> Path | None:
     """Where the application icon is, packaged or not.
@@ -8218,11 +8222,11 @@ def brand_mark(window: tk.Misc) -> tk.PhotoImage | None:
     """The parrot at 32 pixels for the tool bar, or ``None`` without it."""
     packaged = getattr(sys, "_MEIPASS", None)
     root = Path(packaged) if packaged else Path(__file__).resolve().parents[3]
-    found = root / "assets" / MAC_DOCK_ICON
+    found = root / "assets" / BRAND_MARK
     if not found.is_file():
         return None
     try:
-        return tk.PhotoImage(master=window, file=str(found)).subsample(8)
+        return tk.PhotoImage(master=window, file=str(found))
     except tk.TclError:
         return None
 

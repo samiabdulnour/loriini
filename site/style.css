@@ -76,13 +76,13 @@ pre code { background: none; padding: 0; }
 
 header.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 0; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: .6rem; color: var(--navy); font-weight: 700; font-size: 1.25rem; }
-.brand img { width: 36px; height: 36px; image-rendering: pixelated; }
+.brand img { width: 36px; height: 36px; }
 nav.main { display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: .95rem; }
 nav.main a { color: var(--ink); }
 
 .hero { padding: 3rem 0 2.5rem; display: grid; grid-template-columns: 1fr auto; gap: 2rem; align-items: center; }
 .hero .lead { font-size: 1.25rem; color: var(--muted); max-width: 38rem; }
-.hero img { width: 220px; height: 220px; image-rendering: pixelated; }
+.hero img { width: 220px; height: 220px; }
 @media (max-width: 720px) {
   .hero { grid-template-columns: 1fr; }
   .hero img { width: 140px; height: 140px; order: -1; }

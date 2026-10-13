@@ -145,8 +145,9 @@ verifies the signature the way macOS will.
   because a single-file `.app` is deprecated by PyInstaller and pointless:
   the bundle already is the one thing a person copies.
 - **`assets/loriini.icns`**, made by `scripts/make_icon.py` beside the `.ico`.
-  Every size a Mac asks for is a multiple of the artwork's 32 px grid, so
-  every one is pixel-exact.
+  The `.ico` is the tile to its edges, as Windows draws icons; the `.icns`
+  puts it on Apple's grid, 824 of 1024 with a shadow beneath, so it stands
+  the same size as every other icon in the Dock.
 - **The Mac's light appearance** is asked for (`NSRequiresAquaSystemAppearance`):
   the window is drawn in its own light palette, and in dark mode a Mac would
   darken the dialogs Tk leaves to it around a window that stays light.
