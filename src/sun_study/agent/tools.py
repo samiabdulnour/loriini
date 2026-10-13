@@ -874,7 +874,8 @@ TOOLS: tuple[Tool, ...] = (
 
 
 #: The server's icon: the bird, as the window's own icon is, for the client
-#: to show beside the server's name. The 256-pixel PNG, under two kilobytes.
+#: to show beside the server's name. The 256-pixel PNG, about 70 kilobytes,
+#: sent once a session in the reply to ``initialize``.
 ICON_NAME = "loriini-icon-256.png"
 
 
