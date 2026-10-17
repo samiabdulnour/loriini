@@ -30,6 +30,7 @@
 // own string, which Tapir does; see LoriiniPalette.hpp.
 
 #include "Commands.hpp"
+#include "ApiCompat.hpp"
 #include "DrawingCommands.hpp"
 #include "ProjectCommands.hpp"
 #include "ModelCommands.hpp"
@@ -56,7 +57,7 @@
 // MenuCommandHandler
 // -----------------------------------------------------------------------------
 
-GSErrCode __ACENV_CALL MenuCommandHandler (const API_MenuParams* menuParams)
+GSErrCode MenuCommandHandler (const API_MenuParams* menuParams)
 {
 	// The resource is the question, not the item index: each menu here holds
 	// exactly one item, because that is the only shape Archicad dispatches
@@ -89,7 +90,7 @@ GSErrCode __ACENV_CALL MenuCommandHandler (const API_MenuParams* menuParams)
 // Dependency definitions
 // -----------------------------------------------------------------------------
 
-API_AddonType __ACDLL_CALL CheckEnvironment (API_EnvirParams* envir)
+API_AddonType CheckEnvironment (API_EnvirParams* envir)
 {
 	RSGetIndString (&envir->addOnInfo.name,        ID_ADDON_INFO, ID_ADDON_INFO_NAME, ACAPI_GetOwnResModule ());
 	RSGetIndString (&envir->addOnInfo.description, ID_ADDON_INFO, ID_ADDON_INFO_DESC, ACAPI_GetOwnResModule ());
@@ -106,18 +107,18 @@ API_AddonType __ACDLL_CALL CheckEnvironment (API_EnvirParams* envir)
 // Interface definitions
 // -----------------------------------------------------------------------------
 
-GSErrCode __ACDLL_CALL RegisterInterface (void)
+GSErrCode RegisterInterface (void)
 {
 	// Two resources, one item each. They share a name line, so Archicad puts
 	// both items under the one "Loriini" submenu -- which is how Tapir gets ten
 	// items into one menu.
-	GSErrCode err = ACAPI_Register_Menu (ID_ADDON_MENU, 0, MenuCode_UserDef,
+	GSErrCode err = Loriini::Api::RegisterMenu (ID_ADDON_MENU, 0, MenuCode_UserDef,
 										 MenuFlag_SeparatorBefore);
 	if (err != NoError) {
 		return err;
 	}
 
-	return ACAPI_Register_Menu (ID_PALETTE_MENU, 0, MenuCode_UserDef,
+	return Loriini::Api::RegisterMenu (ID_PALETTE_MENU, 0, MenuCode_UserDef,
 								MenuFlag_Default);
 }
 
@@ -126,14 +127,14 @@ GSErrCode __ACDLL_CALL RegisterInterface (void)
 // Initialize
 // -----------------------------------------------------------------------------
 
-GSErrCode __ACENV_CALL Initialize (void)
+GSErrCode Initialize (void)
 {
-	GSErrCode err = ACAPI_Install_MenuHandler (ID_ADDON_MENU, MenuCommandHandler);
+	GSErrCode err = Loriini::Api::InstallMenuHandler (ID_ADDON_MENU, MenuCommandHandler);
 	if (err != NoError) {
 		return err;
 	}
 
-	err = ACAPI_Install_MenuHandler (ID_PALETTE_MENU, MenuCommandHandler);
+	err = Loriini::Api::InstallMenuHandler (ID_PALETTE_MENU, MenuCommandHandler);
 	if (err != NoError) {
 		return err;
 	}
@@ -154,26 +155,26 @@ GSErrCode __ACENV_CALL Initialize (void)
 	// be invisible -- and a half-installed add-on is the failure that reads
 	// as a version problem and sends somebody to the wrong place.
 	const std::function<GSErrCode ()> installers[] = {
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::GetProjectionCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::SetProjectionCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::CreateDocumentFrom3DCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::SetDocumentFrom3DCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::CreateFillsCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::CreateTextsCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::PlaceFiguresCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::PlaceDrawingsCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::CreateMeshCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::CreateSlabsCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::GetCurrentDatabaseCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::SetCurrentDatabaseCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::CreateWorksheetCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::ActivateLayerCombinationCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::ModifyLayersCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::GetGraphicOverrideCombinationsCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::GetDrawingsCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::ArrangeDrawingsCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::Set3DFilterCommand> ()); },
-		[] { return ACAPI_Install_AddOnCommandHandler (GS::NewOwned<Loriini::ExportModelCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetProjectionCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::SetProjectionCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::CreateDocumentFrom3DCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::SetDocumentFrom3DCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::CreateFillsCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::CreateTextsCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::PlaceFiguresCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::PlaceDrawingsCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::CreateMeshCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::CreateSlabsCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetCurrentDatabaseCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::SetCurrentDatabaseCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::CreateWorksheetCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ActivateLayerCombinationCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ModifyLayersCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetGraphicOverrideCombinationsCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetDrawingsCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ArrangeDrawingsCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::Set3DFilterCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ExportModelCommand> ()); },
 	};
 
 	for (const std::function<GSErrCode ()>& install : installers) {
@@ -195,7 +196,7 @@ GSErrCode __ACENV_CALL Initialize (void)
 // FreeData
 // -----------------------------------------------------------------------------
 
-GSErrCode __ACENV_CALL FreeData (void)
+GSErrCode FreeData (void)
 {
 	return NoError;
 }

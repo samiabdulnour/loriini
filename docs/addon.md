@@ -592,23 +592,25 @@ fixing a compile error does not necessarily have them.
 
 No administrator rights needed, which is the point.
 
-1. Get the folder. It holds `Loriini.exe`, `LoriiniAddOn_AC26_Win.apx`,
+1. Get the folder. It holds `Loriini.exe`, one add-on per Archicad version
+   (`LoriiniAddOn_AC26_Win.apx` to `LoriiniAddOn_AC30_Win.apx`),
    `How to install.txt` and `LICENSE.txt`.
    - **From GitHub**, with no Python at all: on the repository's **Actions**
      tab, open **Archicad add-on**, then the newest successful run for your
-     branch, and download **Loriini_AC26_Win** under *Artifacts* at the foot
+     branch, and download **Loriini_Win** under *Artifacts* at the foot
      of the run's page. A push that changes the add-on or the build makes
      one. For any other commit, press **Run workflow** on the workflow's page,
      pick the branch, and download from the run it starts. The note inside
      names the commit it was built from.
    - **On a PC** with a checkout: `uv run python scripts/build_app.py` leaves
-     the same folder in `dist/`. It takes the add-on from `--addon <file>`, a
-     local build, or the newest successful run of this workflow on the
-     branch, fetched with the GitHub CLI (`gh auth login` once). Without
-     `gh`, download the `LoriiniAddOn_AC26_Win` artifact from the run and
-     pass it with `--addon`; `--addon-only` puts it in `dist/` without
-     rebuilding the program.
-2. Copy `Loriini.exe` and the `.apx` into one folder of your own, e.g.
+     the same folder in `dist/`. It takes the add-ons from `--addon <file>`
+     (once per file), a local build, or the newest successful run of this
+     workflow on the branch, fetched with the GitHub CLI (`gh auth login`
+     once). Without `gh`, download the `LoriiniAddOn_AC<nn>_Win` artifacts
+     from the run and pass each with `--addon`; `--addon-only` puts them in
+     `dist/` without rebuilding the program.
+2. Copy `Loriini.exe` and the `.apx` whose number matches your Archicad
+   (`LoriiniAddOn_AC27_Win.apx` for Archicad 27) into one folder of your own, e.g.
    `C:\Users\<you>\Documents\Loriini\Add-Ons\`. Together, because the menu
    item looks for `Loriini.exe` beside the `.apx`. Tapir is built in and does
    not need a folder of its own.
@@ -675,5 +677,14 @@ guard, and the build is Windows only. The office runs Archicad 26 on Windows.
 The three commands themselves have nothing platform-specific in them.
 
 **One Archicad version per file.** An `.apx` is compiled against one major
-version. Moving the office to Archicad 27 means adding a line to the workflow
-matrix and re-testing, not recompiling the same file.
+version, so the workflows build 26 to 30 side by side and the handover folder
+carries all five; `Loriini.exe` is the same for every one. Where the C API's
+spelling changed between versions -- 27 replaced the `ACAPI_Database`,
+`ACAPI_Environment`, `ACAPI_Automate` and `ACAPI_Interface` dispatchers with
+named functions and made an attribute index a class, 28 made a text's content
+a `GS::UniString` -- the commands call `Src/ApiCompat.hpp`, which is the only
+file that knows which kit it is compiled against. A new version is a line in
+both workflows' matrices and in `ARCHICAD_VERSIONS`
+(`src/sun_study/__init__.py`), plus whatever the compiler then finds for
+`ApiCompat.hpp` to learn. Every version compiles; only 26 has been run inside
+Archicad.

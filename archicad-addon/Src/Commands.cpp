@@ -1,4 +1,5 @@
 #include "Commands.hpp"
+#include "ApiCompat.hpp"
 #include "Projection.hpp"
 #include "Support.hpp"
 
@@ -128,7 +129,7 @@ void ApplyShadowFill (const GS::ObjectState& fill, API_UniformAttributeOptions& 
 {
 	Int32 index = 0;
 	if (ReadInt (fill, "fillIndex", index)) {
-		options.shadFill = static_cast<API_AttributeIndex> (index);
+		options.shadFill = Api::AttributeIndexFromInt (index);
 	}
 	ReadShort (fill, "fillPen", options.shadFillPen);
 	ReadShort (fill, "backgroundPen", options.shadFillBkgPen);
@@ -139,7 +140,7 @@ void ApplyShadowFill (const GS::ObjectState& fill, API_UniformAttributeOptions& 
 GS::ObjectState ShadowFillState (const API_UniformAttributeOptions& options)
 {
 	GS::ObjectState state;
-	state.Add ("fillIndex", static_cast<Int32> (options.shadFill));
+	state.Add ("fillIndex", Api::AttributeIndexToInt (options.shadFill));
 	state.Add ("fillPen", static_cast<Int32> (options.shadFillPen));
 	state.Add ("backgroundPen", static_cast<Int32> (options.shadFillBkgPen));
 	state.Add ("contourPen", static_cast<Int32> (options.shadContPen));
@@ -175,7 +176,7 @@ bool ApplyUncutSurfaces (const GS::ObjectState& parameters, API_UniformAttribute
 GS::ObjectState DocumentState (API_DatabaseUnId document)
 {
 	API_DocumentFrom3DType now = {};
-	const GSErrCode err = ACAPI_Environment (APIEnv_GetDocumentFrom3DSettingsID, &document, &now);
+	const GSErrCode err = Api::GetDocumentFrom3DSettings (&document, &now);
 	GS::ObjectState result = Succeeded ();
 	if (err != NoError) {
 		return result;
@@ -225,7 +226,7 @@ GS::ObjectState GetProjectionCommand::Execute (const GS::ObjectState& /*paramete
 											   GS::ProcessControl& /*processControl*/) const
 {
 	API_3DProjectionInfo info = {};
-	const GSErrCode err = ACAPI_Environment (APIEnv_Get3DProjectionSetsID, &info);
+	const GSErrCode err = Api::Get3DProjectionSets (&info);
 	if (err != NoError) {
 		return Failed ("Failed to read the 3D projection settings.", err);
 	}
@@ -316,7 +317,7 @@ GS::ObjectState SetProjectionCommand::Execute (const GS::ObjectState& parameters
 	// preset, the sun option -- and building one from zero would silently
 	// reset every one of them.
 	API_3DProjectionInfo info = {};
-	GSErrCode err = ACAPI_Environment (APIEnv_Get3DProjectionSetsID, &info);
+	GSErrCode err = Api::Get3DProjectionSets (&info);
 	if (err != NoError) {
 		return Failed ("Failed to read the 3D projection settings before changing them.", err);
 	}
@@ -347,7 +348,7 @@ GS::ObjectState SetProjectionCommand::Execute (const GS::ObjectState& parameters
 	// `isPersp` and ignores every other field, and the call reports success
 	// having changed nothing. Measured on a live project, the matrix read
 	// back after the call was the one from before it.
-	err = ACAPI_Environment (APIEnv_Change3DProjectionSetsID, &info);
+	err = Api::Change3DProjectionSets (&info);
 	if (err != NoError) {
 		return Failed ("Failed to change the 3D projection settings.", err);
 	}
@@ -447,7 +448,7 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 	bool defaultsChanged = false;
 	GSErrCode err = NoError;
 	if (askedShadows || hasShadowFill || hasUncut) {
-		err = ACAPI_Environment (APIEnv_GetDocumentFrom3DDefaultsID, &before);
+		err = Api::GetDocumentFrom3DDefaults (&before);
 		if (err != NoError) {
 			return Failed ("Could not read the 3D Document defaults to set the sun shadows.", err);
 		}
@@ -460,7 +461,7 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 			ApplyShadowFill (shadowFill, wanted.attributeOptions);
 		}
 		ApplyUncutSurfaces (parameters, wanted.attributeOptions);
-		err = ACAPI_Environment (APIEnv_ChangeDocumentFrom3DDefaultsID, &wanted);
+		err = Api::ChangeDocumentFrom3DDefaults (&wanted);
 		if (err != NoError) {
 			return Failed ("Could not set the 3D Document defaults for the sun shadows.", err);
 		}
@@ -474,9 +475,9 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 	// ACAPI_CallUndoableCommand. So a document this makes is deleted the way
 	// any other is: by hand, in the Navigator. The name it is given is what
 	// makes that bearable.
-	err = ACAPI_Database (APIDb_NewDatabaseID, &database);
+	err = Api::NewDatabase (&database);
 	if (defaultsChanged) {
-		ACAPI_Environment (APIEnv_ChangeDocumentFrom3DDefaultsID, &before);
+		Api::ChangeDocumentFrom3DDefaults (&before);
 	}
 	if (err != NoError) {
 		return Failed ("Failed to create the 3D Document.", err);
@@ -490,7 +491,7 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 	// was made from.
 	{
 		API_DocumentFrom3DType settings = {};
-		err = ACAPI_Environment (APIEnv_GetDocumentFrom3DSettingsID, &database.databaseUnId, &settings);
+		err = Api::GetDocumentFrom3DSettings (&database.databaseUnId, &settings);
 		if (err != NoError) {
 			return Failed ("The 3D Document was created but its settings could not be read.", err);
 		}
@@ -502,7 +503,7 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 		const bool surfaced = ApplyUncutSurfaces (parameters, settings.attributeOptions);
 		if (aimed || hasShadowFill || surfaced) {
 			// Non-undoable as well, per the same documentation.
-			err = ACAPI_Environment (APIEnv_ChangeDocumentFrom3DSettingsID, &database.databaseUnId, &settings);
+			err = Api::ChangeDocumentFrom3DSettings (&database.databaseUnId, &settings);
 		}
 
 		// The settings read back carry a handle the kit's own example frees
@@ -579,7 +580,7 @@ GS::ObjectState SetDocumentFrom3DCommand::Execute (const GS::ObjectState& parame
 	// filter, cut planes and model display, and a command that built it from
 	// nothing would reset every one of them.
 	API_DocumentFrom3DType settings = {};
-	GSErrCode err = ACAPI_Environment (APIEnv_GetDocumentFrom3DSettingsID, &document, &settings);
+	GSErrCode err = Api::GetDocumentFrom3DSettings (&document, &settings);
 	if (err != NoError) {
 		return Failed ("Failed to read the 3D Document's settings.", err);
 	}
@@ -595,7 +596,7 @@ GS::ObjectState SetDocumentFrom3DCommand::Execute (const GS::ObjectState& parame
 		settings.effects3D = static_cast<short> (effects);
 	}
 
-	err = ACAPI_Environment (APIEnv_ChangeDocumentFrom3DSettingsID, &document, &settings);
+	err = Api::ChangeDocumentFrom3DSettings (&document, &settings);
 	BMhFree (reinterpret_cast<GSHandle> (settings.cutSetting.shapes));
 	settings.cutSetting.shapes = nullptr;
 	if (err != NoError) {
@@ -668,8 +669,8 @@ GS::ObjectState Set3DFilterCommand::Execute (const GS::ObjectState& parameters,
 	API_3DFilterAndCutSettings settings = {};
 	API_DocumentFrom3DType paper = {};
 	GSErrCode err = ofDocument
-		? ACAPI_Environment (APIEnv_GetDocumentFrom3DSettingsID, &document, &paper)
-		: ACAPI_Environment (APIEnv_Get3DImageSetsID, &settings);
+		? Api::GetDocumentFrom3DSettings (&document, &paper)
+		: Api::Get3DImageSets (&settings);
 	if (err != NoError) {
 		return Failed (ofDocument ? "Failed to read the 3D Document's settings."
 								  : "Failed to read the 3D filter settings.", err);
@@ -691,7 +692,7 @@ GS::ObjectState Set3DFilterCommand::Execute (const GS::ObjectState& parameters,
 
 	if (ofDocument) {
 		paper.filterAndCutSettings = settings;
-		err = ACAPI_Environment (APIEnv_ChangeDocumentFrom3DSettingsID, &document, &paper);
+		err = Api::ChangeDocumentFrom3DSettings (&document, &paper);
 		// The settings read back carry a handle the kit's own example frees
 		// after use; nothing here owns it.
 		BMhFree (reinterpret_cast<GSHandle> (paper.cutSetting.shapes));
@@ -704,7 +705,7 @@ GS::ObjectState Set3DFilterCommand::Execute (const GS::ObjectState& parameters,
 		// change and the window goes on showing what it already converted,
 		// which reads exactly like the command having done nothing.
 		bool convert = true;
-		err = ACAPI_Environment (APIEnv_Change3DImageSetsID, &settings, &convert);
+		err = Api::Change3DImageSets (&settings, &convert);
 		if (err != NoError) {
 			return Failed ("Failed to write the 3D filter settings.", err);
 		}
@@ -716,12 +717,12 @@ GS::ObjectState Set3DFilterCommand::Execute (const GS::ObjectState& parameters,
 	API_3DFilterAndCutSettings now = {};
 	if (ofDocument) {
 		API_DocumentFrom3DType again = {};
-		err = ACAPI_Environment (APIEnv_GetDocumentFrom3DSettingsID, &document, &again);
+		err = Api::GetDocumentFrom3DSettings (&document, &again);
 		now = again.filterAndCutSettings;
 		BMhFree (reinterpret_cast<GSHandle> (again.cutSetting.shapes));
 		again.cutSetting.shapes = nullptr;
 	} else {
-		err = ACAPI_Environment (APIEnv_Get3DImageSetsID, &now);
+		err = Api::Get3DImageSets (&now);
 	}
 	if (err != NoError) {
 		return Failed ("The 3D filter was written but could not be read back.", err);

@@ -1,4 +1,5 @@
 #include "LayoutCommands.hpp"
+#include "ApiCompat.hpp"
 
 namespace Loriini {
 
@@ -14,19 +15,19 @@ class VisitDatabase {
 public:
 	explicit VisitDatabase (const API_Guid& layout)
 	{
-		if (ACAPI_Database (APIDb_GetCurrentDatabaseID, &was) != NoError) {
+		if (Api::GetCurrentDatabase (&was) != NoError) {
 			return;
 		}
 		API_DatabaseInfo target = {};
 		target.typeID = APIWind_LayoutID;
 		target.databaseUnId.elemSetId = layout;
-		moved = ACAPI_Database (APIDb_ChangeCurrentDatabaseID, &target) == NoError;
+		moved = Api::ChangeCurrentDatabase (&target) == NoError;
 	}
 
 	~VisitDatabase ()
 	{
 		if (moved) {
-			ACAPI_Database (APIDb_ChangeCurrentDatabaseID, &was);
+			Api::ChangeCurrentDatabase (&was);
 		}
 	}
 
@@ -243,7 +244,7 @@ GS::ObjectState GetDrawingsCommand::Execute (const GS::ObjectState& parameters,
 		// is allowed to point at.
 		API_Box content = {};
 		API_Guid lookup = guid;
-		if (ACAPI_Database (APIDb_GetFullDrawingContentBoxID, &content, &lookup) == NoError) {
+		if (Api::GetFullDrawingContentBox (&content, &lookup) == NoError) {
 			one.Add ("contentBox", BoxState (content));
 		}
 		drawings.Push (one);
@@ -438,7 +439,7 @@ GS::ObjectState ArrangeDrawingsCommand::Execute (const GS::ObjectState& paramete
 			for (const API_Guid& guid : inOrder) {
 				GS::Array<API_Guid> one;
 				one.Push (guid);
-				const GSErrCode ordered = ACAPI_Element_Tool (one, APITool_BringToFront, nullptr);
+				const GSErrCode ordered = Api::ElementTool (one, APITool_BringToFront, nullptr);
 				if (ordered != NoError) {
 					GS::ObjectState failed;
 					failed.Add ("guid", APIGuidToString (guid));

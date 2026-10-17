@@ -1,4 +1,5 @@
 #include "Support.hpp"
+#include "ApiCompat.hpp"
 
 #include <cstring>
 
@@ -70,6 +71,19 @@ bool ReadInt (const GS::ObjectState& from, const char* name, Int32& into)
 	into = value;
 	return true;
 }
+
+
+#ifdef ServerMainVers_2700
+bool ReadInt (const GS::ObjectState& from, const char* name, API_AttributeIndex& into)
+{
+	Int32 value = 0;
+	if (!from.Get (name, value)) {
+		return false;
+	}
+	into = Api::AttributeIndexFromInt (value);
+	return true;
+}
+#endif
 
 
 bool ReadShort (const GS::ObjectState& from, const char* name, short& into)

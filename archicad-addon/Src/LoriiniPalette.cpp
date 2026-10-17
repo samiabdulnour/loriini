@@ -1,4 +1,5 @@
 #include "LoriiniPalette.hpp"
+#include "ApiCompat.hpp"
 
 #include "Launch.hpp"
 #include "ResourceIds.hpp"
@@ -96,16 +97,14 @@ void LoriiniPalette::SetMenuItemCheckedState (bool isChecked)
 	itemRef.menuResID = ID_PALETTE_MENU;
 	itemRef.itemIndex = ID_PALETTE_MENU_SHOW;
 
-	// The Archicad 26 spelling. Newer kits have ACAPI_MenuItem_GetMenuItemFlags
-	// for the same thing; this add-on is compiled against 26 only, so the
-	// older call is used directly rather than behind a version macro.
-	ACAPI_Interface (APIIo_GetMenuItemFlagsID, &itemRef, &itemFlags);
+	// ACAPI_Interface on 26, ACAPI_MenuItem_... from 27; ApiCompat.hpp picks.
+	Loriini::Api::GetMenuItemFlags (&itemRef, &itemFlags);
 	if (isChecked) {
 		itemFlags |= API_MenuItemChecked;
 	} else {
 		itemFlags &= ~API_MenuItemChecked;
 	}
-	ACAPI_Interface (APIIo_SetMenuItemFlagsID, &itemRef, &itemFlags);
+	Loriini::Api::SetMenuItemFlags (&itemRef, &itemFlags);
 }
 
 

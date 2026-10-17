@@ -102,6 +102,12 @@ void CopyAttributeName (const GS::UniString& from, API_Attr_Head& into, GS::UniS
 // keep what the project already had rather than becoming zero.
 bool ReadInt (const GS::ObjectState& from, const char* name, Int32& into);
 
+#ifdef ServerMainVers_2700
+// The same, for an attribute index -- a layer, a fill, a line type. On 26 an
+// index is an Int32 and the one above serves; from 27 it is a class.
+bool ReadInt (const GS::ObjectState& from, const char* name, API_AttributeIndex& into);
+#endif
+
 // The same, for a short -- pen indices, floor indices and the rest.
 bool ReadShort (const GS::ObjectState& from, const char* name, short& into);
 

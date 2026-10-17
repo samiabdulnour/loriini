@@ -46,7 +46,7 @@ pure astronomy from latitude, longitude and time.
 | M4 | Archicad read adapter | **Written, untested against Archicad** — every command verified against the Tapir sources; needs the [checklist](docs/archicad.md#manual-test-checklist) run at a workstation |
 | M5 | Archicad write-back | **Written, untested against Archicad** — same |
 | M6 | Validation against Ladybug | **Within tolerance** — 0.19 pt on the headline metric, 98.4% per-face; conditional on confirming north |
-| M7 | Loriini add-on | **Builds, not yet loaded** — nine commands and a menu, compiling in CI against the Archicad 26 kit. Nothing in it has run inside Archicad yet, and the projection matrix convention still needs calibrating. See [`docs/addon.md`](docs/addon.md) |
+| M7 | Loriini add-on | **Builds, not yet loaded** — nine commands and a menu, compiling in CI against the Archicad 26 to 30 kits, one add-on per version. Nothing in it has run inside Archicad yet, and the projection matrix convention still needs calibrating. See [`docs/addon.md`](docs/addon.md) |
 
 ## Architecture
 
@@ -94,7 +94,7 @@ printing a single number, so a wrong assumption is visible before a figure gets 
 
 ## Against a running Archicad
 
-With Archicad 26 open and the Loriini add-on installed (it carries the
+With Archicad open (26 to 30) and the Loriini add-on for its version installed (it carries the
 [Tapir](https://github.com/ENZYME-APD/tapir-archicad-automation) commands built in,
 so Tapir itself is no longer needed):
 

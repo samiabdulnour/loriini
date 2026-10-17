@@ -1,4 +1,5 @@
 #include "ModelCommands.hpp"
+#include "ApiCompat.hpp"
 
 #include "Triangulate.hpp"
 
@@ -101,7 +102,8 @@ class LayerNames {
 public:
 	GS::UniString Of (API_AttributeIndex index)
 	{
-		const auto found = known.find (index);
+		const Int32 key = Api::AttributeIndexToInt (index);
+		const auto found = known.find (key);
 		if (found != known.end ()) {
 			return found->second;
 		}
@@ -113,12 +115,13 @@ public:
 		if (ACAPI_Attribute_Get (&attribute) == NoError) {
 			name = GS::UniString (attribute.header.name);
 		}
-		known[index] = name;
+		known[key] = name;
 		return name;
 	}
 
 private:
-	std::map<API_AttributeIndex, GS::UniString> known;
+	// By number: from 27 an index is a class with no ordering to key a map on.
+	std::map<Int32, GS::UniString> known;
 };
 
 
@@ -129,7 +132,7 @@ std::map<short, GS::UniString> StoreyNames ()
 {
 	std::map<short, GS::UniString> names;
 	API_StoryInfo info = {};
-	if (ACAPI_Environment (APIEnv_GetStorySettingsID, &info) != NoError || info.data == nullptr) {
+	if (Api::GetStorySettings (&info) != NoError || info.data == nullptr) {
 		return names;
 	}
 	const short first = info.firstStory;
@@ -192,7 +195,7 @@ class ZonesInTheModel {
 public:
 	explicit ZonesInTheModel (GSErrCode& err)
 	{
-		err = ACAPI_Environment (APIEnv_Get3DImageSetsID, &settings);
+		err = Api::Get3DImageSets (&settings);
 		if (err != NoError) {
 			return;
 		}
@@ -218,7 +221,7 @@ public:
 		API_3DFilterAndCutSettings wanted = settings;
 		wanted.elemTypeFilter[API_ZoneID] = true;
 		bool convert = true;
-		err = ACAPI_Environment (APIEnv_Change3DImageSetsID, &wanted, &convert);
+		err = Api::Change3DImageSets (&wanted, &convert);
 		// Only a filter this *changed* has to be put back. The rebuild itself
 		// leaves nothing to restore.
 		changed = err == NoError && !wasShown;
@@ -230,7 +233,7 @@ public:
 			return;
 		}
 		bool convert = true;
-		ACAPI_Environment (APIEnv_Change3DImageSetsID, &settings, &convert);
+		Api::Change3DImageSets (&settings, &convert);
 	}
 
 	bool WasAlreadyShown () const		{ return wasShown; }
@@ -258,13 +261,13 @@ class WindowPutBack {
 public:
 	WindowPutBack ()
 	{
-		known = ACAPI_Database (APIDb_GetCurrentWindowID, &before) == NoError;
+		known = Api::GetCurrentWindow (&before) == NoError;
 	}
 
 	~WindowPutBack ()
 	{
 		if (known && before.typeID != APIWind_3DModelID) {
-			ACAPI_Automate (APIDo_ChangeWindowID, &before);
+			Api::ChangeWindow (&before);
 		}
 	}
 
@@ -364,7 +367,7 @@ bool VertexOf (const API_Tranmat& tranmat, Int32 index, Point3& out)
 	API_Component3D vertex = {};
 	vertex.header.typeID = API_VertID;
 	vertex.header.index = index;
-	if (ACAPI_3D_GetComponent (&vertex) != NoError) {
+	if (Api::Get3DComponent (&vertex) != NoError) {
 		return false;
 	}
 	const API_Coord3D placed = Placed (tranmat, vertex.vert.x, vertex.vert.y, vertex.vert.z);
@@ -390,7 +393,7 @@ bool AddBody (Int32 bodyIndex, Triangles& into, FaceCounts& counts)
 	API_Component3D body = {};
 	body.header.typeID = API_BodyID;
 	body.header.index = bodyIndex;
-	if (ACAPI_3D_GetComponent (&body) != NoError) {
+	if (Api::Get3DComponent (&body) != NoError) {
 		return false;
 	}
 	const API_Tranmat tranmat = body.body.tranmat;
@@ -400,7 +403,7 @@ bool AddBody (Int32 bodyIndex, Triangles& into, FaceCounts& counts)
 		API_Component3D pgon = {};
 		pgon.header.typeID = API_PgonID;
 		pgon.header.index = p;
-		if (ACAPI_3D_GetComponent (&pgon) != NoError) {
+		if (Api::Get3DComponent (&pgon) != NoError) {
 			continue;
 		}
 		++counts.polygons;
@@ -413,7 +416,7 @@ bool AddBody (Int32 bodyIndex, Triangles& into, FaceCounts& counts)
 			API_Component3D pedg = {};
 			pedg.header.typeID = API_PedgID;
 			pedg.header.index = e;
-			if (ACAPI_3D_GetComponent (&pedg) != NoError) {
+			if (Api::Get3DComponent (&pedg) != NoError) {
 				continue;
 			}
 			const Int32 edgeIndex = pedg.pedg.pedg;
@@ -427,7 +430,7 @@ bool AddBody (Int32 bodyIndex, Triangles& into, FaceCounts& counts)
 			API_Component3D edge = {};
 			edge.header.typeID = API_EdgeID;
 			edge.header.index = std::abs (edgeIndex);
-			if (ACAPI_3D_GetComponent (&edge) != NoError) {
+			if (Api::Get3DComponent (&edge) != NoError) {
 				continue;
 			}
 			Point3 point = {};
@@ -553,7 +556,7 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	// the model.
 	API_WindowInfo intoThe3D = {};
 	intoThe3D.typeID = APIWind_3DModelID;
-	ACAPI_Automate (APIDo_ChangeWindowID, &intoThe3D);
+	Api::ChangeWindow (&intoThe3D);
 
 	// The sight second, and this is the whole of why the first live run
 	// returned nothing.
@@ -565,7 +568,7 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	// and called it success. Nothing about that reads as "you did not select
 	// a sight".
 	void* sight = nullptr;
-	if (ACAPI_3D_GetCurrentWindowSight (&sight) != NoError || sight == nullptr) {
+	if (Api::GetCurrentWindowSight (&sight) != NoError || sight == nullptr) {
 		return Failed (
 			"Could not reach the 3D window's model. Open the 3D window so Archicad "
 			"generates the model, then run this again.",
@@ -576,10 +579,10 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	// leaving an add-on's choice of sight selected would change what every
 	// later 3D call in the session reads.
 	void* previous = nullptr;
-	ACAPI_3D_SelectSight (sight, &previous);
+	Api::SelectSight (sight, &previous);
 
 	Int32 bodyCount = 0;
-	GSErrCode err = ACAPI_3D_GetNum (API_BodyID, &bodyCount);
+	GSErrCode err = Api::Get3DCount (API_BodyID, &bodyCount);
 	if (err != NoError) {
 		return Failed ("Could not read the 3D model. Generate the 3D view and try again.", err);
 	}
@@ -611,7 +614,7 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 		API_Component3D body = {};
 		body.header.typeID = API_BodyID;
 		body.header.index = index;
-		if (ACAPI_3D_GetComponent (&body) != NoError) {
+		if (Api::Get3DComponent (&body) != NoError) {
 			continue;
 		}
 		const API_Guid owner = body.body.parent.guid;
@@ -630,7 +633,7 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	// side so the file is self-contained: a model and the sun positions cast
 	// against it must come from one statement of where north is.
 	API_PlaceInfo place = {};
-	if (ACAPI_Environment (APIEnv_GetPlaceSetsID, &place) != NoError) {
+	if (Api::GetPlaceSets (&place) != NoError) {
 		place = {};
 	}
 	out.F64 (place.latitude);
@@ -662,8 +665,7 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 		// The element id, which is what an --shadow-source "LABEL=prefix"
 		// rule matches on.
 		GS::UniString identifier;
-		ACAPI_Database (APIDb_GetElementInfoStringID,
-						const_cast<API_Guid*> (&entry.first), &identifier);
+		Api::GetElementInfoString (const_cast<API_Guid*> (&entry.first), &identifier);
 		out.Text (identifier);
 
 		// The Zone's own name, beside the element ID, exactly as Archicad's IFC
@@ -682,7 +684,7 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 
 	if (previous != nullptr) {
 		void* ignored = nullptr;
-		ACAPI_3D_SelectSight (previous, &ignored);
+		Api::SelectSight (previous, &ignored);
 	}
 
 	if (!out.Save (path)) {

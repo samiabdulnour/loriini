@@ -35,7 +35,15 @@
 cmake_minimum_required (VERSION 3.16)
 
 function (SetCompilerOptions target)
-	target_compile_features (${target} PUBLIC cxx_std_14)
+	# The language each kit's headers are written in, as Tapir sets it: 26's
+	# are C++14, 27 and 28 need 17, and from 29 they use 20.
+	if (AC_VERSION LESS 27)
+		target_compile_features (${target} PUBLIC cxx_std_14)
+	elseif (AC_VERSION LESS 29)
+		target_compile_features (${target} PUBLIC cxx_std_17)
+	else ()
+		target_compile_features (${target} PUBLIC cxx_std_20)
+	endif ()
 	target_compile_options (${target} PUBLIC "$<$<CONFIG:Debug>:-DDEBUG>")
 	if (WIN32)
 		target_compile_options (${target} PUBLIC /W3 /WX /wd4996 /Zc:wchar_t-)
@@ -123,12 +131,11 @@ if (WIN32)
 	set (AC_ADDON_PLATFORM Win)
 elseif (APPLE)
 	set (AC_ADDON_PLATFORM Mac)
-	# Both kinds of Mac Archicad 26 runs natively on. The kit's static library
-	# carries an Intel and an Apple silicon half, and an add-on without the
-	# half Archicad is running as is not loaded at all. 10.15 is the oldest
-	# macOS the kit's own frameworks say they run on.
+	# Both kinds of Mac Archicad runs natively on from 26. The kit's static
+	# library carries an Intel and an Apple silicon half, and an add-on
+	# without the half Archicad is running as is not loaded at all. The
+	# oldest macOS is set below, once the kit has said which it is.
 	set (CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "" FORCE)
-	set (CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "" FORCE)
 	set (CMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH "NO")
 else ()
 	message (FATAL_ERROR "An Archicad add-on is built on Windows or on a Mac, and there is no kit for ${CMAKE_HOST_SYSTEM_NAME}.")
@@ -161,6 +168,27 @@ if (EXISTS ${ACAPINC_FILE_LOCATION})
 	endif ()
 else ()
 	message (FATAL_ERROR "No ACAPinc.h under ${AC_API_DEVKIT_DIR}/Support/Inc; AC_API_DEVKIT_DIR is wrong.")
+endif ()
+
+# The oldest macOS is the one the kit's own frameworks declare: 10.15 for 26
+# and 27, 11 for 28 and 29, 14.1 for 30. Read rather than written down, so a
+# new kit cannot leave the add-on claiming a macOS its Archicad never ran on.
+if (APPLE)
+	file (READ "${AC_API_DEVKIT_DIR}/Support/Frameworks/GSRoot.framework/Versions/A/Resources/Info.plist" GSRootPlist)
+	string (REGEX REPLACE ".*<key>GSBuildNum</key>[^0-9]*([0-9]+).*" "\\1" GSBuildNum "${GSRootPlist}")
+	string (REGEX REPLACE ".*<key>LSMinimumSystemVersion</key>[^0-9]*([0-9.]+).*" "\\1" LORIINI_MINIMUM_MACOS "${GSRootPlist}")
+	set (CMAKE_OSX_DEPLOYMENT_TARGET ${LORIINI_MINIMUM_MACOS} CACHE STRING "" FORCE)
+endif ()
+
+# Where the kit keeps its static library moved in 27, from a folder per
+# platform to Lib itself.
+if (AC_VERSION LESS 27)
+	set (AC_API_LIB_DIR "${AC_API_DEVKIT_DIR}/Support/Lib/${AC_ADDON_PLATFORM}")
+	if (APPLE)
+		set (AC_API_LIB_DIR "${AC_API_DEVKIT_DIR}/Support/Lib/Mactel")
+	endif ()
+else ()
+	set (AC_API_LIB_DIR "${AC_API_DEVKIT_DIR}/Support/Lib")
 endif ()
 
 if (WIN32)
@@ -200,7 +228,9 @@ add_custom_target (
 
 get_filename_component (AddOnSourcesFolderAbsolute "${CMAKE_CURRENT_LIST_DIR}/${AddOnSourcesFolder}" ABSOLUTE)
 get_filename_component (AddOnResourcesFolderAbsolute "${CMAKE_CURRENT_LIST_DIR}/${AddOnResourcesFolder}" ABSOLUTE)
-get_filename_component (APIDevKitToolsFolderAbsolute "${AC_API_DEVKIT_DIR}/Support/Tools" ABSOLUTE)
+# The resource compiler is Tapir's copy of the kit's script, in Tools: the
+# kit stopped shipping its own in 30, and Tapir's knows what changed in 29.
+get_filename_component (APIDevKitSupportFolderAbsolute "${AC_API_DEVKIT_DIR}/Support" ABSOLUTE)
 
 if (WIN32)
 	add_custom_command (
@@ -208,7 +238,7 @@ if (WIN32)
 		DEPENDS ${AddOnResourceFiles}
 		COMMENT "Compiling resources..."
 		COMMAND ${CMAKE_COMMAND} -E make_directory "${ResourceObjectsDir}"
-		COMMAND python "${APIDevKitToolsFolderAbsolute}/CompileResources.py" "${AC_ADDON_LANGUAGE}" "${AC_API_DEVKIT_DIR}" "${AddOnSourcesFolderAbsolute}" "${AddOnResourcesFolderAbsolute}" "${ResourceObjectsDir}" "${ResourceObjectsDir}/${AC_ADDON_NAME}.res"
+		COMMAND python "${CMAKE_CURRENT_LIST_DIR}/Tools/CompileResources.py" "${AC_ADDON_LANGUAGE}" "${AC_VERSION}" "${APIDevKitSupportFolderAbsolute}" "${AddOnSourcesFolderAbsolute}" "${AddOnResourcesFolderAbsolute}" "${ResourceObjectsDir}" "${ResourceObjectsDir}/${AC_ADDON_NAME}.res"
 		COMMAND ${CMAKE_COMMAND} -E touch "${ResourceObjectsDir}/AddOnResources.stamp"
 	)
 else ()
@@ -225,7 +255,7 @@ else ()
 		DEPENDS ${AddOnResourceFiles}
 		COMMENT "Compiling resources..."
 		COMMAND ${CMAKE_COMMAND} -E make_directory "${ResourceObjectsDir}"
-		COMMAND "${Python3_EXECUTABLE}" "${APIDevKitToolsFolderAbsolute}/CompileResources.py" "${AC_ADDON_LANGUAGE}" "${AC_API_DEVKIT_DIR}" "${AddOnSourcesFolderAbsolute}" "${AddOnResourcesFolderAbsolute}" "${ResourceObjectsDir}" "${AddOnBundleContents}/Resources"
+		COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/Tools/CompileResources.py" "${AC_ADDON_LANGUAGE}" "${AC_VERSION}" "${APIDevKitSupportFolderAbsolute}" "${AddOnSourcesFolderAbsolute}" "${AddOnResourcesFolderAbsolute}" "${ResourceObjectsDir}" "${AddOnBundleContents}/Resources"
 		COMMAND ${CMAKE_COMMAND} -E copy "${AC_API_DEVKIT_DIR}/Support/Inc/PkgInfo" "${AddOnBundleContents}/PkgInfo"
 		COMMAND ${CMAKE_COMMAND} -E touch "${ResourceObjectsDir}/AddOnResources.stamp"
 	)
@@ -273,9 +303,6 @@ else ()
 	# newer kit cannot leave the plist claiming an older one.
 	string (TOLOWER "com.samiabdulnour.${AC_ADDON_NAME}" LORIINI_BUNDLE_IDENTIFIER)
 	string (REPLACE "_" "-" LORIINI_BUNDLE_IDENTIFIER "${LORIINI_BUNDLE_IDENTIFIER}")
-	file (READ "${AC_API_DEVKIT_DIR}/Support/Frameworks/GSRoot.framework/Versions/A/Resources/Info.plist" GSRootPlist)
-	string (REGEX REPLACE ".*<key>GSBuildNum</key>[^0-9]*([0-9]+).*" "\\1" GSBuildNum "${GSRootPlist}")
-	string (REGEX REPLACE ".*<key>LSMinimumSystemVersion</key>[^0-9]*([0-9.]+).*" "\\1" LORIINI_MINIMUM_MACOS "${GSRootPlist}")
 	set (LORIINI_BUNDLE_VERSION "${AC_VERSION}.0.0.${GSBuildNum}")
 	configure_file ("${AddOnResourcesFolderAbsolute}/RFIX.mac/Info.plist.in" "${CMAKE_BINARY_DIR}/Info.plist" @ONLY)
 	message (STATUS "${AC_ADDON_NAME}.bundle is ${LORIINI_BUNDLE_IDENTIFIER} ${LORIINI_BUNDLE_VERSION}, macOS ${LORIINI_MINIMUM_MACOS} and later")
@@ -302,17 +329,23 @@ else ()
 endif ()
 
 if (WIN32)
+	# A debug library where the kit has one; 26's does, and later kits
+	# may not.
+	set (AcapDebugLib "${AC_API_LIB_DIR}/ACAP_STATD.lib")
+	if (NOT EXISTS ${AcapDebugLib})
+		set (AcapDebugLib "${AC_API_LIB_DIR}/ACAP_STAT.lib")
+	endif ()
 	target_link_libraries (AddOn
-		"$<$<CONFIG:Debug>:${AC_API_DEVKIT_DIR}/Support/Lib/Win/ACAP_STATD.lib>"
-		"$<$<CONFIG:Release>:${AC_API_DEVKIT_DIR}/Support/Lib/Win/ACAP_STAT.lib>"
-		"$<$<CONFIG:RelWithDebInfo>:${AC_API_DEVKIT_DIR}/Support/Lib/Win/ACAP_STAT.lib>"
+		"$<$<CONFIG:Debug>:${AcapDebugLib}>"
+		"$<$<CONFIG:Release>:${AC_API_LIB_DIR}/ACAP_STAT.lib>"
+		"$<$<CONFIG:RelWithDebInfo>:${AC_API_LIB_DIR}/ACAP_STAT.lib>"
 	)
 else ()
 	# One library for every configuration: the Mac kit has no debug build of
 	# it, and the example links this one throughout.
 	find_library (CocoaFramework Cocoa)
 	target_link_libraries (AddOn
-		"${AC_API_DEVKIT_DIR}/Support/Lib/Mactel/libACAP_STAT.a"
+		"${AC_API_LIB_DIR}/libACAP_STAT.a"
 		${CocoaFramework}
 	)
 endif ()

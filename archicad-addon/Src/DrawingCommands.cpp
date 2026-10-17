@@ -1,4 +1,5 @@
 #include "DrawingCommands.hpp"
+#include "ApiCompat.hpp"
 #include "Support.hpp"
 
 // BMAllocateHandle, for the polygon memo handles.
@@ -344,7 +345,7 @@ GS::ObjectState CreateFillsCommand::Execute (const GS::ObjectState& parameters,
 			// (D73).
 			GS::UniString identifier;
 			if (one.Get ("elementId", identifier) && !identifier.IsEmpty ()) {
-				step = ACAPI_Database (APIDb_ChangeElementInfoStringID, &element.header.guid, &identifier);
+				step = Api::ChangeElementInfoString (&element.header.guid, &identifier);
 				if (step != NoError) {
 					failure = step;
 					failureText = "A fill was created but would not take its element ID.";
@@ -419,6 +420,12 @@ bool ReadJustification (const GS::UniString& name, API_JustID& into)
 // without complaint.
 GSErrCode BuildContent (const GS::UniString& text, API_TextType& data, API_ElementMemo& memo)
 {
+#ifdef ServerMainVers_2800
+	// From 28 the content is a UniString, owned by the memo and freed with it,
+	// so the byte-string trouble below is gone with the field's old type.
+	delete memo.textContent;
+	memo.textContent = new GS::UniString (text);
+#else
 	// UTF-8, not UTF-16. Archicad 26 reads `textContent` as a byte string, so
 	// a UTF-16 copy -- which is what Tapir 1.5.8 writes for this version --
 	// ends at the NUL that is the second byte of the first character. Measured
@@ -432,6 +439,7 @@ GSErrCode BuildContent (const GS::UniString& text, API_TextType& data, API_Eleme
 		return APIERR_MEMFULL;
 	}
 	memcpy (*memo.textContent, bytes, length);
+#endif
 
 	const GS::UniChar newline = GS::UniChar (char (10));
 	data.nLine = text.Count (newline) + 1;
@@ -627,7 +635,7 @@ GS::ObjectState CreateTextsCommand::Execute (const GS::ObjectState& parameters,
 
 			GS::UniString identifier;
 			if (one.Get ("elementId", identifier) && !identifier.IsEmpty ()) {
-				step = ACAPI_Database (APIDb_ChangeElementInfoStringID, &element.header.guid, &identifier);
+				step = Api::ChangeElementInfoString (&element.header.guid, &identifier);
 				if (step != NoError) {
 					failure = step;
 					failureText = "A text was created but would not take its element ID.";
@@ -1010,7 +1018,7 @@ GS::ObjectState PlaceDrawingsCommand::Execute (const GS::ObjectState& parameters
 			// own captured data instead. That makes a real Drawing, with a
 			// frame, a ratio and a row in the Drawing Manager; what it does
 			// not make is a link that updates from the JPEG later.
-			step = ACAPI_Database (APIDb_StartDrawingDataID);
+			step = Api::StartDrawingData ();
 			if (step != NoError) {
 				failure = step;
 				failureText = "Archicad would not start capturing a drawing.";
@@ -1053,7 +1061,7 @@ GS::ObjectState PlaceDrawingsCommand::Execute (const GS::ObjectState& parameters
 			// mode would take every element the rest of this run creates.
 			GSPtr drawingData = nullptr;
 			API_Box bounds = {};
-			const GSErrCode stopped = ACAPI_Database (APIDb_StopDrawingDataID, &drawingData, &bounds);
+			const GSErrCode stopped = Api::StopDrawingData (&drawingData, &bounds);
 			if (step != NoError || stopped != NoError || drawingData == nullptr) {
 				failure = step != NoError ? step : (stopped != NoError ? stopped : APIERR_GENERAL);
 				failureText = "Archicad refused to draw the picture into a drawing.";
@@ -1367,7 +1375,7 @@ GS::ObjectState CreateMeshCommand::Execute (const GS::ObjectState& parameters,
 		}
 		GS::UniString identifier;
 		if (parameters.Get ("elementId", identifier) && !identifier.IsEmpty ()) {
-			step = ACAPI_Database (APIDb_ChangeElementInfoStringID, &element.header.guid, &identifier);
+			step = Api::ChangeElementInfoString (&element.header.guid, &identifier);
 			if (step != NoError) {
 				failure = step;
 				failureText = "The mesh was created but would not take its element ID.";
@@ -1635,12 +1643,19 @@ GS::ObjectState CreateSlabsCommand::Execute (const GS::ObjectState& parameters,
 			// defaults may carry, would move it off the ground it was put on.
 			element.slab.offsetFromTop = 0.0;
 			if (hasSurface) {
+#ifdef ServerMainVers_2700
+				// An APIOptional from 27: assigning a value is what marks it set.
+				element.slab.topMat = surfaceIndex;
+				element.slab.sideMat = surfaceIndex;
+				element.slab.botMat = surfaceIndex;
+#else
 				element.slab.topMat.overridden = true;
 				element.slab.topMat.attributeIndex = surfaceIndex;
 				element.slab.sideMat.overridden = true;
 				element.slab.sideMat.attributeIndex = surfaceIndex;
 				element.slab.botMat.overridden = true;
 				element.slab.botMat.attributeIndex = surfaceIndex;
+#endif
 			}
 
 			step = BuildSlabPolygon (contours, element.slab, memo);
@@ -1661,7 +1676,7 @@ GS::ObjectState CreateSlabsCommand::Execute (const GS::ObjectState& parameters,
 
 			GS::UniString identifier;
 			if (one.Get ("elementId", identifier) && !identifier.IsEmpty ()) {
-				step = ACAPI_Database (APIDb_ChangeElementInfoStringID, &element.header.guid, &identifier);
+				step = Api::ChangeElementInfoString (&element.header.guid, &identifier);
 				if (step != NoError) {
 					failure = step;
 					failureText = "A slab was created but would not take its element ID.";

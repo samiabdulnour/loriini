@@ -3,25 +3,26 @@
     uv sync            # once, to install PyInstaller
     uv run python scripts/build_app.py
 
-Leaves ``dist/Loriini.exe`` and, beside it, the add-on it talks to --
-``dist/LoriiniAddOn_AC26_Win.apx`` -- so the folder is the whole handover: the
-program to double-click, and the one file to drop into Archicad's add-on
-folder. Neither needs Python or an install. ``How to install.txt`` and
+Leaves ``dist/Loriini.exe`` and, beside it, the add-ons it talks to -- one
+per Archicad version, ``dist/LoriiniAddOn_AC26_Win.apx`` to
+``LoriiniAddOn_AC30_Win.apx`` -- so the folder is the whole handover: the
+program to double-click, and the file for your Archicad to drop into its
+add-on folder. Neither needs Python or an install. ``How to install.txt`` and
 ``LICENSE.txt`` go in beside them, because whoever unzips the folder has not
 read ``docs/addon.md`` and should not have to. The licence in the folder is
 the terms a subscriber buys under, ``site/terms.html`` as plain text, not
 the repository's own source-available LICENSE, which governs the source.
 
 The same folder is built on GitHub by the ``Archicad add-on`` workflow and
-uploaded as the ``Loriini_AC26_Win`` artifact, for anybody without a checkout.
+uploaded as the ``Loriini_Win`` artifact, for anybody without a checkout.
 
 The add-on is not compiled here: that needs Visual Studio, which the office's
 machines cannot install, so the ``Archicad add-on`` workflow builds it on a
-runner. This takes it, in order, from
+runner. This takes them, in order, from
 
-    --addon PATH              a file you name
+    --addon PATH              files you name, the flag once per file
     archicad-addon/Build/...  a local build, where somebody has one
-    the workflow's artifact   the newest successful build of this branch,
+    the workflow's artifacts  the newest successful build of this branch,
                               downloaded with the GitHub CLI (``gh``)
 
 and says plainly when it found none, rather than leaving a dist folder that
@@ -51,7 +52,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from sun_study import AUTHOR, PRODUCT, __version__, terms
+from sun_study import ARCHICAD_VERSIONS, AUTHOR, PRODUCT, __version__, terms
 
 ROOT = Path(__file__).resolve().parent.parent
 #: What the built file is called. Deliberately not ``PRODUCT``: everything
@@ -76,13 +77,13 @@ ICON = ROOT / "assets" / "loriini.ico"
 #: the executable, silently. docs/restructure.md has the measurement.
 SPEC = ROOT / "Loriini.spec"
 
-#: The add-on the program talks to, as the workflow names its artifact and its
-#: file. One Archicad version: an .apx is compiled against one major version
-#: and the office runs 26.
-ADDON = "LoriiniAddOn_AC26_Win"
+#: The add-ons the program talks to, as the workflow names its artifacts and
+#: their files: one per Archicad version, because an .apx is compiled against
+#: one major version and loads in no other.
+ADDON_PATTERN = "LoriiniAddOn_AC*_Win"
 
-#: Where a local build of it lands, for the machine that has Visual Studio.
-LOCAL_ADDON = ROOT / "archicad-addon" / "Build" / "RelWithDebInfo" / f"{ADDON}.apx"
+#: Where a local build lands, for the machine that has Visual Studio.
+LOCAL_BUILD = ROOT / "archicad-addon" / "Build" / "RelWithDebInfo"
 
 #: The workflow that builds it, by file name, which is what ``gh`` takes.
 ADDON_WORKFLOW = "archicad-addon.yml"
@@ -162,24 +163,28 @@ def install_note(today: dt.date | None = None) -> str:
         built += f" from {branch}"
     if commit:
         built += f" at commit {commit}"
-    return f"""{PRODUCT} {__version__} for Archicad 26
+    first, last = ARCHICAD_VERSIONS[0], ARCHICAD_VERSIONS[-1]
+    return f"""{PRODUCT} {__version__} for Archicad {first} to {last}
 
 Everything a workstation needs. None of it needs Python, an installer or
 administrator rights.
 
-  {NAME}.exe                  the program
-  {ADDON}.apx    the Archicad 26 add-on, with Tapir's commands
-                               built in
+  {NAME}.exe                  the program, the same for every Archicad
+  LoriiniAddOn_AC{first}_Win.apx    the add-on for Archicad {first}, with Tapir's
+                               commands built in, and one beside it for each
+                               version to Archicad {last}
   {LICENCE_COPY}                  the licence terms, as at {TERMS_ADDRESS}
 
 To install
 
-1. Copy {NAME}.exe and {ADDON}.apx into one folder of your
-   own, for example
+1. Copy {NAME}.exe and the add-on for your Archicad -- the number in its
+   name is the version, LoriiniAddOn_AC27_Win.apx for Archicad 27 -- into
+   one folder of your own, for example
        C:\\Users\\<you>\\Documents\\Loriini\\Add-Ons
    Keep the two together: the Loriini menu in Archicad starts the
-   {NAME}.exe it finds beside the add-on.
-2. In Archicad 26, open Options > Add-On Manager, add that folder, and
+   {NAME}.exe it finds beside the add-on. An add-on for another version
+   will not load, so copy only the one that matches.
+2. In Archicad, open Options > Add-On Manager, add that folder, and
    restart Archicad.
 3. Start {PRODUCT} from its menu in Archicad, or double-click {NAME}.exe.
 
@@ -187,7 +192,8 @@ A separate Tapir add-on is not needed, and can be removed once this one
 loads.
 
 To update, close Archicad and replace both files with the ones from a newer
-folder.
+folder. After moving to a newer Archicad, swap the add-on for the one with
+the new version's number.
 
 {PRODUCT} is a prototype. Its figures are not validated for a DA submission.
 
@@ -215,17 +221,18 @@ def add_notes(dist: Path) -> None:
     print(f"added  {dist / INSTALL_NOTE}  and  {LICENCE_COPY}")
 
 
-def fetch_addon(into: Path) -> Path | None:
-    """The newest successful add-on build of this branch, from GitHub.
+def fetch_addons(into: Path) -> list[Path]:
+    """The newest successful add-on build of this branch, from GitHub: every
+    version's .apx it made.
 
     Through ``gh`` because an artifact is behind a login: it is the one tool
-    that already holds one on a machine where somebody pushes. ``None``, with
+    that already holds one on a machine where somebody pushes. Empty, with
     the reason printed, when there is no ``gh``, no login or no build.
     """
     gh = shutil.which("gh")
     if gh is None:
-        print("  no GitHub CLI (gh) on this machine to fetch the add-on with.")
-        return None
+        print("  no GitHub CLI (gh) on this machine to fetch the add-ons with.")
+        return []
     listing = [gh, "run", "list", "--workflow", ADDON_WORKFLOW, "--status", "success"]
     branch = _branch()
     if branch:
@@ -236,10 +243,10 @@ def fetch_addon(into: Path) -> Path | None:
     if found.returncode != 0 or not run_id or run_id == "null":
         where = f" of {branch}" if branch else ""
         print(f"  no successful add-on build{where} to fetch. {found.stderr.strip()}".rstrip())
-        return None
-    print(f"  fetching the add-on from build {run_id}...")
+        return []
+    print(f"  fetching the add-ons from build {run_id}...")
     fetched = subprocess.run(
-        [gh, "run", "download", run_id, "--name", ADDON, "--dir", str(into)],
+        [gh, "run", "download", run_id, "--pattern", ADDON_PATTERN, "--dir", str(into)],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -247,37 +254,46 @@ def fetch_addon(into: Path) -> Path | None:
     )
     if fetched.returncode != 0:
         print(f"  the download failed: {fetched.stderr.strip()}")
-        return None
-    return next(iter(sorted(into.rglob("*.apx"))), None)
+        return []
+    return sorted(into.rglob(f"{ADDON_PATTERN}.apx"))
 
 
-def find_addon(named: Path | None, scratch: Path) -> Path | None:
-    """Where the add-on is, by the order the module docstring gives."""
-    if named is not None:
-        if named.is_file():
-            return named
-        print(f"  no add-on at {named}.")
-        return None
-    if LOCAL_ADDON.is_file():
-        return LOCAL_ADDON
-    return fetch_addon(scratch)
+def find_addons(named: list[Path], scratch: Path) -> list[Path]:
+    """Where the add-ons are, by the order the module docstring gives."""
+    if named:
+        missing = [path for path in named if not path.is_file()]
+        for path in missing:
+            print(f"  no add-on at {path}.")
+        return [] if missing else list(named)
+    local = sorted(LOCAL_BUILD.glob(f"{ADDON_PATTERN}.apx"))
+    if local:
+        return local
+    return fetch_addons(scratch)
 
 
-def add_addon(dist: Path, named: Path | None) -> bool:
-    """Put the add-on beside the executable. True when it is there."""
+def add_addons(dist: Path, named: list[Path]) -> bool:
+    """Put the add-ons beside the executable, each under its own name, which
+    says its Archicad version. True when at least one is there; a version
+    without one is named, so a folder short of one is not mistaken for whole."""
     with tempfile.TemporaryDirectory() as scratch:
-        found = find_addon(named, Path(scratch))
-        if found is None:
+        found = find_addons(named, Path(scratch))
+        if not found:
             print(
-                f"\nNOT IN dist: the add-on. Download {ADDON} from the latest "
-                "'Archicad add-on' run on GitHub and run this with --addon <file>, "
-                "or log in with 'gh auth login' so it can be fetched."
+                f"\nNOT IN dist: the add-ons. Download the {ADDON_PATTERN} artifacts "
+                "from the latest 'Archicad add-on' run on GitHub and run this with "
+                "--addon <file> for each, or log in with 'gh auth login' so they "
+                "can be fetched."
             )
             return False
         dist.mkdir(parents=True, exist_ok=True)
-        placed = dist / f"{ADDON}.apx"
-        shutil.copy2(found, placed)
-    print(f"added  {placed}  (from {found})")
+        for addon in found:
+            placed = dist / addon.name
+            shutil.copy2(addon, placed)
+            print(f"added  {placed}  (from {addon})")
+    present = {path.name for path in dist.glob(f"{ADDON_PATTERN}.apx")}
+    absent = [v for v in ARCHICAD_VERSIONS if f"LoriiniAddOn_AC{v}_Win.apx" not in present]
+    if absent:
+        print(f"  no add-on in dist for Archicad {', '.join(map(str, absent))}.")
     return True
 
 
@@ -289,16 +305,22 @@ def main(argv: list[str] | None = None) -> int:
 
         return build_app_macos.main(argv)
     parser = argparse.ArgumentParser(description="Build Loriini.exe and gather the add-on.")
-    parser.add_argument("--addon", type=Path, help="the add-on .apx to put beside the program")
+    parser.add_argument(
+        "--addon",
+        type=Path,
+        action="append",
+        default=[],
+        help="an add-on .apx to put beside the program; once for each version",
+    )
     parser.add_argument(
         "--addon-only",
         action="store_true",
-        help="only put the add-on into dist; do not rebuild the program",
+        help="only put the add-ons into dist; do not rebuild the program",
     )
     arguments = parser.parse_args(argv)
     if arguments.addon_only:
         add_notes(ROOT / "dist")
-        return 0 if add_addon(ROOT / "dist", arguments.addon) else 1
+        return 0 if add_addons(ROOT / "dist", arguments.addon) else 1
 
     try:
         import PyInstaller  # noqa: F401
@@ -371,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
     # Not a failure of the build, and not a silent success either: a dist
     # folder without the add-on is half a handover. Last, so that when it is
     # missing the line saying so is the last thing printed.
-    return 0 if add_addon(ROOT / "dist", arguments.addon) else 1
+    return 0 if add_addons(ROOT / "dist", arguments.addon) else 1
 
 
 if __name__ == "__main__":

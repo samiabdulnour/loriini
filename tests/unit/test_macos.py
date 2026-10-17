@@ -85,12 +85,16 @@ def test_off_both_the_home_folder_is_the_fallback(
 
 def test_the_install_advice_names_this_machines_add_on() -> None:
     """A colleague told to install an .apx on a Mac goes looking for a file
-    that will never load there."""
+    that will never load there. The version is theirs to fill in, and the
+    advice says so."""
     expected = (
-        "LoriiniAddOn_AC26_Mac.bundle" if sys.platform == "darwin" else "LoriiniAddOn_AC26_Win.apx"
+        "LoriiniAddOn_AC<version>_Mac.bundle"
+        if sys.platform == "darwin"
+        else "LoriiniAddOn_AC<version>_Win.apx"
     )
     assert expected == ADDON_FILE
     assert ADDON_FILE in connection.INSTALL_LORIINI
+    assert "your Archicad version" in connection.INSTALL_LORIINI
 
 
 # -- the Mac kit, unpacked as what it is --------------------------------------
@@ -229,6 +233,9 @@ def test_the_mac_install_note_names_the_mac_files_and_the_mac_step(mac_build: An
 
     for named in ("Loriini.app", "LoriiniAddOn_AC26_Mac.bundle", "LICENSE.txt"):
         assert named in note
+    # Every version the add-on is built for, and which file is whose.
+    assert "Archicad 26 to 30" in note
+    assert "LoriiniAddOn_AC27_Mac.bundle for Archicad 27" in note
     assert ".exe" not in note and ".apx" not in note
     # The step a PC does not have: an unsigned program is held back until the
     # quarantine is taken off, and the add-on with it.
@@ -241,11 +248,12 @@ def test_the_install_note_says_so_when_the_program_needs_a_newer_mac(mac_build: 
     assert "macOS 14.0 or later" in mac_build.install_note((14, 0))
 
 
-def _bundle(where: Path) -> Path:
-    bundle = where / "LoriiniAddOn_AC26_Mac.bundle"
+def _bundle(where: Path, version: int = 26) -> Path:
+    name = f"LoriiniAddOn_AC{version}_Mac"
+    bundle = where / f"{name}.bundle"
     (bundle / "Contents" / "MacOS").mkdir(parents=True)
     (bundle / "Contents" / "Info.plist").write_text("<plist/>", encoding="utf-8")
-    (bundle / "Contents" / "MacOS" / "LoriiniAddOn_AC26_Mac").write_bytes(b"\xcf\xfa\xed\xfe")
+    (bundle / "Contents" / "MacOS" / name).write_bytes(b"\xcf\xfa\xed\xfe")
     return bundle
 
 
@@ -262,10 +270,10 @@ def test_the_add_on_is_found_inside_the_zip_the_workflow_uploads(
     scratch = tmp_path / "scratch"
     scratch.mkdir()
 
-    found = mac_build.find_addon(archive, scratch)
+    found = mac_build.find_addons([archive], scratch)
 
-    assert found is not None and found.name == "LoriiniAddOn_AC26_Mac.bundle"
-    assert (found / "Contents" / "Info.plist").read_text(encoding="utf-8") == "<plist/>"
+    assert [bundle.name for bundle in found] == ["LoriiniAddOn_AC26_Mac.bundle"]
+    assert (found[0] / "Contents" / "Info.plist").read_text(encoding="utf-8") == "<plist/>"
 
 
 def test_the_add_on_is_placed_beside_the_program(mac_build: Any, tmp_path: Path) -> None:
@@ -274,8 +282,8 @@ def test_the_add_on_is_placed_beside_the_program(mac_build: Any, tmp_path: Path)
     bundle = _bundle(tmp_path / "built")
     dist = tmp_path / "dist"
 
-    assert mac_build.add_addon(dist, bundle)
-    assert mac_build.add_addon(dist, bundle)
+    assert mac_build.add_addons(dist, [bundle])
+    assert mac_build.add_addons(dist, [bundle])
 
     placed = dist / "LoriiniAddOn_AC26_Mac.bundle"
     assert (placed / "Contents" / "MacOS" / "LoriiniAddOn_AC26_Mac").is_file()
@@ -285,9 +293,25 @@ def test_the_add_on_is_placed_beside_the_program(mac_build: Any, tmp_path: Path)
 def test_a_missing_add_on_is_said_rather_than_shrugged_at(
     mac_build: Any, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert not mac_build.add_addon(tmp_path / "dist", tmp_path / "nowhere.bundle")
+    assert not mac_build.add_addons(tmp_path / "dist", [tmp_path / "nowhere.bundle"])
     assert "NOT IN dist" in capsys.readouterr().out
     assert not (tmp_path / "dist" / "LoriiniAddOn_AC26_Mac.bundle").exists()
+
+
+def test_every_versions_add_on_goes_in_under_its_own_name(
+    mac_build: Any, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One bundle per Archicad version, side by side, and a version the folder
+    has none for is named rather than passed over."""
+    built = [_bundle(tmp_path / str(version), version) for version in (26, 27)]
+    dist = tmp_path / "dist"
+
+    assert mac_build.add_addons(dist, built)
+
+    for version in (26, 27):
+        name = f"LoriiniAddOn_AC{version}_Mac"
+        assert (dist / f"{name}.bundle" / "Contents" / "MacOS" / name).is_file()
+    assert "no add-on in dist for Archicad 28, 29, 30" in capsys.readouterr().out
 
 
 def test_the_program_claims_the_macos_its_binaries_need(

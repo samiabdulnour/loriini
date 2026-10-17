@@ -6593,7 +6593,7 @@ class Window:
                 text=(
                     "Archicad is running but the Loriini add-on is not installed, "
                     "or is too old to carry Tapir's commands, and nothing here works "
-                    f"without it. Install the current {ADDON_FILE}, "
+                    f"without it. Install the current {ADDON_FILE} for your Archicad version, "
                     "restart Archicad, then press Refresh."
                 ),
                 foreground="#a33",

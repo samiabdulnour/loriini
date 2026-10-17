@@ -9,14 +9,17 @@ name: Archicad add-on
 # at all. It carries Tapir's commands built in (archicad-addon/Tapir), so it is
 # the only add-on a workstation needs.
 #
-# The recipe is Tapir's, which is the only combination proven to build an
-# Archicad 26 add-on: a windows-2022 runner, the 26.3000 kit from Graphisoft's
-# public releases, and v142 rather than the runner's own v143. Archicad 26's
-# kit predates v143 and does not compile cleanly under it.
+# One add-on per Archicad version, 26 to 30: an .apx is compiled against one
+# major version and loads in no other. The recipe is Tapir's, which builds the
+# same versions the same way: a windows-2022 runner, each version's kit from
+# Graphisoft's public releases, and v142 rather than the runner's own v143 up
+# to 28 -- those kits predate v143 and do not compile cleanly under it -- with
+# v143 from 29, whose kits are C++20 and need it.
 #
-# The second job makes the handover: this add-on beside Loriini.exe, with an
-# install note and the licence, uploaded as the Loriini_AC26_Win artifact.
-# That folder is what a colleague downloads; see the job for when it runs.
+# The second job makes the handover: every version's add-on beside
+# Loriini.exe, with an install note and the licence, uploaded as the
+# Loriini_Win artifact. That folder is what a colleague downloads; see the job
+# for when it runs.
 
 on:
   push:
@@ -46,12 +49,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The office runs Archicad 26. The matrix exists so that moving to
-          # 27 is a line here rather than a rewrite -- an .apx is compiled
-          # against one major version and cannot be shared across them.
+          # A new Archicad is a line here, its kit's release from
+          # github.com/GRAPHISOFT/archicad-api-devkit, and a line in
+          # ARCHICAD_VERSIONS (src/sun_study/__init__.py) -- plus whatever
+          # the compiler finds that Src/ApiCompat.hpp has to learn.
           - archicad: 26
             devkit: https://github.com/GRAPHISOFT/archicad-api-devkit/releases/download/26.3000/API.Development.Kit.WIN.26.3000.zip
             toolset: v142
+          - archicad: 27
+            devkit: https://github.com/GRAPHISOFT/archicad-api-devkit/releases/download/27.3001/API.Development.Kit.WIN.27.3001.zip
+            toolset: v142
+          - archicad: 28
+            devkit: https://github.com/GRAPHISOFT/archicad-api-devkit/releases/download/28.3001/API.Development.Kit.WIN.28.3001.zip
+            toolset: v142
+          - archicad: 29
+            devkit: https://github.com/GRAPHISOFT/archicad-api-devkit/releases/download/29.3000/API.Development.Kit.WIN.29.3000.zip
+            toolset: v143
+          - archicad: 30
+            devkit: https://github.com/GRAPHISOFT/archicad-api-devkit/releases/download/30.3000/API.Development.Kit.WIN.30.3000.zip
+            toolset: v143
 
     steps:
       - uses: actions/checkout@v4
@@ -139,9 +155,10 @@ jobs:
           path: archicad-addon/Build/RelWithDebInfo/LoriiniAddOn_AC${{ matrix.archicad }}_Win.apx
           if-no-files-found: error
 
-  # The folder a colleague downloads: the add-on above and the program beside
-  # it, built from the same commit, with the install note and the licence --
-  # the Loriini_AC26_Win artifact on the run's page. scripts/build_app.py
+  # The folder a colleague downloads: every version's add-on above and the
+  # program beside them, built from the same commit, with the install note and
+  # the licence -- the Loriini_Win artifact on the run's page. Only when every
+  # version built: a folder missing one would look whole and not be. scripts/build_app.py
   # makes it here exactly as it does on a PC, so the two cannot drift apart.
   #
   # Not on a pull request, whose push has already built the same commit. And
@@ -169,14 +186,20 @@ jobs:
       - name: Install the project
         run: uv sync --python 3.12
 
-      - name: Take the add-on built above
+      - name: Take the add-ons built above
         uses: actions/download-artifact@v4
         with:
-          name: LoriiniAddOn_AC26_Win
+          pattern: LoriiniAddOn_AC*_Win
+          merge-multiple: true
           path: addon
 
       - name: Build the program and gather the folder
-        run: uv run python scripts/build_app.py --addon addon/LoriiniAddOn_AC26_Win.apx
+        shell: bash
+        run: |
+          set -euo pipefail
+          addons=()
+          for apx in addon/LoriiniAddOn_AC*_Win.apx; do addons+=(--addon "$apx"); done
+          uv run python scripts/build_app.py "${addons[@]}"
 
       # A build that succeeds is not yet a program that starts: a module the
       # scan missed fails only when something imports it. So it is started
@@ -202,6 +225,6 @@ jobs:
       - name: Upload the folder
         uses: actions/upload-artifact@v4
         with:
-          name: Loriini_AC26_Win
+          name: Loriini_Win
           path: dist/
           if-no-files-found: error
