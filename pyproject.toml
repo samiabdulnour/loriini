@@ -32,6 +32,10 @@ dependencies = [
     # data, like tzdata: a Mac's own bundle lacked the root NSW's aerial
     # imagery is signed under, and a run lost every aerial to it.
     "certifi>=2024.2.2",
+    # Overture Maps' building footprints for the context model (site.overture):
+    # DuckDB reads them straight from Overture's public bucket. OpenStreetMap
+    # alone left whole streets of Campsie unbuilt.
+    "duckdb>=1.1",
 ]
 
 [project.optional-dependencies]
