@@ -2779,6 +2779,45 @@ class Job:
     args: list[str] = field(default_factory=list)
 
 
+class MasterChooser(tk.Toplevel):
+    """Which master layout the sheets go on: one, from the project's own.
+
+    ``result`` is the name chosen, or ``None`` when the window was closed
+    without one.
+    """
+
+    def __init__(self, parent: tk.Misc, masters: Sequence[str]) -> None:
+        super().__init__(parent)
+        self.title("Master layout")
+        self.transient(parent)  # type: ignore[call-overload]
+        self.result: str | None = None
+        ttk.Label(
+            self,
+            text="Which master layout should the sheets go on?",
+            padding=(16, 14, 16, 6),
+        ).pack(anchor="w")
+        self.names = tk.Listbox(self, height=min(14, len(masters)), width=48, exportselection=False)
+        for name in masters:
+            self.names.insert("end", name)
+        self.names.pack(fill="both", expand=True, padx=16)
+        self.names.bind("<Double-Button-1>", lambda _event: self._done())
+        buttons = ttk.Frame(self, padding=(16, 10, 16, 14))
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text="Cancel", command=self.destroy).pack(side="right")
+        ttk.Button(buttons, text="Use this one", command=self._done).pack(side="right", padx=8)
+        self.bind("<Return>", lambda _event: self._done())
+        self.bind("<Escape>", lambda _event: self.destroy())
+        self.grab_set()
+        self.names.focus_set()
+
+    def _done(self) -> None:
+        picked = self.names.curselection()  # type: ignore[no-untyped-call]
+        if not picked:
+            return
+        self.result = str(self.names.get(picked[0]))
+        self.destroy()
+
+
 class Window:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -5905,6 +5944,28 @@ class Window:
             empty=empty,
         )
 
+    def _have_master(self) -> bool:
+        """A master layout to put the sheets on, asked for now if it is blank.
+
+        Asked rather than guessed, and before the run rather than in the
+        middle of it, where the command has nobody to ask. False when there
+        is nothing to ask from, or nobody answered.
+        """
+        if self.master.get().strip():
+            return True
+        masters = tuple(self.master.cget("values") or ())
+        if not masters:
+            # Nothing read yet, or a project with no masters: the command
+            # says which, with the list, if it comes to make a sheet.
+            return True
+        dialog = MasterChooser(self.root, masters)
+        self.root.wait_window(dialog)
+        if dialog.result is None:
+            self._write("No master layout chosen, so nothing was run.")
+            return False
+        self.master.set(dialog.result)
+        return True
+
     def _tell(self, title: str, message: str) -> None:
         """A sentence somebody has to read before anything else happens.
 
@@ -6630,13 +6691,16 @@ class Window:
         )
         self._fill(self.communal, choices, ("Zone.", "Calc."))
         self._offer_zone_names()
-        # "VERTICAL - No Scale" before "COVER/NO SCALE": both say no scale and
-        # one of them is a cover sheet.
-        self._fill(
-            self.master,
-            found.masters,
-            ("VERTICAL - No Scale", "VERTICAL NO SCALE", "No Scale", "A1"),
-        )
+        # Offered, never picked: which title block a study is issued on is the
+        # person's to say, and Run asks when it is blank (asked 17 October
+        # 2026). A name chosen once stays chosen across a Refresh.
+        self._fill(self.master, found.masters, (), guess=False)
+        # A project never located has nothing for a site to line up with, so
+        # the site goes on its origin, at a corner of the lot. A located one
+        # keeps whatever the page says.
+        if not found.located:
+            self.site_anchor.set("Project origin")
+            self.site_origin.set("Bottom-left corner")
         self._fill(self.combination, found.combinations, ("IFC ARCH", "IFC"))
         self._offer_plan_combination(found.combinations)
         self._fill(self.shadow_subset, found.subsets, ("SHADOW",))
@@ -6777,14 +6841,25 @@ class Window:
                 return
         self.plan_combination.set("")
 
-    def _fill(self, box: ttk.Combobox, values: tuple[str, ...], prefer: tuple[str, ...]) -> None:
+    def _fill(
+        self,
+        box: ttk.Combobox,
+        values: tuple[str, ...],
+        prefer: tuple[str, ...],
+        *,
+        guess: bool = True,
+    ) -> None:
         """Offer these, and pick the likeliest -- without overriding a choice.
 
         Preferences are ordered fragments rather than exact names, because the
-        thing being guessed at is an office's own naming.
+        thing being guessed at is an office's own naming. ``guess=False``
+        offers them and picks nothing: a choice left blank is asked for.
         """
         box.config(values=list(values))
         if not values or box.get() in values:
+            return
+        if not guess:
+            box.set("")
             return
         for want in prefer:
             match = next((v for v in values if want.casefold() in v.casefold()), None)
@@ -8083,6 +8158,8 @@ class Window:
             return
         if self.do_site.get() and not self.site_address.get().strip():
             self._write("Site analysis is ticked but has no address. Type one in its section.")
+            return
+        if any(tick.get() for _name, tick, _section in self._studies()) and not self._have_master():
             return
         queued = self.jobs()
         if not queued:

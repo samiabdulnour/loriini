@@ -22,13 +22,14 @@ import threading
 import time
 import types
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
+from sun_study.archicad import layout as layout_module
 from sun_study.archicad import naming
 from sun_study.archicad.connection import (
     DEFAULT_PORT,
@@ -180,6 +181,18 @@ class FakeTransport:
             else payload["command"]
             for payload in self.sent
         ]
+
+
+@pytest.fixture(autouse=True)
+def a_person_who_picks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Somebody at the terminal, asked which master layout the sheets go on,
+    who picks the A1 at 1:200 where the project has one. A test about the
+    asking itself replaces them."""
+
+    def pick(names: Sequence[str]) -> str:
+        return next((name for name in names if "1:200" in name), names[0])
+
+    monkeypatch.setattr(layout_module, "ask_master", pick)
 
 
 def texts_sent(transport: Any) -> list[dict[str, Any]]:
@@ -2751,14 +2764,14 @@ def test_the_storeys_are_pinned_to_the_scale_the_run_reports() -> None:
     assert all(entry["viewSettings"]["drawingScale"] == 200 for entry in pinned)
 
 
-def test_a_layout_is_built_on_a_master_that_names_the_scale() -> None:
+def test_a_layout_is_built_on_the_master_the_person_chose() -> None:
     """CreateLayout refuses a Layout with no master.
 
     Its schema says only ``layoutName`` is required; the implementation fails
     with -2130313112, "Either masterLayoutName or masterNavigatorItemId must be
     provided". An office keeps dozens of masters and they are not
-    interchangeable, so the one whose name states the scale wins and the run
-    reports it.
+    interchangeable, so the person is asked (here, ``a_person_who_picks``)
+    and the run reports the one they chose.
     """
     connection, transport = connect(_layout_responses())
     report = layout_results(connection, [8, 9], layout_name="Solar Analysis", scale=200.0)
@@ -2766,7 +2779,7 @@ def test_a_layout_is_built_on_a_master_that_names_the_scale() -> None:
     sent = transport.parameters_for("CreateLayout")["layoutsData"]
     assert sent == [
         {"layoutName": "Solar Analysis", "masterNavigatorItemId": {"guid": "m-a1-200"}}
-    ], "the 1:200 master, not the first in the book"
+    ], "the master the person picked, not the first in the book"
     assert report.master_name == "A1 - VERTICAL 1:200"
     assert "on master 'A1 - VERTICAL 1:200'" in report.describe()
 
@@ -3081,10 +3094,32 @@ def test_a_named_master_that_does_not_exist_lists_the_ones_that_do() -> None:
 def test_a_master_is_matched_past_spacing_and_case() -> None:
     connection, _ = connect({"GetNavigatorItemTree": _layout_book_tree()})
     masters = master_layouts(connection)
-    assert choose_master(masters, "a1 -  vertical 1:100", 200.0).name == "A1 - VERTICAL 1:100"
-    assert choose_master(masters, None, 50.0).name == "A3 - HORIZONTAL", (
-        "no master names 1:50, so the first in the book is used"
-    )
+    assert choose_master(masters, "a1 -  vertical 1:100").name == "A1 - VERTICAL 1:100"
+
+
+def test_an_unnamed_master_is_asked_for_and_never_guessed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Which title block a study is issued on is the person's to say. With
+    somebody to ask, they are asked from the project's own list; with nobody,
+    the run stops and names them, rather than taking the first in the book."""
+    connection, _ = connect({"GetNavigatorItemTree": _layout_book_tree()})
+    masters = master_layouts(connection)
+    offered: list[list[str]] = []
+
+    def ask(names: Sequence[str]) -> str:
+        offered.append(list(names))
+        return "A1 - VERTICAL 1:100"
+
+    monkeypatch.setattr(layout_module, "ask_master", ask)
+    assert choose_master(masters, None).name == "A1 - VERTICAL 1:100"
+    assert offered == [[master.name for master in masters]]
+
+    monkeypatch.setattr(layout_module, "ask_master", None)
+    with pytest.raises(ArchicadError, match="--master-layout") as stopped:
+        choose_master(masters, None)
+    for master in masters:
+        assert master.name in str(stopped.value)
 
 
 def test_a_master_is_found_by_the_words_in_its_name() -> None:
@@ -3103,10 +3138,10 @@ def test_a_master_is_found_by_the_words_in_its_name() -> None:
         NavigatorItem("m3", "DA A1 - VERTICAL - No Scale", "MasterLayoutItem", ""),
         NavigatorItem("m4", "DA A1 - VERTICAL COVER/NO SCALE", "MasterLayoutItem", ""),
     )
-    assert choose_master(masters, "DA A1 no scale", 200.0).name == "DA A1 - VERTICAL - No Scale", (
+    assert choose_master(masters, "DA A1 no scale").name == "DA A1 - VERTICAL - No Scale", (
         "the candidate carrying the fewest words nobody asked for"
     )
-    assert choose_master(masters, "cover no scale", 200.0).name == "DA A1 - VERTICAL COVER/NO SCALE"
+    assert choose_master(masters, "cover no scale").name == "DA A1 - VERTICAL COVER/NO SCALE"
 
 
 def test_two_masters_equally_close_are_a_question_not_a_guess() -> None:
@@ -3118,7 +3153,7 @@ def test_two_masters_equally_close_are_a_question_not_a_guess() -> None:
         NavigatorItem("m2", "A1 COVER No Scale", "MasterLayoutItem", ""),
     )
     with pytest.raises(ArchicadError, match="fits 2 master layouts equally well"):
-        choose_master(masters, "A1 no scale", 200.0)
+        choose_master(masters, "A1 no scale")
 
 
 def test_only_the_storeys_that_carry_fills_are_cloned() -> None:

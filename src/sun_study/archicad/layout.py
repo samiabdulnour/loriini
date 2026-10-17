@@ -65,7 +65,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Collection, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -298,14 +298,25 @@ def master_layouts(connection: ArchicadConnection) -> tuple[NavigatorItem, ...]:
     return tuple(item for item in _walk(root) if item.kind == "MasterLayoutItem")
 
 
-def choose_master(
-    masters: Sequence[NavigatorItem], wanted: str | None, scale: float
-) -> NavigatorItem:
-    """Which master to build the sheet on, and it is never a silent choice.
+#: How to ask somebody which master to build the sheets on, when nobody named
+#: one: handed the project's masters by name, it answers with one of them, or
+#: ``None`` for no answer. Set by the command line when there is a person at
+#: the terminal; left unset for the window, which asks before it starts, and
+#: for an agent, which is told the list and asks its person.
+MasterAsker = Callable[[Sequence[str]], str | None]
+ask_master: MasterAsker | None = None
+
+
+def choose_master(masters: Sequence[NavigatorItem], wanted: str | None) -> NavigatorItem:
+    """Which master to build the sheet on, and it is never a guess.
 
     A named one is honoured or the run stops with the list, because a master
     named slightly wrong would otherwise fall back to an arbitrary sheet and
-    the study would come out on a title block for something else.
+    the study would come out on a title block for something else. Unnamed,
+    the person is asked. Nothing is picked for them by name or by position in
+    the book: every office names its masters its own way, and the first in
+    the book was an A4 cover the one time it was trusted (asked 17 October
+    2026).
     """
     if not masters:
         raise ArchicadError(
@@ -315,14 +326,14 @@ def choose_master(
         )
     if wanted:
         return _master_named(masters, wanted)
-    marker = f"1:{scale:g}"
-    for master in masters:
-        if marker in master.name:
-            return master
-    # Nothing names this scale. The first in the book is a guess, and on a
-    # real project it was "A4" -- a quarter of the page six storey plans need.
-    # The run prints what it used; ``--master-layout`` settles it.
-    return masters[0]
+    answer = ask_master([master.name for master in masters]) if ask_master else None
+    if answer:
+        return _master_named(masters, answer)
+    names = "\n".join(f"    {master.name}" for master in masters)
+    raise ArchicadError(
+        "Which master layout should the sheets go on? Run again with "
+        f"--master-layout and one of the project's:\n{names}"
+    )
 
 
 def _words(name: str) -> set[str]:
@@ -452,7 +463,7 @@ def layout_from_views(
     if not views:
         return LayoutReport(layout_name, 0, (), scale, ())
 
-    master = choose_master(master_layouts(connection), master_layout, scale)
+    master = choose_master(master_layouts(connection), master_layout)
     existing = _layout_named(connection, layout_name)
     layout = existing if existing is not None else _create_layout(connection, layout_name, master)
     sheet, assumed = layout_sheet(connection, layout)

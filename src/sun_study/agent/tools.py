@@ -133,7 +133,11 @@ class StudyArguments(ProjectArguments):
     )
     master_layout: str | None = Field(
         default=None,
-        description="The master layout the sheets are made from, instead of the project's.",
+        description=(
+            "The master layout the sheets are made from. Ask the person which one; never "
+            "choose it yourself. project_options lists them. Without it a run that makes "
+            "a sheet stops and lists the project's masters."
+        ),
     )
 
 

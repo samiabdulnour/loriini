@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 
+from sun_study.archicad import layout as layout_module
 from sun_study.archicad import naming
 from sun_study.archicad.area_sheet import (
     AREA_WORD,
@@ -43,6 +44,13 @@ from tests.unit.test_archicad_adapter import connect
 from tests.unit.test_area_yield import template, template_floors
 
 # -- the rows -------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def a_person_who_picks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Somebody asked which master layout the sheet goes on, who picks the
+    first the project offers."""
+    monkeypatch.setattr(layout_module, "ask_master", lambda names: names[0])
 
 
 def test_the_rows_are_the_office_sheets_in_its_order_and_words() -> None:

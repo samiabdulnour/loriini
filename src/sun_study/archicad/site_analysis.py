@@ -61,8 +61,8 @@ from sun_study.archicad.layout import (
     LayoutSheet,
     _create_layout,
     _drawings_by_name,
-    _master_named,
     _walk,
+    choose_master,
     layout_from_views,
     layout_sheet,
     master_layouts,
@@ -2864,13 +2864,6 @@ def _site_pen_set(connection: ArchicadConnection) -> str | None:
     return None
 
 
-#: The master every sheet of this tool goes on, unless told otherwise: the
-#: office's A1 with no stated scale, since a context sheet at 1:3000 and a
-#: site sheet at 1:400 have no master of their own. Matched by its words, so
-#: the office's punctuation does not matter.
-A1_MASTER = "A1 no scale"
-
-
 def _remove_layout(connection: ArchicadConnection, name: str) -> None:
     """Delete the layout called ``name``, if the Layout Book has one.
 
@@ -2944,7 +2937,7 @@ def place_on_layout(
         [(view.navigator_id, name)],
         layout_name=name,
         scale=drawing.scale,
-        master_layout=master_layout or A1_MASTER,
+        master_layout=master_layout,
     )
     if not report.database_id:
         raise ArchicadError(f"the layout {name!r} was not made")
@@ -3198,7 +3191,7 @@ def draw_summary(
     notes: list[str] = []
     _remove_layout(connection, name)
     masters = master_layouts(connection)
-    master = _master_named(masters, master_layout or A1_MASTER)
+    master = choose_master(masters, master_layout)
     database_id = _create_layout(connection, name, master)
     sheet, assumed = layout_sheet(connection, database_id)
     if assumed:
