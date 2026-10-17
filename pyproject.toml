@@ -77,6 +77,9 @@ markers = [
 line-length = 100
 src = ["src", "tests"]
 target-version = "py311"
+# Tapir's copy of Graphisoft's resource compiler, kept unedited so an upgrade
+# is a copy; its style is upstream's, as Tapir's C++ beside it is.
+extend-exclude = ["archicad-addon/Tools/CompileResources.py"]
 
 [tool.ruff.lint]
 select = [
