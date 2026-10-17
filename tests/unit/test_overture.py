@@ -61,8 +61,8 @@ def test_openstreetmap_stands_in_when_overture_cannot_be_had(
         raise RuntimeError("HTTP 404\nmore detail")
 
     monkeypatch.setattr(overture, "buildings", broken)
-    assert pipeline.footprints(EXTENT, said.append) == from_osm
+    assert pipeline.building_footprints(EXTENT, said.append) == from_osm
     assert any("Overture buildings failed: HTTP 404;" in line for line in said)
 
     monkeypatch.setattr(overture, "buildings", lambda extent, log=None: None)
-    assert pipeline.footprints(EXTENT, said.append) == from_osm
+    assert pipeline.building_footprints(EXTENT, said.append) == from_osm

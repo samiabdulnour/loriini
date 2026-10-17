@@ -806,7 +806,7 @@ def lots_area_m2(site: FeatureCollection, zone: int) -> float | None:
     return total if total > 0 else None
 
 
-def footprints(extent: Extent, say: Callable[[str], None]) -> tuple[osm.Building, ...]:
+def building_footprints(extent: Extent, say: Callable[[str], None]) -> tuple[osm.Building, ...]:
     """The building footprints the context model stands up: Overture's, which
     carry measured heights and fill in what nobody traced in OpenStreetMap,
     and OpenStreetMap's when Overture cannot be had (au-site-analysis' order).
@@ -871,7 +871,9 @@ def run_model(
         # The heritage items, so the model can stand their buildings apart.
         f_heritage = soft.submit("heritage", lambda: nsw.heritage(extent), empty())
         f_lots = soft.submit("cadastre", lambda: nsw.all_lots(extent), empty())
-        f_buildings = soft.submit("building footprints", lambda: footprints(extent, say), ())
+        f_buildings = soft.submit(
+            "building footprints", lambda: building_footprints(extent, say), ()
+        )
         contours = soft.take(f_contours)
         footprints = soft.take(f_buildings)
         bundle = SiteBundle(
