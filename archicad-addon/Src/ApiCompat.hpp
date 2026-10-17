@@ -70,6 +70,17 @@ inline GSErrCode ChangeWindow (API_WindowInfo* window)
 #endif
 }
 
+// Rebuilds the front window, as the View > Refresh > Rebuild menu does;
+// with ``regenerate``, as it does with the Option (Alt) key held.
+inline GSErrCode RebuildFrontWindow (bool regenerate)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_View_Rebuild (&regenerate);
+#else
+	return ACAPI_Automate (APIDo_RebuildID, &regenerate);
+#endif
+}
+
 // --- Elements -----------------------------------------------------------------
 
 inline GSErrCode GetElementInfoString (const API_Guid* guid, GS::UniString* identifier)

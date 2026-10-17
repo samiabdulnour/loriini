@@ -173,6 +173,31 @@ GS::ObjectState SetCurrentDatabaseCommand::Execute (const GS::ObjectState& param
 		database.index = floor;
 	}
 
+	// The 3D window is a window, not a database: it has no database of its
+	// own to move to, and asked for as one Archicad accepted the move and
+	// stayed on the floor plan (17 October 2026). So it is brought to the
+	// front as a window, rebuilt so it shows the layers as they are now,
+	// and the move is read back by the window's type.
+	if (database.typeID == APIWind_3DModelID) {
+		API_WindowInfo window = {};
+		window.typeID = APIWind_3DModelID;
+		err = Api::ChangeWindow (&window);
+		if (err != NoError) {
+			return Failed ("Archicad refused to bring the 3D window to the front.", err);
+		}
+		Api::RebuildFrontWindow (true);
+		API_DatabaseInfo landed = {};
+		err = Api::GetCurrentDatabase (&landed);
+		if (err != NoError || landed.typeID != APIWind_3DModelID) {
+			return Failed ("Archicad accepted the move to the 3D window and stayed where it was.",
+						   err != NoError ? err : APIERR_GENERAL);
+		}
+		GS::ObjectState result = DatabaseState (landed);
+		result.Add ("success", true);
+		result.Add ("opened", true);
+		return result;
+	}
+
 	// A worksheet made through the API refuses `APIDb_ChangeCurrentDatabaseID`
 	// with APIERR_BADDATABASE until a person has opened it once, and a save or
 	// a reopen does not lift that (D95). What a person does is open its

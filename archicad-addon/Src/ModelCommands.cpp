@@ -558,6 +558,14 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	intoThe3D.typeID = APIWind_3DModelID;
 	Api::ChangeWindow (&intoThe3D);
 
+	// Rebuilt, not trusted. Archicad keeps the 3D model it last built, and
+	// a layer shown through the API since -- which is how every study shows
+	// what it exports -- does not mark it stale: on Archicad 30 the export
+	// held 4 elements of the 1,199 shown until the window was rebuilt
+	// (17 October 2026). Not fatal when refused: the model as it stands is
+	// still exported, and its count says what it held.
+	Api::RebuildFrontWindow (true);
+
 	// The sight second, and this is the whole of why the first live run
 	// returned nothing.
 	//
