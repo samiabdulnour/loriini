@@ -1552,6 +1552,7 @@ name = "sun-study"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
+    { name = "certifi" },
     { name = "ifcopenshell" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -1580,6 +1581,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "certifi", specifier = ">=2024.2.2" },
     { name = "ifcopenshell", specifier = ">=0.8.5" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pillow", specifier = ">=10.0" },

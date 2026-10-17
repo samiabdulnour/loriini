@@ -6,9 +6,17 @@ rate-limits (429). So everything goes through one door: retry on transient
 status codes and network errors, exponential backoff with jitter, and a
 ceiling so a run cannot stall forever.
 
-Standard library only. A workstation without administrator rights cannot add
-a package, and the packaged executable carries whatever it was built with;
-``urllib`` is in both already.
+Standard library, plus ``certifi``'s certificates where it is installed. A
+workstation without administrator rights cannot add a package, and the
+packaged executable carries whatever it was built with; ``urllib`` is in both
+already, and ``certifi`` is a dependency the build carries.
+
+Why ``certifi``: the system's own roots are not enough everywhere. On a Mac,
+Python checks against ``/etc/ssl/cert.pem``, which on 17 October 2026 had no
+DigiCert G5 root -- the one SIX Maps' imagery is signed under -- so every
+aerial failed as "self-signed certificate in certificate chain" while a
+browser opened the same address. The system's roots are kept beside them, so
+a machine behind an office proxy that re-signs traffic still trusts it.
 """
 
 from __future__ import annotations
@@ -18,6 +26,7 @@ import json
 import os
 import random
 import re
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -47,6 +56,21 @@ class FetchError(Exception):
     """A request that failed for good: every attempt, or a definite refusal."""
 
 
+def _trust() -> ssl.SSLContext:
+    """The system's certificate roots, and ``certifi``'s beside them."""
+    context = ssl.create_default_context()
+    try:
+        import certifi
+    except ImportError:  # pragma: no cover - a dependency, but not a fatal one
+        return context
+    context.load_verify_locations(certifi.where())
+    return context
+
+
+#: Made once: loading a few hundred roots on every request is wasted work.
+TRUST = _trust()
+
+
 def fetch(
     url: str,
     *,
@@ -71,7 +95,7 @@ def fetch(
         for name, value in (headers or {}).items():
             request.add_header(name, value)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with urllib.request.urlopen(request, timeout=timeout, context=TRUST) as response:
                 return bytes(response.read())
         except urllib.error.HTTPError as error:
             if error.code not in TRANSIENT:

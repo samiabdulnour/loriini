@@ -28,6 +28,10 @@ dependencies = [
     # resolve "Australia/Sydney". Unconditional rather than Windows-only so CI
     # exercises the same fallback path the office machines will use.
     "tzdata>=2024.1",
+    # Certificate roots for the site analysis' downloads (site.http). Pure
+    # data, like tzdata: a Mac's own bundle lacked the root NSW's aerial
+    # imagery is signed under, and a run lost every aerial to it.
+    "certifi>=2024.2.2",
 ]
 
 [project.optional-dependencies]
