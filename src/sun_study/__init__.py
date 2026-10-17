@@ -60,15 +60,29 @@ COPYRIGHT = "Copyright (c) 2026 Sami Abdulnour and Zofia Kosova. All rights rese
 #: command line, numpy and all, to start up.
 STOP_FILE_VAR = "SUN_STUDY_STOP_FILE"
 
-#: The add-on this machine installs, by the file name the ``Archicad add-on``
-#: workflow gives it: an .apx on Windows, a .bundle on a Mac. Every message
-#: that tells somebody to install it names this, so the advice is about the
-#: file on their own screen. Here for the same reason as ``STOP_FILE_VAR``:
-#: the window and the Archicad adapter both say it and must not import each
-#: other to do so.
-ADDON_FILE = (
-    "LoriiniAddOn_AC26_Mac.bundle" if sys.platform == "darwin" else "LoriiniAddOn_AC26_Win.apx"
-)
+#: The Archicad versions an add-on is built for. An add-on is compiled against
+#: one major version and loads in no other, so the ``Archicad add-on``
+#: workflows build one per version and the handover folder carries them all.
+#: The program itself talks to any of them the same way.
+ARCHICAD_VERSIONS = (26, 27, 28, 29, 30)
+
+#: The add-on's platform half, as the workflow names its files: an .apx on
+#: Windows, a .bundle on a Mac.
+ADDON_PLATFORM, ADDON_SUFFIX = ("Mac", ".bundle") if sys.platform == "darwin" else ("Win", ".apx")
+
+
+def addon_name(version: int) -> str:
+    """The add-on for one Archicad version, without its suffix:
+    ``LoriiniAddOn_AC27_Win``."""
+    return f"LoriiniAddOn_AC{version}_{ADDON_PLATFORM}"
+
+
+#: The add-on this machine installs, as every message that tells somebody to
+#: install it names it, so the advice is about a file on their own screen.
+#: The version is left for them to fill in: the one matching their Archicad.
+#: Here for the same reason as ``STOP_FILE_VAR``: the window and the Archicad
+#: adapter both say it and must not import each other to do so.
+ADDON_FILE = f"LoriiniAddOn_AC<version>_{ADDON_PLATFORM}{ADDON_SUFFIX}"
 
 
 def user_folder() -> Path:

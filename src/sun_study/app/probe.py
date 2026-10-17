@@ -150,6 +150,11 @@ class ProjectOptions:
     north_radians: float = 0.0
     """Which way the project's north points, off the same read."""
 
+    located: bool = False
+    """Somebody has set the project location: it is readable and is not one
+    of Archicad's city presets. A project that was not has nothing in it for
+    a site to line up with, so the site page puts the site on the origin."""
+
     tapir: str = ""
     """The add-on's version, when it answered."""
 
@@ -335,6 +340,7 @@ def options(port: int) -> ProjectOptions:
         latitude=None if where is None else where.latitude_deg,
         longitude=None if where is None else where.longitude_deg,
         north_radians=0.0 if where is None else where.north_radians,
+        located=where is not None and not where.looks_like_a_city_preset,
         layers=tuple(sorted(state.name for state in layers if state.name.strip())),
         zone_layers=tuple(zones),
         zone_kinds=tuple(kinds),

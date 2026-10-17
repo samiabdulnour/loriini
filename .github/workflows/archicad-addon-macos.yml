@@ -1,7 +1,8 @@
 name: Archicad add-on (macOS)
 
-# The Mac half of archicad-addon.yml: LoriiniAddOn_AC26_Mac.bundle, and
-# Loriini.app beside it.
+# The Mac half of archicad-addon.yml: LoriiniAddOn_AC26_Mac.bundle to
+# LoriiniAddOn_AC30_Mac.bundle, one per Archicad version, and Loriini.app
+# beside them.
 #
 # The add-on is built here for the reason the .apx is built on a Windows
 # runner: it needs Graphisoft's kit and a compiler, Xcode here, and a runner
@@ -56,8 +57,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The versions archicad-addon.yml builds, from the same releases.
           - archicad: 26
             devkit: https://github.com/GRAPHISOFT/archicad-api-devkit/releases/download/26.3000/API.Development.Kit.MAC.26.3000.zip
+          - archicad: 27
+            devkit: https://github.com/GRAPHISOFT/archicad-api-devkit/releases/download/27.3001/API.Development.Kit.MAC.27.3001.zip
+          - archicad: 28
+            devkit: https://github.com/GRAPHISOFT/archicad-api-devkit/releases/download/28.3001/API.Development.Kit.MAC.28.3001.zip
+          - archicad: 29
+            devkit: https://github.com/GRAPHISOFT/archicad-api-devkit/releases/download/29.3000/API.Development.Kit.MAC.29.3000.zip
+          - archicad: 30
+            devkit: https://github.com/GRAPHISOFT/archicad-api-devkit/releases/download/30.3000/API.Development.Kit.MAC.30.3000.zip
 
     steps:
       - uses: actions/checkout@v4
@@ -182,9 +192,9 @@ jobs:
           path: LoriiniAddOn_AC${{ matrix.archicad }}_Mac.zip
           if-no-files-found: error
 
-  # The folder a Mac user downloads: the bundle above and Loriini.app beside
-  # it, from the same commit, with the install note and the licence -- the
-  # Loriini_AC26_Mac artifact. scripts/build_app_macos.py makes it here as it
+  # The folder a Mac user downloads: every version's bundle above and
+  # Loriini.app beside them, from the same commit, with the install note and
+  # the licence -- the Loriini_Mac artifact. Only when every version built. scripts/build_app_macos.py makes it here as it
   # does on a Mac with a checkout.
   package:
     name: Loriini for macOS
@@ -219,17 +229,22 @@ jobs:
           uv export --no-dev --no-hashes --no-emit-project --format requirements-txt > runtime.txt
           uv pip install --reinstall --python-platform aarch64-apple-darwin -r runtime.txt
 
-      - name: Take the add-on built above
+      - name: Take the add-ons built above
         uses: actions/download-artifact@v4
         with:
-          name: LoriiniAddOn_AC26_Mac
+          pattern: LoriiniAddOn_AC*_Mac
+          merge-multiple: true
           path: addon
 
       # --no-sync, or uv run would first put the environment back in step
       # with this Mac rather than with macOS 11, and numpy's macOS 14 wheel
       # with it.
       - name: Build the program and gather the folder
-        run: uv run --no-sync python scripts/build_app_macos.py --addon addon/LoriiniAddOn_AC26_Mac.zip
+        run: |
+          set -euo pipefail
+          addons=()
+          for zip in addon/LoriiniAddOn_AC*_Mac.zip; do addons+=(--addon "$zip"); done
+          uv run --no-sync python scripts/build_app_macos.py "${addons[@]}"
 
       # As on Windows: started once the way the window starts a study, with
       # SUN_STUDY_RUN_CLI set so it runs a command and opens no window, and it
@@ -266,16 +281,16 @@ jobs:
       # One zip, by ditto, for the reason the add-on is zipped: the program is
       # a folder full of links that an artifact would flatten, and a program
       # that has lost its execute bit does not open. So the download is a zip
-      # holding Loriini_AC26_Mac.zip, which opens to the folder itself.
+      # holding Loriini_Mac.zip, which opens to the folder itself.
       - name: Zip the folder
         run: |
           set -euo pipefail
-          ditto dist Loriini_AC26_Mac
-          ditto -c -k --keepParent Loriini_AC26_Mac Loriini_AC26_Mac.zip
+          ditto dist Loriini_Mac
+          ditto -c -k --keepParent Loriini_Mac Loriini_Mac.zip
 
       - name: Upload the folder
         uses: actions/upload-artifact@v4
         with:
-          name: Loriini_AC26_Mac
-          path: Loriini_AC26_Mac.zip
+          name: Loriini_Mac
+          path: Loriini_Mac.zip
           if-no-files-found: error

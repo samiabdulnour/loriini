@@ -1,4 +1,5 @@
 #include "ProjectCommands.hpp"
+#include "ApiCompat.hpp"
 #include "Support.hpp"
 
 namespace Loriini {
@@ -84,7 +85,7 @@ GS::ObjectState GetCurrentDatabaseCommand::Execute (const GS::ObjectState& /*par
 													GS::ProcessControl& /*processControl*/) const
 {
 	API_DatabaseInfo database = {};
-	const GSErrCode err = ACAPI_Database (APIDb_GetCurrentDatabaseID, &database);
+	const GSErrCode err = Api::GetCurrentDatabase (&database);
 	if (err != NoError) {
 		return Failed ("Failed to read the current database.", err);
 	}
@@ -146,7 +147,7 @@ GS::ObjectState SetCurrentDatabaseCommand::Execute (const GS::ObjectState& param
 	// Started from where we are, so a caller naming only a floor index moves
 	// storey without having to restate which database it is standing in.
 	API_DatabaseInfo database = {};
-	GSErrCode err = ACAPI_Database (APIDb_GetCurrentDatabaseID, &database);
+	GSErrCode err = Api::GetCurrentDatabase (&database);
 	if (err != NoError) {
 		return Failed ("Failed to read the current database before changing it.", err);
 	}
@@ -185,14 +186,14 @@ GS::ObjectState SetCurrentDatabaseCommand::Execute (const GS::ObjectState& param
 	bool opened = false;
 	if (parameters.Get ("open", open) && open) {
 		API_WindowInfo window = database;
-		err = ACAPI_Automate (APIDo_ChangeWindowID, &window);
+		err = Api::ChangeWindow (&window);
 		if (err != NoError) {
 			return Failed ("Archicad refused to open that database's window.", err);
 		}
 		opened = true;
 	}
 
-	err = ACAPI_Database (APIDb_ChangeCurrentDatabaseID, &database);
+	err = Api::ChangeCurrentDatabase (&database);
 	if (err != NoError) {
 		return Failed (opened ? "Archicad opened the window and still refused to move to that database."
 							  : "Archicad refused to move to that database.", err);
@@ -203,7 +204,7 @@ GS::ObjectState SetCurrentDatabaseCommand::Execute (const GS::ObjectState& param
 	// it that reports success without checking would be the same trap wearing
 	// a different name.
 	API_DatabaseInfo landed = {};
-	err = ACAPI_Database (APIDb_GetCurrentDatabaseID, &landed);
+	err = Api::GetCurrentDatabase (&landed);
 	if (err != NoError) {
 		return Failed ("Moved, but could not confirm where to.", err);
 	}
@@ -275,7 +276,7 @@ GS::ObjectState CreateWorksheetCommand::Execute (const GS::ObjectState& paramete
 	// 2026 against the Kogarah solar study, the same refusal the 3D Document
 	// command met on its first live run. A worksheet a run abandons is deleted
 	// in the Navigator, as a document is.
-	GSErrCode err = ACAPI_Database (APIDb_NewDatabaseID, &database);
+	GSErrCode err = Api::NewDatabase (&database);
 	if (err != NoError) {
 		return Failed ("Failed to create the worksheet.", err);
 	}
@@ -288,7 +289,7 @@ GS::ObjectState CreateWorksheetCommand::Execute (const GS::ObjectState& paramete
 
 	bool isCurrent = false;
 	if (makeCurrent) {
-		err = ACAPI_Database (APIDb_ChangeCurrentDatabaseID, &database);
+		err = Api::ChangeCurrentDatabase (&database);
 		if (err != NoError) {
 			return Failed ("The worksheet was created but could not be entered, so nothing "
 						   "can be drawn into it yet.", err);
@@ -352,13 +353,13 @@ GS::ObjectState ActivateLayerCombinationCommand::Execute (const GS::ObjectState&
 		return Failed ("No layer combination named '" + name + "' in this project.", err);
 	}
 
-	err = ACAPI_Environment (APIEnv_ChangeCurrLayerCombID, &head.index);
+	err = Api::ChangeCurrentLayerCombination (&head.index);
 	if (err != NoError) {
 		return Failed ("Found '" + name + "' but Archicad would not activate it.", err);
 	}
 
 	GS::ObjectState result = Succeeded ();
-	result.Add ("index", static_cast<Int32> (head.index));
+	result.Add ("index", Api::AttributeIndexToInt (head.index));
 	return result;
 }
 
@@ -515,7 +516,7 @@ GS::ObjectState GetGraphicOverrideCombinationsCommand::Execute (const GS::Object
 																GS::ProcessControl& /*processControl*/) const
 {
 	GS::Array<API_Guid> guids;
-	const GSErrCode err = ACAPI_Override_GetOverrideCombinationList (guids);
+	const GSErrCode err = Api::GetOverrideCombinationList (guids);
 	if (err != NoError) {
 		return Failed ("Failed to list the graphic override combinations.", err);
 	}
@@ -524,7 +525,7 @@ GS::ObjectState GetGraphicOverrideCombinationsCommand::Execute (const GS::Object
 	for (const API_Guid& guid : guids) {
 		API_OverrideCombination combination;
 		combination.guid = guid;
-		if (ACAPI_Override_GetOverrideCombination (combination) != NoError) {
+		if (Api::GetOverrideCombination (combination) != NoError) {
 			continue;
 		}
 		GS::ObjectState one;

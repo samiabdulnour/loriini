@@ -32,6 +32,7 @@ import typer
 
 from sun_study import AUTHOR, PRODUCT, STOP_FILE_VAR, __version__, licence
 from sun_study.archicad import context_model, future_context, naming
+from sun_study.archicad import layout as sheet_layout
 from sun_study.archicad import site_analysis as site_drawing
 from sun_study.archicad.area_sheet import draw_area_sheet
 from sun_study.archicad.connection import (
@@ -1836,7 +1837,7 @@ def _zone_statistics_sheet(
 
     name = naming.named("Communal Areas")
     try:
-        master = choose_master(master_layouts(connection), master_layout, DEFAULT_LAYOUT_SCALE)
+        master = choose_master(master_layouts(connection), master_layout)
         database = _layout_named(connection, name)
         if database is None:
             database = _create_layout(connection, name, master)
@@ -2889,7 +2890,7 @@ def report_statistics(
     leaving a second one beside it.
     """
     # No drawings on this sheet, so no scale to honour: a summary is text.
-    master = choose_master(master_layouts(connection), master_layout, DEFAULT_LAYOUT_SCALE)
+    master = choose_master(master_layouts(connection), master_layout)
     database = _layout_named(connection, sheet_name)
     if database is None:
         database = _create_layout(connection, sheet_name, master)
@@ -3860,9 +3861,8 @@ def massing(
             "--master-layout",
             help=(
                 "Master layout to build the sheet on, by name. Partial names "
-                "work as long as they fit only one master. Without this the "
-                "first master in the Layout Book is used, which on a real "
-                "project was an A4."
+                "work as long as they fit only one master. Without this you "
+                "are asked which, from the project's masters."
             ),
         ),
     ] = None,
@@ -5854,8 +5854,8 @@ def archicad_run(
             "--master-layout",
             help=(
                 "Master layout to build the sheet on. Archicad refuses to make "
-                "a Layout without one. Defaults to a master whose name states "
-                "the drawing scale, and the run says which it used."
+                "a Layout without one. Without this you are asked which, from "
+                "the project's masters."
             ),
         ),
     ] = None,
@@ -8266,26 +8266,29 @@ def site_analysis(
         ),
     ] = None,
     anchor: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--anchor",
             help=(
                 "Where the site lands: 'location' puts it where the project's own "
-                "georeferencing says it is; 'site' puts the site's centre at the project origin."
+                "georeferencing says it is; 'site' puts a point of the site at the project "
+                "origin. By default 'site' for a project whose location was never set, "
+                "'location' for one that was."
             ),
         ),
-    ] = "location",
+    ] = None,
     origin_at: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--origin-at",
             help=(
                 "With --anchor site: which point of the site is the project origin -- "
                 "'centre', or 'bottom-left', 'bottom-right', 'top-left', 'top-right' as the "
-                "plan reads them."
+                "plan reads them. 'bottom-left' by default: a model is set out from a "
+                "corner of the lot."
             ),
         ),
-    ] = "centre",
+    ] = None,
     square_to_site: Annotated[
         bool,
         typer.Option(
@@ -8337,7 +8340,7 @@ def site_analysis(
         str | None,
         typer.Option(
             "--master-layout",
-            help="The sheet's master. The office's A1 no-scale master by default.",
+            help="The sheets' master. Without it you are asked which, from the project's masters.",
         ),
     ] = None,
     title_block_mm: Annotated[
@@ -8490,18 +8493,17 @@ def site_analysis(
     if north not in ("true", "grid"):
         typer.secho("  --north takes 'true' or 'grid'.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2)
-    if anchor not in ("location", "site"):
+    if anchor is not None and anchor not in ("location", "site"):
         typer.secho("  --anchor takes 'location' or 'site'.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2)
-    if origin_at not in site_drawing.ORIGIN_CHOICES:
+    if origin_at is not None and origin_at not in site_drawing.ORIGIN_CHOICES:
         typer.secho(
             f"  --origin-at takes one of {', '.join(site_drawing.ORIGIN_CHOICES)}.",
             fg=typer.colors.RED,
             err=True,
         )
         raise typer.Exit(code=2)
-    placing = square_to_site or origin_at != "centre"
-    if placing and anchor != "site":
+    if (square_to_site or origin_at is not None) and anchor == "location":
         typer.secho(
             "  --square-to-site and --origin-at place the site in a frame of Loriini's own, "
             "which is --anchor site; with --anchor location the project says where the site is.",
@@ -8536,7 +8538,7 @@ def site_analysis(
         try:
             geo = read_geo_location(connection)
             typer.echo(f"  project location: {geo.describe()}")
-            if geo.looks_like_a_city_preset:
+            if geo.looks_like_a_city_preset and anchor == "location":
                 typer.secho(
                     "  the project location is a city preset, not a surveyed site. With "
                     "--anchor location the site lands where the preset says, which may be "
@@ -8554,6 +8556,21 @@ def site_analysis(
             typer.secho(
                 f"  {error}; drawing north-up at the project origin.", fg=typer.colors.YELLOW
             )
+
+    # Where the site lands, when nobody said. A project that was never
+    # located -- no location at all, or still Archicad's city preset -- has
+    # nothing in it for the site to line up with, so the site is put on its
+    # origin, at a corner of the lot as a model is set out (asked 17 October
+    # 2026). One that was located keeps its georeferencing, which in an
+    # office file already puts the origin on the boundary.
+    if anchor is None:
+        unlocated = connection is not None and (geo is None or geo.looks_like_a_city_preset)
+        anchor = "site" if unlocated else "location"
+        if unlocated:
+            typer.echo("  the project was never located, so the site goes on its origin")
+    if origin_at is None:
+        origin_at = "bottom-left" if anchor == "site" else "centre"
+    placing = square_to_site or origin_at != "centre"
 
     def fetch_or_load(
         kind: str, wanted: bool, loader: Callable[[Path], Any], runner: Callable[[], Any]
@@ -9477,6 +9494,31 @@ def agent_server() -> None:
     serve()
 
 
+def _ask_master_at_terminal(masters: Sequence[str]) -> str | None:
+    """Which master layout the sheets go on, asked of the person at the
+    terminal, once a run: every sheet after the first goes on the same one.
+
+    Asked rather than looked up. A name chosen here is the one the run uses;
+    ``--master-layout`` answers it in advance.
+    """
+    chosen = getattr(_ask_master_at_terminal, "chosen", None)
+    if chosen in masters:
+        return chosen
+    typer.echo("\n  Which master layout should the sheets go on?")
+    for number, name in enumerate(masters, start=1):
+        typer.echo(f"    {number:>3}  {name}")
+    while True:
+        answer = typer.prompt("  Number", default="", show_default=False).strip()
+        if not answer:
+            return None
+        if answer.isdigit() and 1 <= int(answer) <= len(masters):
+            picked = masters[int(answer) - 1]
+            _ask_master_at_terminal.chosen = picked  # type: ignore[attr-defined]
+            typer.echo(f"  sheets go on '{picked}'. Next time: --master-layout \"{picked}\"")
+            return picked
+        typer.echo(f"  A number from 1 to {len(masters)}, or nothing to stop.")
+
+
 def main() -> None:
     """Entry point. Makes output degrade rather than abort.
 
@@ -9495,6 +9537,12 @@ def main() -> None:
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:  # pragma: no branch - always present on 3.11+
             reconfigure(errors="replace")
+
+    # A master layout nobody named is asked for, where there is somebody to
+    # ask. The window runs this with no terminal and asks before it starts;
+    # an agent is told the list.
+    if sys.stdin is not None and sys.stdin.isatty():
+        sheet_layout.ask_master = _ask_master_at_terminal
 
     # Before the banner, and before anything is read or written. A build past
     # its term should not get as far as opening somebody's project; nor should

@@ -110,11 +110,28 @@ def test_the_project_fills_in_what_nobody_should_have_to_type(hidden_window: Any
     assert hidden_window.adg_subset.get() == "ADG DIAGRAMS"
 
 
-def test_the_no_scale_master_beats_the_no_scale_cover_sheet(hidden_window: Any) -> None:
-    """Both say no scale and one of them is a cover sheet. A diagram shrunk to
-    fit the page is at no stated scale, which is why no-scale is right -- but
-    not the cover."""
-    assert hidden_window.master.get() == "DA A1 - VERTICAL - No Scale"
+def test_the_master_layout_is_offered_and_never_picked(hidden_window: Any) -> None:
+    """Which title block a study is issued on is the person's to say: the
+    project's masters are offered and none is chosen for them. Run asks when
+    it is still blank."""
+    assert hidden_window.master.get() == ""
+    assert tuple(hidden_window.master.cget("values")) == (
+        "A4",
+        "DA A1 - VERTICAL COVER/NO SCALE",
+        "DA A1 - VERTICAL - No Scale",
+    )
+
+
+def test_a_project_never_located_puts_the_site_on_its_origin_at_a_corner(
+    hidden_window: Any,
+) -> None:
+    """Nothing in an unlocated project for the site to line up with, so it
+    goes on the project origin, at a corner of the lot as a model is set out."""
+    hidden_window.do_site.set(True)
+    hidden_window.site_address.insert(0, "26-30 Campsie St, Campsie NSW 2194")
+    (site,) = [job for job in hidden_window.jobs() if job.label == window.SITE_JOB]
+    assert flag(site.args, "--anchor") == ["site"]
+    assert flag(site.args, "--origin-at") == ["bottom-left"]
 
 
 def test_the_facade_run_forces_the_zone_layers_into_the_export(hidden_window: Any) -> None:
@@ -2362,7 +2379,7 @@ def test_forget_puts_back_what_the_window_opens_with(
 
     assert not settings_file.exists()
     assert hidden_window.prefix_solar.get() == naming.SOLAR_PREFIX
-    assert hidden_window.master.get(), "and the project's own lists are read again"
+    assert hidden_window.master.cget("values"), "and the project's own lists are read again"
 
 
 def test_the_open_project_overrules_a_saved_name_it_does_not_have(
@@ -2370,13 +2387,16 @@ def test_the_open_project_overrules_a_saved_name_it_does_not_have(
 ) -> None:
     """A saved layer name from another job must not make a run measure a
     layer that is not in this one. The lists are refilled from Archicad after
-    the settings land, and a name the project cannot offer is replaced by one
-    it can."""
+    the settings land, and a name the project cannot offer is cleared -- a
+    master is then asked for at Run, never guessed."""
     hidden_window.apply({"master_layout": "A0 - SOMEBODY ELSE'S TITLE BLOCK"})
 
     hidden_window.refresh()
 
-    assert hidden_window.master.get() in hidden_window.options.masters
+    assert hidden_window.master.get() == ""
+    hidden_window.apply({"master_layout": "DA A1 - VERTICAL - No Scale"})
+    hidden_window.refresh()
+    assert hidden_window.master.get() == "DA A1 - VERTICAL - No Scale", "a name it has is kept"
 
 
 def test_a_layer_saved_on_another_job_is_not_measured_here(hidden_window: Any) -> None:
@@ -2931,7 +2951,8 @@ def test_the_site_analysis_waits_for_an_address(hidden_window: Any) -> None:
     hidden_window.do_site.set(True)
     assert hidden_window.jobs() == []
     assert "study_site" in hidden_window.settings()
-    assert hidden_window.settings()["site_anchor"] == "Project location"
+    # The sample project was never located, so the site goes on its origin.
+    assert hidden_window.settings()["site_anchor"] == "Project origin"
 
 
 def test_a_lit_day_reaches_the_three_solar_studies_and_no_other_page(

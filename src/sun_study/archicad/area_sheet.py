@@ -28,13 +28,12 @@ from sun_study.archicad.layout import (
     LayoutSheet,
     _create_layout,
     _drawings_by_name,
-    _master_named,
+    choose_master,
     layout_from_views,
     layout_sheet,
     master_layouts,
 )
 from sun_study.archicad.site_analysis import (
-    A1_MASTER,
     INK,
     Drawing,
     _attributes,
@@ -255,7 +254,7 @@ def draw_area_sheet(
     name = naming.named(sheet_word(sheet_data.option))
     said: list[str] = []
     _remove_layout(connection, name)
-    master = _master_named(master_layouts(connection), master_layout or A1_MASTER)
+    master = choose_master(master_layouts(connection), master_layout)
 
     database_id = ""
     placed = ""

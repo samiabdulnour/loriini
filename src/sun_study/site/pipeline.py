@@ -24,7 +24,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, TypeVar
 
-from sun_study.site import nsw, osm, sources, terrain, transport, trees
+from sun_study.site import nsw, osm, overture, sources, terrain, transport, trees
 from sun_study.site.arcgis import FeatureCollection, empty, rings_of
 from sun_study.site.curate import keyword_category
 from sun_study.site.geo import (
@@ -806,6 +806,22 @@ def lots_area_m2(site: FeatureCollection, zone: int) -> float | None:
     return total if total > 0 else None
 
 
+def building_footprints(extent: Extent, say: Callable[[str], None]) -> tuple[osm.Building, ...]:
+    """The building footprints the context model stands up: Overture's, which
+    carry measured heights and fill in what nobody traced in OpenStreetMap,
+    and OpenStreetMap's when Overture cannot be had (au-site-analysis' order).
+    """
+    try:
+        found = overture.buildings(extent, log=say)
+    except Exception as error:
+        first = str(error).splitlines()[0][:160]
+        say(f"  WARN Overture buildings failed: {first}; using OpenStreetMap")
+        found = None
+    if found:
+        return found
+    return osm.buildings(extent, log=say)
+
+
 def run_model(
     address: str,
     *,
@@ -856,7 +872,7 @@ def run_model(
         f_heritage = soft.submit("heritage", lambda: nsw.heritage(extent), empty())
         f_lots = soft.submit("cadastre", lambda: nsw.all_lots(extent), empty())
         f_buildings = soft.submit(
-            "building footprints (OSM)", lambda: osm.buildings(extent, log=say), ()
+            "building footprints", lambda: building_footprints(extent, say), ()
         )
         contours = soft.take(f_contours)
         footprints = soft.take(f_buildings)

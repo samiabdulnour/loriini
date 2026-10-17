@@ -4,20 +4,21 @@
     uv run python scripts/build_app_macos.py
 
 The Mac half of ``build_app.py``, and run on a Mac. Leaves ``dist/Loriini.app``
-and, beside it, the add-on it talks to -- ``dist/LoriiniAddOn_AC26_Mac.bundle``
--- with ``How to install.txt`` and ``LICENSE.txt``: the same handover a PC
-gets, in the shapes a Mac takes. The ``Archicad add-on`` workflow makes the
-same folder on a Mac runner and uploads it as the ``Loriini_AC26_Mac``
-artifact, for anybody without a checkout.
+and, beside it, the add-ons it talks to -- one per Archicad version,
+``dist/LoriiniAddOn_AC26_Mac.bundle`` to ``LoriiniAddOn_AC30_Mac.bundle`` --
+with ``How to install.txt`` and ``LICENSE.txt``: the same handover a PC gets,
+in the shapes a Mac takes. The ``Archicad add-on (macOS)`` workflow makes the
+same folder on a Mac runner and uploads it as the ``Loriini_Mac`` artifact,
+for anybody without a checkout.
 
 The add-on is not compiled here, for the reason it is not on a PC: it needs
 the Archicad kit and Xcode, and the workflow has both. This takes it, in
 order, from
 
-    --addon PATH              a .bundle you name, or the .zip the workflow
-                              uploads it in
+    --addon PATH              .bundles you name, or the .zips the workflow
+                              uploads them in, the flag once per add-on
     archicad-addon/Build/...  a local build, where somebody has one
-    the workflow's artifact   the newest successful build of this branch,
+    the workflow's artifacts  the newest successful build of this branch,
                               downloaded with the GitHub CLI (``gh``)
 
 and says plainly when it found none, as ``build_app.py`` does.
@@ -68,11 +69,15 @@ SPEC = ROOT / "Loriini-macOS.spec"
 #: scripts/make_icon.py.
 ICON = ROOT / "assets" / "loriini.icns"
 
-#: The add-on, as the workflow names its artifact and its bundle.
-ADDON = "LoriiniAddOn_AC26_Mac"
+#: The add-ons, as the workflow names its artifacts and their bundles: one per
+#: Archicad version.
+ADDON_PATTERN = "LoriiniAddOn_AC*_Mac"
 
-#: Where a local build of it lands, for a Mac that has the kit and Xcode.
-LOCAL_ADDON = ROOT / "archicad-addon" / "Build" / "RelWithDebInfo" / f"{ADDON}.bundle"
+#: The workflow that builds them, by file name, which is what ``gh`` takes.
+ADDON_WORKFLOW = "archicad-addon-macos.yml"
+
+#: Where a local build lands, for a Mac that has the kit and Xcode.
+LOCAL_BUILD = ROOT / "archicad-addon" / "Build" / "RelWithDebInfo"
 
 #: What Loriini-macOS.spec claims, and the floor under what this reports:
 #: Big Sur, the first macOS on Apple silicon, and so the oldest any Mac this
@@ -102,30 +107,34 @@ def install_note(oldest: tuple[int, int] = OLDEST_MACOS, today: dt.date | None =
         built += f" from {branch}"
     if commit:
         built += f" at commit {commit}"
-    return f"""{pc.PRODUCT} {pc.__version__} for Archicad 26 on a Mac
+    first, last = pc.ARCHICAD_VERSIONS[0], pc.ARCHICAD_VERSIONS[-1]
+    return f"""{pc.PRODUCT} {pc.__version__} for Archicad {first} to {last} on a Mac
 
 Everything a Mac needs. None of it needs Python, an installer or
 administrator rights.
 
-  {APP}                      the program
-  {ADDON}.bundle     the Archicad 26 add-on, with Tapir's
-                                   commands built in
+  {APP}                      the program, the same for every Archicad
+  LoriiniAddOn_AC{first}_Mac.bundle  the add-on for Archicad {first}, with Tapir's
+                                   commands built in, and one beside it
+                                   for each version to Archicad {last}
   {pc.LICENCE_COPY}                      the licence terms, as at
                                    {pc.TERMS_ADDRESS}
 
 To install
 
-1. Copy {APP} and {ADDON}.bundle into one folder of
-   your own, for example
+1. Copy {APP} and the add-on for your Archicad -- the number in its
+   name is the version, LoriiniAddOn_AC27_Mac.bundle for Archicad 27 --
+   into one folder of your own, for example
        ~/Documents/Loriini/Add-Ons
    Keep the two together: the Loriini menu in Archicad starts the
-   {APP} it finds beside the add-on.
+   {APP} it finds beside the add-on. An add-on for another version
+   will not load, so copy only the one that matches.
 2. Neither is signed by an identified developer, so the Mac holds back
    both until told they are wanted. Once, in Terminal:
        xattr -dr com.apple.quarantine ~/Documents/Loriini/Add-Ons
    Without it the Mac stops Archicad loading the add-on, and {APP}
    opens only by Control-clicking it and choosing Open.
-3. In Archicad 26, open Options > Add-On Manager, add that folder, and
+3. In Archicad, open Options > Add-On Manager, add that folder, and
    restart Archicad.
 4. Start {pc.PRODUCT} from its menu in Archicad, or double-click {APP}.
 
@@ -133,7 +142,8 @@ A separate Tapir add-on is not needed, and can be removed once this one
 loads.
 
 To update, quit Archicad and replace both with the ones from a newer
-folder, then run the command in step 2 again.
+folder, then run the command in step 2 again. After moving to a newer
+Archicad, swap the add-on for the one with the new version's number.
 
 {APP} needs an Apple silicon Mac on macOS {spelt(oldest)} or later. The
 add-on runs in Archicad on Apple silicon and Intel alike.
@@ -170,24 +180,25 @@ def unzip(archive: Path, into: Path) -> None:
         bundle.extractall(into)
 
 
-def bundle_in(folder: Path) -> Path | None:
-    """The add-on bundle somewhere under ``folder``, unzipping to find it."""
+def bundles_in(folder: Path) -> list[Path]:
+    """The add-on bundles somewhere under ``folder``, unzipping to find them."""
     for archive in sorted(folder.rglob("*.zip")):
         unzip(archive, archive.parent)
-    return next(iter(sorted(folder.rglob(f"{ADDON}.bundle"))), None)
+    return sorted(folder.rglob(f"{ADDON_PATTERN}.bundle"))
 
 
-def fetch_addon(into: Path) -> Path | None:
-    """The newest successful Mac add-on build of this branch, from GitHub.
+def fetch_addons(into: Path) -> list[Path]:
+    """The newest successful Mac add-on build of this branch, from GitHub:
+    every version's bundle it made.
 
-    As ``build_app.fetch_addon``, but for the Mac artifact, which carries the
-    bundle zipped: an artifact keeps files and not folders' permissions.
+    As ``build_app.fetch_addons``, but for the Mac artifacts, which carry the
+    bundles zipped: an artifact keeps files and not folders' permissions.
     """
     gh = shutil.which("gh")
     if gh is None:
-        print("  no GitHub CLI (gh) on this machine to fetch the add-on with.")
-        return None
-    listing = [gh, "run", "list", "--workflow", pc.ADDON_WORKFLOW, "--status", "success"]
+        print("  no GitHub CLI (gh) on this machine to fetch the add-ons with.")
+        return []
+    listing = [gh, "run", "list", "--workflow", ADDON_WORKFLOW, "--status", "success"]
     branch = pc._branch()
     if branch:
         listing += ["--branch", branch]
@@ -197,10 +208,10 @@ def fetch_addon(into: Path) -> Path | None:
     if found.returncode != 0 or not run_id or run_id == "null":
         where = f" of {branch}" if branch else ""
         print(f"  no successful add-on build{where} to fetch. {found.stderr.strip()}".rstrip())
-        return None
-    print(f"  fetching the add-on from build {run_id}...")
+        return []
+    print(f"  fetching the add-ons from build {run_id}...")
     fetched = subprocess.run(
-        [gh, "run", "download", run_id, "--name", ADDON, "--dir", str(into)],
+        [gh, "run", "download", run_id, "--pattern", ADDON_PATTERN, "--dir", str(into)],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -208,42 +219,62 @@ def fetch_addon(into: Path) -> Path | None:
     )
     if fetched.returncode != 0:
         print(f"  the download failed: {fetched.stderr.strip()}")
-        return None
-    return bundle_in(into)
+        return []
+    return bundles_in(into)
 
 
-def find_addon(named: Path | None, scratch: Path) -> Path | None:
-    """Where the add-on is, by the order the module docstring gives."""
-    if named is not None:
-        if named.is_dir() and named.suffix == ".bundle":
-            return named
-        if named.is_file() and named.suffix == ".zip":
-            shutil.copy2(named, scratch / named.name)
-            return bundle_in(scratch)
-        print(f"  no add-on bundle, or zip of one, at {named}.")
-        return None
-    if LOCAL_ADDON.is_dir():
-        return LOCAL_ADDON
-    return fetch_addon(scratch)
+def find_addons(named: list[Path], scratch: Path) -> list[Path]:
+    """Where the add-ons are, by the order the module docstring gives."""
+    if named:
+        found: list[Path] = []
+        for index, path in enumerate(named):
+            if path.is_dir() and path.suffix == ".bundle":
+                found.append(path)
+            elif path.is_file() and path.suffix == ".zip":
+                # A folder each, so two zips cannot unpack over one another.
+                own = scratch / str(index)
+                own.mkdir()
+                shutil.copy2(path, own / path.name)
+                inside = bundles_in(own)
+                if not inside:
+                    print(f"  no add-on bundle inside {path}.")
+                    return []
+                found.extend(inside)
+            else:
+                print(f"  no add-on bundle, or zip of one, at {path}.")
+                return []
+        return found
+    local = sorted(LOCAL_BUILD.glob(f"{ADDON_PATTERN}.bundle"))
+    if local:
+        return local
+    return fetch_addons(scratch)
 
 
-def add_addon(dist: Path, named: Path | None) -> bool:
-    """Put the add-on beside the program. True when it is there."""
+def add_addons(dist: Path, named: list[Path]) -> bool:
+    """Put the add-ons beside the program, each under its own name, which says
+    its Archicad version. True when at least one is there; a version without
+    one is named, as ``build_app.add_addons`` does."""
     with tempfile.TemporaryDirectory() as scratch:
-        found = find_addon(named, Path(scratch))
-        if found is None:
+        found = find_addons(named, Path(scratch))
+        if not found:
             print(
-                f"\nNOT IN dist: the add-on. Download {ADDON} from the latest "
-                "'Archicad add-on' run on GitHub and run this with --addon <file>, "
-                "or log in with 'gh auth login' so it can be fetched."
+                f"\nNOT IN dist: the add-ons. Download the {ADDON_PATTERN} artifacts "
+                "from the latest 'Archicad add-on (macOS)' run on GitHub and run this "
+                "with --addon <file> for each, or log in with 'gh auth login' so they "
+                "can be fetched."
             )
             return False
-        placed = dist / f"{ADDON}.bundle"
-        if placed.exists():
-            shutil.rmtree(placed)
         dist.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(found, placed, symlinks=True)
-    print(f"added  {placed}  (from {found})")
+        for bundle in found:
+            placed = dist / bundle.name
+            if placed.exists():
+                shutil.rmtree(placed)
+            shutil.copytree(bundle, placed, symlinks=True)
+            print(f"added  {placed}  (from {bundle})")
+    present = {path.name for path in dist.glob(f"{ADDON_PATTERN}.bundle")}
+    absent = [v for v in pc.ARCHICAD_VERSIONS if f"LoriiniAddOn_AC{v}_Mac.bundle" not in present]
+    if absent:
+        print(f"  no add-on in dist for Archicad {', '.join(map(str, absent))}.")
     return True
 
 
@@ -305,18 +336,22 @@ def claim_oldest_macos(app: Path) -> tuple[int, int]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build Loriini.app and gather the add-on.")
     parser.add_argument(
-        "--addon", type=Path, help="the add-on .bundle, or a .zip of it, to put beside the program"
+        "--addon",
+        type=Path,
+        action="append",
+        default=[],
+        help="an add-on .bundle, or a .zip of it, to put beside the program; once for each version",
     )
     parser.add_argument(
         "--addon-only",
         action="store_true",
-        help="only put the add-on into dist; do not rebuild the program",
+        help="only put the add-ons into dist; do not rebuild the program",
     )
     arguments = parser.parse_args(argv)
     dist = ROOT / "dist"
     if arguments.addon_only:
         add_notes(dist)
-        return 0 if add_addon(dist, arguments.addon) else 1
+        return 0 if add_addons(dist, arguments.addon) else 1
 
     if sys.platform != "darwin":
         # PyInstaller builds for the machine it runs on, and a .app is made
@@ -364,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
     add_notes(dist, oldest)
     # Last, so that when it is missing the line saying so is the last thing
     # printed.
-    return 0 if add_addon(dist, arguments.addon) else 1
+    return 0 if add_addons(dist, arguments.addon) else 1
 
 
 if __name__ == "__main__":

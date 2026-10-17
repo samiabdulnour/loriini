@@ -323,3 +323,39 @@ def test_a_project_that_will_not_group_keeps_its_model_and_says_why() -> None:
     said = _grouped(connection, [(elements, "future buildings")])
 
     assert said == ["the future buildings were not grouped: not supported"]
+
+
+def test_a_street_block_is_sampled_along_its_sides_not_only_at_its_corners() -> None:
+    """Sampled at its corners alone, a block's long side ran straight across
+    a slope the terrain curves over, and the terrain showed through it."""
+    from sun_study.archicad.context_model import _densified
+
+    square = [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)]
+    points = _densified(square, step=4.0)
+
+    assert points[0] == (0.0, 0.0)
+    assert len(points) == 4 * 5, "four corners and four points along each 20 m side"
+    for (ax, ay), (bx, by) in zip(points, [*points[1:], points[0]], strict=True):
+        assert abs(bx - ax) + abs(by - ay) <= 4.0 + 1e-9
+
+
+def test_a_street_block_takes_the_terrains_level_lines_that_lie_inside_it() -> None:
+    """Draped over the same lines the terrain is, a block follows the ground
+    inside it instead of spanning flat between its edges. A line is cut where
+    it leaves the block, and nothing outside, or on its edge, is kept."""
+    from sun_study.archicad.context_model import _lines_inside
+
+    block = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+    lines = [
+        (21.0, [(-5.0, 5.0), (2.0, 5.0), (5.0, 5.0), (8.0, 5.0), (15.0, 5.0)]),
+        (22.0, [(2.0, 2.0), (12.0, 2.0), (8.0, 8.0), (4.0, 8.0)]),
+        (23.0, [(20.0, 20.0), (30.0, 30.0)]),
+        (24.0, [(-1.0, 3.0), (3.0, 3.0), (11.0, 3.0)]),
+    ]
+
+    pieces = _lines_inside(lines, block)
+
+    assert pieces == [
+        (21.0, [(2.0, 5.0), (5.0, 5.0), (8.0, 5.0)]),
+        (22.0, [(8.0, 8.0), (4.0, 8.0)]),
+    ], "the line that left and came back is two pieces; a lone vertex inside is no line"

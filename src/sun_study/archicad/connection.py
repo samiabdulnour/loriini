@@ -91,8 +91,9 @@ LORIINI_NAMESPACE = "Loriini"
 #: What to do about a missing or too-old add-on, said once so every message
 #: gives the same advice.
 INSTALL_LORIINI = (
-    f"Install the current Loriini add-on ({ADDON_FILE}, built by the "
-    "'Archicad add-on' workflow), which has Tapir's commands built in."
+    f"Install the current Loriini add-on ({ADDON_FILE}, the one for your "
+    "Archicad version, built by the 'Archicad add-on' workflow), which has "
+    "Tapir's commands built in."
 )
 
 #: How long to let Archicad think about one command before giving up on it.
@@ -543,8 +544,9 @@ class ArchicadConnection:
             parameters,
             missing=(
                 "The Loriini add-on is not installed. It is built by the "
-                f"'Archicad add-on' workflow; copy {ADDON_FILE} into an add-on "
-                "folder and add that folder in Options > Add-On Manager."
+                f"'Archicad add-on' workflow; copy the {ADDON_FILE} for your "
+                "Archicad version into an add-on folder and add that folder in "
+                "Options > Add-On Manager."
             ),
         )
 

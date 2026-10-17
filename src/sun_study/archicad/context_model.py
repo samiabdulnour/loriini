@@ -503,6 +503,54 @@ def _ring_key(ring: Sequence[Point]) -> tuple[tuple[int, int], ...]:
     return tuple(sorted((round(x * 1e6), round(y * 1e6)) for x, y in ring))
 
 
+#: How far apart a block's outline is sampled for its ground level. A block's
+#: corners alone left its long sides straight across a slope the terrain
+#: curves over, and the terrain showed through.
+BLOCK_EDGE_STEP_M = 4.0
+
+
+def _densified(ring: Sequence[Point], step: float = BLOCK_EDGE_STEP_M) -> list[Point]:
+    """The ring with a point at least every ``step`` metres along each edge."""
+    out: list[Point] = []
+    for a, b in pairwise([*ring, ring[0]]):
+        out.append(a)
+        length = math.hypot(b[0] - a[0], b[1] - a[1])
+        pieces = max(1, math.ceil(length / step - 1e-9))
+        for k in range(1, pieces):
+            t = k / pieces
+            out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+    return out
+
+
+def _lines_inside(
+    lines: Sequence[tuple[float, Sequence[Point]]], ring: Sequence[Point]
+) -> list[tuple[float, list[Point]]]:
+    """The terrain's level lines, cut to what lies inside one block.
+
+    Vertex by vertex: a run of vertices inside the ring is one piece, and a
+    vertex outside ends it. The stretch between the last vertex in and the
+    block's edge is left to the edge's own samples (``_densified``), which
+    keeps every level line point clear of the mesh's outline -- Archicad
+    refuses a mesh whose level line touches its boundary.
+    """
+    xs = [x for x, _ in ring]
+    ys = [y for _, y in ring]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    pieces: list[tuple[float, list[Point]]] = []
+    for level, points in lines:
+        run: list[Point] = []
+        for x, y in points:
+            if x0 < x < x1 and y0 < y < y1 and point_in_ring(x, y, ring):
+                run.append((x, y))
+                continue
+            if len(run) >= 2:
+                pieces.append((level, run))
+            run = []
+        if len(run) >= 2:
+            pieces.append((level, run))
+    return pieces
+
+
 def _block_meshes(
     connection: ArchicadConnection,
     blocks: Sequence[Sequence[Point]],
@@ -511,22 +559,30 @@ def _block_meshes(
     floor_index: int,
     floor_level: float,
     datum_m: float = 0.0,
+    terrain_lines: Sequence[tuple[float, Sequence[Point]]] = (),
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """One kerbed mesh per block. Returns the meshes made and what was refused."""
+    """One kerbed mesh per block, draped over the ground the terrain mesh is:
+    its outline sampled every few metres, and the terrain's own level lines
+    inside it, all lifted by the kerb. Without the lines a block is flat
+    between its corners and the terrain shows through it wherever the ground
+    rises inside (asked 17 October 2026). Returns the meshes made and what
+    was refused."""
     made: list[dict[str, Any]] = []
     problems: list[str] = []
+    lift = KERB_M - floor_level - datum_m
     for i, ring in enumerate(blocks):
-        outline = [
-            {"x": x, "y": y, "z": ground.at((x, y)) + KERB_M - floor_level - datum_m}
-            for x, y in ring
+        outline = [{"x": x, "y": y, "z": ground.at((x, y)) + lift} for x, y in _densified(ring)]
+        inside = [
+            [{"x": x, "y": y, "z": level + lift} for x, y in points]
+            for level, points in _lines_inside(terrain_lines, ring)
         ]
-        lowest = min(p["z"] for p in outline)
+        lowest = min([p["z"] for p in outline] + [line[0]["z"] for line in inside])
         try:
             answer = connection.run_loriini(
                 "CreateMesh",
                 {
                     "outline": outline,
-                    "levelLines": [],
+                    "levelLines": inside,
                     "skirt": "solid",
                     "skirtLevel": _skirt_depth(lowest - SKIRT_M),
                     "layerIndex": layer_index,
@@ -824,6 +880,13 @@ def model_context(
                 floor_index,
                 floor_level,
                 datum,
+                terrain_lines=(
+                    lines.lines
+                    if lines is not None
+                    else level_lines(bundle, frame, contours).lines
+                    if contours
+                    else ()
+                ),
             )
             made_blocks = len(block_meshes)
             if refused:

@@ -28,6 +28,14 @@ dependencies = [
     # resolve "Australia/Sydney". Unconditional rather than Windows-only so CI
     # exercises the same fallback path the office machines will use.
     "tzdata>=2024.1",
+    # Certificate roots for the site analysis' downloads (site.http). Pure
+    # data, like tzdata: a Mac's own bundle lacked the root NSW's aerial
+    # imagery is signed under, and a run lost every aerial to it.
+    "certifi>=2024.2.2",
+    # Overture Maps' building footprints for the context model (site.overture):
+    # DuckDB reads them straight from Overture's public bucket. OpenStreetMap
+    # alone left whole streets of Campsie unbuilt.
+    "duckdb>=1.1",
 ]
 
 [project.optional-dependencies]
@@ -77,6 +85,9 @@ markers = [
 line-length = 100
 src = ["src", "tests"]
 target-version = "py311"
+# Tapir's copy of Graphisoft's resource compiler, kept unedited so an upgrade
+# is a copy; its style is upstream's, as Tapir's C++ beside it is.
+extend-exclude = ["archicad-addon/Tools/CompileResources.py"]
 
 [tool.ruff.lint]
 select = [
