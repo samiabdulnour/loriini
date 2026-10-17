@@ -1630,6 +1630,14 @@ GS::ObjectState CreateSlabsCommand::Execute (const GS::ObjectState& parameters,
 			if (one.Get ("level", level)) {
 				element.slab.level = level;
 			}
+			// A basic slab, whatever the tool was left on. A composite's
+			// thickness is the sum of its skins, so the one asked for below
+			// is ignored and every neighbour stands at the build-up's height
+			// -- which is what Archicad 30's default template gave, a 300 mm
+			// sandwich for buildings of every height (17 October 2026). The
+			// tool's building material is kept, so its cut fill and
+			// intersection priority are still the office's.
+			element.slab.modelElemStructureType = API_BasicStructure;
 			double thickness = 0.0;
 			if (one.Get ("thickness", thickness) && thickness > 0.0) {
 				element.slab.thickness = thickness;
