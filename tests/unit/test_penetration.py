@@ -58,6 +58,7 @@ def connect(**overrides: Any) -> tuple[ArchicadConnection, FakeTransport]:
         "CreateHatches": {"elements": [{"elementId": {"guid": "h"}}] * 99},
         # The add-on answers with a bare guid, not Tapir's elementId wrapper.
         "CreateFills": {"success": True, "elements": [{"guid": "h"}] * 99},
+        "BringToFront": {"success": True, "brought": 99},
         "CreatePolylines": {"elements": [{"elementId": {"guid": "p"}}] * 99},
         "CreateTexts": {"elements": [{"elementId": {"guid": "t"}}] * 99},
         "SetDetailsOfElements": {"executionResults": [{"success": True}]},
@@ -376,3 +377,30 @@ def test_the_addons_elements_are_reshaped_so_the_ids_are_actually_written() -> N
     assert made == [{"elementId": {"guid": "a"}}, {"elementId": {"guid": "b"}}], (
         "every element must carry an elementId or it is dropped without a word"
     )
+
+
+def test_the_patches_are_brought_to_the_front_in_one_call() -> None:
+    """A Fill is drawn at the Fill tool's level, under the plan's walls and
+    fills. On Kogarah the office brought every COS patch to the front by hand
+    before reading the sheets; Tapir's drawIndex steps each fill up a level at
+    a time, and four thousand took longer than ten minutes."""
+    connection, transport = connect()
+    report = draw(connection)
+
+    # The fake add-on answers 99 fills to any request: every one it made.
+    brought = transport.parameters_for("BringToFront")["elements"]
+    assert brought == [{"guid": "h"}] * 99, "every patch made, in one call"
+    assert report.behind == ""
+
+
+def test_an_addon_without_bring_to_front_still_draws_and_says_so() -> None:
+    connection, _ = connect(
+        BringToFront={
+            "error": {"code": 4010, "message": "does not have the registered Add-On command"}
+        }
+    )
+    report = draw(connection)
+
+    assert report.patches > 0, "the result is drawn and correct either way"
+    assert "install the current build" in report.behind
+    assert "not in front" in report.describe()

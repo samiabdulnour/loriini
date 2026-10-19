@@ -72,6 +72,8 @@ class ShadowTransport:
             for index in range(stale)
         ]
         self.sent: list[dict[str, Any]] = []
+        #: What a ``DeleteElements`` has taken away.
+        self.deleted: set[str] = set()
         #: Every Element ID written, in the order it was written.
         self.stamped: list[dict[str, Any]] = []
         #: Every group asked for, so a test can check what shares one.
@@ -116,12 +118,17 @@ class ShadowTransport:
         if command == "GetElementsByType":
             return {"elements": self.stale if given.get("elementType") == "Hatch" else []}
         if command == "GetDetailsOfElements":
+            # A deleted element answers with an error, as Archicad's does.
             return {
                 "detailsOfElements": [
-                    {"layerIndex": element["layerIndex"]} for element in given["elements"]
+                    {"error": {"code": -1, "message": "no such element"}}
+                    if (element.get("elementId") or {}).get("guid") in self.deleted
+                    else {"layerIndex": element["layerIndex"]}
+                    for element in given["elements"]
                 ]
             }
         if command == "DeleteElements":
+            self.deleted.update(element["elementId"]["guid"] for element in given["elements"])
             return {"executionResults": [{"success": True} for _ in given["elements"]]}
         if command == "CreateHatches":
             return {"elements": [{"elementId": {"guid": "fill"}} for _ in given["hatchesData"]]}

@@ -31,6 +31,7 @@ from __future__ import annotations
 import colorsys
 import math
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -547,6 +548,16 @@ def ensure_layer(connection: ArchicadConnection, name: str) -> LayerState:
             },
         )
         shown = _find_layer(connection, name)
+        if shown is not None and (shown.hidden or shown.locked):
+            # The rewrite did not take: Kogarah's eight result layers stayed
+            # hidden through it (Teamwork, October 2026). The add-on sets the
+            # two bits on the attribute itself, and says why when it cannot.
+            with suppress(ArchicadError):
+                connection.run_loriini(
+                    "ModifyLayers",
+                    {"layers": [{"name": name, "isHidden": False, "isLocked": False}]},
+                )
+            shown = _find_layer(connection, name)
         return shown if shown is not None else existing
 
     connection.run_tapir(
@@ -704,7 +715,35 @@ def clear_layer(connection: ArchicadConnection, layer_index: int) -> int:
 
     if removed:
         connection.run_tapir("DeleteElements", {"elements": removed})
+        # Asked again, because the answer to the delete says nothing. On
+        # Kogarah (Teamwork, October 2026) a rerun reported "replacing 276"
+        # on eight hidden layers, deleted none of them, and drew the new
+        # result over the old: two results stacked on every sheet, labels
+        # with two sets of figures, and a log that said all was well.
+        survivors = _still_on_layer(connection, removed, layer_index)
+        if survivors:
+            raise ArchicadError(
+                f"{survivors} of the {len(removed)} elements the last run left on its "
+                f"layer are still there after deleting them. Archicad deletes nothing on "
+                f"a hidden or locked layer, and in Teamwork nothing you have not "
+                f"reserved. Show the layer (or reserve its elements) and run again: "
+                f"drawing now would lay this run's result over the last one's."
+            )
     return len(removed)
+
+
+def _still_on_layer(
+    connection: ArchicadConnection, elements: Sequence[dict[str, Any]], layer_index: int
+) -> int:
+    """How many of ``elements`` are still on the layer. A deleted element
+    answers with an error rather than its details."""
+    answer = connection.run_tapir("GetDetailsOfElements", {"elements": list(elements)})
+    rows = answer.get("detailsOfElements") if isinstance(answer, dict) else None
+    return sum(
+        1
+        for row in (rows if isinstance(rows, list) else [])
+        if isinstance(row, dict) and "error" not in row and row.get("layerIndex") == layer_index
+    )
 
 
 def _fill_for(zone: ArchicadZone, band: BandStyle, layer_index: int) -> dict[str, Any]:
