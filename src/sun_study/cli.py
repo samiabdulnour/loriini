@@ -123,6 +123,11 @@ from sun_study.archicad.read import (
     storey_level,
 )
 from sun_study.archicad.read import zones as read_zones
+from sun_study.archicad.renovation import (
+    renovation_filters,
+    resolve_renovation_filter,
+    set_renovation_filter,
+)
 from sun_study.archicad.rooms import (
     DEFAULT_TOLERANCE_M,
     LIVING_ROOM_CODES,
@@ -7606,8 +7611,9 @@ def sun_eye_views(
         typer.Option(
             "--renovation-filter",
             help=(
-                "GUID of the renovation filter to pin. By default the one most of the "
-                "project's views carry, which is its planned state."
+                "The renovation filter to pin, by the name the Renovation palette gives it "
+                "or its GUID. By default the one most of the project's views carry, which "
+                "is its planned state."
             ),
         ),
     ] = None,
@@ -7763,7 +7769,7 @@ def sun_eye_views(
         f"  layer combination {combination!r}: {started} with {len(hidden)} zone layers hidden"
     )
 
-    guid = renovation_filter or planned_renovation_filter(connection)
+    guid = _renovation_filter_to_pin(connection, renovation_filter)
     if guid is None:
         typer.secho(
             "  no view in the project carries a renovation filter; none pinned.",
@@ -7844,6 +7850,53 @@ def sun_eye_views(
         "  each drawing's origin is at the centre of its cell and its frame clips to "
         "the cell; the content fills the frame when the layout is next opened."
     )
+
+
+@app.command("renovation-filters")
+def renovation_filter_command(
+    port: Annotated[int, typer.Option("--port", help="Which Archicad to talk to.")] = DEFAULT_PORT,
+    timeout: Annotated[
+        float, typer.Option("--timeout", help="Seconds to wait for one Archicad command.")
+    ] = DEFAULT_TIMEOUT_SECONDS,
+    set_to: Annotated[
+        str | None,
+        typer.Option(
+            "--set",
+            help=(
+                "Switch the project to this filter, by the name the Renovation palette gives "
+                "it or its GUID: what the floor plan and the 3D window show, as picking it "
+                "in the palette does."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """The project's renovation filters by name, and which one it shows now.
+
+    An office that keeps its massing scenarios as renovation filters names a
+    scenario the way the Renovation palette does; these are the names
+    shadow-plans' --scenario and --renovation-filter take. With --set, the
+    project is switched to one, which is how a script puts the model into a
+    scenario. Needs the current Loriini add-on: Tapir pins a view to a filter
+    by GUID and can neither name nor switch one.
+    """
+    banner()
+    connection = _connect(port, timeout, switch_database=False)
+    try:
+        filters, shown = renovation_filters(connection)
+        if set_to is not None:
+            chosen = set_renovation_filter(connection, set_to)
+            shown = chosen.guid
+            typer.echo(f"  switched the project to {chosen.name or chosen.guid!r}")
+    except ArchicadError as error:
+        typer.secho(f"  {error}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    if not filters:
+        typer.secho("  the project has no renovation filters.", fg=typer.colors.YELLOW)
+        return
+    typer.echo(f"  {len(filters)} renovation filters, in the palette's order:")
+    for one in filters:
+        now = "  (shown now)" if one.guid.casefold() == (shown or "").casefold() else ""
+        typer.echo(f"    {one.name:<40} {one.guid}{now}")
 
 
 @app.command("shadow-plans")
@@ -7970,7 +8023,21 @@ def shadow_plan_documents(
             "--proposed-pen",
             help=(
                 "The pen a proposal's shadows are filled in, one per --proposed in "
-                "order. Left out, the pens nearest the legend's blues."
+                "order, then one per --scenario. Left out, the pens nearest the "
+                "legend's blues."
+            ),
+        ),
+    ] = None,
+    scenario: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--scenario",
+            help=(
+                "A scenario the office keeps as a renovation filter rather than on layers, "
+                "by the name the Renovation palette gives it (or its GUID). Repeatable, one "
+                "per scenario. Each is a legend row that is compared, with no layers of its "
+                "own: its views pin that filter, and the filter decides which massing "
+                "stands. Joins either way of naming the legend, or --existing alone."
             ),
         ),
     ] = None,
@@ -7979,8 +8046,9 @@ def shadow_plan_documents(
         typer.Option(
             "--renovation-filter",
             help=(
-                "GUID of the renovation filter to pin. By default the one most of the "
-                "project's views carry, which is its planned state."
+                "The renovation filter to pin, by the name the Renovation palette gives it "
+                "or its GUID. By default the one most of the project's views carry, which "
+                "is its planned state."
             ),
         ),
     ] = None,
@@ -8059,8 +8127,10 @@ def shadow_plan_documents(
     --shadow-scenario rows that are compared, or --existing and --proposed --
     a document is made per row and every row of an hour is laid in one
     drawing on a combined sheet, each row's shadow in its legend colour where
-    it adds. Without a legend, one set; run it once per layer combination,
-    with --label, and read the sheets against each other.
+    it adds. A scenario an office keeps as a renovation filter rather than
+    on layers joins the legend by the palette's name, --scenario, its views
+    pinned to that filter. Without a legend, one set; run it once per layer
+    combination, with --label, and read the sheets against each other.
 
     Needs the Loriini add-on, current build: the document's sun shadows are
     switched on as it is made, which older builds cannot do.
@@ -8078,18 +8148,26 @@ def shadow_plan_documents(
         )
     clock = Stopwatch()
     proposals = _proposal_layers(proposed or [])
-    legend = _legend_rows(shadow_source or [], shadow_scenario or [], existing or [], proposals)
-    if legend and set_label:
+    scenario_names = [name.strip() for name in scenario or [] if name.strip()]
+    legend = _legend_rows(
+        shadow_source or [],
+        shadow_scenario or [],
+        existing or [],
+        proposals,
+        with_scenarios=bool(scenario_names),
+    )
+    if (legend or scenario_names) and set_label:
+        named = [row.label for row in legend] + scenario_names
         typer.secho(
             f"  --label {set_label!r} is set aside: the stacked mode names its sets "
-            f"for the legend, {', '.join(row.label for row in legend)}.",
+            f"for the legend, {', '.join(named)}.",
             fg=typer.colors.YELLOW,
         )
         set_label = ""
-    if existing and not proposals and not legend:
+    if existing and not proposals and not legend and not scenario_names:
         typer.secho(
-            "  --existing names what stands, but no --proposed names what is added; "
-            "the plans are made as one set under the layer combination.",
+            "  --existing names what stands, but no --proposed or --scenario names what "
+            "is added; the plans are made as one set under the layer combination.",
             fg=typer.colors.YELLOW,
         )
     moments, labels = _shadow_moments(shadow_date, shadow_hour, year, timezone)
@@ -8097,6 +8175,9 @@ def shadow_plan_documents(
         typer.secho("No instants to draw.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2)
     connection = _connect(port, timeout, switch_database=False)
+    guid = _renovation_filter_to_pin(connection, renovation_filter)
+    if scenario_names:
+        legend = [*legend, *_scenario_rows(connection, scenario_names, pinned=guid)]
 
     # A floor plan in front, as for the sun views: documents are made from
     # the 3D window's state, and the database must not be moved under it.
@@ -8163,7 +8244,6 @@ def shadow_plan_documents(
     if shadow_background_pen is not None:
         fill["backgroundPen"] = shadow_background_pen
 
-    guid = renovation_filter or planned_renovation_filter(connection)
     settings = ShadowPlanSettings(
         layer_combination=layer_combination,
         renovation_filter_guid=guid,
@@ -8192,14 +8272,17 @@ def shadow_plan_documents(
         wanted += [n for n in hidden_among(site_context_layers(), names, states) if n not in wanted]
     if legend:
         given_pens: dict[str, int] = {}
-        if existing_pen is not None and existing and proposals:
+        if existing_pen is not None and existing and (proposals or scenario_names):
             given_pens[EXISTING_LABEL] = existing_pen
         if proposed_pen:
-            labels_given = stack_labels(len(proposals))
+            labels_given = stack_labels(len(proposals)) + [
+                row.label for row in legend if row.renovation_filter_guid
+            ]
             if len(proposed_pen) > len(labels_given):
                 typer.secho(
-                    f"  {len(proposed_pen)} --proposed-pen for {len(labels_given)} --proposed; "
-                    f"the last {len(proposed_pen) - len(labels_given)} are set aside",
+                    f"  {len(proposed_pen)} --proposed-pen for {len(labels_given)} --proposed "
+                    f"and --scenario; the last {len(proposed_pen) - len(labels_given)} are "
+                    f"set aside",
                     fg=typer.colors.YELLOW,
                 )
             given_pens.update(zip(labels_given, proposed_pen, strict=False))
@@ -8332,6 +8415,8 @@ def _legend_rows(
     scenarios: Sequence[str],
     existing: Sequence[str],
     proposals: Sequence[Sequence[str]],
+    *,
+    with_scenarios: bool = False,
 ) -> list[LegendRow]:
     """The stack's legend, from either way of naming it.
 
@@ -8341,7 +8426,9 @@ def _legend_rows(
     short way for the common case, one row that stands and the proposals; the
     two ways do not mix, since which rows accumulate and which are compared
     would then depend on how they happened to be typed. Neither given, there
-    is no legend and the plans are one plain set.
+    is no legend and the plans are one plain set -- unless ``--scenario``
+    rows are coming (``with_scenarios``), when ``--existing`` alone stands as
+    what they are cast against (D162).
     """
     if (sources or scenarios) and (existing or proposals):
         raise typer.BadParameter(
@@ -8353,9 +8440,54 @@ def _legend_rows(
             LegendRow(label=rule.label, layers=rule.selectors, role=rule.role)
             for rule in _shadow_source_rules(sources, scenarios)
         ]
-    if proposals:
+    if proposals or (existing and with_scenarios):
         return legend_from_existing_and_proposed(existing, proposals)
     return []
+
+
+def _renovation_filter_to_pin(connection: ArchicadConnection, wanted: str | None) -> str | None:
+    """The GUID the views pin: ``wanted`` by the palette's name or its GUID,
+    or the planned state most of the project's views carry (D162)."""
+    if not wanted or not wanted.strip():
+        return planned_renovation_filter(connection)
+    try:
+        found = resolve_renovation_filter(connection, wanted)
+    except ArchicadError as error:
+        typer.secho(f"  {error}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(f"  views pin the renovation filter {found.name or found.guid!r}")
+    return found.guid
+
+
+def _scenario_rows(
+    connection: ArchicadConnection, names: Sequence[str], *, pinned: str | None
+) -> list[LegendRow]:
+    """``--scenario`` as legend rows: a scenario kept as a renovation filter,
+    named as the palette spells it, with no layers of its own (D162).
+
+    A name the project lacks stops the run with the names it has; a scenario
+    whose filter is the one every other row pins is said, since the two rows
+    would then show the same massing.
+    """
+    rows: list[LegendRow] = []
+    for name in names:
+        try:
+            found = resolve_renovation_filter(connection, name)
+        except ArchicadError as error:
+            typer.secho(f"  {error}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from error
+        label = found.name or name
+        if any(row.label == label for row in rows):
+            continue
+        if pinned and found.guid.strip("{}").casefold() == pinned.strip("{}").casefold():
+            typer.secho(
+                f"  --scenario {label!r} is the filter the other rows pin too, so its row "
+                f"shows the same massing as theirs; give --renovation-filter the planned "
+                f"state.",
+                fg=typer.colors.YELLOW,
+            )
+        rows.append(LegendRow(label, (), SCENARIO, renovation_filter_guid=found.guid))
+    return rows
 
 
 def _legend_pens(
@@ -8517,7 +8649,9 @@ def _stacked_shadow_plans(
     scenarios at the bottom in the order named, sources above them from the
     last to the first. Each document draws its whole shadow in its row's
     pen; every one above the lowest draws its surfaces in the transparent
-    pen, so what is seen of each row is what it adds (D142).
+    pen, so what is seen of each row is what it adds (D142). A row kept as a
+    renovation filter has no layers: its combination shows what every
+    source's does, and its views pin its filter (D162).
     """
     typer.echo("  shadow pens for the legend:")
     source_guid, source_name = _pen_source(connection, settings.pen_set)
@@ -8556,6 +8690,7 @@ def _stacked_shadow_plans(
             fg=typer.colors.YELLOW,
         )
     combos: dict[str, str] = {}
+    filtered = {row.label for row in legend if row.renovation_filter_guid}
     for label, show, hide in legend_combinations(legend, also_show=also_show):
         name = ensure_layer_combination(
             connection, naming.named(f"{SET_WORD} {label}"), show=show, hide=hide, base=base
@@ -8563,9 +8698,17 @@ def _stacked_shadow_plans(
         combos[label] = name
         on = ", ".join(repr(layer) for layer in show) or "nothing more"
         off = ", ".join(repr(layer) for layer in hide) or "nothing"
-        typer.echo(f"  {label}: views on {name!r}, which is {base!r} with {on} on and {off} off")
+        own = ", pinned to its own renovation filter" if label in filtered else ""
+        typer.echo(
+            f"  {label}: views on {name!r}, which is {base!r} with {on} on and {off} off{own}"
+        )
     members = [
-        PlanSet(label=row.label, layer_combination=combos[row.label], shadow_pen=pens[row.label])
+        PlanSet(
+            label=row.label,
+            layer_combination=combos[row.label],
+            shadow_pen=pens[row.label],
+            renovation_filter_guid=row.renovation_filter_guid,
+        )
         for row in stack_order(legend)
     ]
     fitted, window, master_layout = _plan_fit(

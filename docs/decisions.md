@@ -6465,3 +6465,47 @@ agent's `shadow_every_hour` takes the same as `grid_m`.
 
 *What this does not change:* the documents, the fills' colours (D147), or the
 sheet's fit (D149).
+
+### D162 — A scenario kept as a renovation filter is a legend row, and the filter is listed, named and switched
+
+Asked 29 October 2026: *"are you able to control renovation filter via
+loriini?"*, and then to make it so, for an automation.
+
+**What was there.** A view could be pinned to a renovation filter, by GUID
+only, on the sun views and the shadow plans (`--renovation-filter`), and the
+yield could count by one (D140); Tapir has no way to list the filters, name
+one or switch the project to one. A branch of 19 October had the add-on list
+them by name and a `--scenario` for Crows Nest, whose massing scenarios are
+renovation filters -- each massing shown on its own filter only, the
+Renovation palette offering *SCENARIO 2_COMPLIANT TOD* and *SCENARIO
+5_SEARs* -- written against the two-tier stack that the legend has since
+replaced (`--shadow-source` and `--shadow-scenario`). It is rebased onto the
+legend here rather than merged.
+
+**The row.** A scenario kept as a filter is a legend row that is compared,
+with no layers of its own (`LegendRow.renovation_filter_guid`). Its
+combination shows what every source's does and hides the other scenarios'
+layers, as any scenario with nothing of its own to show would; its views
+pin its filter, and every other row's pin the run's -- `--renovation-filter`,
+now by the palette's name or a GUID, or the planned state most of the
+project's views carry. So the stack, the pens, the pen set, the combined
+sheets and the legend are the ones every other row has (D137 to D148), and
+`--scenario` joins either way of naming the legend, or `--existing` alone.
+The agent's `shadow_diagram` takes them as `renovation_scenarios` and
+`renovation_filter`. A name the project lacks stops the run with the names
+it has; a scenario on the filter the other rows pin is said, since the two
+rows would show the same massing.
+
+**The filter itself.** `GetRenovationFilters` lists the palette's filters in
+its order with the one the project shows, and `SetRenovationFilter` switches
+to one -- `ACAPI_Renovation_SetActualRenovationFilter`, the
+`APIDb_SetActualRenovationFilterID` dispatcher on 26 -- which is what the
+floor plan and the 3D window then show, as picking it in the palette does.
+`sun-study renovation-filters` lists them and `--set` switches; the agent
+has `renovation_filters` and `set_renovation_filter`, and `project_options`
+lists them with the one shown. An add-on without the commands takes a GUID
+as before and says a name needs the current build.
+
+*What this does not change:* what a view pinned to a filter shows, the
+yield's counting by filter or by status (D140), or `--shadow-source` and
+`--shadow-scenario`.

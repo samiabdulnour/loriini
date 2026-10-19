@@ -603,6 +603,11 @@ class LegendRow:
     layers: tuple[str, ...]
     role: str
     """``BASELINE`` or ``SCENARIO``, from ``core.shadow``."""
+    renovation_filter_guid: str | None = None
+    """A scenario an office keeps as a renovation filter rather than on layers
+    of its own (D162): its views pin this filter, and the filter decides which
+    massing stands on the site. Such a row has no layers, so its combination
+    shows what every baseline's does and its filter is what tells it apart."""
 
 
 @dataclass(frozen=True)
@@ -613,6 +618,9 @@ class PlanSet:
     label: str
     layer_combination: str
     shadow_pen: int
+    renovation_filter_guid: str | None = None
+    """The filter its views pin in place of the run's: a scenario kept as a
+    renovation filter (D162). ``None`` pins the run's."""
 
 
 @dataclass(frozen=True)
@@ -699,7 +707,9 @@ def legend_combinations(
     share is shown by both. Anything else keeps the state the base
     combination gives it -- the ground among it -- and ``also_show`` is what
     the base hides that every set needs, the site context the plain mode
-    switches on the same way.
+    switches on the same way. A scenario with no layers -- one kept as a
+    renovation filter (D162) -- shows what every baseline does and hides the
+    other scenarios' layers; its filter is what tells it apart.
     """
     every = [layer for row in rows for layer in row.layers]
     out: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
@@ -739,7 +749,8 @@ def make_shadow_plan_stack(
     background pen the fill pen, so a hatch left in the settings covers as a
     solid would -- and its uncut surfaces filled in the transparent pen, so
     its drawing shows its shadows and lets the ones beneath show everywhere
-    else (``STACK_SURFACES``).
+    else (``STACK_SURFACES``). A member kept as a renovation filter pins its
+    own in place of the run's (D162).
     """
     said: list[str] = []
     piles: list[tuple[str, tuple[MadePlan, ...]]] = []
@@ -751,9 +762,11 @@ def make_shadow_plan_stack(
         fill = dict(settings.shadow_fill)
         fill["fillPen"] = member.shadow_pen
         fill["backgroundPen"] = member.shadow_pen
+        pinned = member.renovation_filter_guid or settings.renovation_filter_guid
         own = replace(
             settings,
             layer_combination=member.layer_combination,
+            renovation_filter_guid=pinned,
             shadow_fill=fill,
             fill_uncut_surfaces=None,
             uncut_surfaces=dict(STACK_SURFACES),

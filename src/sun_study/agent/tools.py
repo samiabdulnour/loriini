@@ -105,7 +105,18 @@ class HelpArguments(Arguments):
         default="",
         description=(
             "A command name -- site, shadows, shadow-plans, sun-views, massing, archicad-run, "
-            "archicad-info -- for that command's options; blank for the list of commands."
+            "archicad-info, renovation-filters -- for that command's options; blank for the "
+            "list of commands."
+        ),
+    )
+
+
+class RenovationFilterArguments(ProjectArguments):
+    name: str = Field(
+        min_length=1,
+        description=(
+            "The filter to switch the project to, by the name the Renovation palette gives "
+            "it -- as renovation_filters lists them -- or its GUID."
         ),
     )
 
@@ -375,6 +386,24 @@ class ShadowPlanArguments(SheetedArguments):
             "proposal adds in another, all cast by Archicad, on one plan."
         ),
     )
+    renovation_scenarios: list[str] | None = Field(
+        default=None,
+        description=(
+            "For an office that keeps its massing scenarios as renovation filters rather "
+            "than on layers: the filters' names as renovation_filters lists them, e.g. "
+            "['SCENARIO 2_COMPLIANT TOD']. Each becomes a scenario row of the stack with no "
+            "layers of its own, whose views pin that filter, sheeted under its name. Joins "
+            "either way of naming the legend, or stands with existing alone."
+        ),
+    )
+    renovation_filter: str | None = Field(
+        default=None,
+        description=(
+            "The renovation filter every other row's views pin, by name or GUID: the planned "
+            "state, which shows none of the scenarios' massings. Left out, the one most of "
+            "the project's views carry."
+        ),
+    )
     existing_pen: int | None = Field(
         default=None,
         ge=0,
@@ -386,8 +415,8 @@ class ShadowPlanArguments(SheetedArguments):
     proposed_pens: list[int] | None = Field(
         default=None,
         description=(
-            "With proposals: the pen each proposal's shadow is filled in, in order. Left "
-            "out, the pens nearest the legend's blues."
+            "With proposals: the pen each proposal's shadow is filled in, in order, then "
+            "each renovation scenario's. Left out, the pens nearest the legend's blues."
         ),
     )
     pen_set: str | None = Field(default=None, description="The pen set the plans print in.")
@@ -673,6 +702,9 @@ def shadow_plans_argv(arguments: ShadowPlanArguments) -> list[str]:
         argv += ["--existing", layer]
     for layers in a.proposals or []:
         argv += ["--proposed", ",".join(layers)]
+    for name in a.renovation_scenarios or []:
+        argv += ["--scenario", name]
+    argv += _option("--renovation-filter", a.renovation_filter)
     argv += _option("--existing-pen", a.existing_pen)
     for pen in a.proposed_pens or []:
         argv += ["--proposed-pen", str(pen)]
@@ -681,6 +713,11 @@ def shadow_plans_argv(arguments: ShadowPlanArguments) -> list[str]:
     argv += _option("--subset", a.subset) + _option("--year", a.year)
     argv += _option("--sheets", a.sheets)
     return argv
+
+
+def renovation_filters_argv(port: int, set_to: str | None = None) -> list[str]:
+    """The listing, or with ``set_to`` the switch to that filter (D162)."""
+    return ["renovation-filters", "--port", str(port), *_option("--set", set_to)]
 
 
 def sun_views_argv(arguments: SunViewArguments) -> list[str]:
@@ -825,6 +862,13 @@ def project_options(arguments: Mapping[str, Any], call: Call) -> ToolResult:
             + "; ".join(f"{kind.described()} on {kind.layer}" for kind in found.zone_kinds)
         )
     listed("layer combinations", found.combinations)
+    listed(
+        "renovation filters",
+        [
+            name + (" (shown now)" if name == found.renovation_filter_shown else "")
+            for name in found.renovation_filters
+        ],
+    )
     listed("master layouts", found.masters)
     listed("layout subsets", found.subsets)
     listed("schedules", found.schedules)
@@ -834,6 +878,16 @@ def project_options(arguments: Mapping[str, Any], call: Call) -> ToolResult:
     for problem in found.problems:
         lines.append(f"could not read: {problem}")
     return ToolResult("\n".join(lines), structured=asdict(found))
+
+
+def renovation_filters(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    a = _validated(ProjectArguments, arguments)
+    return run_command(renovation_filters_argv(a.port), call)
+
+
+def set_renovation_filter(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    a = _validated(RenovationFilterArguments, arguments)
+    return run_command(renovation_filters_argv(a.port, a.name), call)
 
 
 def loriini_help(arguments: Mapping[str, Any], call: Call) -> ToolResult:
@@ -892,6 +946,27 @@ TOOLS: tuple[Tool, ...] = (
         read_only=True,
     ),
     Tool(
+        "renovation_filters",
+        "The project's renovation filters by name, in the Renovation palette's order, and "
+        "which one the project shows now. An office may keep its massing scenarios as "
+        "filters; these are the names shadow_diagram's renovation_scenarios and "
+        "renovation_filter take, and set_renovation_filter switches to one.",
+        ProjectArguments.model_json_schema(),
+        renovation_filters,
+        title="Renovation filters",
+        read_only=True,
+    ),
+    Tool(
+        "set_renovation_filter",
+        "Switch the open project to a renovation filter, by name: what the floor plan and "
+        "the 3D window show, as picking it in the Renovation palette does. For a scenario "
+        "kept as a filter, this puts the model into that scenario; views pinned to another "
+        "filter keep their own.",
+        RenovationFilterArguments.model_json_schema(),
+        set_renovation_filter,
+        title="Switch renovation filter",
+    ),
+    Tool(
         "loriini_help",
         "The command line's own help: the list of commands, or every option of one command "
         "with what it means. Read it before run_loriini.",
@@ -930,7 +1005,8 @@ TOOLS: tuple[Tool, ...] = (
         "row's shadow in its legend colour where it adds to the rows above it, all cast by "
         "Archicad. Without a legend, one set shows the whole shadow of what the layer "
         "combination shows; run it once per combination with a label each. The layers and "
-        "combinations come from project_options.",
+        "combinations come from project_options; an office that keeps its massing scenarios "
+        "as renovation filters names them in renovation_scenarios.",
         ShadowPlanArguments.model_json_schema(),
         shadow_diagram,
         title="Shadow diagram",

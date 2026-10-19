@@ -145,6 +145,17 @@ class PlanTransport:
         if command == "GetPlace":
             # A Sydney project keeping AEST (D135): the hours go over unchanged.
             return {"success": True, "timeZoneInMinutes": 600, "summerTime": False}
+        if command == "GetRenovationFilters":
+            # The Crows Nest palette's scenarios, and the planned state (D162).
+            return {
+                "success": True,
+                "renovationFilters": [
+                    {"guid": PLANNED_GUID, "name": "04 Planned Status"},
+                    {"guid": TOD_GUID, "name": "SCENARIO 2_COMPLIANT TOD"},
+                    {"guid": SEARS_GUID, "name": "SCENARIO 5_SEARs"},
+                ],
+                "current": PLANNED_GUID,
+            }
         raise AssertionError(f"unscripted command {command!r}")
 
     def asked(self, command: str) -> list[dict[str, Any]]:
@@ -152,6 +163,11 @@ class PlanTransport:
 
 
 SS = naming.prefix()
+
+#: The Crows Nest palette (D162): the planned state and two scenarios.
+PLANNED_GUID = "38FD3426-70C5-9C4D-ACA5-877D4A623A36"
+TOD_GUID = "62AA7A95-BEAD-4C9C-8A4B-72C128F11D7B"
+SEARS_GUID = "8DAD5038-907C-4997-80E8-0160AF04B4C1"
 
 
 # -- the hours -----------------------------------------------------------------
@@ -986,6 +1002,123 @@ def test_the_two_ways_of_naming_the_legend_do_not_mix(monkeypatch: pytest.Monkey
     )
     assert result.exit_code != 0
     assert "Name the legend one way" in result.output
+
+
+# -- scenarios kept as renovation filters (Crows Nest, D162) --------------------
+
+
+def test_a_scenario_row_with_no_layers_shows_what_the_baselines_do() -> None:
+    """A scenario kept as a filter has no layers: its combination is the
+    context's, with the other scenarios' massings off; the filter does the
+    rest."""
+    rows = [
+        LegendRow("Existing", ("03 | Site Context.Buildings",), BASELINE),
+        LegendRow("Proposed", ("20 | Massing.Envelope",), SCENARIO),
+        LegendRow("SCENARIO 2_COMPLIANT TOD", (), SCENARIO, renovation_filter_guid=TOD_GUID),
+    ]
+    _, _, tod = legend_combinations(rows)
+    assert tod == (
+        "SCENARIO 2_COMPLIANT TOD",
+        ("03 | Site Context.Buildings",),
+        ("20 | Massing.Envelope",),
+    )
+
+
+def test_a_member_kept_as_a_filter_pins_it_and_the_rest_pin_the_runs() -> None:
+    transport = PlanTransport()
+    settings = ShadowPlanSettings(layer_combination="BASE", renovation_filter_guid="PLANNED")
+    stack, _ = make_shadow_plan_stack(
+        ArchicadConnection(transport),
+        _plans([9]),
+        settings=settings,
+        members=[
+            PlanSet("SCENARIO 2_COMPLIANT TOD", "C-TOD", 95, renovation_filter_guid=TOD_GUID),
+            PlanSet("Existing", "C-E", 93),
+        ],
+    )
+    pinned = [
+        row["viewSettings"]["renovationFilterGuid"]["guid"]
+        for ask in transport.asked("SetViewSettings")
+        for row in ask["navigatorItemIdsWithViewSettings"]
+        if "renovationFilterGuid" in row["viewSettings"]
+    ]
+    assert pinned == [TOD_GUID, "PLANNED"]
+    assert [label for label, _ in stack.piles] == ["SCENARIO 2_COMPLIANT TOD", "Existing"]
+
+
+def test_scenarios_kept_as_renovation_filters_join_the_stack_by_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D162, end to end: --scenario names a filter as the palette spells it,
+    case aside; its row has no layers and its views pin that filter; the
+    other rows pin the planned state, given by name; the sets carry the
+    palette's own spelling."""
+    result, transport, combinations, sheets = _stacked_command(
+        monkeypatch,
+        "--existing",
+        "03 | Site Context.Buildings",
+        "--scenario",
+        "scenario 2_compliant tod",
+        "--scenario",
+        "SCENARIO 5_SEARs",
+        "--renovation-filter",
+        "04 Planned Status",
+    )
+
+    assert result.exit_code == 0, result.output
+    prefix = naming.SHADOW_PREFIX
+    assert [row[0] for row in combinations] == [
+        f"{prefix} Shadow Plans Existing",
+        f"{prefix} Shadow Plans SCENARIO 2_COMPLIANT TOD",
+        f"{prefix} Shadow Plans SCENARIO 5_SEARs",
+    ]
+    assert combinations[1][1] == ["03 | Site Context.Buildings"] and combinations[1][2] == []
+    pinned = [
+        row["viewSettings"]["renovationFilterGuid"]["guid"]
+        for ask in transport.asked("SetViewSettings")
+        for row in ask["navigatorItemIdsWithViewSettings"]
+        if "renovationFilterGuid" in row["viewSettings"]
+    ]
+    # Two hours a set, made bottom to top: each scenario on its own filter,
+    # the existing set on the planned state.
+    assert pinned == [TOD_GUID] * 2 + [SEARS_GUID] * 2 + [PLANNED_GUID] * 2
+    created = transport.asked("CreateDocumentFrom3D")
+    assert created[0]["name"] == f"{prefix} Shadow Plan SCENARIO 2_COMPLIANT TOD 21 Jun 09:00"
+    ((stack, _),) = sheets
+    assert [label for label, _ in stack.piles] == [
+        "SCENARIO 2_COMPLIANT TOD",
+        "SCENARIO 5_SEARs",
+        "Existing",
+    ]
+    assert "views pin the renovation filter '04 Planned Status'" in result.output
+    assert "pinned to its own renovation filter" in result.output
+
+
+def test_a_scenario_the_project_lacks_stops_the_run_with_the_names_it_has(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, transport, _, _ = _stacked_command(
+        monkeypatch, "--existing", "03 | Site Context.Buildings", "--scenario", "SCENARIO 9"
+    )
+    assert result.exit_code == 2
+    assert "04 Planned Status; SCENARIO 2_COMPLIANT TOD; SCENARIO 5_SEARs" in result.output
+    assert not transport.asked("CreateDocumentFrom3D"), "stopped before anything was made"
+
+
+def test_a_scenario_on_the_filter_the_other_rows_pin_is_said(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _, _, _ = _stacked_command(
+        monkeypatch,
+        "--existing",
+        "03 | Site Context.Buildings",
+        "--scenario",
+        "SCENARIO 2_COMPLIANT TOD",
+        "--renovation-filter",
+        TOD_GUID,
+    )
+    assert result.exit_code == 0, result.output
+    assert "is the filter the other rows pin too" in result.output
 
 
 def test_the_sun_date_is_in_archicads_own_clock_when_the_add_on_reports_one() -> None:

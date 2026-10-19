@@ -48,6 +48,17 @@
 //                             reports the whole `API_PlaceInfo`, the zone
 //                             included, so the Python side can hand Archicad
 //                             the hour in Archicad's own clock.
+//   GetRenovationFilters      the same for renovation filters, which Tapir
+//                             pins to a view only by GUID and cannot name. An
+//                             office that keeps its massing scenarios as
+//                             filters (Crows Nest, October 2026) needs the
+//                             names to say which scenario a view shows.
+//
+//   SetRenovationFilter       D162. The other half: what the floor plan and
+//                             the 3D window show is the palette's current
+//                             filter, which Tapir cannot switch, so a script
+//                             could pin a view to a scenario but not put the
+//                             model into one.
 
 #if !defined (LORIINI_PROJECTCOMMANDS_HPP)
 #define LORIINI_PROJECTCOMMANDS_HPP
@@ -77,6 +88,8 @@ LORIINI_COMMAND (ActivateLayerCombinationCommand)
 LORIINI_COMMAND (ModifyLayersCommand)
 LORIINI_COMMAND (GetGraphicOverrideCombinationsCommand)
 LORIINI_COMMAND (GetPlaceCommand)
+LORIINI_COMMAND (GetRenovationFiltersCommand)
+LORIINI_COMMAND (SetRenovationFilterCommand)
 
 #undef LORIINI_COMMAND
 

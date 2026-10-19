@@ -191,6 +191,39 @@ From the agent, `shadow_diagram` takes `sources` and `scenarios`, or
 `existing`, `proposals`, `existing_pen` and `proposed_pens`; its
 `shadow_every_hour` is the fills' every-hour drawing ([D160](decisions.md)).
 
+### Scenarios kept as renovation filters
+
+Some offices keep their massing scenarios as renovation filters rather than
+on layers: each massing is set to show on its own filter only, and the
+Renovation palette offers *SCENARIO 2_COMPLIANT TOD*, *SCENARIO 5_SEARs* and
+so on (Crows Nest, October 2026). `--scenario` takes those names, once per
+scenario, as the palette spells them or as GUIDs ([D162](decisions.md)).
+Each is a legend row that is compared, with no layers of its own: its
+combination shows what every source's does, its views pin that filter, and
+the filter decides which massing stands on the site. Every other row's views
+pin `--renovation-filter` -- by name or GUID; left out, the planned state
+most of the project's views carry -- which is the filter that shows none of
+the scenarios' massings. The rows then stack, take their pens and go on the
+combined sheets as any other scenario does, and `--scenario` joins either
+way of naming the legend, or `--existing` alone:
+
+```
+sun-study shadow-plans --layer-combination "04 | Shadow Diagrams" ^
+  --existing "03 | Site Context.Existing Buildings - To Stay" ^
+  --renovation-filter "04 Planned Status" ^
+  --scenario "SCENARIO 2_COMPLIANT TOD" --scenario "SCENARIO 5_SEARs"
+```
+
+The names are read through the add-on's `GetRenovationFilters`, which Tapir
+lacks; with an older add-on a filter can still be given by its GUID.
+`sun-study renovation-filters` lists them with the one the project shows
+now, and `--set` switches the project to one -- what the floor plan and the
+3D window show, as picking it in the palette does -- through the add-on's
+`SetRenovationFilter`, which is how a script puts the model into a scenario.
+From the agent, `shadow_diagram` takes `renovation_scenarios` and
+`renovation_filter`, `renovation_filters` lists them, `set_renovation_filter`
+switches, and `project_options` lists them with the one shown.
+
 ### Two sets side by side
 
 The older comparison remains: run the set twice, under two layer
