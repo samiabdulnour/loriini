@@ -161,6 +161,7 @@ GSErrCode Initialize (void)
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::CreateDocumentFrom3DCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::SetDocumentFrom3DCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::CreateFillsCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::BringToFrontCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::CreateTextsCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::PlaceFiguresCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::PlaceDrawingsCommand> ()); },

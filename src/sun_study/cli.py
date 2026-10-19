@@ -3712,12 +3712,14 @@ def massing(
             help=(
                 "Name of the fill attribute the communal patches are drawn with. A "
                 "percentage fill, so the plan underneath is read through the patch "
-                "rather than covered by it. Named, not indexed: a fill index means "
-                "nothing outside the project it came from. Empty leaves the Fill "
-                "tool's own default, which is whatever it was last set to."
+                "rather than covered by it -- 50 %, which the office set every "
+                "patch to by hand on the first Kogarah sheets. "
+                "Named, not indexed: a fill index means nothing outside the project "
+                "it came from. Empty leaves the Fill tool's own default, which is "
+                "whatever it was last set to."
             ),
         ),
-    ] = "20 %",
+    ] = "50 %",
     zone_outline: Annotated[
         bool,
         typer.Option(
