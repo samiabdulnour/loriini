@@ -69,6 +69,7 @@ from sun_study.core.solar import solar_position
 __all__ = [
     "DEFAULT_COMBINATION",
     "EXISTING_LABEL",
+    "FUTURE_LABEL",
     "OVERHEAD_DEG",
     "PLAN_SCALE",
     "PLAN_WORD",
@@ -95,11 +96,15 @@ __all__ = [
 PLAN_WORD = "Shadow Plan"
 SET_WORD = "Shadow Plans"
 
-#: What the stacked mode calls its sets: the one that stands, and the
-#: proposals -- ``Proposed`` alone, or ``Proposed 1``, ``Proposed 2`` and on
-#: in the order given. The office's own names for its massings (SEARs, the
-#: building envelope) change from job to job; these do not.
+#: What the stacked mode calls its sets: the one that stands, the future
+#: context beside it, and the proposals -- ``Proposed`` alone, or ``Proposed
+#: 1``, ``Proposed 2`` and on in the order given. The office's own names for
+#: its massings (SEARs, the building envelope) change from job to job; these
+#: do not. A scenario kept as a renovation filter is the exception: it is
+#: called what the filter is called, since that is the office's own name for
+#: it and the one on its sheets.
 EXISTING_LABEL = "Existing"
+FUTURE_LABEL = "Future"
 PROPOSED_LABEL = "Proposed"
 
 #: The fills a stacked set's shadows are drawn in, first found first used. A
@@ -553,6 +558,11 @@ class PlanSet:
     label: str
     layer_combination: str
     shadow_pen: int
+    renovation_filter_guid: str | None = None
+    """The renovation filter its views pin, where it is not the run's own.
+    An office that keeps its massing scenarios as renovation filters -- each
+    massing shown on its own filter only -- tells the scenarios apart by this
+    and not by the layers (Crows Nest, October 2026)."""
 
 
 @dataclass(frozen=True)
@@ -564,6 +574,11 @@ class Stack:
     existing shadow falls its pen covers; wherever only the proposal casts,
     the proposal's pen shows through -- the split between what stands and
     what is added, drawn by Archicad's own caster twice rather than measured.
+
+    ``between`` is any set laid over the proposal and under the existing one
+    -- the future context -- so a cell reads in three pens: what stands, what
+    the controls allow next door on top of it, and what the proposal adds to
+    both.
     """
 
     label: str
@@ -574,6 +589,8 @@ class Stack:
     """The proposal's documents, in the order of the hours."""
     above: tuple[MadePlan, ...]
     """The existing set's documents, the same hours."""
+    between: tuple[tuple[str, tuple[MadePlan, ...]], ...] = ()
+    """Each set between the two, bottom to top, with its label."""
 
 
 def stack_labels(count: int) -> list[str]:
@@ -594,32 +611,37 @@ def stack_combinations(
     proposals: Sequence[Sequence[str]],
     *,
     also_show: Sequence[str] = (),
+    future_layers: Sequence[str] = (),
 ) -> list[tuple[str, tuple[str, ...], tuple[str, ...]]]:
     """What each set's layer combination shows and hides, from the layers.
 
-    ``(label, show, hide)`` for the existing set first, then one per
-    proposal. The existing set shows the neighbours' layers and hides every
-    proposal's; a proposal shows the neighbours' and its own and hides the
-    other proposals'. A layer two proposals share is shown by both. Anything
-    else keeps the state the base combination gives it -- the ground among it
-    -- and ``also_show`` is what the base hides that every set needs, the
-    site context the plain mode switches on the same way.
+    ``(label, show, hide)`` for the existing set first, then the future set
+    when there are ``future_layers``, then one per proposal. The existing set
+    shows the neighbours' layers and hides the future context's and every
+    proposal's; the future set shows the neighbours' and the future context's
+    and hides every proposal's; a proposal shows all of those and its own and
+    hides the other proposals'. A layer two proposals share is shown by both.
+    Anything else keeps the state the base combination gives it -- the ground
+    among it -- and ``also_show`` is what the base hides that every set
+    needs, the site context the plain mode switches on the same way.
     """
     every = [layer for layers in proposals for layer in layers]
     existing = tuple(dict.fromkeys([*also_show, *existing_layers]))
     standing = {layer.casefold() for layer in existing}
+    context = tuple(dict.fromkeys([*existing, *future_layers]))
+    around = {layer.casefold() for layer in context}
+
+    def hidden(layers: Iterable[str], kept: set[str]) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(layer for layer in layers if layer.casefold() not in kept))
+
     out: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = [
-        (
-            EXISTING_LABEL,
-            existing,
-            tuple(dict.fromkeys(layer for layer in every if layer.casefold() not in standing)),
-        )
+        (EXISTING_LABEL, existing, hidden([*future_layers, *every], standing))
     ]
+    if future_layers:
+        out.append((FUTURE_LABEL, context, hidden(every, around)))
     for label, layers in zip(stack_labels(len(proposals)), proposals, strict=True):
-        own = {layer.casefold() for layer in layers} | standing
-        show = tuple(dict.fromkeys([*existing, *layers]))
-        hide = tuple(dict.fromkeys(layer for layer in every if layer.casefold() not in own))
-        out.append((label, show, hide))
+        own = {layer.casefold() for layer in layers} | around
+        out.append((label, tuple(dict.fromkeys([*context, *layers])), hidden(every, own)))
     return out
 
 
@@ -630,16 +652,19 @@ def make_shadow_plan_stacks(
     settings: ShadowPlanSettings,
     existing: PlanSet,
     proposals: Sequence[PlanSet],
+    between: Sequence[PlanSet] = (),
 ) -> tuple[list[Stack], list[str]]:
-    """The existing set once, and a set per proposal, each as a stack.
+    """The existing set once, any set ``between`` once, and a set per
+    proposal, each proposal as a stack.
 
     Every set is made as ``make_shadow_plans`` makes one, under its own
-    combination and label, with two things forced: its shadows in its own pen
-    as a solid -- the background pen the fill pen, so a hatch left in the
-    settings covers as a solid would -- and its uncut surfaces unfilled, so a
-    drawing of it is clear wherever no shadow falls. The existing documents
-    are the same objects in every stack, which is also what the Project Map
-    holds: one existing set, read against each proposal.
+    combination, renovation filter and label, with two things forced: its
+    shadows in its own pen as a solid -- the background pen the fill pen, so
+    a hatch left in the settings covers as a solid would -- and its uncut
+    surfaces unfilled, so a drawing of it is clear wherever no shadow falls.
+    The existing documents, and the ones between, are the same objects in
+    every stack, which is also what the Project Map holds: one existing set
+    and one future set, read against each proposal.
     """
 
     said: list[str] = []
@@ -651,6 +676,7 @@ def make_shadow_plan_stacks(
         own = replace(
             settings,
             layer_combination=member.layer_combination,
+            renovation_filter_guid=member.renovation_filter_guid or settings.renovation_filter_guid,
             shadow_fill=fill,
             fill_uncut_surfaces=False,
         )
@@ -661,8 +687,15 @@ def make_shadow_plan_stacks(
         return tuple(made)
 
     above = one_set(existing)
+    middle = tuple((member.label, one_set(member)) for member in between)
     stacks = [
-        Stack(label=member.label, above_label=existing.label, below=one_set(member), above=above)
+        Stack(
+            label=member.label,
+            above_label=existing.label,
+            below=one_set(member),
+            above=above,
+            between=middle,
+        )
         for member in proposals
     ]
     return stacks, said
@@ -679,26 +712,31 @@ def stacked_sheet_groups(
     *15 | Shadow Plans Proposed 1 - JUNE 21*; the two drawings of a cell are
     named for the hour and the set, ``JUNE 21 -9AM PROPOSED 1`` under
     ``JUNE 21 -9AM EXISTING``, since a sheet finds its drawings by name and
-    two of one name would be one. An hour the existing set lacks -- it
-    cannot, both are made from one list of hours, but a rerun over a Project
-    Map somebody has pruned might -- leaves the proposal's drawing alone in
-    its cell.
+    two of one name would be one. Any set between -- the future context --
+    goes over the proposal and under the existing set, as ``JUNE 21 -9AM
+    FUTURE``. An hour an upper set lacks -- it cannot, all are made from one
+    list of hours, but a rerun over a Project Map somebody has pruned might
+    -- leaves that drawing out of the cell.
     """
     groups: list[tuple[str, list[list[tuple[str, str]]]]] = []
     cells = 0
     for stack in stacks:
-        above = {one.plan.when: one for one in stack.above}
+        uppers = [
+            (label, {one.plan.when: one for one in made})
+            for label, made in (*stack.between, (stack.above_label, stack.above))
+        ]
         dealt, count = _dealt(stack.below, sheets=sheets, set_label=stack.label)
         cells = max(cells, count)
         for name, on_sheet in dealt:
             piles: list[list[tuple[str, str]]] = []
             for one in on_sheet:
                 pile = [(one.view.navigator_id, f"{one.plan.caption} {stack.label.upper()}")]
-                top = above.get(one.plan.when)
-                if top is not None:
-                    pile.append(
-                        (top.view.navigator_id, f"{one.plan.caption} {stack.above_label.upper()}")
-                    )
+                for label, by_hour in uppers:
+                    upper = by_hour.get(one.plan.when)
+                    if upper is not None:
+                        pile.append(
+                            (upper.view.navigator_id, f"{one.plan.caption} {label.upper()}")
+                        )
                 piles.append(pile)
             groups.append((name, piles))
     return groups, cells

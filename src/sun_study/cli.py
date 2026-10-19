@@ -102,6 +102,7 @@ from sun_study.archicad.read import (
     storey_level,
 )
 from sun_study.archicad.read import zones as read_zones
+from sun_study.archicad.renovation import RenovationFilter, resolve_renovation_filter
 from sun_study.archicad.rooms import (
     DEFAULT_TOLERANCE_M,
     LIVING_ROOM_CODES,
@@ -127,7 +128,9 @@ from sun_study.archicad.shadow_plans import (
 from sun_study.archicad.shadow_plans import (
     DEFAULT_SHADOW_FILL,
     EXISTING_LABEL,
+    FUTURE_LABEL,
     PLAN_SCALE,
+    PROPOSED_LABEL,
     SET_WORD,
     STACK_SHADOW_FILLS,
     PlanSet,
@@ -7683,6 +7686,30 @@ def shadow_plan_documents(
             ),
         ),
     ] = None,
+    scenario: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--scenario",
+            help=(
+                "A scenario kept as a renovation filter, by the name the Renovation "
+                "palette gives it (or its GUID). Repeatable, one per scenario. Each is "
+                "a proposal of the stack whose views pin that filter rather than "
+                "layers of its own, named and sheeted as the filter is called. Turns "
+                "on the stacked mode, as --proposed does."
+            ),
+        ),
+    ] = None,
+    future: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--future",
+            help=(
+                "A layer that holds the future context -- what the controls allow "
+                "next door. Repeatable. In the stacked mode, a set of its own between "
+                "the existing set and each proposal, in the legend's middle grey."
+            ),
+        ),
+    ] = None,
     existing_pen: Annotated[
         int | None,
         typer.Option(
@@ -7699,7 +7726,19 @@ def shadow_plan_documents(
             "--proposed-pen",
             help=(
                 "The pen a proposal's shadows are filled in, one per --proposed in "
-                "order. Left out, the pens nearest the legend's blues."
+                "order, then one per --scenario. Left out, the pens nearest the "
+                "legend's blues; every scenario shares one, as each has sheets of "
+                "its own."
+            ),
+        ),
+    ] = None,
+    future_pen: Annotated[
+        int | None,
+        typer.Option(
+            "--future-pen",
+            help=(
+                "The pen the future set's shadows are filled in. Left out, the pen "
+                "nearest the legend's FUTURE grey."
             ),
         ),
     ] = None,
@@ -7708,7 +7747,8 @@ def shadow_plan_documents(
         typer.Option(
             "--renovation-filter",
             help=(
-                "GUID of the renovation filter to pin. By default the one most of the "
+                "The renovation filter to pin, by name or GUID -- in the stacked mode, "
+                "the existing and future sets'. By default the one most of the "
                 "project's views carry, which is its planned state."
             ),
         ),
@@ -7790,17 +7830,23 @@ def shadow_plan_documents(
     naming.set_prefix(layer_prefix, default=naming.SHADOW_PREFIX)
     clock = Stopwatch()
     proposals = _proposal_layers(proposed or [])
-    if proposals and set_label:
+    scenarios_asked = [name.strip() for name in scenario or [] if name.strip()]
+    stacked = bool(proposals or scenarios_asked)
+    if stacked and set_label:
         typer.secho(
             f"  --label {set_label!r} is set aside: the stacked mode names its sets "
-            f"{EXISTING_LABEL} and {', '.join(stack_labels(len(proposals)))}.",
+            f"{EXISTING_LABEL}"
+            + (f", {FUTURE_LABEL}" if future else "")
+            + "".join(f", {label}" for label in stack_labels(len(proposals)))
+            + "".join(f", {name}" for name in scenarios_asked)
+            + ".",
             fg=typer.colors.YELLOW,
         )
         set_label = ""
-    if existing and not proposals:
+    if (existing or future) and not stacked:
         typer.secho(
-            "  --existing names what stands, but no --proposed names what is added; "
-            "the plans are made as one set under the layer combination.",
+            "  --existing and --future name the context, but no --proposed or --scenario "
+            "names what is added; the plans are made as one set under the layer combination.",
             fg=typer.colors.YELLOW,
         )
     moments, labels = _shadow_moments(shadow_date, shadow_hour, year, timezone)
@@ -7823,6 +7869,18 @@ def shadow_plan_documents(
         )
         raise typer.Exit(code=2)
 
+    # Every filter named is found before anything is made: a scenario spelt
+    # differently from the palette would otherwise stop the run halfway, with
+    # the existing set's documents made and nothing to lie over.
+    try:
+        chosen = (
+            resolve_renovation_filter(connection, renovation_filter) if renovation_filter else None
+        )
+        scenarios = [resolve_renovation_filter(connection, name) for name in scenarios_asked]
+    except ArchicadError as error:
+        typer.secho(f"  {error}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+
     geo = read_geo_location(connection)
     plans, down = shadow_plans(geo, moments, labels)
     for plan in down:
@@ -7841,7 +7899,7 @@ def shadow_plan_documents(
         typer.secho(f"  {trouble}", fg=typer.colors.YELLOW)
 
     fill: dict[str, int] = {}
-    if shadow_fill is None and proposals:
+    if shadow_fill is None and stacked:
         # A stack needs the upper document's shadow to cover the lower's, so
         # the shadows are solid; the office's hatch would let the pen beneath
         # show between its lines, and the page would be neither colour.
@@ -7879,7 +7937,9 @@ def shadow_plan_documents(
     if shadow_background_pen is not None:
         fill["backgroundPen"] = shadow_background_pen
 
-    guid = renovation_filter or planned_renovation_filter(connection)
+    guid = chosen.guid if chosen is not None else planned_renovation_filter(connection)
+    if chosen is not None and chosen.name:
+        typer.echo(f"  renovation filter {chosen.name!r}")
     settings = ShadowPlanSettings(
         layer_combination=layer_combination,
         renovation_filter_guid=guid,
@@ -7906,7 +7966,7 @@ def shadow_plan_documents(
             raise typer.Exit(code=2)
         names = {state.identifier: state.name for state in read_layers(connection)}
         wanted += [n for n in hidden_among(site_context_layers(), names, states) if n not in wanted]
-    if proposals:
+    if stacked:
         _stacked_shadow_plans(
             connection,
             plans,
@@ -7914,8 +7974,11 @@ def shadow_plan_documents(
             base=layer_combination,
             also_show=wanted,
             existing_layers=existing or [],
+            future_layers=future or [],
             proposals=proposals,
+            scenarios=scenarios,
             existing_pen=existing_pen,
+            future_pen=future_pen,
             proposed_pens=proposed_pen or [],
             layout=layout,
             sheets=sheets,
@@ -8024,29 +8087,57 @@ def _stack_pens(
     existing_pen: int | None,
     proposed_pens: Sequence[int],
     count: int,
-) -> tuple[int, list[int]]:
-    """A solid pen per set of the stack: the existing set's, then one per proposal.
+    *,
+    future: bool = False,
+    future_pen: int | None = None,
+    scenarios: Sequence[str] = (),
+) -> tuple[int, int | None, list[int]]:
+    """A solid pen per set of the stack: the existing set's, the future set's
+    when there is one, then one per proposal and one per scenario.
 
-    The ones given win; the rest are matched by colour against the project's
+    The ones given win -- ``proposed_pens`` in order over the proposals and
+    then the scenarios; the rest are matched by colour against the project's
     pen table, as the fills' legend rows are -- the existing shadow in the
-    legend's grey, a single proposal in its blue, several proposals up the
-    blue ramp in order -- so the stacked sheet and the fills sheet of one
-    project read in the same colours.
+    legend's lightest grey, the future context in its middle grey, a single
+    proposal in its blue, several proposals up the blue ramp in order -- so
+    the stacked sheet and the fills sheet of one project read in the same
+    colours. The scenarios share the proposal's blue: each has sheets of its
+    own, so one colour is what a reader meets on every one of them.
     """
     labels = stack_labels(count)
     wanted = [
         BandStyle(
             EXISTING_LABEL.upper(), float("inf"), fill_pen=FIRST_SHADOW_PEN, rgb=BASELINE_RAMP[0]
         )
-    ] + [
+    ]
+    if future:
+        wanted.append(
+            BandStyle(
+                FUTURE_LABEL.upper(),
+                float("inf"),
+                fill_pen=FIRST_SHADOW_PEN + len(wanted),
+                rgb=BASELINE_RAMP[1],
+            )
+        )
+    first_proposal = len(wanted)
+    wanted += [
         BandStyle(
             label.upper(),
             float("inf"),
-            fill_pen=FIRST_SHADOW_PEN + 1 + index,
+            fill_pen=FIRST_SHADOW_PEN + first_proposal + index,
             rgb=legend_colour(label) or SCENARIO_RAMP[index % len(SCENARIO_RAMP)],
         )
         for index, label in enumerate(labels)
     ]
+    if scenarios:
+        wanted.append(
+            BandStyle(
+                "SCENARIOS",
+                float("inf"),
+                fill_pen=FIRST_SHADOW_PEN + len(wanted),
+                rgb=legend_colour(PROPOSED_LABEL) or SCENARIO_RAMP[-1],
+            )
+        )
     try:
         pens = pen_table(connection)
     except ArchicadError as error:
@@ -8056,22 +8147,37 @@ def _stack_pens(
         )
         pens = ()
     matched, _ = match_pens(wanted, pens)
-    chosen = [band.fill_pen for band in matched]
-    given = [False] * len(chosen)
-    if existing_pen is not None:
-        chosen[0], given[0] = existing_pen, True
-    for index, pen in enumerate(proposed_pens[:count]):
-        chosen[1 + index], given[1 + index] = pen, True
-    if len(proposed_pens) > count:
+    how = "matched" if pens else "guessed"
+
+    def say(label: str, rgb: tuple[int, int, int], pen: int, told: bool) -> None:
+        typer.echo(f"    {label:<12} rgb{rgb} -> pen {pen:<4} {'given' if told else how}")
+
+    existing_band = matched[0]
+    first = existing_pen if existing_pen is not None else existing_band.fill_pen
+    say(existing_band.label, existing_band.rgb, first, existing_pen is not None)
+    middle: int | None = None
+    if future:
+        band = matched[1]
+        middle = future_pen if future_pen is not None else band.fill_pen
+        say(band.label, band.rgb, middle, future_pen is not None)
+    rest: list[int] = []
+    for index, band in enumerate(matched[first_proposal : first_proposal + count]):
+        told = index < len(proposed_pens)
+        rest.append(proposed_pens[index] if told else band.fill_pen)
+        say(band.label, band.rgb, rest[-1], told)
+    if scenarios:
+        shared = matched[-1]
+        for index, name in enumerate(scenarios, start=count):
+            told = index < len(proposed_pens)
+            rest.append(proposed_pens[index] if told else shared.fill_pen)
+            say(name.upper(), shared.rgb, rest[-1], told)
+    if len(proposed_pens) > count + len(scenarios):
         typer.secho(
-            f"  {len(proposed_pens)} --proposed-pen for {count} --proposed; the last "
-            f"{len(proposed_pens) - count} are set aside",
+            f"  {len(proposed_pens)} --proposed-pen for {count + len(scenarios)} proposals "
+            f"and scenarios; the last {len(proposed_pens) - count - len(scenarios)} are set aside",
             fg=typer.colors.YELLOW,
         )
-    for band, pen, told in zip(matched, chosen, given, strict=True):
-        how = "given" if told else ("matched" if pens else "guessed")
-        typer.echo(f"    {band.label:<12} rgb{band.rgb} -> pen {pen:<4} {how}")
-    return chosen[0], chosen[1:]
+    return first, middle, rest
 
 
 def _stacked_shadow_plans(
@@ -8092,21 +8198,41 @@ def _stacked_shadow_plans(
     title_block_mm: float,
     scale: float,
     clock: Stopwatch,
+    future_layers: Sequence[str] = (),
+    scenarios: Sequence[RenovationFilter] = (),
+    future_pen: int | None = None,
 ) -> None:
     """The stacked mode of ``shadow-plans``: the existing set over each proposal.
 
     A layer combination per set is made from the base -- the existing layers
-    on and every proposal's off for the existing set; its own on and the
-    others' off for each proposal -- then the documents, then the sheets with
-    two drawings to a cell. The existing document lies on top, its uncut
-    surfaces unfilled, so its shadow covers in its pen and the proposal's pen
-    shows wherever only the proposal casts.
+    on and the future context's and every proposal's off for the existing
+    set; the future context's on as well for the future set; its own on and
+    the others' off for each proposal -- then the documents, then the sheets
+    with the sets piled in every cell. The existing document lies on top and
+    the future one under it, their uncut surfaces unfilled, so each covers in
+    its own pen and the proposal's pen shows wherever only the proposal casts.
+
+    A scenario kept as a renovation filter is a proposal whose views pin the
+    filter instead of layers of its own: it is drawn under the combination the
+    context is drawn under, the future one where there is one, and the filter
+    decides which massing stands on the site.
     """
     typer.echo("  shadow pens for the stack:")
-    first, rest = _stack_pens(connection, existing_pen, proposed_pens, len(proposals))
+    first, middle, rest = _stack_pens(
+        connection,
+        existing_pen,
+        proposed_pens,
+        len(proposals),
+        future=bool(future_layers),
+        future_pen=future_pen,
+        scenarios=[one.name or one.guid for one in scenarios],
+    )
+    pens = [first, *([middle] if middle is not None else []), *rest]
     members: list[PlanSet] = []
-    rows = stack_combinations(existing_layers, proposals, also_show=also_show)
-    for (label, show, hide), pen in zip(rows, [first, *rest], strict=True):
+    rows = stack_combinations(
+        existing_layers, proposals, also_show=also_show, future_layers=future_layers
+    )
+    for (label, show, hide), pen in zip(rows, pens[: len(rows)], strict=True):
         name = ensure_layer_combination(
             connection, naming.named(f"{SET_WORD} {label}"), show=show, hide=hide, base=base
         )
@@ -8114,15 +8240,42 @@ def _stacked_shadow_plans(
         on = ", ".join(repr(layer) for layer in show) or "nothing more"
         off = ", ".join(repr(layer) for layer in hide) or "nothing"
         typer.echo(f"  {label}: views on {name!r}, which is {base!r} with {on} on and {off} off")
+    context = members[1] if future_layers else members[0]
+    for scene, pen in zip(scenarios, rest[len(proposals) :], strict=True):
+        label = scene.name or scene.guid
+        members.append(
+            PlanSet(
+                label=label,
+                layer_combination=context.layer_combination,
+                shadow_pen=pen,
+                renovation_filter_guid=scene.guid,
+            )
+        )
+        typer.echo(
+            f"  {label}: views on {context.layer_combination!r} with the renovation filter "
+            f"{label!r}, which decides the massing on the site"
+        )
+    between = members[1:2] if future_layers else []
+    proposed_sets = members[1 + len(between) :]
+    upper = " and ".join(member.label for member in [*between, members[0]][::-1])
     typer.echo(
         f"  {len(plans)} hours in {len(members)} sets, overhead with north up, each with "
+        f"Archicad's sun and shadows, uncut surfaces unfilled; the {upper} documents lie "
+        f"over each proposal's in every cell"
+        if between
+        else f"  {len(plans)} hours in {len(members)} sets, overhead with north up, each with "
         f"Archicad's sun and shadows, uncut surfaces unfilled; the {members[0].label} "
         f"document lies over each proposal's in every cell"
     )
 
     try:
         stacks, said = make_shadow_plan_stacks(
-            connection, plans, settings=settings, existing=members[0], proposals=members[1:]
+            connection,
+            plans,
+            settings=settings,
+            existing=members[0],
+            proposals=proposed_sets,
+            between=between,
         )
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
@@ -8137,7 +8290,7 @@ def _stacked_shadow_plans(
     typer.echo("    document                               sun altitude")
     seen: set[str] = set()
     for stack in stacks:
-        for one in (*stack.above, *stack.below):
+        for one in (*stack.above, *(m for _, made in stack.between for m in made), *stack.below):
             if one.view.name in seen:
                 continue
             seen.add(one.view.name)

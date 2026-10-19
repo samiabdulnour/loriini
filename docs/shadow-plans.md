@@ -119,6 +119,39 @@ everything, since its combination casts the existing shadow too.
 From the agent, `shadow_plans` takes `existing`, `proposals` -- a list of
 layers per proposal -- `existing_pen` and `proposed_pens`.
 
+### The future context, and scenarios kept as renovation filters
+
+`--future` names the layers of the future context -- what the controls allow
+next door. It becomes a set of its own between the existing set and each
+proposal, so a cell reads in three pens, as the fills' legend does: the
+existing shadow in the lightest grey on top, the shadow the future context
+adds in the middle grey under it, and what the proposal adds to both in blue
+at the bottom.
+
+Some offices keep their massing scenarios as renovation filters rather than
+layers: each massing is set to show on its own filter only, and the
+Renovation palette offers *SCENARIO 2_COMPLIANT TOD*, *SCENARIO 5_SEARs* and
+so on (Crows Nest, October 2026). `--scenario` takes those names, once per
+scenario. A scenario is a proposal whose views pin its filter instead of
+layers of its own: it is drawn under the context's combination, and the
+filter decides which massing stands on the site. Its documents and sheets
+carry its name, `15 | Shadow Plans SCENARIO 2_COMPLIANT TOD - JUNE 21`, and
+every scenario shares the proposal's blue, since each has sheets of its own.
+`--renovation-filter` names the existing and future sets' filter, the one
+that shows none of the scenarios' massings.
+
+```
+sun-study shadow-plans --layer-combination "04 | Shadow Diagrams" ^
+  --existing "03 | Site Context.Existing Buildings - To Stay" ^
+  --future "03 | Site Context.Future Buildings - APPROVED" ^
+  --renovation-filter "04 Planned Status" ^
+  --scenario "SCENARIO 2_COMPLIANT TOD" --scenario "SCENARIO 5_SEARs"
+```
+
+The names are read through the add-on's `GetRenovationFilters`, which
+Tapir lacks; with an older add-on a filter can still be given by its GUID.
+`project_options` lists the filters for an agent.
+
 ### Two sets side by side
 
 The older comparison remains: run the set twice, under two layer
