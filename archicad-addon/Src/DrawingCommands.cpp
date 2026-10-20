@@ -381,6 +381,79 @@ GS::ObjectState CreateFillsCommand::Execute (const GS::ObjectState& parameters,
 }		// namespace Loriini
 
 
+// -- BringToFront -------------------------------------------------------------
+
+namespace Loriini {
+
+GS::String BringToFrontCommand::GetName () const			{ return "BringToFront"; }
+
+GS::Optional<GS::UniString> BringToFrontCommand::GetInputParametersSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"elements": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"properties": { "guid": { "type": "string" } },
+					"required": [ "guid" ]
+				},
+				"minItems": 1
+			}
+		},
+		"required": [ "elements" ],
+		"additionalProperties": false
+	})");
+}
+
+GS::Optional<GS::UniString> BringToFrontCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"brought": { "type": "integer" },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState BringToFrontCommand::Execute (const GS::ObjectState& parameters,
+											  GS::ProcessControl& /*processControl*/) const
+{
+	GS::Array<GS::ObjectState> wanted;
+	if (!parameters.Get ("elements", wanted) || wanted.IsEmpty ()) {
+		return Failed ("Nothing to bring to the front: 'elements' is empty.", APIERR_BADPARS);
+	}
+
+	GS::Array<API_Guid> guids;
+	for (const GS::ObjectState& one : wanted) {
+		GS::UniString guid;
+		if (one.Get ("guid", guid) && !guid.IsEmpty ()) {
+			guids.Push (APIGuidFromString (guid.ToCStr ().Get ()));
+		}
+	}
+	if (guids.IsEmpty ()) {
+		return Failed ("Nothing to bring to the front: no element carried a guid.", APIERR_BADPARS);
+	}
+
+	// One undo step, as the fills were drawn in one.
+	const GSErrCode err = ACAPI_CallUndoableCommand ("Bring solar diagram fills to front", [&] () -> GSErrCode {
+		return Api::ElementTool (guids, APITool_BringToFront, nullptr);
+	});
+	if (err != NoError) {
+		return Failed ("Archicad would not bring the elements to the front.", err);
+	}
+
+	GS::ObjectState result = Succeeded ();
+	result.Add ("brought", static_cast<Int32> (guids.GetSize ()));
+	return result;
+}
+
+}		// namespace Loriini
+
+
 // -- CreateTexts --------------------------------------------------------------
 
 namespace Loriini {

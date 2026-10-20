@@ -163,6 +163,10 @@ class PenetrationReport:
     """Handed to a ``PaperSink`` for the sheet step, and not yet anywhere in
     Archicad: the counts are what *will* be drawn on the layouts."""
 
+    behind: str = ""
+    """Why the patches were left at the Fill tool's draw order instead of
+    brought to the front, or empty when they were."""
+
     @property
     def complete(self) -> bool:
         return not self.unmatched and not self.hidden_layers
@@ -203,6 +207,8 @@ class PenetrationReport:
                 "  THE LAYER IS HIDDEN, so none of this is on screen: "
                 + ", ".join(self.hidden_layers)
             )
+        if self.behind:
+            lines.append(f"  the patches are not in front of the plan: {self.behind}")
         return "\n".join(lines)
 
 
@@ -392,6 +398,7 @@ def draw_penetration(
     storeys: set[int] = set()
     tagged: list[StampReport] = []
     gathered: list[GroupReport] = []
+    behind = ""
 
     for instant in instants:
         layer = _layer_for(connection, f"{layer_prefix} {instant.label}", paper)
@@ -446,6 +453,7 @@ def draw_penetration(
             paper.add(layer.name, fills=fills, polylines=lines, texts=texts, outline=patch_outline)
             continue
         made = _create_fills(connection, fills, outline=patch_outline)
+        behind = behind or _to_front(connection, made)
         tagged.append(stamp_in_order(connection, made, patch_ids))
         if len(made) == len(patch_groups):
             gathered.append(group_by_value(connection, list(zip(made, patch_groups, strict=True))))
@@ -467,6 +475,7 @@ def draw_penetration(
         stamped=combined(tagged),
         grouped=_one_group_report(gathered),
         on_paper=paper is not None,
+        behind=behind,
     )
 
 
@@ -609,6 +618,8 @@ def draw_cell_groups(
     texts.extend(legend_texts)
 
     made = _create_fills(connection, fills, outline=outline)
+    # The patches only: the legend's swatches sit beside the plan, not on it.
+    behind = _to_front(connection, made[:measured])
     stamped = stamp_in_order(connection, made[:measured], band_ids)
     grouped = (
         group_by_value(connection, list(zip(made[:measured], band_ids, strict=True)))
@@ -631,6 +642,7 @@ def draw_cell_groups(
         hidden_layers=(layer_name,) if layer.hidden else (),
         stamped=stamped,
         grouped=grouped,
+        behind=behind,
     )
 
 
@@ -922,6 +934,33 @@ def _create_fills(
             "cannot draw a fill without a contour -- it has a contour pen and no switch. "
             "Install the current add-on build, or run with --zone-outline."
         ) from error
+
+
+def _to_front(connection: ArchicadConnection, made: Sequence[dict[str, Any]]) -> str:
+    """Bring the patches over everything else on the plan. Returns why not.
+
+    A Fill is drawn at the Fill tool's level, under the plan's own walls,
+    fills and annotation, and on Kogarah (October 2026) the office brought
+    every COS patch to the front by hand before reading the sheets. Through
+    the add-on's ``BringToFront``, in one call: Tapir's ``drawIndex`` steps
+    each element up a level at a time, and four thousand patches took longer
+    than ten minutes. Not worth failing a run over -- the result is drawn
+    and correct either way -- so the reason comes back to be reported.
+    """
+    guids = [str((one.get("elementId") or {}).get("guid", "")) for one in made]
+    guids = [guid for guid in guids if guid]
+    if not guids:
+        return ""
+    try:
+        for start in range(0, len(guids), 2000):
+            connection.run_loriini(
+                "BringToFront", {"elements": [{"guid": g} for g in guids[start : start + 2000]]}
+            )
+    except ArchicadError as error:
+        if "not have the registered" in str(error):
+            return "the installed Loriini add-on has no BringToFront; install the current build"
+        return str(error)
+    return ""
 
 
 def _create(

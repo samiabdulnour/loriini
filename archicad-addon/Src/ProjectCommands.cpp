@@ -564,4 +564,66 @@ GS::ObjectState GetGraphicOverrideCombinationsCommand::Execute (const GS::Object
 	return result;
 }
 
+
+
+// -- GetRenovationFilters ---------------------------------------------------
+
+GS::String GetRenovationFiltersCommand::GetName () const		{ return "GetRenovationFilters"; }
+
+GS::Optional<GS::UniString> GetRenovationFiltersCommand::GetInputParametersSchema () const
+{
+	return GS::NoValue;
+}
+
+GS::Optional<GS::UniString> GetRenovationFiltersCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"renovationFilters": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"properties": { "guid": { "type": "string" }, "name": { "type": "string" } }
+				}
+			},
+			"current": { "type": "string", "description": "The filter the project is showing now." },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState GetRenovationFiltersCommand::Execute (const GS::ObjectState& /*parameters*/,
+													  GS::ProcessControl& /*processControl*/) const
+{
+	GS::Array<API_Guid> guids;
+	const GSErrCode err = Api::GetRenovationFilters (&guids);
+	if (err != NoError) {
+		return Failed ("Failed to list the renovation filters.", err);
+	}
+
+	// In the project's own order, which is the Renovation palette's: an
+	// office that keeps its scenarios as filters numbers them there.
+	GS::Array<GS::ObjectState> filters;
+	for (const API_Guid& guid : guids) {
+		GS::UniString name;
+		if (Api::GetRenovationFilterName (&guid, &name) != NoError) {
+			continue;
+		}
+		GS::ObjectState one;
+		one.Add ("guid", APIGuidToString (guid));
+		one.Add ("name", name);
+		filters.Push (one);
+	}
+
+	GS::ObjectState result = Succeeded ();
+	result.Add ("renovationFilters", filters);
+	API_Guid current = APINULLGuid;
+	if (Api::GetActualRenovationFilter (&current) == NoError && current != APINULLGuid) {
+		result.Add ("current", APIGuidToString (current));
+	}
+	return result;
+}
+
 }		// namespace Loriini

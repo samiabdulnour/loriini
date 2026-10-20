@@ -39,6 +39,12 @@
 //                             Tapir can pin a view to an override combination
 //                             by name and has no way to list them, so the
 //                             window could only offer a text box to type one.
+//
+//   GetRenovationFilters      the same for renovation filters, which Tapir
+//                             pins to a view only by GUID and cannot name. An
+//                             office that keeps its massing scenarios as
+//                             filters (Crows Nest, October 2026) needs the
+//                             names to say which scenario a view shows.
 
 #if !defined (LORIINI_PROJECTCOMMANDS_HPP)
 #define LORIINI_PROJECTCOMMANDS_HPP
@@ -67,6 +73,7 @@ LORIINI_COMMAND (CreateWorksheetCommand)
 LORIINI_COMMAND (ActivateLayerCombinationCommand)
 LORIINI_COMMAND (ModifyLayersCommand)
 LORIINI_COMMAND (GetGraphicOverrideCombinationsCommand)
+LORIINI_COMMAND (GetRenovationFiltersCommand)
 
 #undef LORIINI_COMMAND
 

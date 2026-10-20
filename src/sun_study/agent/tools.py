@@ -322,6 +322,30 @@ class ShadowPlanArguments(SheetedArguments):
             "what the proposal adds in another, both cast by Archicad, on one plan."
         ),
     )
+    scenarios: list[str] | None = Field(
+        default=None,
+        description=(
+            "The stacked mode, for an office that keeps its massing scenarios as renovation "
+            "filters: the filters' names as project_options lists them, e.g. "
+            "['SCENARIO 2_COMPLIANT TOD']. Each is a proposal whose views pin that filter, "
+            "sheeted under its own name."
+        ),
+    )
+    future: list[str] | None = Field(
+        default=None,
+        description=(
+            "With proposals or scenarios: the layers of the future context, drawn as a set "
+            "of its own between the existing set and each proposal, in the legend's middle "
+            "grey."
+        ),
+    )
+    renovation_filter: str | None = Field(
+        default=None,
+        description=(
+            "The renovation filter the plans pin, by name -- with scenarios, the existing "
+            "and future sets'. The project's planned state otherwise."
+        ),
+    )
     existing_pen: int | None = Field(
         default=None,
         ge=0,
@@ -330,11 +354,19 @@ class ShadowPlanArguments(SheetedArguments):
             "nearest the legend's grey in the project's pen table."
         ),
     )
+    future_pen: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "With future: the pen the future context's shadow is filled in. Left out, the "
+            "pen nearest the legend's middle grey."
+        ),
+    )
     proposed_pens: list[int] | None = Field(
         default=None,
         description=(
-            "With proposals: the pen each proposal's shadow is filled in, in order. Left "
-            "out, the pens nearest the legend's blues."
+            "With proposals: the pen each proposal's shadow is filled in, in order, then "
+            "each scenario's. Left out, the pens nearest the legend's blues."
         ),
     )
     pen_set: str | None = Field(default=None, description="The pen set the plans print in.")
@@ -587,7 +619,12 @@ def shadow_plans_argv(arguments: ShadowPlanArguments) -> list[str]:
         argv += ["--existing", layer]
     for layers in a.proposals or []:
         argv += ["--proposed", ",".join(layers)]
-    argv += _option("--existing-pen", a.existing_pen)
+    for name in a.scenarios or []:
+        argv += ["--scenario", name]
+    for layer in a.future or []:
+        argv += ["--future", layer]
+    argv += _option("--renovation-filter", a.renovation_filter)
+    argv += _option("--existing-pen", a.existing_pen) + _option("--future-pen", a.future_pen)
     for pen in a.proposed_pens or []:
         argv += ["--proposed-pen", str(pen)]
     argv += _option("--pen-set", a.pen_set) + _option("--shadow-pen", a.shadow_pen)
@@ -738,6 +775,7 @@ def project_options(arguments: Mapping[str, Any], call: Call) -> ToolResult:
             + "; ".join(f"{kind.described()} on {kind.layer}" for kind in found.zone_kinds)
         )
     listed("layer combinations", found.combinations)
+    listed("renovation filters", found.renovation_filters)
     listed("master layouts", found.masters)
     listed("layout subsets", found.subsets)
     listed("pen sets", found.pen_sets)
