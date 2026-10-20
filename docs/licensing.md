@@ -55,13 +55,18 @@ freed on another computer. When the service has something to say -- *the
 October payment failed; update the card at …* -- it is said there too, and the
 foot of the window points at it.
 
+**Log out** takes the licence off this computer: it frees the seat with the
+service, removes the key, and asks for a key as a first start does. **Quit**
+there closes Loriini; another key carries on with that licence instead.
+
 **Seats** are counted as computers that have used Loriini in the last
 fortnight.
 - **Rotating.** Loriini can be installed on every desk; a practice using it in
   bursts rotates its seats among everyone.
 - **Freeing.** A computer that stops using Loriini frees its seat a fortnight
-  after its last use. `Loriini.exe licence --remove` frees it at once, which is
-  the thing to do before a computer is handed on.
+  after its last use. **Log out** in the About box, or
+  `Loriini.exe licence --remove`, frees it at once, which is the thing to do
+  before a computer is handed on.
 - **Over the seats.** A practice one computer over is told, not stopped. A
   second computer over is refused, with the names of the computers holding the
   seats.

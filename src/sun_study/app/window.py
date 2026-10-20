@@ -5308,8 +5308,14 @@ class Window:
         self.queue_line.grid(row=0, column=1, sticky="w", padx=(PAD * 2, 0))
         # Whose build this is, and until when. The prototype disclaimer is
         # still on every sheet and in every export, where the numbers are.
-        ttk.Label(bar, text=credential(), style="ChromeHint.TLabel").grid(
-            row=0, column=2, sticky="e", padx=(PAD, PAD * 2)
+        self.credential_line = ttk.Label(bar, text=credential(), style="ChromeHint.TLabel")
+        self.credential_line.grid(row=0, column=2, sticky="e", padx=(PAD, PAD * 2))
+        # Said again when the info box changes the licence -- another key, or
+        # a log-out and a new key -- rather than at the next start.
+        self.root.bind(
+            licence_box.LICENCE_CHANGED,
+            lambda _event: self.credential_line.configure(text=credential()),
+            add="+",
         )
         self.cancel = ttk.Button(
             bar,

@@ -58,6 +58,9 @@ __all__ = ["About", "show"]
 
 PAD = theme.PAD
 
+#: What the licence line says while the licence service is told of a log-out.
+LOGGING_OUT = "Logging out: freeing this computer's seat with the licence service…"
+
 #: How wide the prose wraps. Narrower than the box, so the text has a margin
 #: on the right rather than running into the scrollbar.
 WRAP = 520
@@ -99,8 +102,10 @@ class About(tk.Toplevel):
 
     def __init__(self, parent: tk.Misc, *, at: str = TOP) -> None:
         super().__init__(parent)
+        #: The window this box is about, which a change of licence is said to.
+        self._window = parent.winfo_toplevel()
         self.title(f"About {PRODUCT}")
-        self.transient(parent.winfo_toplevel())
+        self.transient(self._window)
         self.minsize(560, 480)
         # Tall rather than wide: it is a page of prose with a heading every
         # few lines, and prose set 600 px wide is read in a glance while the
@@ -194,22 +199,26 @@ class About(tk.Toplevel):
             # Whose licence this is, and the way to change the key -- only in
             # a build that takes keys, so a build that does not says nothing
             # about them (roadmap R5).
-            self._holder = ttk.Label(
-                page, text=licence.standing().describe(), wraplength=WRAP, justify="left"
-            )
+            found = licence.standing()
+            self._holder = ttk.Label(page, text=found.describe(), wraplength=WRAP, justify="left")
             self._holder.grid(row=row, column=0, sticky="w", pady=(0, 4))
             row += 1
             keys = ttk.Frame(page)
             keys.grid(row=row, column=0, sticky="w", pady=(0, 8))
-            ttk.Button(keys, text="Enter licence key…", command=self._enter_key, width=20).grid(
-                row=0, column=0
+            self._enter = ttk.Button(
+                keys, text="Enter licence key…", command=self._enter_key, width=20
             )
+            self._enter.grid(row=0, column=0)
             # An online key can be checked with the licence service on the
             # spot -- after a payment, or a seat freed elsewhere (D125).
             self._check = ttk.Button(keys, text="Check now", command=self._check_now, width=12)
             self._check.grid(row=0, column=1, padx=(6, 0))
-            if not licence.standing().online:
-                self._check.grid_remove()
+            # Off this computer: the key forgotten and its seat freed at once,
+            # which is the thing to do before a computer is handed on. The
+            # same as ``licence --remove``, for somebody with no command line.
+            self._log_out = ttk.Button(keys, text="Log out…", command=self._log_out_asked, width=10)
+            self._log_out.grid(row=0, column=2, padx=(6, 0))
+            self._show_buttons(found)
             row += 1
         for clause in licence.summary():
             ttk.Label(
@@ -418,14 +427,24 @@ class About(tk.Toplevel):
 
         if licence_box.ask(self) is not None:
             self._show_standing()
+            self._window.event_generate(licence_box.LICENCE_CHANGED)
 
     def _show_standing(self) -> None:
         found = licence.standing()
         self._holder.configure(text=found.describe())
+        self._show_buttons(found)
+
+    def _show_buttons(self, found: licence.Standing) -> None:
+        """Check now for an online key; Log out for any key held, a damaged one
+        included, since taking it off is how it is replaced."""
         if found.online:
             self._check.grid()
         else:
             self._check.grid_remove()
+        if licence.key_path().is_file():
+            self._log_out.grid()
+        else:
+            self._log_out.grid_remove()
 
     def _check_now(self) -> None:
         """Ask the licence service now, in the background, and say the answer."""
@@ -450,7 +469,68 @@ class About(tk.Toplevel):
 
         self._waiting = self.after(100, answered)
 
-    #: The look at a licence check that is due next, while one runs.
+    def _log_out_asked(self) -> None:
+        """Log this computer out of the licence, once the person says so.
+
+        Asked first, because it cannot be taken back from here: the key is
+        gone from this computer, and has to be pasted again from the email.
+        """
+        from tkinter import messagebox
+
+        if messagebox.askokcancel(
+            "Log out",
+            "Log this computer out of the licence?\n\n"
+            "The licence key is removed from this computer and its seat is freed "
+            f"for another. {PRODUCT} then asks for a key, and closes without one.",
+            icon="warning",
+            default="cancel",
+            parent=self,
+        ):
+            self._log_out_now()
+
+    def _log_out_now(self) -> None:
+        """Free the seat and forget the key, in the background, then ask for a
+        key as a first start does."""
+        import threading
+
+        said: list[str | None] = []
+
+        def leave() -> None:
+            # A renewal still running from the start would take the seat again
+            # just after it was freed, and keep a lease for a key that is gone.
+            licence.renewal_finished(timeout=10)
+            said.append(licence.remove())
+
+        leaving = threading.Thread(target=leave, name="licence log out", daemon=True)
+        self._holder.configure(text=LOGGING_OUT)
+        for button in (self._enter, self._check, self._log_out):
+            button.configure(state="disabled")
+        leaving.start()
+
+        def answered() -> None:
+            if leaving.is_alive():
+                self._waiting = self.after(100, answered)
+                return
+            self._waiting = None
+            self._logged_out(said[0] if said else None)
+
+        self._waiting = self.after(100, answered)
+
+    def _logged_out(self, said: str | None) -> None:
+        """Logged out: the window waits behind the licence box, as it does at a
+        first start, and goes with it when the box is closed without a key."""
+        from sun_study.app import licence_box
+
+        window = self._window
+        self._close()
+        window.withdraw()
+        if licence_box.ask(window, first=True, said=f"Logged out. {said or ''}".strip()) is None:
+            window.destroy()
+            return
+        window.deiconify()
+        window.event_generate(licence_box.LICENCE_CHANGED)
+
+    #: The look at a licence check or log-out that is due next, while one runs.
     _waiting: str | None = None
 
     def destroy(self) -> None:
