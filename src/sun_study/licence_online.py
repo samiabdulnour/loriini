@@ -52,10 +52,13 @@ from sun_study import PRODUCT, __version__, licence_public_key, user_folder
 from sun_study.licence_lease import MACHINE_BYTES
 
 __all__ = [
+    "FALLBACK_SERVICES",
     "LEASE_FILE",
     "SERVICE_VAR",
     "Kept",
     "ServiceError",
+    "UnreachableError",
+    "addresses",
     "ask_for_lease",
     "forget_lease",
     "keep_lease",
@@ -88,16 +91,40 @@ QUICK_TIMEOUT = 5.0
 #: The longest answer read from the service. A lease is a few hundred bytes.
 _LONGEST_ANSWER = 64 * 1024
 
+#: Where the same service also answers, asked in turn when the build's own
+#: address cannot be reached at all. A practice's firewall can refuse a domain
+#: too young to have a reputation: loriini.app was registered on 8 October
+#: 2026, and an office that blocks new domains reset every connection to it,
+#: while the fly.dev address the service stands on went straight through.
+#: Only an address that cannot be reached is passed over -- an answer, even a
+#: refusal, is the service's word -- and a lease from here is believed no more
+#: than one from anywhere else: only the vendor's signature does that.
+FALLBACK_SERVICES: tuple[str, ...] = ("https://loriini-licences.fly.dev",)
+
 
 class ServiceError(Exception):
     """The licence service could not be asked, or did not answer with a lease.
     The message says which, in a sentence."""
 
 
+class UnreachableError(ServiceError):
+    """Nothing answered at the address asked: the network, a proxy, a firewall."""
+
+
 def service() -> str | None:
     """Where the licence service is: the environment's word first, then the
     build's own (``licence_public_key.SERVICE``). ``None`` when neither says."""
     return os.environ.get(SERVICE_VAR) or licence_public_key.SERVICE or None
+
+
+def addresses(first: str) -> list[str]:
+    """``first``, then the fallbacks -- but only when ``first`` is the build's
+    own address. One named in the environment is somebody's deliberate choice,
+    for a test or a service being tried out, and is not second-guessed."""
+    own = (licence_public_key.SERVICE or "").rstrip("/")
+    if os.environ.get(SERVICE_VAR) or first.rstrip("/") != own:
+        return [first]
+    return [first, *(other for other in FALLBACK_SERVICES if other.rstrip("/") != own)]
 
 
 # -- who this computer is ----------------------------------------------------------
@@ -208,6 +235,20 @@ def release(key: str, *, service: str, machine: bytes, timeout: float = QUICK_TI
 
 
 def _post(service: str, path: str, body: dict[str, Any], timeout: float) -> dict[str, Any]:
+    """Ask at ``service`` and, if nothing answers there, at each fallback
+    (``addresses``). When none answers, the first address's trouble is the one
+    said, because that is the address a person would look up."""
+    first: UnreachableError | None = None
+    for address in addresses(service):
+        try:
+            return _post_once(address, path, body, timeout)
+        except UnreachableError as trouble:
+            first = first or trouble
+    assert first is not None
+    raise first
+
+
+def _post_once(service: str, path: str, body: dict[str, Any], timeout: float) -> dict[str, Any]:
     request = urllib.request.Request(
         service.rstrip("/") + path,
         data=json.dumps(body).encode("utf-8"),
@@ -224,7 +265,9 @@ def _post(service: str, path: str, body: dict[str, Any], timeout: float) -> dict
         raise ServiceError(_what_the_service_said(error)) from error
     except (urllib.error.URLError, OSError) as error:
         reason = getattr(error, "reason", None) or error
-        raise ServiceError(f"Loriini could not reach the licence service ({reason}).") from error
+        raise UnreachableError(
+            f"Loriini could not reach the licence service ({reason})."
+        ) from error
     try:
         answer = json.loads(data)
     except ValueError as error:

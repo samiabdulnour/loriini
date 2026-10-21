@@ -331,6 +331,60 @@ def test_an_address_where_nothing_answers_is_a_sentence_too() -> None:
         )
 
 
+def test_the_builds_own_address_falls_back_when_nothing_answers_there(
+    service: Running, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An office firewall that resets every connection to a young domain
+    leaves the service's other address to ask, and the lease comes from it."""
+    monkeypatch.delenv(licence_online.SERVICE_VAR, raising=False)
+    monkeypatch.setattr(licence_public_key, "SERVICE", nobody_listening())
+    monkeypatch.setattr(licence_online, "FALLBACK_SERVICES", (service.url,))
+    installed(service)
+    after = licence.renew(TODAY)
+    assert after.usable, after.problem
+    assert after.lease is not None and after.lease.granted
+
+
+def test_only_an_address_nothing_answers_at_is_passed_over(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refusal is the service's word and is not asked again elsewhere; when
+    nothing answers anywhere, the build's own address is the one named; and an
+    address set in the environment is used alone."""
+    monkeypatch.delenv(licence_online.SERVICE_VAR, raising=False)
+    monkeypatch.setattr(licence_public_key, "SERVICE", "https://own.example")
+    monkeypatch.setattr(licence_online, "FALLBACK_SERVICES", ("https://spare.example",))
+    asked: list[str] = []
+
+    def refuse(address: str, *_: object) -> dict[str, object]:
+        asked.append(address)
+        raise licence_online.ServiceError("The licence service said: no.")
+
+    def unreachable(address: str, *_: object) -> dict[str, object]:
+        asked.append(address)
+        raise licence_online.UnreachableError(f"Loriini could not reach {address}.")
+
+    def free(address: str) -> bool:
+        return licence_online.release("LORIINI-ABCDE", service=address, machine=bytes(16))
+
+    monkeypatch.setattr(licence_online, "_post_once", refuse)
+    with pytest.raises(licence_online.ServiceError, match="said: no"):
+        free("https://own.example")
+    assert asked == ["https://own.example"]
+
+    asked.clear()
+    monkeypatch.setattr(licence_online, "_post_once", unreachable)
+    with pytest.raises(licence_online.UnreachableError, match=r"own\.example"):
+        free("https://own.example")
+    assert asked == ["https://own.example", "https://spare.example"]
+
+    asked.clear()
+    monkeypatch.setenv(licence_online.SERVICE_VAR, "https://chosen.example")
+    with pytest.raises(licence_online.UnreachableError):
+        free("https://chosen.example")
+    assert asked == ["https://chosen.example"]
+
+
 def test_a_computer_is_named_the_same_every_time(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
