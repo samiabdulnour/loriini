@@ -24,7 +24,9 @@ What comes across, and what does not
 ------------------------------------
 Triangles, per element, with the element's guid, layer, storey and type. No
 properties, no quantities, no classifications, no materials. The analysis has
-never read any of those.
+never read any of those. One thing about a surface does come across, in
+version 4: how transparent it is, a byte per triangle, which is what lets a
+glass balustrade let the sun through (``IfcModel.without_glass``).
 
 **Zones are deliberately absent.** A Zone's outline, name, storey and category
 already come from Archicad directly through ``archicad.read.zones`` -- the
@@ -51,7 +53,13 @@ from sun_study.ingest.ifc import IfcElement, IfcModel
 
 FloatArray = npt.NDArray[np.float64]
 
-__all__ = ["MAGIC", "VERSION", "NativeModelError", "read_native_model"]
+__all__ = [
+    "MAGIC",
+    "VERSION",
+    "VERSION_WITH_TRANSPARENCY",
+    "NativeModelError",
+    "read_native_model",
+]
 
 #: First eight bytes of the file. Checked rather than assumed, so a truncated
 #: download or a path pointing at the wrong thing fails here with a sentence
@@ -70,6 +78,11 @@ MAGIC = b"LORIINIM"
 #: each other's bytes as coordinates, which produces a model rather than an
 #: error and is the worst outcome available.
 VERSION = 3
+
+#: Version 3 with each triangle's surface transparency after its corners:
+#: one byte per triangle, in percent. The add-on writes it only when asked,
+#: so either may arrive and both are read.
+VERSION_WITH_TRANSPARENCY = 4
 
 #: Triangle coordinates are float32. At a kilometre from the project origin
 #: that resolves to well under a tenth of a millimetre, which is finer than the
@@ -111,11 +124,13 @@ def read_native_model(path: str | Path, timezone_hint: str = "") -> IfcModel:
     version, latitude, longitude, north_deg, elevation, count = struct.unpack_from(
         "<Idddd I", blob, 8
     )
-    if version != VERSION:
+    if version not in (VERSION, VERSION_WITH_TRANSPARENCY):
         raise NativeModelError(
-            f"{path} is version {version} and this reads version {VERSION}. The add-on "
-            f"and the tool have to be updated together; rebuild whichever is older."
+            f"{path} is version {version} and this reads versions {VERSION} and "
+            f"{VERSION_WITH_TRANSPARENCY}. The add-on and the tool have to be updated "
+            f"together; rebuild whichever is older."
         )
+    shaded = version == VERSION_WITH_TRANSPARENCY
 
     at = 8 + struct.calcsize("<Idddd I")
     elements: list[IfcElement] = []
@@ -137,6 +152,10 @@ def read_native_model(path: str | Path, timezone_hint: str = "") -> IfcModel:
         floats = triangles * 9
         vertices = np.frombuffer(blob, dtype=_TRIANGLE, count=floats, offset=at).astype(np.float64)
         at += floats * _TRIANGLE.itemsize
+        transparency = None
+        if shaded:
+            transparency = np.frombuffer(blob, dtype=np.uint8, count=triangles, offset=at).copy()
+            at += triangles
 
         # Already triangles, so the faces are simply consecutive triples. The
         # add-on fans Archicad's *convex* polygons, where a fan is exact; a fan
@@ -156,6 +175,7 @@ def read_native_model(path: str | Path, timezone_hint: str = "") -> IfcModel:
                 storey=storey or None,
                 mesh=mesh,
                 layer=layer,
+                transparency=transparency,
             )
         )
 

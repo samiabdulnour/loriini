@@ -428,6 +428,34 @@ def test_the_finest_grid_is_offered_wherever_a_solar_study_grids(hidden_window: 
     assert hidden_window.floor_grid.get() == "0.25"
 
 
+def test_see_through_glass_goes_to_all_three_solar_studies_and_no_other(
+    hidden_window: Any,
+) -> None:
+    """One choice, in the card the three share. Solid sends nothing, which is
+    the command's own default; the shadow diagram is not a solar study."""
+    assert set(hidden_window.see_glass._buttons) == {"off", "30", "80"}
+    assert hidden_window.see_glass.get() == "off"
+    hidden_window.apartments.set("06 | Zone.Units")
+    hidden_window.communal.set("06 | Zone.Balcony")
+    for tick in (hidden_window.do_facade, hidden_window.do_plans, hidden_window.do_communal):
+        tick.set(True)
+    hidden_window.do_shadows.set(True)
+
+    assert not any("--see-through-glass" in job.args for job in hidden_window.jobs())
+
+    hidden_window.see_glass.set("30")
+    sent = {job.args[0]: flag(job.args, "--see-through-glass") for job in hidden_window.jobs()}
+    assert sent["massing"] == ["30"]
+    assert sent["archicad-run"] == ["30"]
+    assert sent["shadows"] == []
+    assert (
+        sum(flag(job.args, "--see-through-glass") == ["30"] for job in hidden_window.jobs()) == 3
+    ), "the facade and the communal space are both massing runs"
+
+    hidden_window.apply({"see_through_glass": "80"})
+    assert hidden_window.see_glass.get() == "80"
+
+
 def test_a_neighbouring_layer_is_exported_and_kept_out_of_the_denominator(
     hidden_window: Any,
 ) -> None:

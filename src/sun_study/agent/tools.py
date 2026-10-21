@@ -443,6 +443,16 @@ class CosArguments(SheetedArguments):
     zone_grid_m: float | None = Field(
         default=None, gt=0, description="Grid spacing over the Zones, in metres."
     )
+    see_through_glass_pct: int | None = Field(
+        default=None,
+        ge=1,
+        le=100,
+        description=(
+            "Let sun through glass balustrades, screens and canopies: every surface at "
+            "least this transparent, in percent -- 30 for all glass, 80 for clear glass "
+            "only. Windows, doors and curtain walls stay solid. Left out, glass is solid."
+        ),
+    )
     view_combination: str = Field(
         min_length=1,
         description=(
@@ -643,6 +653,7 @@ def cos_argv(arguments: CosArguments, zone_layers: Sequence[str] = ()) -> list[s
     argv += _option("--master-layout", a.master_layout) + _option("--zone-subset", a.subset)
     argv += _option("--zone-view-combination", a.view_combination)
     argv += _option("--zone-height", a.zone_height_m) + _option("--zone-grid", a.zone_grid_m)
+    argv += _option("--see-through-glass", a.see_through_glass_pct)
     argv += _option("--zone-csv", a.csv) + _option("--zone-table", a.table)
     argv += _option("--zone-hours", a.hours)
     # The areas always, as the window: a plan without them invites a figure

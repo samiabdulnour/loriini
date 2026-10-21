@@ -3999,6 +3999,23 @@ class Window:
             "plans at all is not a plan study.",
         )
 
+        self.see_glass, row = self._tiles(
+            frame,
+            row,
+            "Glass",
+            "Whether glass balustrades, screens and canopies cast shade.",
+            "Solid is how every study measured until there was a choice: a "
+            "glass balustrade shades the balcony and the room behind it as if "
+            "it were a wall. The other two let the sun through every surface "
+            "at least that transparent in Archicad -- all glass, or clear glass "
+            "only -- while the rails and posts round a panel still cast "
+            "shade. Windows, doors, skylights and curtain walls stay solid "
+            "whatever is chosen: they are a building's envelope, and sun let "
+            "through them would shine through the building behind. Used by "
+            "all three studies.",
+        )
+        self.see_glass.set("off")
+
         self.do_plans = tk.BooleanVar(value=False)
         # The study's own box. Everything from here to the end of the block
         # is built inside it, by the simple means of pointing ``frame`` at it:
@@ -6366,6 +6383,7 @@ class Window:
             "plan_instants": self.instants,
             "plan_kinds": self.plan_kinds,
             "floor_grid": self.floor_grid,
+            "see_through_glass": self.see_glass,
             "shadow_subset": self.shadow_subset,
             **{f"shadow_layers_{short.lower()}": box for short, _role, box in self.shadow_rows},
             "shadow_terrain_layers": self.terrain_layers,
@@ -7008,6 +7026,7 @@ class Window:
         "Skin cell": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed", "0.2": "Finest"},
         "Communal grid": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed", "0.2": "Finest"},
         "Floor grid": {"0.25": "Detailed", "0.2": "Finest"},
+        "Glass": {"off": "Solid", "30": "All glass", "80": "Clear only"},
         "Site lands at": {
             "Project location": "Project location",
             "Project origin": "Project origin",
@@ -7104,6 +7123,25 @@ class Window:
                 "samples of 0.25 m, so a slower run for a truer patch edge.",
             ),
         ),
+        # The percentages are Archicad's own surface transparency. On Tweed
+        # Heads clear glass is 88-90%, tinted and frosted 40-49%, generic
+        # translucent 35% and polycarbonate 15%: 30 takes every glass and
+        # leaves polycarbonate solid, 80 the clear glass alone.
+        "Glass": (
+            ("off", "glass_solid", "Solid — glass casts shade like any other surface."),
+            (
+                "30",
+                "glass_all",
+                "All glass — every surface at least 30% transparent lets the sun "
+                "through: clear, tinted and frosted glass. Polycarbonate stays solid.",
+            ),
+            (
+                "80",
+                "glass_clear",
+                "Clear only — surfaces at least 80% transparent let the sun through; "
+                "tinted and frosted glass still cast shade.",
+            ),
+        ),
         "Site lands at": (
             (
                 "Project location",
@@ -7171,6 +7209,12 @@ class Window:
         if self.storey_to.get().strip():
             args += ["--exclude-above-storey", self.storey_to.get().strip()]
         return args
+
+    def _glass_args(self) -> list[str]:
+        """``--see-through-glass`` with the tile's percentage, or nothing for
+        solid -- which is the command's own default."""
+        chosen = self.see_glass.get().strip()
+        return ["--see-through-glass", chosen] if chosen.isdigit() else []
 
     def _day_args(self, day: str) -> list[str]:
         """``--date`` for one day, or nothing on the ruleset's own.
@@ -7791,7 +7835,7 @@ class Window:
             # the model to them and drop whatever else the scheme casts.
             for name in self._listed(self.context):
                 args += ["--require-layer", name]
-            args += self._band_args()
+            args += self._band_args() + self._glass_args()
             args += [
                 "--model-bands",
                 "--model-flat" if self.do_floors.get() else "--no-model-flat",
@@ -7878,7 +7922,7 @@ class Window:
             # total alone, it would switch on a second ray cast for nothing.
             if times or heat:
                 args += ["--patch-grid", self.floor_grid.get().strip() or "0.25"]
-            args += self._band_args()
+            args += self._band_args() + self._glass_args()
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
             if self.shadow_subset.get():
@@ -7925,7 +7969,7 @@ class Window:
                 args += ["--layer-combination", self.combination.get()]
             for name in self._listed(self.hide):
                 args += ["--hide-layer", name]
-            args += self._band_args()
+            args += self._band_args() + self._glass_args()
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
             if self.adg_subset.get():

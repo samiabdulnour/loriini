@@ -525,7 +525,7 @@ def export_model(connection: ArchicadConnection, destination: str | Path) -> Pat
     path = Path(destination).expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        answer = connection.run_loriini("ExportModel", {"path": str(path)})
+        answer = _export_with_transparency(connection, path)
     except ArchicadError as error:
         if "not have the registered" in str(error):
             return None
@@ -538,6 +538,23 @@ def export_model(connection: ArchicadConnection, destination: str | Path) -> Pat
             f"writable from Archicad's process."
         )
     return path
+
+
+def _export_with_transparency(connection: ArchicadConnection, path: Path) -> Any:
+    """``ExportModel`` with each surface's transparency, where the add-on can.
+
+    Always asked for rather than only when glass is to let sun through: it is
+    a byte a triangle, and a model that carries it can be measured either
+    way. An add-on from before 21 October 2026 refuses the field before
+    writing anything, so it is asked again without, and the run's model then
+    says nothing about glass -- which ``GlassReport`` reports when it matters.
+    """
+    try:
+        return connection.run_loriini("ExportModel", {"path": str(path), "transparency": True})
+    except CommandFailedError as error:
+        if "transparency" not in str(error):
+            raise
+    return connection.run_loriini("ExportModel", {"path": str(path)})
 
 
 def export_ifc(connection: ArchicadConnection, destination: str | Path) -> Path:

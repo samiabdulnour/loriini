@@ -484,6 +484,9 @@ def run(
             ),
         ),
     ] = None,
+    see_through_glass: Annotated[
+        int | None, typer.Option("--see-through-glass", help=SEE_THROUGH_GLASS_HELP)
+    ] = None,
     csv_out: Annotated[
         Path | None, typer.Option("--csv", help="Write per-apartment results as CSV.")
     ] = None,
@@ -507,6 +510,7 @@ def run(
         offset=offset,
         context_radius=context_radius,
         exclude_above=exclude_above,
+        see_through_glass=see_through_glass,
     )
 
     rules = _ruleset_for(ruleset, date=date)
@@ -3054,6 +3058,25 @@ def band_styles(overrides: list[str] | None) -> tuple[BandStyle, ...]:
     )
 
 
+#: ``--see-through-glass``, said once for the three commands that measure sun,
+#: so they cannot come to mean different things by it.
+SEE_THROUGH_GLASS_HELP = (
+    "Let sun through glass: every surface at least this transparent, in percent. "
+    "30 takes all the glass in an office's surfaces, tinted and frosted too; 80 "
+    "clear glass only. Glass balustrades, screens and canopies stop casting "
+    "shade; windows, doors, skylights and curtain walls stay solid. Needs the "
+    "add-on's own export, which says how transparent each surface is. Left "
+    "out, all glass is solid."
+)
+
+
+def glass_percent(value: int | None) -> int | None:
+    """``--see-through-glass`` checked: a percentage, or nothing."""
+    if value is not None and not 1 <= value <= 100:
+        raise typer.BadParameter("takes a percentage, 1 to 100", param_hint="--see-through-glass")
+    return value
+
+
 def scene_config(
     *,
     timezone: str,
@@ -3071,6 +3094,7 @@ def scene_config(
     exclude_above: float | None = None,
     exclude_below: float | None = None,
     patch_grid: float | None = None,
+    see_through_glass: int | None = None,
 ) -> SceneConfig:
     """Turn the shared scene options into a config.
 
@@ -3094,6 +3118,7 @@ def scene_config(
         exclude_above_m=exclude_above,
         exclude_below_m=exclude_below,
         floor_patch_spacing_m=patch_grid,
+        see_through_glass_pct=glass_percent(see_through_glass),
     )
 
 
@@ -3613,6 +3638,9 @@ def massing(
             ),
         ),
     ] = None,
+    see_through_glass: Annotated[
+        int | None, typer.Option("--see-through-glass", help=SEE_THROUGH_GLASS_HELP)
+    ] = None,
     zone_subset: Annotated[
         str,
         typer.Option(
@@ -4019,6 +4047,7 @@ def massing(
         zone_storeys=tuple(zone_storey or ()),
         zone_height_m=zone_height,
         zone_spacing_m=zone_grid,
+        see_through_glass_pct=glass_percent(see_through_glass),
     )
 
     try:
@@ -5779,6 +5808,9 @@ def archicad_run(
             ),
         ),
     ] = None,
+    see_through_glass: Annotated[
+        int | None, typer.Option("--see-through-glass", help=SEE_THROUGH_GLASS_HELP)
+    ] = None,
     plan_instant: Annotated[
         list[str] | None,
         typer.Option(
@@ -6033,6 +6065,7 @@ def archicad_run(
             if (series_worksheet or plan_instant or plan_bands or plan_hours)
             else None
         ),
+        see_through_glass=see_through_glass,
     )
 
     with tempfile.TemporaryDirectory(prefix="sun-study-") as scratch:
