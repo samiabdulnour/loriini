@@ -733,18 +733,19 @@ def studies() -> list[Icon]:
 
 
 def densities() -> list[Icon]:
-    """Rough, normal and detailed, as three grids of the same square.
+    """Rough, normal, detailed and finest, as four grids of the same square.
 
     These replace a box you typed metres into. The number still goes to the
-    command line -- the tiles hold "2.0", "1.0" and "0.5" -- but nobody has to
-    know that a sample grid is measured in metres to pick a coarseness, and
-    the three drawings say which way is finer without a word.
+    command line -- the tiles hold "2.0", "1.0", "0.5" and "0.2" -- but nobody
+    has to know that a sample grid is measured in metres to pick a coarseness,
+    and the drawings say which way is finer without a word.
     """
     out: list[Icon] = []
     for name, says, divisions in (
         ("grid_rough", "a coarse sample grid", 2),
         ("grid_normal", "the usual sample grid", 4),
         ("grid_fine", "a fine sample grid", 8),
+        ("grid_finest", "the finest sample grid", 12),
     ):
         step = 20 / divisions
         shapes: list[Shape] = [rect(6, 6, 20, 20, fill=PAPER)]
@@ -753,10 +754,10 @@ def densities() -> list[Icon]:
             thin = 0.9 if divisions < 8 else 0.7
             shapes.append(Line(((at, 6), (at, 26)), fill=BLUE_T, width=thin, detail=divisions > 4))
             shapes.append(Line(((6, at), (26, at)), fill=BLUE_T, width=thin, detail=divisions > 4))
-        # The coarse ones keep their divisions at every size; only the eight-way
-        # grid has to give them up, and at 16 px it reads as a filled square,
-        # which is the right answer for "finest".
-        if divisions == 8:
+        # The coarse ones keep their divisions at every size; only the eight-
+        # and twelve-way grids have to give them up, and at 16 px they read as
+        # a filled square, which is the right answer for "fine".
+        if divisions >= 8:
             shapes.append(rect(6.8, 6.8, 18.4, 18.4, fill=BLUE_T, outline=None, coarse=True))
         shapes.append(rect(6, 6, 20, 20, fill=None, outline=INK))
         out.append(Icon(name, says, shapes))

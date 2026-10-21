@@ -3927,8 +3927,9 @@ class Window:
             "",
             "Finer looks better and makes many more elements — half the cell "
             "size is roughly four times the count, and this project already "
-            "makes over five thousand at 0.5 m. A face narrower than one cell "
-            "is not drawn at all, so a coarse setting loses thin columns.",
+            "makes over five thousand at 0.5 m, and over thirty thousand at "
+            "0.2 m. A face narrower than one cell is not drawn at all, so a "
+            "coarse setting loses thin columns.",
         )
         self.grid_m.set("0.5")
         return resume + 1
@@ -4074,6 +4075,18 @@ class Window:
             key=_clock_text,
             initial="09:00, 12:00, 15:00",
         )
+        self.floor_grid, row = self._tiles(
+            frame,
+            row,
+            "Floor grid",
+            "",
+            "How finely each apartment's floor is sampled for the sun patches "
+            "and the heat map. It changes the drawings, not the ADG figure: the "
+            "hours per apartment are read at the glazing, which is sampled every "
+            "0.2 m whatever this says. Finer draws the patch edge more truly and "
+            "casts more rays.",
+        )
+        self.floor_grid.set("0.25")
         self.shadow_subset, row = self._combo(
             frame,
             row,
@@ -4180,10 +4193,12 @@ class Window:
             row,
             "Communal grid",
             "",
-            "Half a metre reads a courtyard properly. This is separate from "
-            "the ground grid on purpose: the ground is the whole site, and "
-            "gridding all of it this finely costs four times the samples for "
-            "an answer nobody asked of it.",
+            "Half a metre reads a courtyard properly; 0.2 m is for a narrow "
+            "terrace, or an area figure that sits close to the threshold, at "
+            "six times the samples. This is separate from the ground grid on "
+            "purpose: the ground is the whole site, and gridding all of it "
+            "this finely costs four times the samples for an answer nobody "
+            "asked of it.",
         )
         self.communal_grid.set("0.5")
 
@@ -6350,6 +6365,7 @@ class Window:
             "livable_suffix": self.livable,
             "plan_instants": self.instants,
             "plan_kinds": self.plan_kinds,
+            "floor_grid": self.floor_grid,
             "shadow_subset": self.shadow_subset,
             **{f"shadow_layers_{short.lower()}": box for short, _role, box in self.shadow_rows},
             "shadow_terrain_layers": self.terrain_layers,
@@ -6989,8 +7005,9 @@ class Window:
             "Two layouts, half each": "Two layouts",
             "A layout per drawing": "One per drawing",
         },
-        "Skin cell": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed"},
-        "Communal grid": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed"},
+        "Skin cell": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed", "0.2": "Finest"},
+        "Communal grid": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed", "0.2": "Finest"},
+        "Floor grid": {"0.25": "Detailed", "0.2": "Finest"},
         "Site lands at": {
             "Project location": "Project location",
             "Project origin": "Project origin",
@@ -7049,6 +7066,12 @@ class Window:
                 "Detailed — 0.5 m cells. Four times the elements of 1 m; over five "
                 "thousand on a project this size.",
             ),
+            (
+                "0.2",
+                "grid_finest",
+                "Finest — 0.2 m cells. Six times the elements of 0.5 m, so over "
+                "thirty thousand on a project this size, and Archicad slows with them.",
+            ),
         ),
         "Communal grid": (
             ("2.0", "grid_rough", "Rough — samples every 2 m."),
@@ -7057,6 +7080,28 @@ class Window:
                 "0.5",
                 "grid_fine",
                 "Detailed — samples every 0.5 m, which is what reads a courtyard properly.",
+            ),
+            (
+                "0.2",
+                "grid_finest",
+                "Finest — samples every 0.2 m. Six times the samples of 0.5 m, for "
+                "a narrow terrace or an area figure that sits on a threshold.",
+            ),
+        ),
+        # The apartments' floor: the sun patches and the heat map. Its own two
+        # tiles, because the study has always gridded it at 0.25 m and the
+        # coarse end of the other rows would draw a flat's sun patch in blocks.
+        "Floor grid": (
+            (
+                "0.25",
+                "grid_fine",
+                "Detailed — samples every 0.25 m, the study's own grid until now.",
+            ),
+            (
+                "0.2",
+                "grid_finest",
+                "Finest — samples every 0.2 m. About one and a half times the "
+                "samples of 0.25 m, so a slower run for a truer patch edge.",
             ),
         ),
         "Site lands at": (
@@ -7829,6 +7874,10 @@ class Window:
                 args += ["--plan-combination", self.plan_combination.get()]
             for stamp in self._listed(self.instants) if times else []:
                 args += ["--plan-instant", stamp]
+            # The floor grid only where a plan reads the floor. Named with the
+            # total alone, it would switch on a second ray cast for nothing.
+            if times or heat:
+                args += ["--patch-grid", self.floor_grid.get().strip() or "0.25"]
             args += self._band_args()
             if self.master.get():
                 args += ["--master-layout", self.master.get()]

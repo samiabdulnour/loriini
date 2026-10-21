@@ -386,6 +386,48 @@ def test_the_communal_study_sends_the_settings_that_change_the_answer(
     assert flag(communal.args, "--zone-grid") == ["0.5"]
 
 
+def test_the_finest_grid_is_offered_wherever_a_solar_study_grids(hidden_window: Any) -> None:
+    """0.2 m on the facade skin, the communal ground and the apartments' floor.
+
+    Each is a tile of its own row and goes to the run as that study's own
+    flag; the apartments keep 0.25 m unless asked, because that is what the
+    study has always drawn its floors at.
+    """
+    rows = (hidden_window.grid_m, hidden_window.communal_grid, hidden_window.floor_grid)
+    for row in rows:
+        assert "0.2" in row._buttons
+
+    def only(tick: Any) -> None:
+        for _name, other, _where in hidden_window._studies():
+            other.set(False)
+        tick.set(True)
+
+    only(hidden_window.do_facade)
+    hidden_window.grid_m.set("0.2")
+    (facade,) = hidden_window.jobs()
+    assert flag(facade.args, "--model-grid") == ["0.2"]
+
+    only(hidden_window.do_communal)
+    hidden_window.communal.set("06 | Zone.Balcony")
+    hidden_window.communal_grid.set("0.2")
+    (communal,) = hidden_window.jobs()
+    assert flag(communal.args, "--zone-grid") == ["0.2"]
+
+    only(hidden_window.do_plans)
+    hidden_window.apartments.set("06 | Zone.Units")
+    (plans,) = hidden_window.jobs()
+    assert flag(plans.args, "--patch-grid") == ["0.25"]
+    hidden_window.floor_grid.set("0.2")
+    (plans,) = hidden_window.jobs()
+    assert flag(plans.args, "--patch-grid") == ["0.2"]
+    hidden_window.plan_kinds.set("Apartment total")
+    (plans,) = hidden_window.jobs()
+    assert not flag(plans.args, "--patch-grid"), "no floor plan, no second ray cast"
+
+    hidden_window.apply({"floor_grid": "0.25"})
+    assert hidden_window.floor_grid.get() == "0.25"
+
+
 def test_a_neighbouring_layer_is_exported_and_kept_out_of_the_denominator(
     hidden_window: Any,
 ) -> None:
