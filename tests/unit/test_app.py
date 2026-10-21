@@ -386,16 +386,21 @@ def test_the_communal_study_sends_the_settings_that_change_the_answer(
     assert flag(communal.args, "--zone-grid") == ["0.5"]
 
 
-def test_the_finest_grid_is_offered_wherever_a_solar_study_grids(hidden_window: Any) -> None:
-    """0.2 m on the facade skin, the communal ground and the apartments' floor.
+def test_every_solar_grid_offers_the_same_four_steps(hidden_window: Any) -> None:
+    """Rough 1 m, Normal 0.5 m, Detailed 0.25 m, Finest 0.1 m -- on the facade
+    skin, the communal ground and the apartments' floor alike, so a word on a
+    tile means one grid whichever study it is pressed in.
 
-    Each is a tile of its own row and goes to the run as that study's own
-    flag; the apartments keep 0.25 m unless asked, because that is what the
-    study has always drawn its floors at.
+    Each goes to the run as that study's own flag, and the defaults keep the
+    metres they always had: 0.5 m on the facade and the communal space, 0.25 m
+    on the apartments' floor.
     """
+    steps = {"1.0": "Rough", "0.5": "Normal", "0.25": "Detailed", "0.1": "Finest"}
     rows = (hidden_window.grid_m, hidden_window.communal_grid, hidden_window.floor_grid)
     for row in rows:
-        assert "0.2" in row._buttons
+        assert list(row._buttons) == list(steps)
+        assert {value: button.cget("text") for value, button in row._buttons.items()} == steps
+    assert [row.get() for row in rows] == ["0.5", "0.5", "0.25"]
 
     def only(tick: Any) -> None:
         for _name, other, _where in hidden_window._studies():
@@ -403,29 +408,42 @@ def test_the_finest_grid_is_offered_wherever_a_solar_study_grids(hidden_window: 
         tick.set(True)
 
     only(hidden_window.do_facade)
-    hidden_window.grid_m.set("0.2")
+    hidden_window.grid_m.set("0.1")
     (facade,) = hidden_window.jobs()
-    assert flag(facade.args, "--model-grid") == ["0.2"]
+    assert flag(facade.args, "--model-grid") == ["0.1"]
 
     only(hidden_window.do_communal)
     hidden_window.communal.set("06 | Zone.Balcony")
-    hidden_window.communal_grid.set("0.2")
+    hidden_window.communal_grid.set("0.25")
     (communal,) = hidden_window.jobs()
-    assert flag(communal.args, "--zone-grid") == ["0.2"]
+    assert flag(communal.args, "--zone-grid") == ["0.25"]
 
     only(hidden_window.do_plans)
     hidden_window.apartments.set("06 | Zone.Units")
     (plans,) = hidden_window.jobs()
     assert flag(plans.args, "--patch-grid") == ["0.25"]
-    hidden_window.floor_grid.set("0.2")
+    hidden_window.floor_grid.set("0.1")
     (plans,) = hidden_window.jobs()
-    assert flag(plans.args, "--patch-grid") == ["0.2"]
+    assert flag(plans.args, "--patch-grid") == ["0.1"]
+    hidden_window.floor_grid.set("1.0")
+    (plans,) = hidden_window.jobs()
+    assert flag(plans.args, "--patch-grid") == ["1.0"]
     hidden_window.plan_kinds.set("Apartment total")
     (plans,) = hidden_window.jobs()
     assert not flag(plans.args, "--patch-grid"), "no floor plan, no second ray cast"
 
     hidden_window.apply({"floor_grid": "0.25"})
     assert hidden_window.floor_grid.get() == "0.25"
+
+
+def test_a_step_from_before_the_four_is_kept_rather_than_rounded(hidden_window: Any) -> None:
+    """0.2 m was Finest and 2 m was Rough until the steps were redone. A
+    settings file holding either still sends it, with no tile lit, rather
+    than being moved to a neighbour and measuring something else unsaid."""
+    hidden_window.apply({"communal_grid": "0.2", "floor_grid": "0.2"})
+    assert hidden_window.communal_grid.get() == "0.2"
+    assert hidden_window.floor_grid.get() == "0.2"
+    assert "0.2" not in hidden_window.communal_grid._on & set(hidden_window.communal_grid._buttons)
 
 
 def test_see_through_glass_goes_to_all_three_solar_studies_and_no_other(

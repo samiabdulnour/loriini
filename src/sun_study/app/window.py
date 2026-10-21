@@ -3927,9 +3927,10 @@ class Window:
             "",
             "Finer looks better and makes many more elements — half the cell "
             "size is roughly four times the count, and this project already "
-            "makes over five thousand at 0.5 m, and over thirty thousand at "
-            "0.2 m. A face narrower than one cell is not drawn at all, so a "
-            "coarse setting loses thin columns.",
+            "makes over five thousand at 0.5 m, over twenty thousand at 0.25 m "
+            "and well over a hundred thousand at 0.1 m. A face narrower than "
+            "one cell is not drawn at all, so a coarse setting loses thin "
+            "columns.",
         )
         self.grid_m.set("0.5")
         return resume + 1
@@ -4101,7 +4102,7 @@ class Window:
             "and the heat map. It changes the drawings, not the ADG figure: the "
             "hours per apartment are read at the glazing, which is sampled every "
             "0.2 m whatever this says. Finer draws the patch edge more truly and "
-            "casts more rays.",
+            "casts more rays: 0.1 m is over six times the rays of 0.25 m.",
         )
         self.floor_grid.set("0.25")
         self.shadow_subset, row = self._combo(
@@ -4210,9 +4211,10 @@ class Window:
             row,
             "Communal grid",
             "",
-            "Half a metre reads a courtyard properly; 0.2 m is for a narrow "
+            "Half a metre reads a courtyard properly; 0.25 m is for a narrow "
             "terrace, or an area figure that sits close to the threshold, at "
-            "six times the samples. This is separate from the ground grid on "
+            "four times the samples, and 0.1 m for a small space measured "
+            "closely. This is separate from the ground grid on "
             "purpose: the ground is the whole site, and gridding all of it "
             "this finely costs four times the samples for an answer nobody "
             "asked of it.",
@@ -7009,6 +7011,14 @@ class Window:
         },
     }
 
+    #: The four grid steps, worded once for every solar grid row.
+    GRID_WORDS: ClassVar[dict[str, str]] = {
+        "1.0": "Rough",
+        "0.5": "Normal",
+        "0.25": "Detailed",
+        "0.1": "Finest",
+    }
+
     #: The word on each tile's face, by row and then by value: short enough
     #: that a row of three still fits beside its label, and the same words
     #: the tooltip opens with so the two never disagree.
@@ -7023,9 +7033,9 @@ class Window:
             "Two layouts, half each": "Two layouts",
             "A layout per drawing": "One per drawing",
         },
-        "Skin cell": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed", "0.2": "Finest"},
-        "Communal grid": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed", "0.2": "Finest"},
-        "Floor grid": {"0.25": "Detailed", "0.2": "Finest"},
+        "Skin cell": GRID_WORDS,
+        "Communal grid": GRID_WORDS,
+        "Floor grid": GRID_WORDS,
         "Glass": {"off": "Solid", "30": "All glass", "80": "Clear only"},
         "Site lands at": {
             "Project location": "Project location",
@@ -7075,52 +7085,71 @@ class Window:
         ),
         # Metres, still, on the command line -- the tiles hold the number.
         # Nobody has to know a sample grid is measured in metres to pick a
-        # coarseness, and three drawings say which way is finer without a word.
+        # coarseness, and four drawings say which way is finer without a word.
+        # The same four steps on every solar grid -- 1, 0.5, 0.25 and 0.1 m --
+        # so Detailed means one thing whichever study it is chosen in.
         "Skin cell": (
-            ("2.0", "grid_rough", "Rough — 2 m cells. Fast, and it loses anything narrower."),
-            ("1.0", "grid_normal", "Normal — 1 m cells."),
+            ("1.0", "grid_rough", "Rough — 1 m cells. Fast, and it loses anything narrower."),
             (
                 "0.5",
-                "grid_fine",
-                "Detailed — 0.5 m cells. Four times the elements of 1 m; over five "
+                "grid_normal",
+                "Normal — 0.5 m cells. Four times the elements of 1 m; over five "
                 "thousand on a project this size.",
             ),
             (
-                "0.2",
+                "0.25",
+                "grid_fine",
+                "Detailed — 0.25 m cells. Four times the elements of 0.5 m, so over "
+                "twenty thousand on a project this size, and Archicad slows with them.",
+            ),
+            (
+                "0.1",
                 "grid_finest",
-                "Finest — 0.2 m cells. Six times the elements of 0.5 m, so over "
-                "thirty thousand on a project this size, and Archicad slows with them.",
+                "Finest — 0.1 m cells. Over six times the elements of 0.25 m: well "
+                "over a hundred thousand on a project this size. For one small "
+                "building, not a whole site.",
             ),
         ),
         "Communal grid": (
-            ("2.0", "grid_rough", "Rough — samples every 2 m."),
-            ("1.0", "grid_normal", "Normal — samples every 1 m."),
+            ("1.0", "grid_rough", "Rough — samples every 1 m."),
             (
                 "0.5",
-                "grid_fine",
-                "Detailed — samples every 0.5 m, which is what reads a courtyard properly.",
+                "grid_normal",
+                "Normal — samples every 0.5 m, which is what reads a courtyard properly.",
             ),
             (
-                "0.2",
+                "0.25",
+                "grid_fine",
+                "Detailed — samples every 0.25 m. Four times the samples of 0.5 m, "
+                "for a narrow terrace or an area figure that sits on a threshold.",
+            ),
+            (
+                "0.1",
                 "grid_finest",
-                "Finest — samples every 0.2 m. Six times the samples of 0.5 m, for "
-                "a narrow terrace or an area figure that sits on a threshold.",
+                "Finest — samples every 0.1 m. Over six times the samples of 0.25 m, "
+                "and a run to match.",
             ),
         ),
-        # The apartments' floor: the sun patches and the heat map. Its own two
-        # tiles, because the study has always gridded it at 0.25 m and the
-        # coarse end of the other rows would draw a flat's sun patch in blocks.
+        # The apartments' floor: the sun patches and the heat map. The same
+        # four as the other rows; the study has always gridded it at 0.25 m,
+        # which is Detailed, and Rough draws a flat's sun patch in blocks.
         "Floor grid": (
+            (
+                "1.0",
+                "grid_rough",
+                "Rough — samples every 1 m. Quick, and the sun patches come out in metre blocks.",
+            ),
+            ("0.5", "grid_normal", "Normal — samples every 0.5 m."),
             (
                 "0.25",
                 "grid_fine",
                 "Detailed — samples every 0.25 m, the study's own grid until now.",
             ),
             (
-                "0.2",
+                "0.1",
                 "grid_finest",
-                "Finest — samples every 0.2 m. About one and a half times the "
-                "samples of 0.25 m, so a slower run for a truer patch edge.",
+                "Finest — samples every 0.1 m. Over six times the samples of 0.25 m, "
+                "so a much slower run for a truer patch edge.",
             ),
         ),
         # The percentages are Archicad's own surface transparency. On Tweed
