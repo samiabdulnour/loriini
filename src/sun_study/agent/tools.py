@@ -467,6 +467,15 @@ class CosArguments(SheetedArguments):
     table: str | None = Field(
         default=None, description="Write the COS schedules, one per Zone, to this .xlsx."
     )
+    schedule: str | None = Field(
+        default=None,
+        description=(
+            "A schedule in the project -- the office's 'Areas COS solar' -- to put on the "
+            "hourly sheets in place of the drawn table. Each hour's sunlit fills get its time "
+            "and share as IFC properties for the schedule to list. Needs hourly, and "
+            "Archicad 26 to 28. project_options lists the schedules."
+        ),
+    )
     csv: str | None = Field(default=None, description="Write every area figure to this CSV.")
 
 
@@ -660,7 +669,7 @@ def cos_argv(arguments: CosArguments, zone_layers: Sequence[str] = ()) -> list[s
     # read off a colour.
     argv += ["--zone-sheet", "--zone-stats"]
     if a.hourly:
-        argv += ["--zone-hourly"]
+        argv += ["--zone-hourly", *_option("--zone-schedule", a.schedule)]
     argv += _option("--year", a.year) + _date_args(a.day) + _option("--sheets", a.sheets)
     return argv
 
@@ -751,6 +760,7 @@ def project_options(arguments: Mapping[str, Any], call: Call) -> ToolResult:
     listed("layer combinations", found.combinations)
     listed("master layouts", found.masters)
     listed("layout subsets", found.subsets)
+    listed("schedules", found.schedules)
     listed("pen sets", found.pen_sets)
     listed("graphic overrides", found.overrides)
     listed("storeys, bottom to top", found.storey_names)

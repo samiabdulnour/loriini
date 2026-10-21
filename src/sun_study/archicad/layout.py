@@ -458,6 +458,7 @@ def layout_from_views(
     scale: float = DEFAULT_LAYOUT_SCALE,
     master_layout: str | None = None,
     cells: int | None = None,
+    keep_clear_mm: float = 0.0,
 ) -> LayoutReport:
     """Put one Drawing per given View onto a new Layout.
 
@@ -470,6 +471,10 @@ def layout_from_views(
     ``cells`` lays the sheet out as one carrying that many drawings, when it
     is more than there are: the second sheet of a split set takes the first
     cells of the first sheet's grid, so the two read alike.
+
+    ``keep_clear_mm`` is taken off the right of the page before the drawings
+    are dealt, for what goes beside them -- a schedule, in the column by the
+    title block. The report's ``sheet`` is still the whole page.
     """
     connection.require_tapir_at_least(
         LAYOUT_MINIMUM_TAPIR_VERSION, because="CreateLayout and CreateDrawings"
@@ -481,6 +486,7 @@ def layout_from_views(
     existing = _layout_named(connection, layout_name)
     layout = existing if existing is not None else _create_layout(connection, layout_name, master)
     sheet, assumed = layout_sheet(connection, layout)
+    dealt = replace(sheet, right_mm=sheet.right_mm + keep_clear_mm) if keep_clear_mm else sheet
 
     # The drawing's size on the sheet is its view's extent at the drawing's
     # scale: 77 m at 1:500 is 154 mm. Falling back to the page grid only where
@@ -492,9 +498,9 @@ def layout_from_views(
     if extents:
         widest = max(width for width, _ in extents.values()) / scale
         tallest = max(height for _, height in extents.values()) / scale
-        positions = sheet_positions(sheet, count, (widest, tallest))[: len(views)]
+        positions = sheet_positions(dealt, count, (widest, tallest))[: len(views)]
     else:
-        positions = [(x / MM_PER_M, y / MM_PER_M) for x, y in sheet.grid(count)][: len(views)]
+        positions = [(x / MM_PER_M, y / MM_PER_M) for x, y in dealt.grid(count)][: len(views)]
 
     # Only what is not already on the sheet. A Drawing made from a 3D view or
     # a 3D Document is created at a placeholder extent -- 59 mm square on this

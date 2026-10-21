@@ -166,6 +166,11 @@ PLANS_JOB = "solar analysis: apartments"
 #: the hourly set, which the Sheets row deals, and the schedule, which is a
 #: table and not a drawing at all.
 COMMUNAL_HOURLY = "Communal open space by hour"
+
+#: The communal schedule's "no": the drawn table, as before. A word rather
+#: than a blank, so choosing it is a choice a Refresh keeps -- a blank reads as
+#: "never asked", and the office's schedule would be picked over it again.
+NO_SCHEDULE = "None — the drawn table"
 COMMUNAL_AREAS = "Communal areas"
 #: The two outputs of the site study that are not sheets: geometry on its
 #: own layers, drawn in the panel as geometry.
@@ -4220,6 +4225,23 @@ class Window:
             "asked of it.",
         )
         self.communal_grid.set("0.5")
+        self.cos_schedule, row = self._combo(
+            frame,
+            row,
+            "Communal schedule",
+            "The project's schedule for the hourly sheets, in place of the drawn table.",
+            "The office's COS sheet carries an Archicad schedule rather than a "
+            "table -- 'Areas COS solar': a row per hour, its time, the sunlit "
+            "area and its share. Picked here, every sunlit fill of each hour "
+            "gets that hour's time and share as the IFC properties Time and "
+            "Percentage (set 'Solar Analysis'), and the schedule goes on the "
+            "sheet beside the plans; Archicad sums the area itself, so the "
+            "schedule stays live. Archicad cannot make a schedule through its "
+            "API, so the scheme has to be in the project already. Needs the "
+            "Times plans, and Archicad 26 to 28 -- 29 and 30 cannot store an IFC "
+            "property from an add-on, and the drawn table is used there. None "
+            "draws the table as before.",
+        )
 
     def _shadows(self, frame: ttk.Frame) -> None:
         """The shadow diagram: what already stands, and what the proposal adds.
@@ -6370,6 +6392,7 @@ class Window:
             "custom_day": self.custom_day,
             "sun_view_custom_day": self.eye_custom_day,
             "communal_grid": self.communal_grid,
+            "communal_schedule": self.cos_schedule,
             "tables_folder": self.tables,
             "master_layout": self.master,
             "storey_from": self.storey_from,
@@ -6741,6 +6764,9 @@ class Window:
         self._offer_plan_combination(found.combinations)
         self._fill(self.shadow_subset, found.subsets, ("SHADOW",))
         self._fill(self.adg_subset, found.subsets, ("ADG",))
+        # "None" first: a project without the office's scheme gets the drawn
+        # table, where the first schedule in the list would be a guess.
+        self._fill(self.cos_schedule, (NO_SCHEDULE, *found.schedules), ("COS solar",))
         # Blank first, and no preference: a blank keeps each view's own pen
         # set, which is what the command does, and the office's set is a
         # choice rather than a guess.
@@ -8033,6 +8059,9 @@ class Window:
             times, heat, total = self._plan_kinds()
             if times:
                 args += ["--zone-hourly"]
+                schedule = self.cos_schedule.get().strip()
+                if schedule and schedule != NO_SCHEDULE:
+                    args += ["--zone-schedule", schedule]
             if not (heat or total):
                 args += ["--no-zone-bands"]
             args += ["--year", self.year.get().strip() or "2024"]

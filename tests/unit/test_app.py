@@ -4150,3 +4150,53 @@ def test_a_long_queue_is_counted_rather_than_listed(hidden_window: Any) -> None:
     said = hidden_window.queue_line.cget("text")
     assert len(said) <= window.Window.QUEUE_LONGEST
     assert said.startswith(f"Queued: {len(hidden_window._studies())} studies")
+
+
+def test_the_communal_schedule_goes_with_the_hourly_plans_and_only_when_chosen(
+    hidden_window: Any,
+) -> None:
+    """The schedule lists the hourly plans' fills, so it rides on the hours:
+    asked for without them it would have nothing to list."""
+    hidden_window.communal.set("06 | Zone.Balcony")
+    hidden_window.do_communal.set(True)
+    hidden_window.do_plans.set(True)
+    hidden_window.apartments.set("06 | Zone.Units")
+
+    hidden_window.cos_schedule.set("")
+    _, communal = hidden_window.jobs()
+    assert "--zone-schedule" not in communal.args, "blank draws the table as before"
+
+    hidden_window.cos_schedule.set("Areas COS solar")
+    _, communal = hidden_window.jobs()
+    assert flag(communal.args, "--zone-schedule") == ["Areas COS solar"]
+
+    hidden_window.plan_kinds.set("Bands by hour")
+    _, communal = hidden_window.jobs()
+    assert "--zone-schedule" not in communal.args
+
+
+def test_the_offices_cos_schedule_is_offered_first_and_nothing_else_is_guessed(
+    hidden_window: Any,
+) -> None:
+    """Picked where the project has it; the drawn table where it does not,
+    rather than whichever schedule sorts first; and a "None" chosen by hand
+    survives a Refresh."""
+    offered = (window.NO_SCHEDULE, "Areas COS solar", "Areas COS solar 2hr")
+    hidden_window.cos_schedule.set("")
+    hidden_window._fill(hidden_window.cos_schedule, offered, ("COS solar",))
+    assert hidden_window.cos_schedule.get() == "Areas COS solar"
+
+    hidden_window.cos_schedule.set(window.NO_SCHEDULE)
+    hidden_window._fill(hidden_window.cos_schedule, offered, ("COS solar",))
+    assert hidden_window.cos_schedule.get() == window.NO_SCHEDULE
+
+    hidden_window.cos_schedule.set("")
+    hidden_window._fill(
+        hidden_window.cos_schedule, (window.NO_SCHEDULE, "Areas GFA"), ("COS solar",)
+    )
+    assert hidden_window.cos_schedule.get() == window.NO_SCHEDULE
+
+    hidden_window.communal.set("06 | Zone.Balcony")
+    hidden_window.do_communal.set(True)
+    communal = hidden_window.jobs()[-1]
+    assert "--zone-hourly" in communal.args and "--zone-schedule" not in communal.args

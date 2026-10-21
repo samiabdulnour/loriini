@@ -77,6 +77,7 @@ __all__ = [
     "OUTLINE_STYLE",
     "PATCH_STYLE",
     "CellGroup",
+    "MeasuredFill",
     "PenetrationReport",
     "PlanInstant",
     "box_centre",
@@ -139,6 +140,14 @@ class PlanInstant:
 
 
 @dataclass(frozen=True)
+class MeasuredFill:
+    """One patch fill on the plan, and the group it was drawn for."""
+
+    element: dict[str, Any]
+    label: str
+
+
+@dataclass(frozen=True)
 class PenetrationReport:
     """What was drawn, and what could not be."""
 
@@ -162,6 +171,15 @@ class PenetrationReport:
     on_paper: bool = False
     """Handed to a ``PaperSink`` for the sheet step, and not yet anywhere in
     Archicad: the counts are what *will* be drawn on the layouts."""
+
+    measured: tuple[MeasuredFill, ...] = ()
+    """Every patch fill made on the plan, with the group it was drawn for --
+    what ``cos_schedule`` writes the hour and the share onto. Empty on paper,
+    where nothing is in the model for a schedule to list."""
+
+    def fills_of(self, label: str) -> tuple[MeasuredFill, ...]:
+        """The fills drawn for one ``CellGroup``, by its label."""
+        return tuple(fill for fill in self.measured if fill.label == label)
 
     @property
     def complete(self) -> bool:
@@ -549,6 +567,8 @@ def draw_cell_groups(
 
     fills: list[dict[str, Any]] = []
     band_ids: list[str] = []
+    #: The group each fill was drawn for, parallel to ``fills``.
+    drawn_for: list[str] = []
     storeys: set[int] = set()
     if on_storey is not None:
         anywhere = next(iter(matched.values()), None)
@@ -562,6 +582,7 @@ def draw_cell_groups(
                     _patch_fill(shape, transform, group.style, layer, flat, fill_index, outline)
                 )
                 band_ids.append(fill_id(SOLAR, group.label))
+                drawn_for.append(group.label)
             storeys.add(on_storey)
 
     for group in groups if on_storey is None else ():
@@ -577,6 +598,7 @@ def draw_cell_groups(
                     _patch_fill(shape, transform, group.style, layer, zone, fill_index, outline)
                 )
                 band_ids.append(fill_id(SOLAR, group.label))
+                drawn_for.append(group.label)
             if zone.storey_index is not None:
                 storeys.add(zone.storey_index)
 
@@ -616,6 +638,13 @@ def draw_cell_groups(
         else NOT_GROUPED
     )
     _texts_on(connection, texts, layer)
+    # Paired positionally, as the IDs are, and for the same reason: the order
+    # of the answer is the only link between a fill and its group.
+    measured_fills = (
+        tuple(MeasuredFill(element, label) for element, label in zip(made, drawn_for, strict=False))
+        if len(made) >= measured
+        else ()
+    )
 
     return PenetrationReport(
         instants=(title or layer_name,),
@@ -631,6 +660,7 @@ def draw_cell_groups(
         hidden_layers=(layer_name,) if layer.hidden else (),
         stamped=stamped,
         grouped=grouped,
+        measured=measured_fills,
     )
 
 

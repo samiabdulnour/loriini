@@ -430,6 +430,39 @@ and the tables add back up to the sum exactly.
 On a day other than midwinter the day goes into the file name, so the
 window's one-job-per-day runs leave one workbook each.
 
+### The schedule on the COS sheet
+
+`massing --zone-hourly --zone-schedule "Areas COS solar"` -- **Communal
+schedule** in the window's Communal card -- puts the project's own schedule
+on the hourly sheets in place of the drawn table, so the figures on the sheet
+are Archicad's and stay live:
+
+| Column | Where it comes from |
+|---|---|
+| Layer | the hour's layer, `14 \| Sun Study Communal 09:00` -- sorts the rows |
+| Time | `9 AM`, written onto every sunlit fill of the hour |
+| Area | Archicad's own, summed over the fills (Σ in the scheme) |
+| Percentage | `68.8%`, the hour's share, written onto the same fills |
+
+The scheme lists Fills whose Element ID contains `in sun at`, on the storey
+the sheet shows. Time and Percentage are **IFC properties** in the set
+`Solar Analysis`: Archicad will not classify a Fill, so a custom property
+cannot reach one, but an IFC property can, and that is also where a value
+typed into a schedule cell lands. Every fill of an hour carries the same two
+values, which is what lets the schedule merge them into one row.
+
+Archicad's API cannot make or edit a schedule, so the scheme has to be in the
+project: the office template carries it, and a project made from anything
+else imports it once (Scheme Settings > Import). The run looks it up by name,
+places the View Map's view of it by its top-left corner in the column beside
+the title block, and deals the plans clear of that column. It goes on with
+the plans, before the save, so a Teamwork project that refuses to save still
+gets it.
+
+The drawn table goes on instead, and the run says why, when the project has
+no schedule by that name, when the values would not all land, and on
+Archicad 29 and 30, which give an add-on no way to store an IFC property.
+
 ## The day
 
 Every solar tool runs on the ruleset's day, 21 June, unless told

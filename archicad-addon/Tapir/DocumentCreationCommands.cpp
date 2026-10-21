@@ -572,6 +572,7 @@ GS::Optional<GS::UniString> CreateDrawingsCommand::GetInputParametersSchema () c
                         "position": { "$ref": "#/Coordinate2D" },
                         "scale": { "type": "number", "exclusiveMinimum": 0.0 },
                         "angle": { "type": "number", "description": "Rotation in radians. Left out, the drawing takes the angle Archicad gives it." },
+                        "anchor": { "type": "string", "enum": ["middle", "topLeft"], "description": "Which point of the frame `position` places. Left out, the middle. A schedule is placed by its top left, so it grows down and right as rows are added." },
                         "clipPolygon": { "type": "array", "items": { "$ref": "#/Coordinate2D" }, "minItems": 3 }
                     },
                     "additionalProperties": false,
@@ -608,7 +609,8 @@ static GS::ObjectState CreateOneDrawing (const GS::ObjectState& item)
     element.drawing.drawingGuid = GetGuidFromObjectState (*item.Get ("navigatorItemId"));
     SetCharProperty (&item, "name", element.drawing.name);
     element.drawing.nameType = APIName_CustomName;
-    element.drawing.anchorPoint = APIAnc_MM;
+    GS::UniString anchor;
+    element.drawing.anchorPoint = item.Get ("anchor", anchor) && anchor == "topLeft" ? APIAnc_LT : APIAnc_MM;
     element.drawing.pos = Get2DCoordinateFromObjectState (*item.Get ("position"));
     if (!item.Get ("scale", element.drawing.ratio)) {
         element.drawing.ratio = 1.0;

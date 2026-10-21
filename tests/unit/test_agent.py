@@ -610,3 +610,22 @@ def test_cos_solar_without_a_master_layout_is_refused() -> None:
                 "view_combination": "01 | Plans - DA",
             },
         )
+
+
+def test_cos_solar_names_the_schedule_with_the_hourly_plans_only() -> None:
+    def argv(**more: Any) -> list[str]:
+        return tools.cos_argv(
+            tools.CosArguments(
+                layer_combination="IFC Export",
+                view_combination="01 | Plans - DA",
+                master_layout="DA B1 - VERTICAL - 1:250",
+                zone_layer="06 | Zone.SEPP 65",
+                schedule="Areas COS solar",
+                **more,
+            ),
+            zone_layers=["06 | Zone.SEPP 65"],
+        )
+
+    hourly = argv()
+    assert hourly[hourly.index("--zone-schedule") + 1] == "Areas COS solar"
+    assert "--zone-schedule" not in argv(hourly=False)
