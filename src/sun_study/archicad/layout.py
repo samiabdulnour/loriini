@@ -70,7 +70,12 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from sun_study.archicad import naming
-from sun_study.archicad.connection import ArchicadConnection, ArchicadError, activate
+from sun_study.archicad.connection import (
+    ArchicadConnection,
+    ArchicadError,
+    CommandFailedError,
+    activate,
+)
 
 __all__ = [
     "DEFAULT_LAYOUT_SCALE",
@@ -113,6 +118,15 @@ DEFAULT_LAYOUT_SCALE = 200.0
 #: an earlier version passed -- a Drawing asked for at "200" arrived at
 #: 20000% and ran off the sheet.
 DRAWING_MAGNIFICATION = 1.0
+
+#: The angle every Drawing is created at: square to the sheet. Asked for at
+#: creation because that is the one moment it holds. Left out, a Drawing
+#: takes the angle the project gives it -- 349.55 degrees on Tweed Heads,
+#: 279.9 on Randwick -- and nothing after can be relied on to take it back:
+#: writing ``angle`` changes the field and leaves the frame where it stood,
+#: and ``RotateElements`` needs a saved layout, which a Teamwork project
+#: never gives a run (Tweed Heads, 21 October 2026, every sheet tilted).
+DRAWING_ANGLE = 0.0
 
 
 @dataclass(frozen=True)
@@ -507,8 +521,7 @@ def layout_from_views(
         if name not in already
     ]
     if drawings:
-        placed = connection.run_tapir("CreateDrawings", {"drawingsData": drawings})
-        _check_each(placed, "elements", "CreateDrawings")
+        _check_each(_create_drawings(connection, drawings), "elements", "CreateDrawings")
 
     return LayoutReport(
         layout_name=layout_name,
@@ -1020,6 +1033,25 @@ def _layout_named(connection: ArchicadConnection, name: str) -> str | None:
         return None
     identifier = (databases[0].get("databaseId") or {}).get("guid")
     return str(identifier) if identifier else None
+
+
+def _create_drawings(connection: ArchicadConnection, drawings: list[dict[str, Any]]) -> Any:
+    """``CreateDrawings``, every drawing asked for at ``DRAWING_ANGLE``.
+
+    An add-on built before 21 October 2026 closes the item to fields it does
+    not list, and refuses ``angle`` outright -- before creating anything -- so
+    it is asked again without, and its drawings are straightened after the
+    save as they always were.
+    """
+    try:
+        return connection.run_tapir(
+            "CreateDrawings",
+            {"drawingsData": [{**drawing, "angle": DRAWING_ANGLE} for drawing in drawings]},
+        )
+    except CommandFailedError as error:
+        if "angle" not in str(error):
+            raise
+    return connection.run_tapir("CreateDrawings", {"drawingsData": drawings})
 
 
 def _drawings_by_name(connection: ArchicadConnection, database_id: str) -> dict[str, Any]:
