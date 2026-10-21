@@ -273,7 +273,7 @@ GS::Optional<GS::UniString> ArrangeDrawingsCommand::GetInputParametersSchema () 
 			},
 			"drawings": {
 				"type": "array",
-				"description": "Each Drawing element, where it goes, and optionally the clip frame it gets. Positions are metres on the layout.",
+				"description": "Each Drawing element, where it goes, and optionally the clip frame it gets. Positions are metres on the layout. Every drawing is set square to the sheet, angle 0.",
 				"items": {
 					"type": "object",
 					"properties": {
@@ -390,6 +390,16 @@ GS::ObjectState ArrangeDrawingsCommand::Execute (const GS::ObjectState& paramete
 				ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, useOwnOrigoAsAnchor);
 				ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, anchorPoint);
 				ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, pos);
+
+				// Square to the sheet. A Drawing of a 3D Document comes down
+				// turned by an angle that follows the project's north -- 279.9
+				// degrees on a project whose north is 9 degrees off -- and its
+				// clip polygon is read in that turned frame, so the cell written
+				// below landed tilted and turned into a tall strip. Where north
+				// is straight up the angle is a whole turn, which is why it never
+				// showed before (Randwick, 21 October 2026).
+				element.drawing.angle = 0.0;
+				ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, angle);
 
 				if (autoUpdate) {
 					element.drawing.manualUpdate = false;
