@@ -8119,6 +8119,10 @@ class Window:
                     args += ["--square-to-site"]
             if self.site_out.get().strip():
                 args += ["--out", self.site_out.get().strip()]
+            # Its sheets go on the master the others' do. Without it the
+            # command, having nobody to ask, stops at the first sheet.
+            if self.master.get():
+                args += ["--master-layout", self.master.get()]
             made.append(Job(SITE_JOB, args))
 
         if self.do_yield.get():

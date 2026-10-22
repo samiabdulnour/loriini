@@ -3167,6 +3167,19 @@ def test_the_future_context_tick_reaches_the_site_command_with_its_settings(
     assert "--future" not in site.args
 
 
+def test_the_site_command_puts_its_sheets_on_the_chosen_master(hidden_window: Any) -> None:
+    """Left off, the site run drew its worksheets and stopped at the first
+    sheet asking which master (23 October 2026)."""
+    hidden_window.do_site.set(True)
+    hidden_window.site_address.insert(0, "1 Test St, Kogarah NSW")
+    site = next(job for job in hidden_window.jobs() if job.args[0] == "site")
+    assert "--master-layout" not in site.args
+
+    hidden_window.master.set("A1 Landscape Titleblock")
+    site = next(job for job in hidden_window.jobs() if job.args[0] == "site")
+    assert flag(site.args, "--master-layout") == ["A1 Landscape Titleblock"]
+
+
 def test_a_zone_layer_can_be_any_layer_the_project_has(hidden_window: Any) -> None:
     """Which layer holds the Zones is the office's decision, not a fact this
     can derive.
