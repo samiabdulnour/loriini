@@ -250,7 +250,7 @@ def test_the_transcript_opens_with_the_build_commit(
     """The first line says which commit, not just which version: every
     prototype build calls itself 0.0.1, and a failure already fixed in the
     source should be readable as a stale build from the log alone."""
-    monkeypatch.setattr(run_log.stamp, "commit", lambda: "abc1234")
+    monkeypatch.setattr(stamp, "commit", lambda: "abc1234")
     log = run_log.RunLog.start(["site tools"], folder=tmp_path)
     assert log is not None
     log.close()
@@ -261,7 +261,7 @@ def test_the_transcript_opens_with_the_build_commit(
 def test_a_build_without_a_stamp_opens_with_the_version_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(run_log.stamp, "commit", lambda: None)
+    monkeypatch.setattr(stamp, "commit", lambda: None)
     log = run_log.RunLog.start(["site tools"], folder=tmp_path)
     assert log is not None
     log.close()
