@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 
+from sun_study import stamp
 from sun_study.app import run_log
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError
 from sun_study.archicad.shadows import draw_shadow_series
@@ -239,6 +242,54 @@ def test_a_run_is_written_to_a_file_as_it_goes(tmp_path: Path) -> None:
     log.close()
     log.write("after closing, nothing and no error")
     assert "after closing" not in log.path.read_text(encoding="utf-8")
+
+
+def test_the_transcript_opens_with_the_build_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first line says which commit, not just which version: every
+    prototype build calls itself 0.0.1, and a failure already fixed in the
+    source should be readable as a stale build from the log alone."""
+    monkeypatch.setattr(run_log.stamp, "commit", lambda: "abc1234")
+    log = run_log.RunLog.start(["site tools"], folder=tmp_path)
+    assert log is not None
+    log.close()
+    head = log.path.read_text(encoding="utf-8").splitlines()[0]
+    assert "(from source, commit abc1234)" in head
+
+
+def test_a_build_without_a_stamp_opens_with_the_version_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(run_log.stamp, "commit", lambda: None)
+    log = run_log.RunLog.start(["site tools"], folder=tmp_path)
+    assert log is not None
+    log.close()
+    head = log.path.read_text(encoding="utf-8").splitlines()[0]
+    assert "(from source)" in head and "commit" not in head
+
+
+def test_a_checkout_asks_git_which_commit_it_is() -> None:
+    asked = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=Path(__file__).resolve().parents[2],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    expected = asked.stdout.strip()
+    if asked.returncode != 0 or not expected:
+        pytest.skip("not a checkout git can answer for")
+    assert stamp.commit() == expected
+
+
+def test_a_packaged_build_reads_the_stamp_it_was_built_with(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    assert stamp.commit() is None  # built without a stamp: no answer, no error
+    (tmp_path / stamp.STAMP).write_text("abc1234\n", encoding="utf-8")
+    assert stamp.commit() == "abc1234"
 
 
 def test_only_the_newest_transcripts_are_kept(tmp_path: Path) -> None:
