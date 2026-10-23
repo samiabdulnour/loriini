@@ -2987,6 +2987,34 @@ def test_the_site_can_be_set_on_a_corner_and_turned_level_from_the_page(
     assert saved["site_turn"] == "Long boundary level"
 
 
+def test_the_drawn_boundary_and_the_model_levels_are_chosen_on_the_page(
+    hidden_window: Any,
+) -> None:
+    """Both used to be command-line only, so from the window a north-up
+    survey on a boundary layer always turned the context back to north up,
+    and the model always stood on the site's ground. The defaults send
+    nothing; a typed RL goes through as the datum, a trailing 'm' and all."""
+    hidden_window.do_facade.set(False)
+    hidden_window.do_site.set(True)
+    hidden_window.site_address.insert(0, "22A O'Connell Street, Parramatta")
+    (site,) = hidden_window.jobs()
+    assert "--fit-layer" not in site.args and "--datum" not in site.args
+
+    hidden_window.site_fit.set("Ignore it: use the project's north")
+    hidden_window.site_levels.set("Project zero is sea level (AHD)")
+    (site,) = hidden_window.jobs()
+    assert flag(site.args, "--fit-layer") == ["none"]
+    assert flag(site.args, "--datum") == ["sea"]
+
+    hidden_window.site_levels.set("5.85 m")
+    (site,) = hidden_window.jobs()
+    assert flag(site.args, "--datum") == ["5.85"]
+
+    saved = hidden_window.settings()
+    assert saved["site_fit"] == "Ignore it: use the project's north"
+    assert saved["site_levels"] == "5.85 m"
+
+
 def test_the_site_analysis_waits_for_an_address(hidden_window: Any) -> None:
     """Ticked with nothing typed, there is no job: the address is the study."""
     hidden_window.do_facade.set(False)

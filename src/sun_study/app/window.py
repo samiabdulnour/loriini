@@ -134,6 +134,21 @@ TURN_WORDS: dict[str, bool] = {
     "Long boundary level": True,
 }
 
+#: Whether the context is fitted to a site boundary drawn in the file, and
+#: the ``--fit-layer`` each sends; the first is the default.
+FIT_WORDS: dict[str, str] = {
+    "Fit the context to it": "auto",
+    "Ignore it: use the project's north": "none",
+}
+
+#: What RL project zero stands for when the 3D context is placed, and the
+#: ``--datum`` each sends; the first is the default. Anything else typed in
+#: the box is taken as that RL in metres.
+LEVEL_WORDS: dict[str, str] = {
+    "Project zero is the site's ground": "project",
+    "Project zero is sea level (AHD)": "sea",
+}
+
 #: The timezone every study runs in. Named once here rather than five
 #: times down in ``jobs``, because the sheets panel has to work out the
 #: sun for the same instants the run will use, and two spellings of
@@ -4785,6 +4800,36 @@ class Window:
         )
         self.site_turn.configure(values=list(TURN_WORDS), state="readonly")
         self.site_turn.set(next(iter(TURN_WORDS)))
+        self.site_fit, row = self._combo(
+            frame,
+            row,
+            "Drawn boundary",
+            "Whether the context sits on a site boundary drawn in the file.",
+            "A layer whose name mentions a boundary is looked for in the file. "
+            "'Fit the context to it' turns and moves the fetched site onto what "
+            "is drawn there, so the context lines up with the survey the model "
+            "was drawn on -- and takes that drawing's turn over the project's "
+            "north. 'Ignore it' places the context by the project's location and "
+            "north alone: the choice when the layer holds a survey placed north "
+            "up in a project whose north is turned.",
+        )
+        self.site_fit.configure(values=list(FIT_WORDS), state="readonly")
+        self.site_fit.set(next(iter(FIT_WORDS)))
+        self.site_levels, row = self._combo(
+            frame,
+            row,
+            "Model levels",
+            "What RL project zero stands for. Type a number for a known RL.",
+            "The terrain and the neighbours come in at AHD levels. 'The site's "
+            "ground' places them against Project Location's altitude, so the "
+            "ground lands near zero: right for a file whose storey 0 is the "
+            "ground. 'Sea level' places them at true AHD: right for a file drawn "
+            "in RLs. A number is the RL project zero stands for, in metres -- "
+            "5.85 puts RL 6.00 at +0.15. When the run sets the project location, "
+            "the same number goes into its altitude.",
+        )
+        self.site_levels.configure(values=list(LEVEL_WORDS))
+        self.site_levels.set(next(iter(LEVEL_WORDS)))
         self.site_radius, row = self._entry(
             frame,
             row,
@@ -6392,6 +6437,8 @@ class Window:
             "site_anchor": self.site_anchor,
             "site_origin": self.site_origin,
             "site_turn": self.site_turn,
+            "site_fit": self.site_fit,
+            "site_levels": self.site_levels,
             "site_out": self.site_out,
             "site_radius": self.site_radius,
             "site_future_reach": self.site_future_reach,
@@ -8117,6 +8164,12 @@ class Window:
                     args += ["--origin-at", corner]
                 if TURN_WORDS.get(self.site_turn.get(), False):
                     args += ["--square-to-site"]
+            if FIT_WORDS.get(self.site_fit.get(), "auto") != "auto":
+                args += ["--fit-layer", FIT_WORDS[self.site_fit.get()]]
+            levels = self.site_levels.get().strip()
+            datum = LEVEL_WORDS.get(levels, levels.removesuffix("m").strip())
+            if datum and datum != "project":
+                args += ["--datum", datum]
             if self.site_out.get().strip():
                 args += ["--out", self.site_out.get().strip()]
             # Its sheets go on the master the others' do. Without it the
