@@ -1187,6 +1187,20 @@ def test_the_foot_of_the_window_carries_the_licence_not_a_warning(hidden_window:
     assert not [line for line in said if "PROTOTYPE" in line], "the warning lives on the sheets"
 
 
+def test_the_foot_of_the_window_follows_a_change_of_licence(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another key entered in the info box, or a log-out and a new key, is
+    said at the foot at once rather than at the next start."""
+    from sun_study.app import licence_box
+    from sun_study.app import window as module
+
+    now = "Loriini 0.0.1 · licensed to Another Practice"
+    monkeypatch.setattr(module, "credential", lambda: now)
+    hidden_window.root.event_generate(licence_box.LICENCE_CHANGED)
+    assert hidden_window.credential_line.cget("text") == now
+
+
 def test_the_reference_image_is_a_page_under_tools_for_the_chosen_project(
     hidden_window: Any,
 ) -> None:
