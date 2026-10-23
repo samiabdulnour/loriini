@@ -76,7 +76,8 @@ window does today, the D132 reading is the one that holds.
    installed; a machine where that fails falls back to Segoe UI. Titles are
    bold, hints are ``HINT`` grey and clear 4.5:1, group captions are small
    capitals. Nothing on a thumbnail carries anything a person must read. On a
-   Mac it is the Mac's own face at the same size on screen -- see ``points``.
+   Mac the same face, registered through CoreText and falling back to the
+   Mac's own, at the same size on screen -- see ``points``.
 """
 
 from __future__ import annotations
@@ -276,21 +277,21 @@ MACOS = sys.platform == "darwin"
 #: And the Windows build, where the bundled face can be registered.
 WINDOWS = sys.platform == "win32"
 
-#: The face and the log's face. On Windows, Inter -- the web site's face,
-#: carried in ``assets/fonts`` and registered for this process by
-#: ``_load_fonts`` when the theme is applied; ``FACE`` is settled then, and
-#: falls back to Segoe UI, the face the rest of the operating system is set
-#: in, on a machine where the registering fails. On a Mac, the system's own:
-#: Tk gives its default font the family ``.AppleSystemUIFont``, which is San
-#: Francisco, and a family Tk cannot find falls back to that same font rather
-#: than failing, so this cannot leave a Mac without type. Menlo has been the
-#: Mac's monospace since 10.6 and lines up the log the way Consolas does.
+#: The face and the log's face. Inter -- the web site's face, carried in
+#: ``assets/fonts`` and registered for this process by ``_load_fonts`` when
+#: the theme is applied; ``FACE`` is settled then. Where the registering
+#: fails it falls back to the face the rest of the operating system is set
+#: in: Segoe UI on Windows; on a Mac the system's own, which Tk names
+#: ``.AppleSystemUIFont`` (San Francisco), and a family Tk cannot find falls
+#: back to that same font rather than failing, so this cannot leave a Mac
+#: without type. Menlo has been the Mac's monospace since 10.6 and lines up
+#: the log the way Consolas does.
 FACE = ".AppleSystemUIFont" if MACOS else "Segoe UI"
 MONO = "Menlo" if MACOS else "Consolas"
 
 #: The face the program carries, and what it falls back to without it.
 BUNDLED_FACE = "Inter"
-FALLBACK_FACE = "Segoe UI"
+FALLBACK_FACE = FACE
 
 
 def fonts_folder() -> Path:
@@ -303,46 +304,104 @@ def fonts_folder() -> Path:
 
 
 #: Whether the bundled face has been registered with this process. Asked
-#: once; ``AddFontResourceEx`` is idempotent but there is no need to ask twice.
+#: once: registering is idempotent on Windows and an error on a Mac the
+#: second time, and either way there is no need to ask twice.
 _FONTS_LOADED: bool | None = None
 
 
 def _load_fonts() -> bool:
-    """Register the bundled face with Windows, for this process alone.
+    """Register the bundled face with the operating system, for this process.
 
-    ``AddFontResourceExW`` with ``FR_PRIVATE`` makes a font file available to
-    the calling process without installing it: nothing is written to the
-    system, no administrator is asked, and it is gone when the program
-    exits. GDI is what Tk enumerates fonts through on Windows, so a face
-    registered this way is a face Tk can be given.
+    Windows: ``AddFontResourceExW`` with ``FR_PRIVATE`` makes a font file
+    available to the calling process without installing it. GDI is what Tk
+    enumerates fonts through there, so a face registered this way is a face
+    Tk can be given.
 
-    True when every file registered. False anywhere it cannot be done -- not
-    Windows, no files, a GDI that refuses -- and the window is set in the
-    fallback face, which is the one it was set in before D132.
+    Mac: ``CTFontManagerRegisterFontsForURL`` with the process scope does the
+    same through CoreText, which is what Tk's Aqua build draws with.
+
+    Either way nothing is written to the system, no administrator is asked,
+    and the face is gone when the program exits. True when every file
+    registered. False anywhere it cannot be done -- another platform, no
+    files, a toolkit that refuses -- and the window is set in the fallback
+    face, which is the one it was set in before D132.
     """
     global _FONTS_LOADED
     if _FONTS_LOADED is not None:
         return _FONTS_LOADED
     _FONTS_LOADED = False
-    if not WINDOWS:
+    files = sorted(fonts_folder().glob("*.ttf"))
+    if not files:
         return False
     try:
-        import ctypes
-
-        # ``getattr`` rather than ``ctypes.windll``: mypy knows the attribute
-        # on Windows and not elsewhere, and this file is checked on both.
-        windll = getattr(ctypes, "windll", None)
-        if windll is None:
-            return False
-        add = windll.gdi32.AddFontResourceExW
-        files = sorted(fonts_folder().glob("*.ttf"))
-        if not files:
-            return False
-        fr_private = 0x10
-        _FONTS_LOADED = all(add(str(path), fr_private, 0) > 0 for path in files)
-    except (OSError, AttributeError):
+        if WINDOWS:
+            _FONTS_LOADED = _register_with_gdi(files)
+        elif MACOS:
+            _FONTS_LOADED = _register_with_coretext(files)
+    except (OSError, AttributeError, ValueError):
         return False
     return _FONTS_LOADED
+
+
+def _register_with_gdi(files: list[Path]) -> bool:
+    """The Windows half of ``_load_fonts``."""
+    import ctypes
+
+    # ``getattr`` rather than ``ctypes.windll``: mypy knows the attribute
+    # on Windows and not elsewhere, and this file is checked on both.
+    windll = getattr(ctypes, "windll", None)
+    if windll is None:
+        return False
+    add = windll.gdi32.AddFontResourceExW
+    fr_private = 0x10
+    return all(add(str(path), fr_private, 0) > 0 for path in files)
+
+
+def _register_with_coretext(files: list[Path]) -> bool:
+    """The Mac half of ``_load_fonts``.
+
+    Through ``ctypes``, because the program carries no Objective-C bridge:
+    a file URL from CoreFoundation, handed to CoreText with the process
+    scope. A file CoreText already has -- the theme applied twice in one
+    process, before the flag above was set -- comes back as an error, so a
+    face that ``_has_face`` can then find counts as registered.
+    """
+    import ctypes
+    from ctypes import util
+
+    coretext = util.find_library("CoreText")
+    foundation = util.find_library("CoreFoundation")
+    if coretext is None or foundation is None:
+        return False
+    ct = ctypes.cdll.LoadLibrary(coretext)
+    cf = ctypes.cdll.LoadLibrary(foundation)
+    cf.CFURLCreateFromFileSystemRepresentation.restype = ctypes.c_void_p
+    cf.CFURLCreateFromFileSystemRepresentation.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.c_long,
+        ctypes.c_bool,
+    ]
+    cf.CFRelease.argtypes = [ctypes.c_void_p]
+    ct.CTFontManagerRegisterFontsForURL.restype = ctypes.c_bool
+    ct.CTFontManagerRegisterFontsForURL.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+    ]
+    scope_process = 1
+    registered = True
+    for path in files:
+        raw = str(path).encode("utf-8")
+        url = cf.CFURLCreateFromFileSystemRepresentation(None, raw, len(raw), False)
+        if not url:
+            return False
+        try:
+            if not ct.CTFontManagerRegisterFontsForURL(url, scope_process, None):
+                registered = False
+        finally:
+            cf.CFRelease(url)
+    return registered
 
 
 #: How many of a Mac's points make one of this window's.
@@ -403,10 +462,12 @@ def apply(root: tk.Misc) -> ttk.Style:
     global FACE
     style = ttk.Style(root)
     _fit_points(root)
-    if not MACOS:
-        # Before any font is looked up: the face has to be registered before
-        # Tk enumerates families, and ``_has_face`` below is that enumeration.
-        FACE = BUNDLED_FACE if _load_fonts() and _has_face(BUNDLED_FACE) else FALLBACK_FACE
+    # Before any font is looked up: the face has to be registered before Tk
+    # enumerates families, and ``_has_face`` below is that enumeration. On
+    # a Mac the registering can report a file it already holds as a
+    # failure, so the face is asked for either way.
+    _load_fonts()
+    FACE = BUNDLED_FACE if _has_face(BUNDLED_FACE) else FALLBACK_FACE
 
     # clam is the themeable one. Without it every `configure` below is
     # accepted and then ignored by the platform engine, which is worse than
