@@ -77,6 +77,10 @@ packages = ["src/sun_study"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
+# A test still running after two minutes has every thread's stack written
+# to the log, and carries on. The Mac suite hung in the licence box for
+# days with nothing in the log but the 30-minute cancel.
+faulthandler_timeout = 120
 markers = [
     "validation: cross-checks against the optional pvlib reference implementation",
 ]
