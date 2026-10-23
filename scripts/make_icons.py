@@ -764,6 +764,32 @@ def densities() -> list[Icon]:
     return out
 
 
+def glazing() -> list[Icon]:
+    """Solid, all glass, clear only: a balustrade panel in the sun.
+
+    The same panel each time, and the ground behind it says the answer: in
+    shade when the glass casts it, in sun when the glass lets it through. The
+    panel's own fill says which glass -- grey for the solid reading, tinted
+    for all glass, clear for clear only.
+    """
+    out: list[Icon] = []
+    for name, says, panel, edge, lit in (
+        ("glass_solid", "a glass panel casting shade", GREY, INK, False),
+        ("glass_all", "tinted glass the sun passes through", BLUE_T, BLUE_EDGE, True),
+        ("glass_clear", "clear glass the sun passes through", PAPER, BLUE, True),
+    ):
+        shapes: list[Shape] = [*sun()]
+        # The ground behind the panel, away from the sun: shade or sunlight.
+        shapes.append(rect(4, 24.6, 12, 2.4, fill=SUN_T if lit else GREY_L, outline=None))
+        shapes.append(Line(((3, 27), (29, 27)), fill=GREY_D, width=1.3))
+        shapes.append(rect(16, 12.5, 3.2, 14.5, fill=panel, outline=edge))
+        if lit:
+            # The light carrying on through the pane to the ground beyond.
+            shapes.append(Line(((21.5, 10.5), (9.5, 24.0)), fill=SUN, width=1.3, detail=True))
+        out.append(Icon(name, says, shapes))
+    return out
+
+
 def furniture() -> list[Icon]:
     """The two drawings that are not pictures of anything.
 
@@ -1770,6 +1796,7 @@ def every_icon() -> list[Icon]:
         *controls(),
         *settings(),
         *densities(),
+        *glazing(),
         *furniture(),
     ]
 

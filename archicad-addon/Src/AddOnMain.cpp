@@ -35,6 +35,7 @@
 #include "ProjectCommands.hpp"
 #include "ModelCommands.hpp"
 #include "LayoutCommands.hpp"
+#include "IfcCommands.hpp"
 
 // Tapir's commands, built in. By relative path on purpose; see the header.
 #include "../Tapir/TapirCommands.hpp"
@@ -175,6 +176,8 @@ GSErrCode Initialize (void)
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ArrangeDrawingsCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::Set3DFilterCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ExportModelCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetIfcPropertiesCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::SetIfcPropertiesCommand> ()); },
 	};
 
 	for (const std::function<GSErrCode ()>& install : installers) {

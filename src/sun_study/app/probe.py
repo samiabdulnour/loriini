@@ -17,6 +17,7 @@ from sun_study.archicad.connection import (
     TapirUnavailableError,
     find_instances,
 )
+from sun_study.archicad.cos_schedule import schedule_names
 from sun_study.archicad.layers import read_layers
 from sun_study.archicad.layout import _walk, master_layouts
 from sun_study.archicad.read import read_geo_location
@@ -97,6 +98,9 @@ class ProjectOptions:
     masters: tuple[str, ...] = ()
     subsets: tuple[str, ...] = ()
     """Layout Book subsets, where the sheets can be filed."""
+
+    schedules: tuple[str, ...] = ()
+    """The Project Map's element schedules, for the communal sheets to carry."""
 
     pen_sets: tuple[str, ...] = ()
     """The project's pen tables, for the sun views to print in the office's."""
@@ -333,6 +337,7 @@ def options(port: int) -> ProjectOptions:
     # turns that into a line in `problems` -- which is right: the panel can
     # still draw every sheet, it simply cannot put a shadow on one.
     where = attempt("project location", lambda: read_geo_location(connection))
+    schedules = attempt("schedules", lambda: schedule_names(connection)) or ()
 
     return ProjectOptions(
         project=project,
@@ -375,6 +380,7 @@ def options(port: int) -> ProjectOptions:
                 }
             )
         ),
+        schedules=tuple(schedules),
         storeys=tuple(
             sorted(
                 int(row["index"])

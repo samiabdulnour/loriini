@@ -443,6 +443,16 @@ class CosArguments(SheetedArguments):
     zone_grid_m: float | None = Field(
         default=None, gt=0, description="Grid spacing over the Zones, in metres."
     )
+    see_through_glass_pct: int | None = Field(
+        default=None,
+        ge=1,
+        le=100,
+        description=(
+            "Let sun through glass balustrades, screens and canopies: every surface at "
+            "least this transparent, in percent -- 30 for all glass, 80 for clear glass "
+            "only. Windows, doors and curtain walls stay solid. Left out, glass is solid."
+        ),
+    )
     view_combination: str = Field(
         min_length=1,
         description=(
@@ -456,6 +466,15 @@ class CosArguments(SheetedArguments):
     )
     table: str | None = Field(
         default=None, description="Write the COS schedules, one per Zone, to this .xlsx."
+    )
+    schedule: str | None = Field(
+        default=None,
+        description=(
+            "A schedule in the project -- the office's 'Areas COS solar' -- to put on the "
+            "hourly sheets in place of the drawn table. Each hour's sunlit fills get its time "
+            "and share as IFC properties for the schedule to list. Needs hourly, and "
+            "Archicad 26 to 28. project_options lists the schedules."
+        ),
     )
     csv: str | None = Field(default=None, description="Write every area figure to this CSV.")
 
@@ -643,13 +662,14 @@ def cos_argv(arguments: CosArguments, zone_layers: Sequence[str] = ()) -> list[s
     argv += _option("--master-layout", a.master_layout) + _option("--zone-subset", a.subset)
     argv += _option("--zone-view-combination", a.view_combination)
     argv += _option("--zone-height", a.zone_height_m) + _option("--zone-grid", a.zone_grid_m)
+    argv += _option("--see-through-glass", a.see_through_glass_pct)
     argv += _option("--zone-csv", a.csv) + _option("--zone-table", a.table)
     argv += _option("--zone-hours", a.hours)
     # The areas always, as the window: a plan without them invites a figure
     # read off a colour.
     argv += ["--zone-sheet", "--zone-stats"]
     if a.hourly:
-        argv += ["--zone-hourly"]
+        argv += ["--zone-hourly", *_option("--zone-schedule", a.schedule)]
     argv += _option("--year", a.year) + _date_args(a.day) + _option("--sheets", a.sheets)
     return argv
 
@@ -740,6 +760,7 @@ def project_options(arguments: Mapping[str, Any], call: Call) -> ToolResult:
     listed("layer combinations", found.combinations)
     listed("master layouts", found.masters)
     listed("layout subsets", found.subsets)
+    listed("schedules", found.schedules)
     listed("pen sets", found.pen_sets)
     listed("graphic overrides", found.overrides)
     listed("storeys, bottom to top", found.storey_names)

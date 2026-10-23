@@ -391,13 +391,13 @@ GS::ObjectState ArrangeDrawingsCommand::Execute (const GS::ObjectState& paramete
 				ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, anchorPoint);
 				ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, pos);
 
-				// Square to the sheet. A Drawing of a 3D Document comes down
-				// turned by an angle that follows the project's north -- 279.9
-				// degrees on a project whose north is 9 degrees off -- and its
-				// clip polygon is read in that turned frame, so the cell written
-				// below landed tilted and turned into a tall strip. Where north
-				// is straight up the angle is a whole turn, which is why it never
-				// showed before (Randwick, 21 October 2026).
+				// Square to the sheet. A Drawing comes down turned by an angle
+				// that follows the project's north -- 279.9 degrees on Randwick,
+				// 349.55 on Tweed Heads -- and its clip polygon is read in that
+				// turned frame. Written here alone, the angle changes the field
+				// and leaves an untouched frame where it stood (Tweed Heads,
+				// 21 October 2026), so the angle that counts is the one asked of
+				// CreateDrawings; this keeps the field in step with it.
 				element.drawing.angle = 0.0;
 				ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, angle);
 

@@ -181,6 +181,11 @@ PLANS_JOB = "solar analysis: apartments"
 #: the hourly set, which the Sheets row deals, and the schedule, which is a
 #: table and not a drawing at all.
 COMMUNAL_HOURLY = "Communal open space by hour"
+
+#: The communal schedule's "no": the drawn table, as before. A word rather
+#: than a blank, so choosing it is a choice a Refresh keeps -- a blank reads as
+#: "never asked", and the office's schedule would be picked over it again.
+NO_SCHEDULE = "None — the drawn table"
 COMMUNAL_AREAS = "Communal areas"
 #: The two outputs of the site study that are not sheets: geometry on its
 #: own layers, drawn in the panel as geometry.
@@ -3942,9 +3947,10 @@ class Window:
             "",
             "Finer looks better and makes many more elements — half the cell "
             "size is roughly four times the count, and this project already "
-            "makes over five thousand at 0.5 m, and over thirty thousand at "
-            "0.2 m. A face narrower than one cell is not drawn at all, so a "
-            "coarse setting loses thin columns.",
+            "makes over five thousand at 0.5 m, over twenty thousand at 0.25 m "
+            "and well over a hundred thousand at 0.1 m. A face narrower than "
+            "one cell is not drawn at all, so a coarse setting loses thin "
+            "columns.",
         )
         self.grid_m.set("0.5")
         return resume + 1
@@ -4013,6 +4019,23 @@ class Window:
             "on and off by itself; the last one lit stays lit, because no "
             "plans at all is not a plan study.",
         )
+
+        self.see_glass, row = self._tiles(
+            frame,
+            row,
+            "Glass",
+            "Whether glass balustrades, screens and canopies cast shade.",
+            "Solid is how every study measured until there was a choice: a "
+            "glass balustrade shades the balcony and the room behind it as if "
+            "it were a wall. The other two let the sun through every surface "
+            "at least that transparent in Archicad -- all glass, or clear glass "
+            "only -- while the rails and posts round a panel still cast "
+            "shade. Windows, doors, skylights and curtain walls stay solid "
+            "whatever is chosen: they are a building's envelope, and sun let "
+            "through them would shine through the building behind. Used by "
+            "all three studies.",
+        )
+        self.see_glass.set("off")
 
         self.do_plans = tk.BooleanVar(value=False)
         # The study's own box. Everything from here to the end of the block
@@ -4099,7 +4122,7 @@ class Window:
             "and the heat map. It changes the drawings, not the ADG figure: the "
             "hours per apartment are read at the glazing, which is sampled every "
             "0.2 m whatever this says. Finer draws the patch edge more truly and "
-            "casts more rays.",
+            "casts more rays: 0.1 m is over six times the rays of 0.25 m.",
         )
         self.floor_grid.set("0.25")
         self.shadow_subset, row = self._combo(
@@ -4208,14 +4231,32 @@ class Window:
             row,
             "Communal grid",
             "",
-            "Half a metre reads a courtyard properly; 0.2 m is for a narrow "
+            "Half a metre reads a courtyard properly; 0.25 m is for a narrow "
             "terrace, or an area figure that sits close to the threshold, at "
-            "six times the samples. This is separate from the ground grid on "
+            "four times the samples, and 0.1 m for a small space measured "
+            "closely. This is separate from the ground grid on "
             "purpose: the ground is the whole site, and gridding all of it "
             "this finely costs four times the samples for an answer nobody "
             "asked of it.",
         )
         self.communal_grid.set("0.5")
+        self.cos_schedule, row = self._combo(
+            frame,
+            row,
+            "Communal schedule",
+            "The project's schedule for the hourly sheets, in place of the drawn table.",
+            "The office's COS sheet carries an Archicad schedule rather than a "
+            "table -- 'Areas COS solar': a row per hour, its time, the sunlit "
+            "area and its share. Picked here, every sunlit fill of each hour "
+            "gets that hour's time and share as the IFC properties Time and "
+            "Percentage (set 'Solar Analysis'), and the schedule goes on the "
+            "sheet beside the plans; Archicad sums the area itself, so the "
+            "schedule stays live. Archicad cannot make a schedule through its "
+            "API, so the scheme has to be in the project already. Needs the "
+            "Times plans, and Archicad 26 to 28 -- 29 and 30 cannot store an IFC "
+            "property from an add-on, and the drawn table is used there. None "
+            "draws the table as before.",
+        )
 
     def _shadows(self, frame: ttk.Frame) -> None:
         """The shadow diagram: what already stands, and what the proposal adds.
@@ -6396,6 +6437,7 @@ class Window:
             "custom_day": self.custom_day,
             "sun_view_custom_day": self.eye_custom_day,
             "communal_grid": self.communal_grid,
+            "communal_schedule": self.cos_schedule,
             "tables_folder": self.tables,
             "master_layout": self.master,
             "storey_from": self.storey_from,
@@ -6411,6 +6453,7 @@ class Window:
             "plan_instants": self.instants,
             "plan_kinds": self.plan_kinds,
             "floor_grid": self.floor_grid,
+            "see_through_glass": self.see_glass,
             "shadow_subset": self.shadow_subset,
             **{f"shadow_layers_{short.lower()}": box for short, _role, box in self.shadow_rows},
             "shadow_terrain_layers": self.terrain_layers,
@@ -6768,6 +6811,9 @@ class Window:
         self._offer_plan_combination(found.combinations)
         self._fill(self.shadow_subset, found.subsets, ("SHADOW",))
         self._fill(self.adg_subset, found.subsets, ("ADG",))
+        # "None" first: a project without the office's scheme gets the drawn
+        # table, where the first schedule in the list would be a guess.
+        self._fill(self.cos_schedule, (NO_SCHEDULE, *found.schedules), ("COS solar",))
         # Blank first, and no preference: a blank keeps each view's own pen
         # set, which is what the command does, and the office's set is a
         # choice rather than a guess.
@@ -7038,6 +7084,14 @@ class Window:
         },
     }
 
+    #: The four grid steps, worded once for every solar grid row.
+    GRID_WORDS: ClassVar[dict[str, str]] = {
+        "1.0": "Rough",
+        "0.5": "Normal",
+        "0.25": "Detailed",
+        "0.1": "Finest",
+    }
+
     #: The word on each tile's face, by row and then by value: short enough
     #: that a row of three still fits beside its label, and the same words
     #: the tooltip opens with so the two never disagree.
@@ -7052,9 +7106,10 @@ class Window:
             "Two layouts, half each": "Two layouts",
             "A layout per drawing": "One per drawing",
         },
-        "Skin cell": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed", "0.2": "Finest"},
-        "Communal grid": {"2.0": "Rough", "1.0": "Normal", "0.5": "Detailed", "0.2": "Finest"},
-        "Floor grid": {"0.25": "Detailed", "0.2": "Finest"},
+        "Skin cell": GRID_WORDS,
+        "Communal grid": GRID_WORDS,
+        "Floor grid": GRID_WORDS,
+        "Glass": {"off": "Solid", "30": "All glass", "80": "Clear only"},
         "Site lands at": {
             "Project location": "Project location",
             "Project origin": "Project origin",
@@ -7103,52 +7158,90 @@ class Window:
         ),
         # Metres, still, on the command line -- the tiles hold the number.
         # Nobody has to know a sample grid is measured in metres to pick a
-        # coarseness, and three drawings say which way is finer without a word.
+        # coarseness, and four drawings say which way is finer without a word.
+        # The same four steps on every solar grid -- 1, 0.5, 0.25 and 0.1 m --
+        # so Detailed means one thing whichever study it is chosen in.
         "Skin cell": (
-            ("2.0", "grid_rough", "Rough — 2 m cells. Fast, and it loses anything narrower."),
-            ("1.0", "grid_normal", "Normal — 1 m cells."),
+            ("1.0", "grid_rough", "Rough — 1 m cells. Fast, and it loses anything narrower."),
             (
                 "0.5",
-                "grid_fine",
-                "Detailed — 0.5 m cells. Four times the elements of 1 m; over five "
+                "grid_normal",
+                "Normal — 0.5 m cells. Four times the elements of 1 m; over five "
                 "thousand on a project this size.",
             ),
             (
-                "0.2",
+                "0.25",
+                "grid_fine",
+                "Detailed — 0.25 m cells. Four times the elements of 0.5 m, so over "
+                "twenty thousand on a project this size, and Archicad slows with them.",
+            ),
+            (
+                "0.1",
                 "grid_finest",
-                "Finest — 0.2 m cells. Six times the elements of 0.5 m, so over "
-                "thirty thousand on a project this size, and Archicad slows with them.",
+                "Finest — 0.1 m cells. Over six times the elements of 0.25 m: well "
+                "over a hundred thousand on a project this size. For one small "
+                "building, not a whole site.",
             ),
         ),
         "Communal grid": (
-            ("2.0", "grid_rough", "Rough — samples every 2 m."),
-            ("1.0", "grid_normal", "Normal — samples every 1 m."),
+            ("1.0", "grid_rough", "Rough — samples every 1 m."),
             (
                 "0.5",
-                "grid_fine",
-                "Detailed — samples every 0.5 m, which is what reads a courtyard properly.",
+                "grid_normal",
+                "Normal — samples every 0.5 m, which is what reads a courtyard properly.",
             ),
             (
-                "0.2",
+                "0.25",
+                "grid_fine",
+                "Detailed — samples every 0.25 m. Four times the samples of 0.5 m, "
+                "for a narrow terrace or an area figure that sits on a threshold.",
+            ),
+            (
+                "0.1",
                 "grid_finest",
-                "Finest — samples every 0.2 m. Six times the samples of 0.5 m, for "
-                "a narrow terrace or an area figure that sits on a threshold.",
+                "Finest — samples every 0.1 m. Over six times the samples of 0.25 m, "
+                "and a run to match.",
             ),
         ),
-        # The apartments' floor: the sun patches and the heat map. Its own two
-        # tiles, because the study has always gridded it at 0.25 m and the
-        # coarse end of the other rows would draw a flat's sun patch in blocks.
+        # The apartments' floor: the sun patches and the heat map. The same
+        # four as the other rows; the study has always gridded it at 0.25 m,
+        # which is Detailed, and Rough draws a flat's sun patch in blocks.
         "Floor grid": (
+            (
+                "1.0",
+                "grid_rough",
+                "Rough — samples every 1 m. Quick, and the sun patches come out in metre blocks.",
+            ),
+            ("0.5", "grid_normal", "Normal — samples every 0.5 m."),
             (
                 "0.25",
                 "grid_fine",
                 "Detailed — samples every 0.25 m, the study's own grid until now.",
             ),
             (
-                "0.2",
+                "0.1",
                 "grid_finest",
-                "Finest — samples every 0.2 m. About one and a half times the "
-                "samples of 0.25 m, so a slower run for a truer patch edge.",
+                "Finest — samples every 0.1 m. Over six times the samples of 0.25 m, "
+                "so a much slower run for a truer patch edge.",
+            ),
+        ),
+        # The percentages are Archicad's own surface transparency. On Tweed
+        # Heads clear glass is 88-90%, tinted and frosted 40-49%, generic
+        # translucent 35% and polycarbonate 15%: 30 takes every glass and
+        # leaves polycarbonate solid, 80 the clear glass alone.
+        "Glass": (
+            ("off", "glass_solid", "Solid — glass casts shade like any other surface."),
+            (
+                "30",
+                "glass_all",
+                "All glass — every surface at least 30% transparent lets the sun "
+                "through: clear, tinted and frosted glass. Polycarbonate stays solid.",
+            ),
+            (
+                "80",
+                "glass_clear",
+                "Clear only — surfaces at least 80% transparent let the sun through; "
+                "tinted and frosted glass still cast shade.",
             ),
         ),
         "Site lands at": (
@@ -7218,6 +7311,12 @@ class Window:
         if self.storey_to.get().strip():
             args += ["--exclude-above-storey", self.storey_to.get().strip()]
         return args
+
+    def _glass_args(self) -> list[str]:
+        """``--see-through-glass`` with the tile's percentage, or nothing for
+        solid -- which is the command's own default."""
+        chosen = self.see_glass.get().strip()
+        return ["--see-through-glass", chosen] if chosen.isdigit() else []
 
     def _day_args(self, day: str) -> list[str]:
         """``--date`` for one day, or nothing on the ruleset's own.
@@ -7838,7 +7937,7 @@ class Window:
             # the model to them and drop whatever else the scheme casts.
             for name in self._listed(self.context):
                 args += ["--require-layer", name]
-            args += self._band_args()
+            args += self._band_args() + self._glass_args()
             args += [
                 "--model-bands",
                 "--model-flat" if self.do_floors.get() else "--no-model-flat",
@@ -7925,7 +8024,7 @@ class Window:
             # total alone, it would switch on a second ray cast for nothing.
             if times or heat:
                 args += ["--patch-grid", self.floor_grid.get().strip() or "0.25"]
-            args += self._band_args()
+            args += self._band_args() + self._glass_args()
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
             if self.shadow_subset.get():
@@ -7972,7 +8071,7 @@ class Window:
                 args += ["--layer-combination", self.combination.get()]
             for name in self._listed(self.hide):
                 args += ["--hide-layer", name]
-            args += self._band_args()
+            args += self._band_args() + self._glass_args()
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
             if self.adg_subset.get():
@@ -8007,6 +8106,9 @@ class Window:
             times, heat, total = self._plan_kinds()
             if times:
                 args += ["--zone-hourly"]
+                schedule = self.cos_schedule.get().strip()
+                if schedule and schedule != NO_SCHEDULE:
+                    args += ["--zone-schedule", schedule]
             if not (heat or total):
                 args += ["--no-zone-bands"]
             args += ["--year", self.year.get().strip() or "2024"]

@@ -24,7 +24,7 @@ bounding box, and the second measurement is the one the tiling needs.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -68,6 +68,9 @@ class DrawingPlacement:
     it was, which is D43 again. ``ratio`` does change, and is therefore the
     only handle there is on a drawing that will not fit its sheet.
     """
+
+    name: str = ""
+    """The Drawing's own name, as the Layout Book shows it."""
 
     @property
     def width(self) -> float:
@@ -168,6 +171,7 @@ def measure_drawings(
                     x_max=float(bounds["xMax"]),
                     y_max=float(bounds["yMax"]),
                     ratio=float(details.get("ratio", 1.0)) or 1.0,
+                    name=str(details.get("customName", "") or ""),
                 )
             )
         except (KeyError, TypeError, ValueError):
@@ -217,12 +221,18 @@ def straighten_and_tile(
     gap_m: float = 0.012,
     tolerance_rad: float = 1e-4,
     cells: int | None = None,
+    leave: Collection[str] = (),
 ) -> SheetReport:
     """Turn every Drawing upright, size it to the page, and lay them out.
 
     ``cells`` fits and tiles the sheet as one carrying that many drawings,
     when it is more than are on it, so a short second sheet keeps the
     first sheet's grid and size.
+
+    ``leave`` names drawings that are not plans and are not tiled -- a
+    schedule placed beside them, which keeps its own size and its corner.
+    Shrunk with the plans to fit the page, its text would no longer be the
+    size the schedule was set to.
 
     The sheet is described in millimetres and the drawings live in metres,
     which is the unit everything here works in.
@@ -241,7 +251,9 @@ def straighten_and_tile(
     other, and two of them at one size beside a third at another is a picture
     of nothing.
     """
-    placements = measure_drawings(connection, layout_database_id)
+    placements = [
+        p for p in measure_drawings(connection, layout_database_id) if p.name not in leave
+    ]
     if not placements:
         return SheetReport(0, 0)
 
@@ -261,7 +273,9 @@ def straighten_and_tile(
         )
         # Rotating moves the bounding box, and the tiling needs the new one.
         # Also the only proof it happened: the response says nothing.
-        placements = measure_drawings(connection, layout_database_id)
+        placements = [
+            p for p in measure_drawings(connection, layout_database_id) if p.name not in leave
+        ]
         still = [p for p in placements if abs(p.angle_rad) > tolerance_rad]
         if still:
             raise ArchicadError(

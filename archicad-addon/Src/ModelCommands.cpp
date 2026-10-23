@@ -18,6 +18,11 @@ namespace {
 const char* const MAGIC = "LORIINIM";
 const UInt32 FORMAT_VERSION = 3;
 
+// The same, with each triangle's surface transparency after its corners:
+// written only when the caller asks for it, so a tool from before it was
+// added never meets a file it would refuse.
+const UInt32 FORMAT_VERSION_WITH_TRANSPARENCY = 4;
+
 // As `Projection.cpp` has it: the kit offers no constant and a literal at the
 // point of use is a literal somebody has to count the digits of.
 const double PI = 3.14159265358979323846;
@@ -334,8 +339,9 @@ API_Coord3D Placed (const API_Tranmat& tm, double x, double y, double z)
 // One element's triangles, gathered from every body Archicad converted for it.
 struct Triangles {
 	std::vector<float> xyz;			// nine floats per triangle
+	std::vector<UInt8> transparency;	// one per triangle, its surface's percent
 
-	void Add (const API_Coord3D& a, const API_Coord3D& b, const API_Coord3D& c)
+	void Add (const API_Coord3D& a, const API_Coord3D& b, const API_Coord3D& c, UInt8 seeThrough)
 	{
 		const API_Coord3D corners[3] = { a, b, c };
 		for (const API_Coord3D& corner : corners) {
@@ -343,10 +349,80 @@ struct Triangles {
 			xyz.push_back (static_cast<float> (corner.y));
 			xyz.push_back (static_cast<float> (corner.z));
 		}
+		transparency.push_back (seeThrough);
 	}
 
 	UInt32 Count () const			{ return static_cast<UInt32> (xyz.size () / 9); }
 };
+
+
+// A polygon's surface by number. `iumat` is a number in some kits and an
+// `API_AttributeIndex` -- a class of its own from 27 -- in others, so the
+// number is taken as it comes and anything else goes through the kit's own
+// conversion. A template rather than a second overload, because on 26 the
+// index *is* a number and the two would be one function defined twice.
+inline Int32 SurfaceNumber (Int32 index)		{ return index; }
+template <typename Index>
+inline Int32 SurfaceNumber (const Index& index)	{ return Api::AttributeIndexToInt (index); }
+
+
+// How transparent each surface of the 3D model is, in percent, read once.
+//
+// From the 3D model's own pool of surfaces rather than the attribute, because
+// that pool is what a polygon refers to -- and it holds the surfaces a GDL
+// object defines for itself, which have no attribute to look up.
+class SurfaceTransparency {
+public:
+	UInt8 Of (Int32 index)
+	{
+		if (index <= 0) {
+			return 0;
+		}
+		const auto found = known.find (index);
+		if (found != known.end ()) {
+			return found->second;
+		}
+		API_Component3D surface = {};
+		surface.header.typeID = API_UmatID;
+		surface.header.index = index;
+		UInt8 percent = 0;
+		if (Api::Get3DComponent (&surface) == NoError) {
+			const short read = surface.umat.mater.transpPc;
+			percent = static_cast<UInt8> (read < 0 ? 0 : (read > 100 ? 100 : read));
+		}
+		known[index] = percent;
+		return percent;
+	}
+
+private:
+	std::map<Int32, UInt8> known;
+};
+
+
+// Whether an element's glass is part of a building's envelope, and so is
+// written as solid whatever its surface says. Sun let through a window or a
+// curtain wall would shine through the building behind it -- a glazed tower
+// casting a shadow of its floor slabs alone -- so the glass that is let
+// through is the free-standing kind: a balustrade's panels, a screen, a
+// canopy. Whether sun reaches a room through its own window is a separate
+// question, and the room studies answer it with their own rule.
+bool GlassIsEnvelope (const API_ElemType& elemType)
+{
+	switch (elemType.typeID) {
+		case API_WindowID:
+		case API_DoorID:
+		case API_SkylightID:
+		case API_CurtainWallID:
+		case API_CurtainWallSegmentID:
+		case API_CurtainWallFrameID:
+		case API_CurtainWallPanelID:
+		case API_CurtainWallJunctionID:
+		case API_CurtainWallAccessoryID:
+			return true;
+		default:
+			return false;
+	}
+}
 
 
 // What happened to the polygons, reported with the export so a run can say
@@ -388,7 +464,11 @@ bool VertexOf (const API_Tranmat& tranmat, Int32 index, Point3& out)
 // (`Triangulate.hpp`), because a fan from the first corner -- what this did
 // first -- is exact only for a convex polygon, and a wall round a window is
 // usually a concave outline. The fan covered the opening.
-bool AddBody (Int32 bodyIndex, Triangles& into, FaceCounts& counts)
+//
+// Each triangle carries its polygon's surface transparency, or 0 where the
+// element's glass is its envelope (`GlassIsEnvelope`) or nobody asked.
+bool AddBody (Int32 bodyIndex, Triangles& into, FaceCounts& counts,
+			  SurfaceTransparency* surfaces, bool glassIsEnvelope)
 {
 	API_Component3D body = {};
 	body.header.typeID = API_BodyID;
@@ -399,6 +479,7 @@ bool AddBody (Int32 bodyIndex, Triangles& into, FaceCounts& counts)
 	const API_Tranmat tranmat = body.body.tranmat;
 
 	std::vector<Point3> triangles;
+	std::vector<UInt8> seeThrough;			// one per triangle in `triangles`
 	for (Int32 p = 1; p <= body.body.nPgon; ++p) {
 		API_Component3D pgon = {};
 		pgon.header.typeID = API_PgonID;
@@ -407,6 +488,11 @@ bool AddBody (Int32 bodyIndex, Triangles& into, FaceCounts& counts)
 			continue;
 		}
 		++counts.polygons;
+		// Every triangle this polygon becomes, below, takes its surface.
+		const UInt8 transparency = (surfaces == nullptr || glassIsEnvelope)
+			? 0
+			: surfaces->Of (SurfaceNumber (pgon.pgon.iumat));
+		const size_t before = triangles.size ();
 		if ((pgon.pgon.status & APIPgon_Concav) != 0) {
 			++counts.concave;
 		}
@@ -448,23 +534,25 @@ bool AddBody (Int32 bodyIndex, Triangles& into, FaceCounts& counts)
 		// A lone triangle is already exact.
 		if (contours.size () == 1 && contours[0].size () == 3) {
 			triangles.insert (triangles.end (), contours[0].begin (), contours[0].end ());
-			continue;
+		} else {
+			const Triangulated made = Triangulate (contours, triangles);
+			if (!made.ok) {
+				++counts.failed;
+				continue;
+			}
+			++counts.triangulated;
+			if (std::fabs (made.triangleArea - made.polygonArea) > 0.01 * made.polygonArea + 1e-9) {
+				++counts.areaMismatch;
+			}
 		}
-		const Triangulated made = Triangulate (contours, triangles);
-		if (!made.ok) {
-			++counts.failed;
-			continue;
-		}
-		++counts.triangulated;
-		if (std::fabs (made.triangleArea - made.polygonArea) > 0.01 * made.polygonArea + 1e-9) {
-			++counts.areaMismatch;
-		}
+		seeThrough.insert (seeThrough.end (), (triangles.size () - before) / 3, transparency);
 	}
 
 	for (size_t k = 0; k + 2 < triangles.size (); k += 3) {
 		into.Add (API_Coord3D { triangles[k].x, triangles[k].y, triangles[k].z },
 				  API_Coord3D { triangles[k + 1].x, triangles[k + 1].y, triangles[k + 1].z },
-				  API_Coord3D { triangles[k + 2].x, triangles[k + 2].y, triangles[k + 2].z });
+				  API_Coord3D { triangles[k + 2].x, triangles[k + 2].y, triangles[k + 2].z },
+				  seeThrough[k / 3]);
 	}
 	return true;
 }
@@ -482,6 +570,10 @@ GS::Optional<GS::UniString> ExportModelCommand::GetInputParametersSchema () cons
 			"path": {
 				"type": "string",
 				"description": "Where to write the model. Overwritten if it is there."
+			},
+			"transparency": {
+				"type": "boolean",
+				"description": "Write each triangle's surface transparency, in percent, as format 4 -- 0 for the glass of windows, doors, skylights and curtain walls. Default false, format 3."
 			}
 		},
 		"required": [ "path" ],
@@ -503,6 +595,10 @@ GS::Optional<GS::UniString> ExportModelCommand::GetResponseSchema () const
 				"type": "boolean",
 				"description": "Whether Zones were already on in the 3D filter, or switched on for this export."
 			},
+			"transparentTriangles": {
+				"type": "integer",
+				"description": "Triangles written with a transparency above 0. Only with transparency asked for."
+			},
 			"polygons": { "type": "integer" },
 			"polygonsWithHoles": { "type": "integer" },
 			"polygonsConcave": { "type": "integer" },
@@ -521,6 +617,8 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	if (!parameters.Get ("path", path) || path.IsEmpty ()) {
 		return Failed ("ExportModel needs a 'path' to write to.", APIERR_BADPARS);
 	}
+	bool withTransparency = false;
+	parameters.Get ("transparency", withTransparency);
 
 	// Whatever window the person had in front, back in front at the end.
 	const WindowPutBack window;
@@ -617,6 +715,7 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	std::map<API_Guid, Triangles> byElement;
 	std::map<API_Guid, API_Elem_Head> heads;
 	FaceCounts faces;
+	SurfaceTransparency surfaces;
 
 	for (Int32 index = 1; index <= bodyCount; ++index) {
 		API_Component3D body = {};
@@ -630,12 +729,13 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 			continue;
 		}
 		heads[owner] = body.body.parent;
-		AddBody (index, byElement[owner], faces);
+		AddBody (index, byElement[owner], faces, withTransparency ? &surfaces : nullptr,
+				 GlassIsEnvelope (body.body.parent.type));
 	}
 
 	Writer out;
 	out.Bytes (MAGIC, 8);
-	out.U32 (FORMAT_VERSION);
+	out.U32 (withTransparency ? FORMAT_VERSION_WITH_TRANSPARENCY : FORMAT_VERSION);
 
 	// Where the project says it is. Read here rather than left to the Python
 	// side so the file is self-contained: a model and the sun positions cast
@@ -662,6 +762,7 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	out.U32 (static_cast<UInt32> (byElement.size ()));
 
 	UInt32 triangleTotal = 0;
+	Int32 transparentTotal = 0;
 	for (const auto& entry : byElement) {
 		const API_Elem_Head& head = heads[entry.first];
 		const Triangles& triangles = entry.second;
@@ -688,6 +789,12 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 		if (!triangles.xyz.empty ()) {
 			out.Bytes (triangles.xyz.data (), triangles.xyz.size () * sizeof (float));
 		}
+		if (withTransparency && !triangles.transparency.empty ()) {
+			out.Bytes (triangles.transparency.data (), triangles.transparency.size ());
+			for (const UInt8 percent : triangles.transparency) {
+				transparentTotal += percent > 0 ? 1 : 0;
+			}
+		}
 	}
 
 	if (previous != nullptr) {
@@ -708,6 +815,9 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	// Said, because a run that found no Zones needs to know whether they were
 	// switched on for it or were there already.
 	answer.Add ("zonesWereShown", zones.WasAlreadyShown ());
+	if (withTransparency) {
+		answer.Add ("transparentTriangles", transparentTotal);
+	}
 	// How the faces were made. `triangulationFailed` and `areaMismatch` are
 	// the two that say a face in the file is not the face in the model.
 	answer.Add ("polygons", faces.polygons);

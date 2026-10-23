@@ -29,7 +29,7 @@ convention is documented and tested.
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -69,6 +69,7 @@ __all__ = [
     "OCCLUDER_CLASSES",
     "VOID_CLASSES",
     "GeoreferencingError",
+    "GlassReport",
     "IfcElement",
     "IfcModel",
     "read_ifc",
@@ -146,6 +147,15 @@ class IfcElement:
     through verbatim, so a scene can be configured against the office's own
     layer matrix rather than against a convention invented here.
     """
+    transparency: npt.NDArray[np.uint8] | None = None
+    """Each face's surface transparency in percent, where the export carried it.
+
+    ``None`` for a model that does not say -- an IFC, or an add-on's file
+    written without it -- which is not the same as every face being solid,
+    and ``without_glass`` reports the difference. The glass of windows, doors,
+    skylights and curtain walls arrives as 0 whatever its surface: that is a
+    building's envelope, not glass the sun is let through here.
+    """
 
     @property
     def centroid(self) -> FloatArray:
@@ -156,6 +166,40 @@ class IfcElement:
         return (
             np.asarray(self.mesh.vertices.min(axis=0), dtype=np.float64),
             np.asarray(self.mesh.vertices.max(axis=0), dtype=np.float64),
+        )
+
+
+@dataclass(frozen=True)
+class GlassReport:
+    """What ``IfcModel.without_glass`` let the sun through."""
+
+    from_pct: int
+    faces: int
+    elements: int
+    removed: int
+    """Elements that were all glass, and so went altogether."""
+    carried: bool
+    """Whether the model said how transparent anything is. An IFC does not,
+    nor a file from an add-on before 21 October 2026, and a run asked to let
+    glass through has to say it could not rather than look as if there were
+    no glass."""
+
+    def describe(self) -> str:
+        if not self.carried:
+            return (
+                f"glass from {self.from_pct}% transparent was asked to let sun through, "
+                f"but this model does not say how transparent anything is -- an IFC, or "
+                f"an add-on from before 21 October 2026 -- so all glass is solid"
+            )
+        if not self.faces:
+            return f"no surface outside a building's glazing is {self.from_pct}% transparent"
+        faces = f"{self.faces} face{'' if self.faces == 1 else 's'}"
+        elements = f"{self.elements} element{'' if self.elements == 1 else 's'}"
+        return (
+            f"glass lets sun through: {faces} on {elements} "
+            f"at {self.from_pct}% transparent or more"
+            + (f", {self.removed} of them all glass" if self.removed else "")
+            + "; windows, doors and curtain walls stay solid"
         )
 
 
@@ -207,6 +251,60 @@ class IfcModel:
     def of_class(self, *ifc_classes: str) -> tuple[IfcElement, ...]:
         wanted = set(ifc_classes)
         return tuple(element for element in self.elements if element.ifc_class in wanted)
+
+    def without_glass(self, from_pct: int) -> tuple[IfcModel, GlassReport]:
+        """The model with every face at least ``from_pct`` transparent taken out.
+
+        What "glass lets sun through" means to a solar study: a glass
+        balustrade casts no shadow on the balcony behind it, so its panels
+        are simply not there for the sun, while the rails and posts around
+        them still are. Done to the model rather than to an occluder set for
+        the reason ``scene._cut_above`` gives -- once, before anything is
+        selected, so the measuring and the drawing see the same building.
+
+        Only faces the export marked: the glass of a building's envelope
+        arrives as 0 (see ``IfcElement.transparency``). An element left with
+        no faces goes altogether.
+        """
+        kept: list[IfcElement] = []
+        faces = touched = removed = 0
+        carried = False
+        for element in self.elements:
+            shades = element.transparency
+            if shades is None or len(shades) != element.mesh.triangle_count:
+                kept.append(element)
+                continue
+            carried = True
+            # A Zone is drawn in a see-through surface -- 78% on Tweed Heads
+            # -- and is never an occluder anyway; it is what gets measured.
+            if element.ifc_class in VOID_CLASSES:
+                kept.append(element)
+                continue
+            glass = shades >= from_pct
+            count = int(glass.sum())
+            if not count:
+                kept.append(element)
+                continue
+            faces += count
+            touched += 1
+            if count == len(shades):
+                removed += 1
+                continue
+            solid = element.mesh.faces[~glass]
+            kept.append(
+                replace(
+                    element,
+                    mesh=TriangleMesh(
+                        element.mesh.vertices[solid.reshape(-1)],
+                        np.arange(solid.size, dtype=np.int64).reshape(-1, 3),
+                    ),
+                    transparency=shades[~glass],
+                )
+            )
+        report = GlassReport(
+            from_pct=from_pct, faces=faces, elements=touched, removed=removed, carried=carried
+        )
+        return replace(self, elements=tuple(kept)), report
 
     def by_id(self, global_id: str) -> IfcElement | None:
         return next((e for e in self.elements if e.global_id == global_id), None)

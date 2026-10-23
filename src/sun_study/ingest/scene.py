@@ -263,6 +263,16 @@ class SceneConfig:
     include_vegetation: bool = False
     """D10. Vegetation is excluded, always, and the output says so."""
 
+    see_through_glass_pct: int | None = None
+    """Let sun through every surface at least this transparent, in percent.
+
+    For a glass balustrade, which otherwise shades the balcony and the room
+    behind it as if it were a wall. ``None`` is all glass solid, which is
+    what every study did before there was a choice. A building's own glazing
+    -- windows, doors, skylights, curtain walls -- stays solid whatever is
+    set: see ``IfcModel.without_glass``.
+    """
+
     def describe(self) -> str:
         radius = (
             f"{self.context_radius_m:g} m" if self.context_radius_m is not None else "unlimited"
@@ -306,6 +316,7 @@ class SceneConfig:
             f"context radius {radius} | "
             f"{patch}"
             f"{cut}"
+            f"{_describe_glass(self.see_through_glass_pct)}"
             f"vegetation {'included' if self.include_vegetation else 'excluded'}"
         )
 
@@ -379,6 +390,8 @@ class Scene:
             f"  window to space resolution: {routes or 'none'}",
             f"  {self._openings_summary()}",
         ]
+        if self.provenance.get("glass"):
+            lines.append(f"  {self.provenance['glass']}")
         overhead = self.provenance.get("geometry_above_building")
         if isinstance(overhead, int) and overhead:
             lines.append(
@@ -1130,6 +1143,7 @@ def build_scene(model: IfcModel, config: SceneConfig) -> Scene:
     """
     orientation = model.orientation(config.timezone)
     model, cut_above = _cut_above(model, config.exclude_above_m, config.exclude_below_m)
+    model, glass = _let_glass_through(model, config.see_through_glass_pct)
 
     all_spaces = model.of_class("IfcSpace")
     open_space_zones = tuple(
@@ -1321,6 +1335,7 @@ def build_scene(model: IfcModel, config: SceneConfig) -> Scene:
         "unresolved": sum(1 for a in assignments if a.method == "unresolved"),
         "occluder_triangles": occluders.triangle_count,
         "vegetation_included": config.include_vegetation,
+        "glass": glass,
         **_geometry_overhead(model, spaces),
     }
 
@@ -1356,6 +1371,22 @@ def _describe_band(floor_m: float | None, ceiling_m: float | None) -> str:
     if ceiling_m is None:
         return f"geometry below {floor_m:g} m dropped | "
     return f"geometry outside {floor_m:g}..{ceiling_m:g} m dropped | "
+
+
+def _describe_glass(from_pct: int | None) -> str:
+    """How glass reads in the settings line: said only when it lets sun through."""
+    if from_pct is None:
+        return ""
+    return f"glass from {from_pct}% transparent lets sun through | "
+
+
+def _let_glass_through(model: IfcModel, from_pct: int | None) -> tuple[IfcModel, str]:
+    """The model as the sun sees it, and the sentence that says what was let
+    through -- "" when nothing was asked."""
+    if from_pct is None:
+        return model, ""
+    model, report = model.without_glass(from_pct)
+    return model, report.describe()
 
 
 def _cut_above(
@@ -1598,6 +1629,13 @@ class MassingConfig:
     zone_height_m: float = 1.0
     """Height above the Zone's floor at which it is assessed."""
 
+    see_through_glass_pct: int | None = None
+    """Let sun through every surface at least this transparent, in percent.
+
+    As ``SceneConfig.see_through_glass_pct``: a glass balustrade round a
+    communal terrace stops shading it. ``None`` is all glass solid.
+    """
+
     zone_spacing_m: float | None = None
     """Grid spacing for the Zone surface. ``None`` follows the ground grid.
 
@@ -1637,6 +1675,7 @@ class MassingConfig:
                 else ""
             )
             + _describe_band(self.exclude_below_m, self.exclude_above_m)
+            + _describe_glass(self.see_through_glass_pct)
             + "vegetation excluded"
         )
 
@@ -1676,6 +1715,7 @@ class MassingScene:
                 if len(self.zone_samples)
                 else ""
             )
+            + (f"\n  {self.provenance['glass']}" if self.provenance.get("glass") else "")
         )
 
 
@@ -1701,11 +1741,14 @@ class MassingSubject:
     """A model reduced to what a massing study is about."""
 
     model: IfcModel
-    """The model with everything above the cut removed."""
+    """The model with everything above the cut removed, and the glass the
+    config lets sun through."""
     elements_above_cut: int
     solids: list[IfcElement]
     subject: list[IfcElement]
     context: list[IfcElement]
+    glass: str = ""
+    """What glass was let through, as ``GlassReport.describe`` says it."""
 
 
 def massing_subject(model: IfcModel, config: MassingConfig) -> MassingSubject:
@@ -1721,12 +1764,14 @@ def massing_subject(model: IfcModel, config: MassingConfig) -> MassingSubject:
     number describing geometry nobody is proposing to build.
     """
     model, cut_above = _cut_above(model, config.exclude_above_m, config.exclude_below_m)
+    model, glass = _let_glass_through(model, config.see_through_glass_pct)
     # IfcSpace is a void, never a solid; it would shade the building from
     # inside. Everything else occludes, subject and context alike.
     solids = model.occluders()
     return MassingSubject(
         model=model,
         elements_above_cut=cut_above,
+        glass=glass,
         solids=solids,
         subject=[element for element in solids if not _is_context(element, config)],
         context=[element for element in solids if _is_context(element, config)],
@@ -1848,6 +1893,7 @@ def build_massing_scene(model: IfcModel, config: MassingConfig) -> MassingScene:
         "zone_area_m2": round(zone_surface.total_area_m2, 3),
         "zone_height_m": config.zone_height_m,
         "vegetation_included": False,
+        "glass": reduced.glass,
     }
     return MassingScene(
         orientation=orientation,
