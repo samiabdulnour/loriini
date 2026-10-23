@@ -329,7 +329,12 @@ def _load_fonts() -> bool:
     try:
         import ctypes
 
-        add = ctypes.windll.gdi32.AddFontResourceExW  # type: ignore[attr-defined]
+        # ``getattr`` rather than ``ctypes.windll``: mypy knows the attribute
+        # on Windows and not elsewhere, and this file is checked on both.
+        windll = getattr(ctypes, "windll", None)
+        if windll is None:
+            return False
+        add = windll.gdi32.AddFontResourceExW
         files = sorted(fonts_folder().glob("*.ttf"))
         if not files:
             return False
