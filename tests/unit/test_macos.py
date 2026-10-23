@@ -206,7 +206,9 @@ def test_the_mac_build_takes_its_collection_from_the_pcs() -> None:
     assert repr(marker) in mac, "Loriini-macOS.spec no longer looks for the PC spec's PYZ line"
 
     collection = pc.partition(marker)[0]
-    for made in ("ROOT = ", "a = Analysis("):
+    # build_stamp.txt is the commit hash the run log opens with; stamped in
+    # the collection so a Mac build is told apart from a stale one too.
+    for made in ("ROOT = ", "a = Analysis(", "build_stamp.txt"):
         assert made in collection, f"Loriini-macOS.spec needs {made!r} from Loriini.spec"
 
 

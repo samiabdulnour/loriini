@@ -244,6 +244,15 @@ class Frame:
         return [self.project(lon, lat) for lon, lat in ring]
 
 
+#: How far a drawn boundary may turn the context away from the project's
+#: north before the run says so. A boundary traced by hand is out by a
+#: degree or so either way; a survey placed as delivered, north up, in a
+#: project whose north is turned is out by the whole of that turn -- 15
+#: degrees on the Parramatta project where a context came in north up
+#: under a north of 105 (23 October 2026).
+FIT_TURN_NOTICE_DEG = 2.0
+
+
 @dataclass(frozen=True)
 class Fit:
     """How the fetched site had to move to land on the boundary drawn in the file."""
@@ -262,6 +271,24 @@ class Fit:
             f"turned {self.turn_deg:+.2f} deg and moved ({self.shift[0]:+.1f}, "
             f"{self.shift[1]:+.1f}) m to sit on the {self.drawn_points} boundary points "
             f"drawn in the file; residual {self.residual_m:.2f} m"
+        )
+
+    def turned_from_north(self, source: str) -> str | None:
+        """What to say when this fit turned the context away from the
+        project's north, or ``None`` when the turn is a drawing's tolerance.
+
+        The fit wins over the north by design -- the drawing is where the
+        model was drawn -- but silently it reads as the north being ignored,
+        and the usual cause is a survey nobody turned to the project's north.
+        ``source`` says which drawing: ``"on 'Site Boundary'"``.
+        """
+        if abs(self.turn_deg) <= FIT_TURN_NOTICE_DEG:
+            return None
+        return (
+            f"the boundary {source} turns the context {self.turn_deg:+.1f} deg from the "
+            "project's north: the context follows that drawing, not the north. If it is a "
+            "survey placed as delivered, north up, turn it to the project's north, or skip "
+            "the fit (--fit-layer none; in the window, Drawn boundary: ignore it)."
         )
 
     def as_dict(self) -> dict[str, Any]:

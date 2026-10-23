@@ -8681,9 +8681,13 @@ def site_analysis(
                         "  the turn is the grid convergence: this file's north is an MGA grid "
                         "bearing (--north grid would land it without the fit)."
                     )
+                elif note := fit.turned_from_north(f"on {layer_name!r}"):
+                    typer.secho(f"  {note}", fg=typer.colors.YELLOW)
         elif fit_path.is_file():
             fit = site_drawing.Fit.from_dict(json.loads(fit_path.read_text(encoding="utf-8")))
             typer.echo(f"  using the fit saved at {fit_path}: {fit.describe()}")
+            if note := fit.turned_from_north("saved from an earlier run"):
+                typer.secho(f"  {note}", fg=typer.colors.YELLOW)
         else:
             typer.secho(
                 f"  the boundary fit reads the floor plan, and {here_name or here_kind!r} is "
@@ -8786,11 +8790,16 @@ def site_analysis(
         # --keep-location says otherwise.
         at_origin = anchor == "site"
         if set_location or (set_location is None and (preset or fit is not None or at_origin)):
-            ground = (
-                context_model.ground_at_site(site_bundle, frame_and_offset(site_bundle))
-                if site_bundle is not None
-                else None
-            )
+            # The altitude is what project zero stands for, and the model is
+            # placed against the same number: the site's ground unless a datum
+            # was asked for. Under --datum sea the ground written here would
+            # say project zero stood metres up while the model sat at AHD.
+            if datum_m is not None:
+                ground: float | None = datum_m
+            elif site_bundle is not None:
+                ground = context_model.ground_at_site(site_bundle, frame_and_offset(site_bundle))
+            else:
+                ground = None
             # The origin is wherever the frame put it: the drawn boundary with
             # a fit, the corner asked for with --origin-at, and the site's
             # centre otherwise. The north is written only when the site was

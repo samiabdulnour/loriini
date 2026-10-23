@@ -1005,6 +1005,33 @@ def test_the_fetched_lot_is_turned_and_moved_onto_the_boundary_drawn_in_the_file
     assert grid.convergence_deg == 0.0 and base.convergence_deg != 0.0
 
 
+def test_a_drawn_boundary_that_turns_the_context_off_the_north_is_said() -> None:
+    """The fit takes the drawing's turn over the project's north. A degree
+    is a hand-traced boundary and passes quietly; a survey placed north up
+    in a project whose north is 105 turns the context back by 15, which
+    read as the north being ignored until the run said so."""
+    from sun_study.archicad.site_analysis import fit_frame
+
+    bundle = site_bundle()
+    base = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    ours = [p for ring in bundle.site_rings for p in base.ring(ring)]
+
+    def drawn_turned(degrees: float) -> list[tuple[float, float]]:
+        turn = math.radians(degrees)
+        return [
+            (x * math.cos(turn) - y * math.sin(turn), x * math.sin(turn) + y * math.cos(turn))
+            for x, y in ours
+        ]
+
+    assert fit_frame(base, bundle.site_rings, drawn_turned(1.04)).turned_from_north("x") is None
+    note = fit_frame(base, bundle.site_rings, drawn_turned(-15.0)).turned_from_north(
+        "on 'Site Boundary'"
+    )
+    assert note is not None
+    assert "on 'Site Boundary' turns the context -15.0 deg" in note
+    assert "--fit-layer none" in note
+
+
 def test_the_blocks_are_the_lots_dissolved_without_the_site_and_clipped_to_the_extent() -> None:
     from sun_study.archicad.context_model import _blocks
 

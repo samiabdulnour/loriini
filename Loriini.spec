@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
-from pathlib import PurePath
+import subprocess
+from pathlib import Path, PurePath
 from PyInstaller.utils.hooks import collect_data_files
 from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import collect_all
@@ -35,6 +36,28 @@ datas += [(str(ROOT / 'LICENSE'), '.')]
 # these under `Read the full terms` in place of the source licence: they are
 # the agreement the customer accepted at the checkout.
 datas += [(str(ROOT / 'site' / 'terms.html'), '.')]
+# Which commit this build is, asked of git here at build time because the
+# program handed over has no repository to ask. Every prototype build calls
+# itself 0.0.1, so without this a run log cannot show that the app on a
+# machine is older than a fix in the source -- which is how a certificate
+# failure fixed on the 17th was still being diagnosed from a log on the
+# 23rd. The hash rides at the root of the bundle, beside the LICENSE, where
+# `sun_study.stamp` reads it for the run log's first line. Built outside a
+# checkout there is no answer and no stamp, and the log opens with the
+# version alone.
+try:
+    _asked = subprocess.run(
+        ['git', 'rev-parse', '--short', 'HEAD'],
+        cwd=str(ROOT), capture_output=True, text=True, check=False,
+    )
+    _commit = _asked.stdout.strip() if _asked.returncode == 0 else ''
+except OSError:
+    _commit = ''
+if _commit:
+    _stamp = Path(str(ROOT)) / 'build' / 'build_stamp.txt'
+    _stamp.parent.mkdir(parents=True, exist_ok=True)
+    _stamp.write_text(_commit + '\n', encoding='utf-8')
+    datas += [(str(_stamp), '.')]
 binaries = []
 hiddenimports = []
 datas += collect_data_files('tzdata')
