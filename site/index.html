@@ -24,18 +24,43 @@
   </nav>
 </header>
 
-<div class="hero">
-  <div>
-    <h1>Sun studies from Archicad, for a NSW DA.</h1>
-    <p class="lead">Solar access hours against the Apartment Design Guide, shadow diagrams, site and context analysis and the area calculation, drawn straight into your Archicad project as native sheets, fills and schedules. No export to another program, no hand-typed table.</p>
-    <div class="actions">
-      <a class="button primary" href="#price">Buy a subscription</a>
-      <!-- A trial is a 14-day key the vendor issues by hand: no card. -->
-      <a class="button sun" href="mailto:sami@loriini.app?subject=Loriini%20trial&body=Practice%20name%3A%0AHow%20many%20computers%3A%0A">Request a 14-day trial</a>
-      <a class="button" href="#download">Download</a>
+<!-- The hero is a window: the name on cream, and on the dark grid the whole
+     product as a cartoon — a pixel sun crossing 09:00 to 15:00 on 21 June,
+     pixel buildings casting pixel shadows, and now and then the lorikeet. -->
+<div class="hero-frame">
+  <div class="chrome"><span></span><span></span><span></span></div>
+  <div class="hero-grid">
+    <div class="hero-left">
+      <div class="hero-title">
+        <h1>Loriini</h1>
+        <p class="tiny">Sun studies from Archicad, for a NSW DA</p>
+      </div>
+      <div class="hero-cells">
+        <div class="cell logo"><img src="icon-1024.png" alt="Loriini's lorikeet"></div>
+        <div class="cell list">
+          Solar access hours<br>
+          Shadow diagrams<br>
+          Site &amp; context analysis<br>
+          Yield &amp; massing
+        </div>
+        <div class="cell stat">21/06<small>winter solstice</small></div>
+      </div>
+    </div>
+    <div class="hero-right">
+      <canvas id="sunbox" aria-label="A pixel sun crossing the sky over pixel buildings, their shadows stretching and shrinking through the day"></canvas>
+      <div class="clock" id="sunclock">09:00</div>
     </div>
   </div>
-  <img src="icon-1024.png" alt="Loriini's lorikeet">
+</div>
+
+<div class="hero-under">
+  <p class="lead">Solar access hours against the Apartment Design Guide, shadow diagrams, site and context analysis and the area calculation, drawn straight into your Archicad project as native sheets, fills and schedules. No export to another program, no hand-typed table.</p>
+  <div class="actions">
+    <a class="button primary" href="#price">Buy a subscription</a>
+    <!-- A trial is a 14-day key the vendor issues by hand: no card. -->
+    <a class="button sun" href="mailto:sami@loriini.app?subject=Loriini%20trial&body=Practice%20name%3A%0AHow%20many%20computers%3A%0A">Request a 14-day trial</a>
+    <a class="button" href="#download">Download</a>
+  </div>
 </div>
 
 <div class="notice">
@@ -47,35 +72,35 @@
   <h2>The sheets a DA needs, inside the project they belong to.</h2>
   <p>Loriini is a Windows program and an Archicad 26 add-on. It reads the open project, works out the sun, and writes what it finds back into Archicad as the things Archicad already knows: Zone properties, fills, worksheets, 3D Documents, layouts.</p>
   <div class="cards">
-    <div class="card">
+    <div class="card"><div class="check"></div>
       <h3>Solar access, by apartment</h3>
       <p>Hours of direct sun on each apartment's living room windows and private open space on 21 June between 09:00 and 15:00, assessed against the NSW Apartment Design Guide's 2-hour and 3-hour criteria, written onto the Zones so the ADG table is a native Archicad schedule.</p>
       <p class="tag">Pure astronomy from latitude, longitude and time. No weather file.</p>
     </div>
-    <div class="card">
+    <div class="card"><div class="check"></div>
       <h3>Shadow diagrams and shadow plans</h3>
       <p>The hourly shadows cast by the model, drawn as fills in the legend's own colours, with what stands and what the proposal adds told apart. Or the same hours as one 3D Document each, with Archicad's own vectorial shadows, on sheets by day.</p>
     </div>
-    <div class="card">
+    <div class="card"><div class="check"></div>
       <h3>Site and context analysis</h3>
       <p>Give it a NSW street address and it draws the context analysis, the site analysis and the summary of controls from open data: NSW cadastre, ePlanning, topography, Transport for NSW, OpenStreetMap, and inside the City of Sydney the council's own contours and trees. Each sheet credits the publishers whose data reached it.</p>
     </div>
-    <div class="card">
+    <div class="card"><div class="check"></div>
       <h3>The area calculation</h3>
       <p>GBA, GFA, FSR and the yield from the massing slabs, before there are any apartments, worked the way the office's own calculation does it. And a massing mode that reports the share of facade and ground reaching two hours of sun, the metric a massing optimisation maximises.</p>
     </div>
-    <div class="card">
+    <div class="card"><div class="check"></div>
       <h3>A reference image over the 3D window</h3>
       <p>Set a view up from the corner a photograph was taken at, or match an earlier rendering, by laying the picture over Archicad's 3D window while the view is adjusted under it.</p>
     </div>
-    <div class="card">
+    <div class="card"><div class="check"></div>
       <h3>Driven by an agent, if you like</h3>
       <p>Every study is also a tool an AI agent can run. Claude Desktop, Claude Code or any client of the Model Context Protocol starts <code>Loriini.exe mcp</code> and works the open project through it.</p>
     </div>
   </div>
 </section>
 
-<section id="works" class="alt">
+<section id="works">
   <div class="kicker">How it works</div>
   <h2>A folder, no administrator rights, three steps.</h2>
   <div class="two">
@@ -93,6 +118,10 @@
       <p>Windows 10 or 11, Archicad 26. Loriini talks to Archicad on the same computer; nothing about a project leaves it.</p>
     </div>
   </div>
+  <!-- When there is a screen recording of a study running, it goes here:
+  <video controls preload="metadata" poster="demo-poster.png" style="width:100%; border:2px solid var(--line); margin-top:2rem; display:block">
+    <source src="demo.mp4" type="video/mp4">
+  </video> -->
 </section>
 
 <section id="price">
@@ -116,7 +145,7 @@
   <p><strong>Paying by invoice.</strong> A practice that pays annual invoices by bank transfer can <a href="mailto:sami@loriini.app?subject=Loriini%20invoice">ask for an invoice</a> instead.</p>
 </section>
 
-<section id="download" class="alt">
+<section id="download">
   <div class="kicker">Download</div>
   <h2>The current build.</h2>
   <div class="download-box">
@@ -159,5 +188,130 @@
     </div>
   </div>
 </footer>
+
+<script>
+/* The hero's pixel sun study. A sun crosses the grid from 09:00 to 15:00,
+   three buildings cast shadows whose length follows its height, and once a
+   loop the lorikeet flaps across. Chunky on purpose: 8 frames a second. */
+(function () {
+  var canvas = document.getElementById('sunbox');
+  var clock = document.getElementById('sunclock');
+  if (!canvas || !canvas.getContext) return;
+  var ctx = canvas.getContext('2d');
+
+  var C = {
+    field: '#2e2d2a', grid: '#3a3934', ground: '#232220', shadow: '#0e0d0b',
+    sun: '#ffc81e', sunCore: '#ff8a1f',
+    blue: '#1a5fd0', green: '#8fc07c', pink: '#ef7bd8', red: '#e8521a',
+    cyan: '#35b6d9', cream: '#e9e6dc'
+  };
+
+  var cell, cols, rows, ground;
+  function size() {
+    var r = canvas.parentElement.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(r.width * dpr);
+    canvas.height = Math.round(r.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cols = Math.max(22, Math.round(r.width / 26));
+    cell = r.width / cols;
+    rows = Math.ceil(r.height / cell);
+    ground = rows - 2;
+  }
+
+  function px(x, y, colour) {
+    ctx.fillStyle = colour;
+    ctx.fillRect(x * cell, y * cell, cell + .5, cell + .5);
+  }
+
+  // Three buildings: x from the left edge in grid cells, width, height.
+  var buildings = [
+    { x: .14, w: 3, h: 5, colour: C.red },
+    { x: .40, w: 2, h: 9, colour: C.blue },
+    { x: .68, w: 4, h: 4, colour: C.pink }
+  ];
+
+  var t = 0, bird = null, loops = 0;
+
+  function frame() {
+    var w = canvas.width / (window.devicePixelRatio || 1);
+    var h = canvas.height / (window.devicePixelRatio || 1);
+    ctx.fillStyle = C.field;
+    ctx.fillRect(0, 0, w, h);
+
+    // The grid itself.
+    ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var i = 0; i <= cols; i++) { ctx.moveTo(i * cell, 0); ctx.lineTo(i * cell, h); }
+    for (var j = 0; j <= rows; j++) { ctx.moveTo(0, j * cell); ctx.lineTo(w, j * cell); }
+    ctx.stroke();
+
+    // Ground.
+    for (var g = 0; g < cols; g++) { px(g, ground + 1, C.ground); px(g, ground + 2, C.ground); }
+
+    // The sun: an arc from the left edge to the right.
+    var sx = Math.round(1 + t * (cols - 5));
+    var elev = Math.sin(Math.PI * t);
+    var sy = Math.round(ground - 3 - elev * (ground - 5));
+
+    // The sun first, so it rises and sets behind the skyline: a 2×2 block
+    // with an orange heart and four blinking rays.
+    px(sx, sy, C.sun); px(sx + 1, sy, C.sun); px(sx, sy + 1, C.sun); px(sx + 1, sy + 1, C.sunCore);
+    if (Math.floor(t * 40) % 2) {
+      px(sx - 1, sy, C.sun); px(sx + 2, sy + 1, C.sun);
+    } else {
+      px(sx, sy - 1, C.sun); px(sx + 1, sy + 2, C.sun);
+    }
+
+    // Shadows next, so the buildings sit on top of their own.
+    buildings.forEach(function (b) {
+      var bx = Math.round(b.x * cols);
+      var dir = (sx <= bx + b.w / 2) ? 1 : -1;
+      var len = Math.max(1, Math.round(b.h * (1.4 - elev * 1.25)));
+      var from = dir > 0 ? bx + b.w : bx - 1;
+      for (var s = 0; s < len; s++) {
+        var x = from + dir * s;
+        if (x >= 0 && x < cols) { px(x, ground, C.shadow); px(x, ground + 1, C.shadow); }
+      }
+    });
+
+    // Buildings, each with one lit cream window.
+    buildings.forEach(function (b, k) {
+      var bx = Math.round(b.x * cols);
+      for (var x = 0; x < b.w; x++)
+        for (var y = 0; y < b.h; y++)
+          px(bx + x, ground - y, b.colour);
+      px(bx + (k % b.w), ground - 1 - (k % (b.h - 1)), C.cream);
+    });
+
+    // The lorikeet: three feathers flapping across, once a loop.
+    if (!bird && t < .02) bird = { x: cols + 1, y: 3 + (loops % 3) * 2 };
+    if (bird) {
+      var flap = Math.floor(bird.x) % 2;
+      px(bird.x, bird.y, C.red); px(bird.x + 1, bird.y - flap, C.blue); px(bird.x + 2, bird.y, C.green);
+      bird.x -= .6;
+      if (bird.x < -3) bird = null;
+    }
+
+    if (clock) {
+      var mins = 540 + Math.round(t * 360); // 09:00 + six hours
+      var hh = Math.floor(mins / 60), mm = mins % 60;
+      clock.textContent = (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+    }
+
+    t += 1 / 160; // a 20-second day at 8 fps
+    if (t >= 1) { t = 0; loops++; }
+  }
+
+  size();
+  window.addEventListener('resize', function () { size(); frame(); });
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    t = .35; frame();
+  } else {
+    frame();
+    setInterval(frame, 125);
+  }
+})();
+</script>
 </body>
 </html>

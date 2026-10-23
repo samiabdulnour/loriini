@@ -10,8 +10,9 @@ links; the key still comes from the licence service
 
 It is four static files and the current build, served by nginx, on Fly.io
 beside the licence service, at `https://loriini.app` (and `www.loriini.app`;
-the `loriini-site.fly.dev` address keeps working). No script, no cookies, no
-analytics, nothing to keep running.
+the `loriini-site.fly.dev` address keeps working). No cookies, no analytics,
+nothing to keep running; the one script is the home page's pixel-sun
+animation, inline, talking to nothing.
 
 ## What is where
 
@@ -19,7 +20,7 @@ analytics, nothing to keep running.
 |---|---|
 | `site/index.html` | The page: what it makes, how it works, price, download, contact. |
 | `site/terms.html`, `site/privacy.html` | The licence terms and the privacy note, **drafts for a lawyer's hour** (licence-model.md §7). |
-| `site/style.css` | The one stylesheet, in the lorikeet's colours. |
+| `site/style.css` | The one stylesheet: a warm grey page, charcoal lines, mono labels, and the lorikeet's colours as pixels. |
 | `site/download/` | The current build's zip, put there at deploy time and never committed. |
 | `deploy/site/` | The Dockerfile, nginx's config, and `fly.toml` for the `loriini-site` app. |
 
