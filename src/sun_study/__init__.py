@@ -34,9 +34,9 @@ __version__ = "0.0.1"
 AUTHOR = "Sami Abdulnour"
 PRODUCT = "Loriini"
 
-#: Where a licence key comes from, and where to write for another: the
-#: mailbox the licence service sends from, on the product's own domain.
-SUPPORT_EMAIL = "sami@loriini.app"
+#: Where to write for a licence key, or for another copy of one: the
+#: product's contact address, on its own domain.
+SUPPORT_EMAIL = "hi@loriini.app"
 
 #: The product's web site, on the same domain.
 WEBSITE = "https://loriini.app"
