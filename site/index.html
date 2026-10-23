@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Loriini</title>
 <meta name="description" content="Sun studies from Archicad, for a NSW development application: solar access hours, shadow diagrams, site and context analysis and yield, drawn into the Archicad project as native sheets and schedules.">
-<link rel="icon" href="favicon.ico">
-<link rel="apple-touch-icon" href="icon-256.png">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" href="fonts/inter-latin-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="stripe"></div>
 
 <header class="top wrap">
-  <a class="brand" href="/"><img src="icon-256.png" alt=""> Loriini</a>
+  <a class="brand" href="/"><img src="lorikeet-head.png" alt=""> Loriini</a>
   <nav class="main">
     <a href="makes.html">What it makes</a>
     <a href="works.html">How it works</a>
@@ -27,19 +27,18 @@
 <main class="splash">
   <div class="splash-left">
     <h1>Loriini</h1>
-    <p class="tiny">Sun studies from Archicad,<br>for a NSW DA</p>
-    <div><a class="button primary" href="makes.html">Find out how</a></div>
+    <p>Sun studies from Archicad, for a NSW DA.</p>
+    <div><a class="button" href="makes.html">Find out how</a></div>
   </div>
   <div class="splash-right">
-    <!-- Until there is a screen recording, the picture is the product as a
-         cartoon: a pixel sun crossing 09:00 to 15:00 on 21 June, buildings
-         casting shadows, and once a loop the lorikeet. When the recording
-         exists, it replaces the canvas:
-    <video autoplay muted loop playsinline poster="demo-poster.png">
+    <!-- The picture is drawn as a mosaic of cells. Its source is the pixel
+         scene below until there is a screen recording; then uncomment this,
+         and the mosaic is drawn from the film instead:
+    <video id="film" autoplay muted loop playsinline preload="auto">
       <source src="demo.mp4" type="video/mp4">
     </video> -->
-    <canvas id="sunbox" aria-label="A pixel sun crossing the sky over pixel buildings, their shadows stretching and shrinking through the day"></canvas>
-    <div class="clock" id="sunclock">09:00</div>
+    <canvas id="mosaic" role="img" aria-label="A pixel lorikeet perched on a tower while the sun crosses the sky and the buildings' shadows turn, drawn as a mosaic of small cells"></canvas>
+    <div class="clock" id="clock">09:00</div>
   </div>
 </main>
 
@@ -51,126 +50,166 @@
 </footer>
 
 <script>
-/* The front's pixel sun study. A sun crosses the grid from 09:00 to 15:00,
-   three buildings cast shadows whose length follows its height, and once a
-   loop the lorikeet flaps across. Chunky on purpose: 8 frames a second. */
+/* The front's picture. A source is drawn at one pixel per cell: the film when
+   there is one, otherwise a pixel scene of 21 June, 09:00 to 15:00, with the
+   sun crossing, the towers' shadows turning and the lorikeet on the tallest.
+   Each source pixel is then drawn as a cell with a thin gap, the page colour
+   showing through. Cells fall away along the left and top edges, a few blink
+   out anywhere, and the pointer knocks out the ones it passes. */
 (function () {
-  var canvas = document.getElementById('sunbox');
-  var clock = document.getElementById('sunclock');
+  var panel = document.querySelector('.splash-right');
+  var canvas = document.getElementById('mosaic');
+  var clock = document.getElementById('clock');
+  var film = document.getElementById('film');
   if (!canvas || !canvas.getContext) return;
   var ctx = canvas.getContext('2d');
+  var src = document.createElement('canvas');
+  var sctx = src.getContext('2d', { willReadFrequently: true });
+  var root = getComputedStyle(document.documentElement);
+  var bird = new Image();
+  bird.src = 'lorikeet.png';
 
   var C = {
-    field: '#2e2d2a', grid: '#3a3934', ground: '#232220', shadow: '#0e0d0b',
-    sun: '#ffc81e', sunCore: '#ff8a1f',
-    blue: '#1a5fd0', green: '#8fc07c', pink: '#ef7bd8', red: '#e8521a',
-    cyan: '#35b6d9', cream: '#e9e6dc'
+    sky: '#2a2b2e', ground: '#161616', shadow: '#060606',
+    sun: '#ffd21e', core: '#ff8a1f', ray: '#ffe98a', glass: 'rgba(255,255,255,.32)'
   };
-
-  var cell, cols, rows, ground;
-  function size() {
-    var r = canvas.parentElement.getBoundingClientRect();
-    var dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(r.width * dpr);
-    canvas.height = Math.round(r.height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    cols = Math.max(22, Math.round(r.width / 26));
-    cell = r.width / cols;
-    rows = Math.ceil(r.height / cell);
-    ground = rows - 2;
-  }
-
-  function px(x, y, colour) {
-    ctx.fillStyle = colour;
-    ctx.fillRect(x * cell, y * cell, cell + .5, cell + .5);
-  }
-
-  // Three buildings: x from the left edge in grid cells, width, height.
-  var buildings = [
-    { x: .14, w: 3, h: 5, colour: C.red },
-    { x: .40, w: 2, h: 9, colour: C.blue },
-    { x: .68, w: 4, h: 4, colour: C.pink }
+  // Towers: left edge and width as shares of the width, height as a share of the sky.
+  var towers = [
+    { x: .16, w: .12, h: .30, c: '#f0301e' },
+    { x: .36, w: .08, h: .48, c: '#1846d6' },
+    { x: .53, w: .16, h: .22, c: '#ef7bd8' },
+    { x: .80, w: .10, h: .38, c: '#12a84a' }
   ];
 
-  var t = 0, bird = null, loops = 0;
+  var W, H, cell, cols, rows, seed, knocked;
+  function size() {
+    var r = panel.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = r.width; H = r.height;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cell = W < 600 ? 9 : 12;
+    cols = Math.ceil(W / cell); rows = Math.ceil(H / cell);
+    src.width = cols; src.height = rows;
+    seed = new Float32Array(cols * rows);
+    for (var i = 0; i < seed.length; i++) seed[i] = Math.random();
+    knocked = new Float64Array(cols * rows);
+  }
 
-  function frame() {
-    var w = canvas.width / (window.devicePixelRatio || 1);
-    var h = canvas.height / (window.devicePixelRatio || 1);
-    ctx.fillStyle = C.field;
-    ctx.fillRect(0, 0, w, h);
+  function rect(x, y, w, h, c) { sctx.fillStyle = c; sctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
 
-    // The grid itself.
-    ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (var i = 0; i <= cols; i++) { ctx.moveTo(i * cell, 0); ctx.lineTo(i * cell, h); }
-    for (var j = 0; j <= rows; j++) { ctx.moveTo(0, j * cell); ctx.lineTo(w, j * cell); }
-    ctx.stroke();
+  function scene(t, frame) {
+    var g = rows - Math.max(3, Math.round(rows * .07));
+    rect(0, 0, cols, rows, C.sky);
+    rect(0, g, cols, rows - g, C.ground);
 
-    // Ground.
-    for (var g = 0; g < cols; g++) { px(g, ground + 1, C.ground); px(g, ground + 2, C.ground); }
-
-    // The sun: an arc from the left edge to the right.
-    var sx = Math.round(1 + t * (cols - 5));
     var elev = Math.sin(Math.PI * t);
-    var sy = Math.round(ground - 3 - elev * (ground - 5));
-
-    // The sun first, so it rises and sets behind the skyline: a 2×2 block
-    // with an orange heart and four blinking rays.
-    px(sx, sy, C.sun); px(sx + 1, sy, C.sun); px(sx, sy + 1, C.sun); px(sx + 1, sy + 1, C.sunCore);
-    if (Math.floor(t * 40) % 2) {
-      px(sx - 1, sy, C.sun); px(sx + 2, sy + 1, C.sun);
-    } else {
-      px(sx, sy - 1, C.sun); px(sx + 1, sy + 2, C.sun);
-    }
-
-    // Shadows next, so the buildings sit on top of their own.
-    buildings.forEach(function (b) {
-      var bx = Math.round(b.x * cols);
-      var dir = (sx <= bx + b.w / 2) ? 1 : -1;
-      var len = Math.max(1, Math.round(b.h * (1.4 - elev * 1.25)));
-      var from = dir > 0 ? bx + b.w : bx - 1;
-      for (var s = 0; s < len; s++) {
-        var x = from + dir * s;
-        if (x >= 0 && x < cols) { px(x, ground, C.shadow); px(x, ground + 1, C.shadow); }
+    var R = Math.max(3, Math.round(rows * .065));
+    var sx = Math.round(cols * (.04 + .92 * t));
+    var sy = Math.round(g - R - 2 - elev * (g * .72));
+    for (var dy = -R; dy <= R; dy++)
+      for (var dx = -R; dx <= R; dx++) {
+        var d = dx * dx + dy * dy;
+        if (d <= R * R + R * .6) rect(sx + dx, sy + dy, 1, 1, d <= (R * .5) * (R * .5) ? C.core : C.sun);
       }
-    });
-
-    // Buildings, each with one lit cream window.
-    buildings.forEach(function (b, k) {
-      var bx = Math.round(b.x * cols);
-      for (var x = 0; x < b.w; x++)
-        for (var y = 0; y < b.h; y++)
-          px(bx + x, ground - y, b.colour);
-      px(bx + (k % b.w), ground - 1 - (k % (b.h - 1)), C.cream);
-    });
-
-    // The lorikeet: three feathers flapping across, once a loop.
-    if (!bird && t < .02) bird = { x: cols + 1, y: 3 + (loops % 3) * 2 };
-    if (bird) {
-      var flap = Math.floor(bird.x) % 2;
-      px(bird.x, bird.y, C.red); px(bird.x + 1, bird.y - flap, C.blue); px(bird.x + 2, bird.y, C.green);
-      bird.x -= .6;
-      if (bird.x < -3) bird = null;
+    // Rays: the four straight ones and the four diagonal ones take turns.
+    var straight = frame % 4 < 2;
+    for (var k = 0; k < 8; k++) {
+      if ((k % 2 === 0) !== straight) continue;
+      var a = k * Math.PI / 4, ux = Math.round(Math.cos(a)), uy = Math.round(Math.sin(a));
+      for (var s = R + 2; s <= R + 3; s++) rect(sx + ux * s, sy + uy * s, 1, 1, C.ray);
     }
 
+    var tall = null;
+    towers.forEach(function (b) {
+      var bx = Math.round(b.x * cols), bw = Math.max(2, Math.round(b.w * cols)), bh = Math.round(b.h * g);
+      var dir = sx < bx + bw / 2 ? 1 : -1;
+      var len = Math.max(1, Math.round(bh * (1.3 - elev * 1.1)));
+      rect(dir > 0 ? bx + bw : bx - len, g, len, Math.min(3, rows - g), C.shadow);
+      b.px = bx; b.pw = bw; b.ph = bh;
+      if (!tall || bh > tall.ph) tall = b;
+    });
+    towers.forEach(function (b) {
+      rect(b.px, g - b.ph, b.pw, b.ph, b.c);
+      for (var wy = g - b.ph + 2; wy < g - 1; wy += 3)
+        for (var wx = b.px + 1; wx < b.px + b.pw - 1; wx += 2) rect(wx, wy, 1, 1, C.glass);
+    });
+
+    // The lorikeet, its feet on the tallest tower's roof, its tail hanging
+    // over the side, bobbing now and then.
+    if (bird.complete && bird.naturalWidth) {
+      // Whole or half size only, so every cell is one feather or the average of four.
+      var full = rows >= 120, bw2 = full ? 40 : 20, bh2 = full ? 53 : 27;
+      var bob = frame % 23 < 2 ? 1 : 0;
+      sctx.imageSmoothingEnabled = !full;
+      sctx.drawImage(bird, Math.round(tall.px + tall.pw * .7 - bw2 * .62), Math.round(g - tall.ph - bh2 * .82) - bob, bw2, bh2);
+    }
+  }
+
+  function filmFrame() {
+    var vw = film.videoWidth, vh = film.videoHeight, a = cols / rows;
+    var sw = vw, sh = vw / a;
+    if (sh > vh) { sh = vh; sw = vh * a; }
+    sctx.drawImage(film, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, cols, rows);
+  }
+
+  var t = 0, frame = 0;
+  function draw(now) {
+    var playing = film && film.readyState >= 2;
+    if (playing) filmFrame(); else scene(t, frame);
     if (clock) {
-      var mins = 540 + Math.round(t * 360); // 09:00 + six hours
-      var hh = Math.floor(mins / 60), mm = mins % 60;
-      clock.textContent = (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+      clock.hidden = playing;
+      var m = 540 + Math.round(t * 360);
+      clock.textContent = String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
     }
 
-    t += 1 / 160; // a 20-second day at 8 fps
-    if (t >= 1) { t = 0; loops++; }
+    var px = sctx.getImageData(0, 0, cols, rows).data;
+    ctx.fillStyle = root.getPropertyValue('--bg').trim() || '#e1e4de';
+    ctx.fillRect(0, 0, W, H);
+    var tick = Math.floor(now / 1400);
+    for (var y = 0; y < rows; y++) {
+      for (var x = 0; x < cols; x++) {
+        var i = y * cols + x, n = seed[i];
+        // The edges toward the name and the header fall away into the page,
+        // the boundary breathing a little.
+        var fall = Math.max(1 - x / (cols * .26), 1 - y / (rows * .1), 0);
+        if (fall > 0 && n < fall * (.86 + .14 * Math.sin(now / 900 + n * 9))) continue;
+        // A few cells anywhere blink out, a fresh few every beat.
+        if (((n * 9301 + tick * 49297) % 233) / 233 < .025) continue;
+        if (knocked[i] > now) continue;
+        var j = i * 4;
+        ctx.fillStyle = 'rgb(' + px[j] + ',' + px[j + 1] + ',' + px[j + 2] + ')';
+        ctx.fillRect(x * cell, y * cell, cell - 1, cell - 1);
+      }
+    }
+  }
+
+  function knock(e) {
+    var r = canvas.getBoundingClientRect();
+    var cx = (e.clientX - r.left) / cell, cy = (e.clientY - r.top) / cell, now = performance.now();
+    for (var y = Math.floor(cy - 3); y <= cy + 3; y++)
+      for (var x = Math.floor(cx - 3); x <= cx + 3; x++) {
+        if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
+        var d = (x + .5 - cx) * (x + .5 - cx) + (y + .5 - cy) * (y + .5 - cy);
+        if (d < 7) knocked[y * cols + x] = Math.max(knocked[y * cols + x], now + 900 + seed[y * cols + x] * 1400);
+      }
   }
 
   size();
-  window.addEventListener('resize', function () { size(); frame(); });
+  window.addEventListener('resize', function () { size(); draw(performance.now()); });
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    t = .35; frame();
+    t = .35;
+    bird.onload = function () { draw(performance.now()); };
+    draw(performance.now());
   } else {
-    frame();
-    setInterval(frame, 125);
+    canvas.addEventListener('pointermove', knock);
+    canvas.addEventListener('pointerdown', knock);
+    setInterval(function () {
+      draw(performance.now());
+      frame++;
+      t += 1 / 220;
+      if (t >= 1) t = 0;
+    }, 100);
   }
 })();
 </script>

@@ -1,205 +1,183 @@
-/* Loriini's site. One stylesheet, no framework. The look: a warm grey page,
-   charcoal lines, monospace labels, and pixel-grid graphics in the lorikeet's
-   colours — the sun study drawn the way a screen would draw it, cell by cell. */
+/* Loriini's site. One stylesheet, no framework.
+
+   One typeface, Inter, self-hosted: two weights (400, 600) and three sizes
+   (--s, --m, --l), nothing else. Thin 1px lines, flat buttons, a pale sage
+   page, and the lorikeet's colours only where there are pixels. */
+
+@font-face { font-family: Inter; font-weight: 400; font-display: swap; src: url(fonts/inter-latin-400.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: Inter; font-weight: 600; font-display: swap; src: url(fonts/inter-latin-600.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: Inter; font-weight: 400; font-display: swap; src: url(fonts/inter-latin-ext-400.woff2) format("woff2"); unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: Inter; font-weight: 600; font-display: swap; src: url(fonts/inter-latin-ext-600.woff2) format("woff2"); unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 
 :root {
-  --warm: #e1e4de;        /* the pale sage-grey page */
-  --panel: #eaece7;       /* a card barely lighter than the page */
-  --char: #232220;        /* charcoal: lines, dark panels, filled buttons */
-  --char-2: #2e2d2a;      /* the pixel grid's dark field */
-  --ink: #232220;
-  --muted: #6b6860;
-  --line: #232220;
-  --soft-line: #c5cabf;
+  --bg: #e1e4de;
+  --ink: #1f1f1d;
+  --muted: #6a6d67;
+  --line: #bfc4bb;
+  --tint: #ebede8;
+  --notice: #f3e6c9;
 
-  /* the lorikeet's feathers, as pixels */
-  --blue: #1a5fd0;
-  --blue-deep: #0d3f9e;
-  --cyan: #35b6d9;
-  --green: #8fc07c;
-  --yellow: #ffc81e;
+  /* the lorikeet */
+  --blue: #1846d6;
+  --cyan: #2fd3ff;
+  --green: #12a84a;
+  --lime: #a8e000;
+  --yellow: #ffd21e;
   --orange: #ff8a1f;
-  --red: #e8521a;
-  --pink: #ef7bd8;
+  --red: #f0301e;
+  --purple: #6a1fb0;
 
-  --notice: #f6e7c8;
+  --s: .875rem;
+  --m: 1.125rem;
+  --l: clamp(2.75rem, 6.5vw, 5.25rem);
+
   --measure: 72rem;
-
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --warm: #201f1c;
-    --panel: #292825;
-    --char: #e9e6dc;
-    --char-2: #191816;
-    --ink: #e9e6dc;
-    --muted: #a39f93;
-    --line: #e9e6dc;
-    --soft-line: #44423c;
-    --notice: #38311f;
+    --bg: #1c1d1b;
+    --ink: #e6e8e2;
+    --muted: #9a9d96;
+    --line: #3a3c38;
+    --tint: #252624;
+    --notice: #372f1c;
   }
 }
 :root[data-theme="dark"] {
-  --warm: #201f1c;
-  --panel: #292825;
-  --char: #e9e6dc;
-  --char-2: #191816;
-  --ink: #e9e6dc;
-  --muted: #a39f93;
-  --line: #e9e6dc;
-  --soft-line: #44423c;
-  --notice: #38311f;
+  --bg: #1c1d1b;
+  --ink: #e6e8e2;
+  --muted: #9a9d96;
+  --line: #3a3c38;
+  --tint: #252624;
+  --notice: #372f1c;
 }
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
   margin: 0;
-  background: var(--warm);
+  background: var(--bg);
   color: var(--ink);
-  font: 17px/1.55 -apple-system, "Segoe UI", "Helvetica Neue", Roboto, Helvetica, Arial, sans-serif;
+  font: 400 var(--m)/1.55 Inter, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
-a:hover { background: var(--yellow); color: #232220; text-decoration: none; }
-h1, h2, h3 { color: var(--ink); line-height: 1.1; margin: 0 0 .5em; letter-spacing: -.02em; }
-h1 { font-size: clamp(2.6rem, 7vw, 5rem); font-weight: 800; }
-h2 { font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0; }
-h3 { font-size: 1.05rem; }
+a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--blue); }
+h1, h2, h3 { margin: 0 0 .5em; }
+h1 { font-size: var(--l); font-weight: 400; line-height: 1.02; letter-spacing: -.035em; }
+h2, h3 { font-size: var(--m); font-weight: 600; line-height: 1.3; }
 p { margin: 0 0 1em; }
-code { font: .9em var(--mono); background: var(--panel); border: 1px solid var(--soft-line); padding: .05em .35em; }
-pre { background: var(--panel); border: 1px solid var(--line); padding: 1rem; overflow-x: auto; font-size: .92rem; }
+strong { font-weight: 600; }
+small { font-size: var(--s); }
+code { font: inherit; background: var(--tint); border: 1px solid var(--line); padding: 0 .3em; white-space: nowrap; }
+pre { font: inherit; background: var(--tint); border: 1px solid var(--line); padding: 1rem; overflow-x: auto; }
 pre code { background: none; border: 0; padding: 0; }
-
-/* The pixel stripe: the lorikeet's feathers in hard blocks, no blending. */
-.stripe {
-  height: 10px;
-  background: repeating-linear-gradient(90deg,
-    var(--blue-deep) 0 20px, var(--blue) 20px 40px, var(--cyan) 40px 60px,
-    var(--green) 60px 80px, var(--yellow) 80px 100px, var(--orange) 100px 120px,
-    var(--red) 120px 140px);
-}
+img.px { image-rendering: pixelated; }
 
 .wrap { max-width: var(--measure); margin: 0 auto; padding: 0 16px; }
 
-/* Top bar: the name and a few mono links, nothing more. */
-header.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.1rem 0; flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: .6rem; color: var(--ink); font-weight: 800; font-size: 1.2rem; text-decoration: none; letter-spacing: -.01em; }
-.brand:hover { background: none; }
-.brand img { width: 32px; height: 32px; image-rendering: auto; }
-nav.main { display: flex; gap: 1.4rem; flex-wrap: wrap; font: .72rem var(--mono); text-transform: uppercase; letter-spacing: .12em; }
-nav.main a { text-decoration: none; padding: .2rem 0; }
-nav.main a[aria-current="page"] { box-shadow: 0 2px 0 var(--orange); }
+/* The top bar: the head, the name, four tabs. */
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 16px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: .6rem; font-weight: 600; text-decoration: none; }
+.brand:hover { color: inherit; }
+.brand img { width: 25px; height: 26px; image-rendering: pixelated; }
+nav.main { display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: var(--s); }
+nav.main a { text-decoration: none; padding: .15rem 0; }
+nav.main a[aria-current="page"] { box-shadow: 0 1px 0 currentColor; }
 
-/* ---- The front: the name on the left, the picture bleeding to the right
-   edge, no frame, no lines. The picture is the canvas until it is a video. */
-.splash { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); min-height: calc(100vh - 150px); }
+/* ---- The front: the name on the left, the picture on the right. The
+   picture is a canvas drawn as a mosaic of cells with thin gaps, the page
+   showing through the gaps and through the cells it lets fall. ---- */
+.splash { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); min-height: calc(100vh - 120px); }
 .splash-left {
-  display: flex; flex-direction: column; justify-content: center; gap: .4rem;
-  padding: 3rem 3rem 3rem max(16px, calc((100vw - var(--measure)) / 2 + 16px));
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 3rem 2rem 3rem max(16px, calc((100vw - var(--measure)) / 2 + 16px));
 }
-.splash-left h1 { margin: 0; }
-.splash-left .tiny { font: .74rem/1.8 var(--mono); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); margin: 0 0 1.4rem; }
-.splash-right { position: relative; background: var(--char-2); min-height: 420px; }
-.splash-right canvas, .splash-right video { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; }
+.splash-left h1 { margin: 0 0 .6rem; }
+.splash-left p { color: var(--muted); margin: 0 0 1.8rem; }
+.splash-right { position: relative; min-height: 420px; }
+.splash-right canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; }
+.splash-right video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .splash-right .clock {
-  position: absolute; right: 14px; top: 12px; z-index: 1;
-  font: 700 .8rem var(--mono); letter-spacing: .1em;
-  color: #e9e6dc; background: rgba(25,24,22,.75); border: 1px solid #e9e6dc; padding: .2rem .5rem;
+  position: absolute; right: 16px; top: 12px;
+  font-size: var(--s); font-weight: 600; font-variant-numeric: tabular-nums;
+  color: #fff; mix-blend-mode: difference;
 }
 @media (max-width: 820px) {
   .splash { grid-template-columns: 1fr; min-height: 0; }
-  .splash-left { padding: 3rem 16px; }
-  .splash-right { min-height: 58vh; }
+  .splash-left { padding: 2.5rem 16px; }
+  .splash-right { min-height: 62vh; }
 }
 
-/* The lead paragraph at the top of a tab's page. */
-.lead { font-size: 1.15rem; color: var(--muted); max-width: 46rem; }
-.page { padding: 2.5rem 0 4rem; }
-.page section { padding: 2.5rem 0 0; border: 0; }
+/* A tab's page. */
+.page { padding: 3rem 16px 4rem; }
+.page h1 { max-width: 15em; }
+.lead { color: var(--muted); max-width: 40rem; }
 
-.actions { display: flex; gap: .7rem; flex-wrap: wrap; margin-top: 1.2rem; }
+.kicker { display: flex; align-items: center; gap: .5rem; font-size: var(--s); font-weight: 600; margin-bottom: 1.2rem; }
+.kicker::before { content: ""; width: 8px; height: 8px; background: var(--orange); box-shadow: 9px 0 0 var(--yellow), 18px 0 0 var(--blue); margin-right: 20px; }
+
 .button {
-  display: inline-block; padding: .75rem 1.3rem; font: 700 .78rem var(--mono);
-  text-transform: uppercase; letter-spacing: .1em; text-decoration: none;
-  border: 2px solid var(--line); color: var(--ink); background: var(--panel); text-align: center;
-  box-shadow: 4px 4px 0 var(--line);
+  display: inline-block; padding: .7rem 1.15rem;
+  font-size: var(--s); font-weight: 600; line-height: 1.2; text-decoration: none; text-align: center;
+  background: var(--ink); color: var(--bg); border: 1px solid var(--ink);
 }
-.button:hover { background: var(--yellow); color: #232220; transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--line); }
-.button.primary { background: var(--char); color: var(--warm); }
-.button.primary:hover { background: var(--orange); color: #232220; }
-.button.sun { background: var(--yellow); color: #232220; }
-.button.sun:hover { background: var(--orange); }
+.button:hover { background: var(--blue); border-color: var(--blue); color: #fff; }
+.button.ghost { background: transparent; color: var(--ink); }
+.button.ghost:hover { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.actions { display: flex; gap: .6rem; flex-wrap: wrap; }
 
-.notice {
-  background: var(--notice); border: 2px solid var(--line);
-  padding: 1rem 1.2rem; margin: 2rem 0 0;
-  box-shadow: 6px 6px 0 var(--line);
-}
-.notice strong { color: var(--red); font-family: var(--mono); font-size: .9em; text-transform: uppercase; letter-spacing: .06em; }
-
-section { padding: 3.5rem 0; }
-section + section { border-top: 2px solid var(--line); }
-.kicker {
-  display: flex; align-items: center; gap: .6rem;
-  font: 700 .72rem var(--mono); text-transform: uppercase; letter-spacing: .16em;
-  color: var(--ink); margin-bottom: 1rem;
-}
-.kicker::before { content: ""; width: 12px; height: 12px; background: var(--orange); box-shadow: 14px 0 0 var(--yellow); margin-right: 16px; }
-
-/* Cards as one bordered grid, cells sharing lines, each with a pixel-check top. */
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem; margin-top: 1.5rem; }
-.card { background: var(--panel); border: 2px solid var(--line); box-shadow: 4px 4px 0 var(--line); padding: 0 0 1.3rem; }
-.card .check { height: 14px; background-size: 14px 14px; border-bottom: 2px solid var(--line); }
-.card:nth-child(7n+1) .check { background-image: conic-gradient(var(--yellow) 25%, var(--panel) 0 50%, var(--yellow) 0 75%, var(--panel) 0); }
-.card:nth-child(7n+2) .check { background-image: conic-gradient(var(--orange) 25%, var(--panel) 0 50%, var(--orange) 0 75%, var(--panel) 0); }
-.card:nth-child(7n+3) .check { background-image: conic-gradient(var(--blue) 25%, var(--panel) 0 50%, var(--blue) 0 75%, var(--panel) 0); }
-.card:nth-child(7n+4) .check { background-image: conic-gradient(var(--green) 25%, var(--panel) 0 50%, var(--green) 0 75%, var(--panel) 0); }
-.card:nth-child(7n+5) .check { background-image: conic-gradient(var(--pink) 25%, var(--panel) 0 50%, var(--pink) 0 75%, var(--panel) 0); }
-.card:nth-child(7n+6) .check { background-image: conic-gradient(var(--cyan) 25%, var(--panel) 0 50%, var(--cyan) 0 75%, var(--panel) 0); }
-.card:nth-child(7n+7) .check { background-image: conic-gradient(var(--red) 25%, var(--panel) 0 50%, var(--red) 0 75%, var(--panel) 0); }
-.card h3, .card p { padding: 0 1.3rem; }
-.card h3 { margin: 1.1rem 0 .5rem; font-family: var(--mono); font-size: .92rem; text-transform: uppercase; letter-spacing: .08em; }
+/* A thin grid: cells sharing 1px lines. Cards, prices and the like sit in it. */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); margin-top: 2rem; }
+.grid > * { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 1.4rem 1.4rem 1.6rem; }
+.card h3::before { content: ""; display: block; width: 10px; height: 10px; margin-bottom: 1rem; background: var(--px, var(--orange)); }
+.card:nth-child(7n+1) { --px: var(--yellow); }
+.card:nth-child(7n+2) { --px: var(--orange); }
+.card:nth-child(7n+3) { --px: var(--blue); }
+.card:nth-child(7n+4) { --px: var(--green); }
+.card:nth-child(7n+5) { --px: var(--purple); }
+.card:nth-child(7n+6) { --px: var(--cyan); }
+.card:nth-child(7n+7) { --px: var(--red); }
 .card p:last-child { margin-bottom: 0; }
-.card .tag { font: .72rem var(--mono); color: var(--muted); letter-spacing: .04em; }
+.tag { font-size: var(--s); color: var(--muted); }
 
-.steps { counter-reset: step; list-style: none; padding: 0; margin: 1.5rem 0 0; display: grid; gap: 1rem; }
-.steps li { position: relative; padding-left: 3.2rem; }
+.notice { border: 1px solid var(--line); background: var(--notice); padding: 1.1rem 1.3rem; margin: 2.5rem 0 0; }
+.notice strong { color: var(--red); }
+
+.steps { counter-reset: step; list-style: none; padding: 0; margin: 0; display: grid; gap: 1.1rem; }
+.steps li { position: relative; padding-left: 3rem; }
 .steps li::before {
   counter-increment: step; content: counter(step);
-  position: absolute; left: 0; top: 0; width: 2.2rem; height: 2.2rem;
-  background: var(--yellow); color: #232220; border: 2px solid var(--line);
-  font: 700 1rem var(--mono); display: grid; place-items: center;
-  box-shadow: 3px 3px 0 var(--line);
+  position: absolute; left: 0; top: .1rem; width: 2rem; height: 2rem;
+  background: var(--yellow); color: #1f1f1d; font-size: var(--s); font-weight: 600;
+  display: grid; place-items: center;
 }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2.5rem; margin-top: 2rem; }
 
-.prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.4rem; margin-top: 1.5rem; }
-.price { background: var(--panel); border: 2px solid var(--line); padding: 1.5rem; display: flex; flex-direction: column; gap: .6rem; box-shadow: 6px 6px 0 var(--line); }
-.price .amount { font: 700 2.4rem var(--mono); letter-spacing: -.04em; color: var(--ink); }
-.price .amount small { font: 500 .95rem var(--mono); letter-spacing: 0; color: var(--muted); }
-.price .fine { color: var(--muted); font-size: .92rem; }
+.price { display: flex; flex-direction: column; gap: .7rem; }
+.price .amount { font-size: var(--l); line-height: 1; letter-spacing: -.035em; }
+.price .amount small { letter-spacing: 0; color: var(--muted); }
+.price .fine { color: var(--muted); font-size: var(--s); }
 .price .button { align-self: flex-start; margin-top: auto; }
-.price.featured { box-shadow: 6px 6px 0 var(--orange), 8px 8px 0 var(--line); }
+.price.featured { background: var(--tint); }
 
-.download-box { background: var(--panel); border: 2px solid var(--line); padding: 1.5rem; margin-top: 1.5rem; box-shadow: 6px 6px 0 var(--line); }
-.download-box dl { display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1.2rem; margin: 1rem 0 0; font: .82rem var(--mono); }
-.download-box dt { color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.wrap > header.top { padding-left: 0; padding-right: 0; }
+
+.download-box { border: 1px solid var(--line); padding: 1.4rem; margin-top: 2rem; }
+.download-box dl { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1.4rem; margin: 1.4rem 0 0; font-size: var(--s); }
+.download-box dt { color: var(--muted); }
 .download-box dd { margin: 0; word-break: break-all; }
 
-.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; }
-
-footer { border-top: 2px solid var(--line); padding: 2rem 0 3rem; color: var(--muted); font-size: .9rem; margin-top: 3.5rem; }
+footer { border-top: 1px solid var(--line); padding: 2rem 0 3rem; color: var(--muted); font-size: var(--s); }
 footer .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; }
-footer a { color: var(--ink); }
-footer.slim { margin-top: 0; padding: 1.1rem 0; font: .72rem var(--mono); letter-spacing: .04em; }
+footer strong { color: var(--ink); }
+footer.slim { padding: 1rem 0; }
 footer.slim .cols { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 
 /* The legal pages */
 .legal { max-width: 46rem; padding: 2rem 0 4rem; }
-.legal h1 { font-size: clamp(2rem, 5vw, 3rem); }
-.legal h2 { font-size: 1.3rem; margin-top: 2rem; }
+.legal h2 { margin-top: 2rem; }
 .legal ol, .legal ul { padding-left: 1.4rem; }
 .legal li { margin-bottom: .4rem; }
-.draft { display: inline-block; background: var(--notice); border: 2px solid var(--line); padding: .25rem .6rem; font: 700 .72rem var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--red); margin-bottom: 1rem; box-shadow: 3px 3px 0 var(--line); }
+.draft { display: inline-block; background: var(--notice); border: 1px solid var(--line); padding: .2rem .6rem; font-size: var(--s); font-weight: 600; color: var(--red); margin-bottom: 1rem; }

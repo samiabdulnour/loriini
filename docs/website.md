@@ -8,20 +8,24 @@ site is. Buying still happens on Stripe's own pages, reached by the payment
 links; the key still comes from the licence service
 ([`licence-service.md`](licence-service.md)).
 
-It is four static files and the current build, served by nginx, on Fly.io
-beside the licence service, at `https://loriini.app` (and `www.loriini.app`;
-the `loriini-site.fly.dev` address keeps working). No cookies, no analytics,
-nothing to keep running; the one script is the home page's pixel-sun
-animation, inline, talking to nothing.
+It is a handful of static files and the current build, served by nginx, on
+Fly.io beside the licence service, at `https://loriini.app` (and
+`www.loriini.app`; the `loriini-site.fly.dev` address keeps working). No
+cookies, no analytics, no third-party requests (the font is served from the
+site itself), nothing to keep running; the one script is the front's mosaic,
+inline, talking to nothing.
 
 ## What is where
 
 | | |
 |---|---|
-| `site/index.html` | The front: the name and the picture (the pixel-sun animation until there is a screen recording), nothing else. |
+| `site/index.html` | The front: the name and the picture, nothing else. The picture is a canvas drawn as a mosaic of cells with thin gaps, falling away into the page at its edges and knocked out by the pointer. Its source is a pixel scene (the sun crossing 21 June, the towers' shadows, the lorikeet perched on the tallest) until there is a screen recording; uncommenting the `<video id="film">` beside the canvas makes the mosaic draw the film instead. |
 | `site/makes.html`, `site/works.html`, `site/price.html`, `site/download.html` | The tabs: what it makes, how it works, price, download. Contact lives in every footer. |
 | `site/terms.html`, `site/privacy.html` | The licence terms and the privacy note, **drafts for a lawyer's hour** (licence-model.md §7). |
-| `site/style.css` | The one stylesheet: a warm grey page, charcoal lines, mono labels, and the lorikeet's colours as pixels. |
+| `site/style.css` | The one stylesheet. One typeface in two weights (400, 600) and three sizes (`--s`, `--m`, `--l`) and nothing else; thin 1px lines, flat buttons, a pale sage page (`#e1e4de`). |
+| `site/fonts/` | Inter, regular and semibold, Latin and Latin Extended, self-hosted, with its licence (SIL OFL 1.1). |
+| `site/favicon.ico`, `site/icon-*.png`, `site/apple-touch-icon.png` | The square lorikeet-and-sun tile, at its native 32×32 pixels and scaled up whole. |
+| `site/lorikeet-head.png`, `site/lorikeet.png` | The head beside the name in the header, and the whole bird the mosaic perches on its tower, both at native resolution and drawn with `pixelated`. |
 | `site/download/` | The current build's zip, put there at deploy time and never committed. |
 | `deploy/site/` | The Dockerfile, nginx's config, and `fly.toml` for the `loriini-site` app. |
 
