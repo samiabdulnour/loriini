@@ -3,14 +3,14 @@
    colours — the sun study drawn the way a screen would draw it, cell by cell. */
 
 :root {
-  --warm: #e7e4da;        /* the warm grey page */
-  --panel: #efede4;       /* the cream panel inside a frame */
+  --warm: #e1e4de;        /* the pale sage-grey page */
+  --panel: #eaece7;       /* a card barely lighter than the page */
   --char: #232220;        /* charcoal: lines, dark panels, filled buttons */
   --char-2: #2e2d2a;      /* the pixel grid's dark field */
   --ink: #232220;
   --muted: #6b6860;
   --line: #232220;
-  --soft-line: #c9c5b8;
+  --soft-line: #c5cabf;
 
   /* the lorikeet's feathers, as pixels */
   --blue: #1a5fd0;
@@ -91,45 +91,34 @@ header.top { display: flex; align-items: center; justify-content: space-between;
 .brand img { width: 32px; height: 32px; image-rendering: auto; }
 nav.main { display: flex; gap: 1.4rem; flex-wrap: wrap; font: .72rem var(--mono); text-transform: uppercase; letter-spacing: .12em; }
 nav.main a { text-decoration: none; padding: .2rem 0; }
+nav.main a[aria-current="page"] { box-shadow: 0 2px 0 var(--orange); }
 
-/* ---- The hero: a framed window. Cream panel left, pixel grid right. ---- */
-.hero-frame { border: 2px solid var(--line); background: var(--panel); margin: 1rem 0 0; }
-.chrome { display: flex; gap: 7px; padding: 10px 12px; border-bottom: 2px solid var(--line); }
-.chrome span { width: 11px; height: 11px; border: 2px solid var(--line); border-radius: 50%; }
-.hero-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
-.hero-left { display: flex; flex-direction: column; min-height: 420px; }
-.hero-title { flex: 1; padding: 2rem 2rem 1rem; }
-.hero-title h1 { margin: 0; }
-.hero-title .tiny { font: .72rem var(--mono); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); margin: .9rem 0 0; }
-.hero-cells { display: grid; grid-template-columns: auto 1fr auto; border-top: 2px solid var(--line); }
-.hero-cells .cell { padding: 1rem 1.2rem; border-left: 2px solid var(--line); display: grid; place-items: center; }
-.hero-cells .cell:first-child { border-left: 0; }
-.hero-cells .cell.logo img { width: 56px; height: 56px; display: block; }
-.hero-cells .cell.list { font: .62rem/1.9 var(--mono); text-transform: uppercase; letter-spacing: .12em; place-items: center start; color: var(--ink); }
-.hero-cells .cell.stat { font: 700 2.2rem var(--mono); letter-spacing: -.03em; }
-.hero-cells .cell.stat small { display: block; font: .6rem var(--mono); letter-spacing: .12em; text-align: center; color: var(--muted); }
-.hero-right { position: relative; border-left: 2px solid var(--line); background: var(--char-2); min-height: 420px; }
-.hero-right canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.hero-right .clock {
-  position: absolute; right: 10px; top: 8px; z-index: 1;
+/* ---- The front: the name on the left, the picture bleeding to the right
+   edge, no frame, no lines. The picture is the canvas until it is a video. */
+.splash { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); min-height: calc(100vh - 150px); }
+.splash-left {
+  display: flex; flex-direction: column; justify-content: center; gap: .4rem;
+  padding: 3rem 3rem 3rem max(16px, calc((100vw - var(--measure)) / 2 + 16px));
+}
+.splash-left h1 { margin: 0; }
+.splash-left .tiny { font: .74rem/1.8 var(--mono); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); margin: 0 0 1.4rem; }
+.splash-right { position: relative; background: var(--char-2); min-height: 420px; }
+.splash-right canvas, .splash-right video { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; }
+.splash-right .clock {
+  position: absolute; right: 14px; top: 12px; z-index: 1;
   font: 700 .8rem var(--mono); letter-spacing: .1em;
   color: #e9e6dc; background: rgba(25,24,22,.75); border: 1px solid #e9e6dc; padding: .2rem .5rem;
 }
 @media (max-width: 820px) {
-  .hero-grid { grid-template-columns: 1fr; }
-  .hero-left { min-height: 0; }
-  .hero-right { border-left: 0; border-top: 2px solid var(--line); min-height: 300px; }
-}
-@media (max-width: 480px) {
-  .hero-cells .cell { padding: .8rem .7rem; }
-  .hero-cells .cell.logo img { width: 40px; height: 40px; }
-  .hero-cells .cell.list { font-size: .55rem; letter-spacing: .08em; white-space: nowrap; }
-  .hero-cells .cell.stat { font-size: 1.6rem; }
+  .splash { grid-template-columns: 1fr; min-height: 0; }
+  .splash-left { padding: 3rem 16px; }
+  .splash-right { min-height: 58vh; }
 }
 
-/* Under the window: one sentence and the buttons. */
-.hero-under { padding: 1.6rem 0 0; max-width: 46rem; }
-.hero-under .lead { font-size: 1.15rem; color: var(--muted); }
+/* The lead paragraph at the top of a tab's page. */
+.lead { font-size: 1.15rem; color: var(--muted); max-width: 46rem; }
+.page { padding: 2.5rem 0 4rem; }
+.page section { padding: 2.5rem 0 0; border: 0; }
 
 .actions { display: flex; gap: .7rem; flex-wrap: wrap; margin-top: 1.2rem; }
 .button {
@@ -161,8 +150,8 @@ section + section { border-top: 2px solid var(--line); }
 .kicker::before { content: ""; width: 12px; height: 12px; background: var(--orange); box-shadow: 14px 0 0 var(--yellow); margin-right: 16px; }
 
 /* Cards as one bordered grid, cells sharing lines, each with a pixel-check top. */
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0; margin-top: 1.5rem; border: 2px solid var(--line); background: var(--line); grid-gap: 2px; }
-.card { background: var(--panel); padding: 0 0 1.3rem; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem; margin-top: 1.5rem; }
+.card { background: var(--panel); border: 2px solid var(--line); box-shadow: 4px 4px 0 var(--line); padding: 0 0 1.3rem; }
 .card .check { height: 14px; background-size: 14px 14px; border-bottom: 2px solid var(--line); }
 .card:nth-child(7n+1) .check { background-image: conic-gradient(var(--yellow) 25%, var(--panel) 0 50%, var(--yellow) 0 75%, var(--panel) 0); }
 .card:nth-child(7n+2) .check { background-image: conic-gradient(var(--orange) 25%, var(--panel) 0 50%, var(--orange) 0 75%, var(--panel) 0); }
@@ -204,6 +193,8 @@ section + section { border-top: 2px solid var(--line); }
 footer { border-top: 2px solid var(--line); padding: 2rem 0 3rem; color: var(--muted); font-size: .9rem; margin-top: 3.5rem; }
 footer .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; }
 footer a { color: var(--ink); }
+footer.slim { margin-top: 0; padding: 1.1rem 0; font: .72rem var(--mono); letter-spacing: .04em; }
+footer.slim .cols { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 
 /* The legal pages */
 .legal { max-width: 46rem; padding: 2rem 0 4rem; }

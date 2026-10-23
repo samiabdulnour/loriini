@@ -18,7 +18,8 @@ animation, inline, talking to nothing.
 
 | | |
 |---|---|
-| `site/index.html` | The page: what it makes, how it works, price, download, contact. |
+| `site/index.html` | The front: the name and the picture (the pixel-sun animation until there is a screen recording), nothing else. |
+| `site/makes.html`, `site/works.html`, `site/price.html`, `site/download.html` | The tabs: what it makes, how it works, price, download. Contact lives in every footer. |
 | `site/terms.html`, `site/privacy.html` | The licence terms and the privacy note, **drafts for a lawyer's hour** (licence-model.md §7). |
 | `site/style.css` | The one stylesheet: a warm grey page, charcoal lines, mono labels, and the lorikeet's colours as pixels. |
 | `site/download/` | The current build's zip, put there at deploy time and never committed. |
