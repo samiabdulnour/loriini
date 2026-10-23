@@ -237,6 +237,11 @@ def test_the_info_box_checks_an_online_licence_on_the_spot(
         licence.install(service.issue(seats=4).key)
         licence.renew()
         theme.apply(root)
+        # Shown, as the window is whenever its About button can be pressed.
+        # On a Mac the box opened over a withdrawn root is withdrawn with it,
+        # and root.update() then never returns: the macOS suite hung here
+        # from 20 October until its 30-minute cancel.
+        root.deiconify()
         box = about.show(root)
         try:
             assert box._check.grid_info(), "Check now is there for an online key"
