@@ -1668,7 +1668,7 @@ class Dock(ttk.Frame):
 
     def _light(self, on: bool) -> None:
         """Tint the spine's words under the pointer, as a link is."""
-        self.spine.itemconfigure(self._spine_text, fill=theme.BLUE_DEEP if on else theme.BODY)
+        self.spine.itemconfigure(self._spine_text, fill=theme.ON_ACCENT if on else theme.BODY)
 
     def fold(self, shut: bool, *, by_hand: bool = True) -> None:
         """Put the panel away, or bring it back."""
@@ -1799,10 +1799,12 @@ class Dock(ttk.Frame):
             paper.tag_lower(under)
 
         def lit(on: bool) -> None:
-            # The sheet under the pointer takes the blue edge, which is what
+            # The sheet under the pointer takes the ink edge, which is what
             # says the figures in the band below belong to *this* one.
             resting = theme.EDGE if sheet.paper else ""
-            paper.itemconfigure("edge", outline=theme.BLUE if on else resting, width=2 if on else 1)
+            paper.itemconfigure(
+                "edge", outline=theme.ON_ACCENT if on else resting, width=2 if on else 1
+            )
             self._on_pick(sheet if on else None)
 
         paper.bind("<Enter>", lambda _event: lit(True), add="+")

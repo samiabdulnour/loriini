@@ -60,8 +60,18 @@ GREY_D = "#9A9992"
 #: here that is not a drawing decision. GREY_D is a shading grey and reads
 #: at about 2.8:1 on white, which is under the 3:1 a control boundary owes
 #: the eye; this is the window's own field edge and clears it.
-CONTROL_EDGE = "#8D8D8D"
+CONTROL_EDGE = "#8A8980"
 GROUND = "#EDEBE4"
+#: The accent the window's controls wear since D132: pale lemon, ink on it.
+#: ``theme.ACCENT`` and its tint and edge are the same three numbers, and
+#: they have to be: a switch drawn here sits on a row the theme colours.
+ACCENT = "#FFF07A"
+ACCENT_T = "#FFF9CF"
+ACCENT_EDGE = "#E6D65A"
+#: The faces' greys: a button's edge, a control that is off, a divider.
+FACE_EDGE = "#CFCEC3"
+OFF = "#ECEBE2"
+DIVIDER = "#E3E2D8"
 BLUE = "#1E63C8"
 BLUE_T = "#C3D7F5"
 BLUE_D = "#14417F"
@@ -810,10 +820,10 @@ def furniture() -> list[Icon]:
         ),
         Icon(
             "tick_on",
-            "a filled box with the tick knocked out of it",
+            "a box filled with the accent, the tick in ink on it",
             [
-                Round(5, 5, 22, 22, 5.5, fill=BLUE, outline=BLUE_D, width=1.7),
-                Line(((10.5, 16.5), (14.5, 21), (22, 11)), fill=PAPER, width=3.0),
+                Round(5, 5, 22, 22, 5.5, fill=ACCENT, outline=ACCENT_EDGE, width=1.7),
+                Line(((10.5, 16.5), (14.5, 21), (22, 11)), fill=INK, width=3.0),
             ],
         ),
     ]
@@ -1558,10 +1568,10 @@ PANEL_HEAD = 32
 #: The tint of an open study's header, and of one that is switched off. The
 #: window's ``Study.TCheckbutton`` styles sit on top of these and must match
 #: them to the digit, or the tick shows as a patch on its own header.
-HEAD_ON = "#E8F0FC"
+HEAD_ON = ACCENT_T
 HEAD_OFF = "#FFFFFF"
 #: A panel's edge when it is not switched on. ``theme.PANEL_EDGE``.
-PANEL_EDGE = "#CFCFCF"
+PANEL_EDGE = DIVIDER
 
 
 @dataclass(frozen=True)
@@ -1574,7 +1584,7 @@ class Face:
     weight: float = 1.0
     wide: int = 16
     tall: int = 16
-    radius: float = 4.0
+    radius: float = 8.0
     #: Round only the top two corners: a tab, which is square where it joins
     #: the page beneath it.
     square_foot: bool = False
@@ -1617,56 +1627,53 @@ RAISED = {**BUTTON, "room_for_lift": True}
 #: How much of a box is drawn under its header, for the same reason.
 PANEL_BODY = 288
 
-#: Every face the window wears. A two-stop fill a few per cent apart is what
-#: stops a flat colour looking painted on rather than sitting there; pressed
-#: and disabled faces are flat on purpose, because a control that is down or
-#: dead is not catching any light.
+#: Every face the window wears. Flat since D132: one colour, one edge, no
+#: ramp and no lift. What a control is doing is said by which face it wears,
+#: never by a highlight on the face.
 FACES: dict[str, Face] = {
-    "face_up": Face("#FDFCFA", "#F1F0EB", "#C7C6C0", lift=True, **RAISED),
-    "face_hover": Face("#FFFFFF", "#F7F6F2", BLUE_EDGE, lift=True, **RAISED),
-    "face_down": Face("#E4E4E4", "#E4E4E4", BLUE_EDGE, **RAISED),
-    "face_off": Face("#E4E4E4", "#E4E4E4", "#DCDCDC", **RAISED),
+    "face_up": Face("#FFFFFF", "#FFFFFF", FACE_EDGE, **RAISED),
+    "face_hover": Face("#FFFFFF", "#FFFFFF", ACCENT_EDGE, **RAISED),
+    "face_down": Face(ACCENT_T, ACCENT_T, ACCENT_EDGE, **RAISED),
+    "face_off": Face(OFF, OFF, DIVIDER, **RAISED),
     # Run is the one filled control in the window: the action every page
     # leads to, so it is the one thing on the run bar that does not look like
     # the four settings buttons beside it. Off, it wears ``face_off`` like any
     # other button and says why in its words.
-    "face_run": Face("#2A6FD4", BLUE, BLUE_D, lift=True, **RAISED),
-    "face_run_hover": Face("#3A7DE0", "#2369CF", BLUE_D, lift=True, **RAISED),
-    "face_run_down": Face(BLUE_D, BLUE_D, BLUE_D, **RAISED),
-    # The chosen tile keeps the tint Run used to wear: a choice made is not
-    # an action waiting.
+    "face_run": Face(ACCENT, ACCENT, ACCENT, **RAISED),
+    "face_run_hover": Face("#FFEA55", "#FFEA55", ACCENT_EDGE, **RAISED),
+    "face_run_down": Face("#F2DC3A", "#F2DC3A", ACCENT_EDGE, **RAISED),
     # Chosen is filled, the way a segmented control in Archicad marks the
-    # segment that is on: blue, with the word knocked out white.
-    "face_chosen": Face("#2A6FD4", BLUE, BLUE_D, lift=True, **RAISED),
+    # segment that is on: the accent, with the word in ink on it.
+    "face_chosen": Face(ACCENT, ACCENT, ACCENT, **RAISED),
     "field": Face("#FFFFFF", "#FFFFFF", CONTROL_EDGE, **BUTTON),
     # Focus is the edge going blue and thickening, not a glow. A ring outside
     # the border would have to live inside the nine-slice, and every pixel it
     # took would come off the corner radius.
-    "field_focus": Face("#FFFFFF", "#FFFFFF", BLUE, weight=1.8, **BUTTON),
-    "field_off": Face("#E4E4E4", "#E4E4E4", "#DCDCDC", **BUTTON),
-    "chip": Face("#EDF3FD", "#E3ECFA", BLUE_EDGE, wide=128, tall=24),
-    "add": Face("#FFFFFF", "#FFFFFF", CONTROL_EDGE, **BUTTON),
-    "add_hover": Face("#F2F7FE", "#E8F0FC", BLUE, **BUTTON),
-    "add_down": Face(BLUE_EDGE, BLUE_EDGE, BLUE_D, **BUTTON),
+    "field_focus": Face("#FFFFFF", "#FFFFFF", INK, weight=1.8, **BUTTON),
+    "field_off": Face(OFF, OFF, DIVIDER, **BUTTON),
+    "chip": Face(ACCENT_T, ACCENT_T, ACCENT_EDGE, wide=128, tall=24),
+    "add": Face("#FFFFFF", "#FFFFFF", FACE_EDGE, **BUTTON),
+    "add_hover": Face(ACCENT_T, ACCENT_T, ACCENT_EDGE, **BUTTON),
+    "add_down": Face(ACCENT, ACCENT, ACCENT_EDGE, **BUTTON),
     # A pill, and the only one: a bar is the single control whose ends mean
     # nothing, so nothing is lost by rounding them away.
-    "bar_trough": Face("#FFFFFF", "#FFFFFF", "#DCDCDC", wide=256, tall=10, radius=5),
-    "bar_fill": Face("#2A6FD4", BLUE, wide=256, tall=10, radius=5),
-    "thumb": Face("#C9C8C3", "#C9C8C3", wide=12, tall=96, radius=4, margin=2),
-    "thumb_hover": Face("#ADACA6", "#ADACA6", wide=12, tall=96, radius=4, margin=2),
+    "bar_trough": Face(OFF, OFF, DIVIDER, wide=256, tall=10, radius=5),
+    "bar_fill": Face(ACCENT, ACCENT, wide=256, tall=10, radius=5),
+    "thumb": Face(FACE_EDGE, FACE_EDGE, wide=12, tall=96, radius=4, margin=2),
+    "thumb_hover": Face("#B5B4AA", "#B5B4AA", wide=12, tall=96, radius=4, margin=2),
     # A study's box. The header's tint and the rule under it are part of the
     # picture, so the corners of the tint are the corners of the box and not
     # a square patch poking out past a curve.
     "panel_on": Face(
         "#FFFFFF",
         "#FFFFFF",
-        BLUE_EDGE,
+        ACCENT_EDGE,
         wide=480,
         tall=PANEL_HEAD + PANEL_BODY,
-        radius=6,
+        radius=12,
         cap=HEAD_ON,
         cap_tall=PANEL_HEAD,
-        cap_rule=BLUE_EDGE,
+        cap_rule=ACCENT_EDGE,
     ),
     "panel_off": Face(
         "#FFFFFF",
@@ -1674,22 +1681,22 @@ FACES: dict[str, Face] = {
         PANEL_EDGE,
         wide=480,
         tall=PANEL_HEAD + PANEL_BODY,
-        radius=6,
+        radius=12,
         cap=HEAD_OFF,
         cap_tall=PANEL_HEAD,
-        cap_rule="#DCDCDC",
+        cap_rule=DIVIDER,
     ),
-    # The open page in the sidebar: a rounded blue bar the row's words and
-    # switch sit on, white on blue, the way Archicad marks the chosen page of
-    # a settings dialog.
-    "side_open": Face(BLUE, BLUE, wide=256, tall=40, radius=6),
-    # The count beside a page in the sidebar, as a pill: tinted on the grey,
-    # and the deep blue on the open row's blue.
-    "badge": Face("#CFDDF5", "#CFDDF5", wide=96, tall=24, radius=8),
-    "badge_open": Face(BLUE_D, BLUE_D, wide=96, tall=24, radius=8),
+    # The open page in the sidebar: a rounded bar in the accent the row's
+    # words and switch sit on, ink on lemon, the way Archicad marks the
+    # chosen page of a settings dialog.
+    "side_open": Face(ACCENT, ACCENT, wide=256, tall=40, radius=10),
+    # The count beside a page in the sidebar, as a pill: tinted on the
+    # surround, and white on the open row's accent.
+    "badge": Face(ACCENT_T, ACCENT_T, wide=96, tall=24, radius=8),
+    "badge_open": Face("#FFFFFF", "#FFFFFF", wide=96, tall=24, radius=8),
     # The card at the foot of the sidebar that explains whatever is under the
-    # pointer: a shade off white, one thin edge, rounded like a panel.
-    "helpcard": Face("#F7F7F7", "#F7F7F7", PANEL_EDGE, wide=256, tall=320, radius=8),
+    # pointer: white, one thin edge, rounded like a panel.
+    "helpcard": Face("#FFFFFF", "#FFFFFF", PANEL_EDGE, wide=256, tall=320, radius=12),
 }
 
 #: What the first rounded build wrote, with a size in the name. Removed on the
@@ -1761,14 +1768,16 @@ def face(spec: Face) -> Image.Image:
 
 
 #: The switch a study is turned on with: a pill and a knob, 28 by 16, drawn
-#: at its size rather than as a nine-slice -- it is never stretched. Three of
-#: them: off is grey with a white knob, on is blue with a white knob, and on
-#: the open sidebar row, which is blue already, on is white with a blue knob.
+#: at its size rather than as a nine-slice -- it is never stretched. Off is
+#: grey with a white knob; on is ink with a knob in the accent, the one dark
+#: shape in the window, so it reads as *on* on the surround and on the open
+#: row's accent alike. The off switch on that row takes a deeper lemon track
+#: so it does not vanish into the bar.
 SWITCHES: dict[str, tuple[str, str, bool]] = {
-    "switch_off": ("#B5B5B5", "#FFFFFF", False),
-    "switch_on": (BLUE, "#FFFFFF", True),
-    "switch_on_light": ("#FFFFFF", BLUE, True),
-    "switch_off_light": ("#7FA6E3", "#FFFFFF", False),
+    "switch_off": (FACE_EDGE, "#FFFFFF", False),
+    "switch_on": (INK, ACCENT, True),
+    "switch_on_light": (INK, ACCENT, True),
+    "switch_off_light": ("#E9DC72", "#FFFFFF", False),
 }
 
 
