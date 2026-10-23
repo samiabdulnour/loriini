@@ -47,6 +47,15 @@ from sun_study.archicad.connection import (
     find_instances,
     where_archicad_actually_is,
 )
+from sun_study.archicad.cos_schedule import (
+    KEEP_CLEAR_MM,
+    HourFills,
+    ScheduleView,
+    clock_words,
+    find_schedule,
+    place_schedule,
+    tag_hours,
+)
 from sun_study.archicad.draw import (
     DEFAULT_BANDS,
     BandStyle,
@@ -484,6 +493,9 @@ def run(
             ),
         ),
     ] = None,
+    see_through_glass: Annotated[
+        int | None, typer.Option("--see-through-glass", help=SEE_THROUGH_GLASS_HELP)
+    ] = None,
     csv_out: Annotated[
         Path | None, typer.Option("--csv", help="Write per-apartment results as CSV.")
     ] = None,
@@ -507,6 +519,7 @@ def run(
         offset=offset,
         context_radius=context_radius,
         exclude_above=exclude_above,
+        see_through_glass=see_through_glass,
     )
 
     rules = _ruleset_for(ruleset, date=date)
@@ -1165,8 +1178,14 @@ def report_zone_bands(
     sheets_mode: str = "one",
     fill_name: str = "",
     outline: bool = True,
+    schedule_name: str = "",
 ) -> bool:
     """Draw the measured Zones on the plan, banded by hours of sun.
+
+    ``schedule_name`` is a schedule of the project's -- the office's ``Areas
+    COS solar`` -- to put on the hourly sheets in place of the drawn table,
+    with each hour's time and share written onto its sunlit fills for it to
+    list. See ``cos_schedule``.
 
     The apartment diagrams fit the export's frame onto the project's from
     matched apartments. There are none here, so the pairing is done on Zones:
@@ -1313,6 +1332,8 @@ def report_zone_bands(
     #: area, share -- and reading it off seven separate sheets is the thing
     #: grouping them was meant to stop.
     by_hour: list[TableRow] = []
+    #: Each hour's sunlit fills, for the schedule to list them by.
+    hour_fills: list[HourFills] = []
     tables: dict[str, Sequence[TableRow]] = {}
     titles: dict[str, str] = {}
     problem = False
@@ -1455,6 +1476,11 @@ def report_zone_bands(
             ]
             titles[label] = f"Communal open space in sun at {clock}, {result.assessment_date:%d %B}"
             by_hour.append(TableRow(clock, area, share, fill_pen=sun.fill_pen))
+            hour_fills.append(
+                HourFills(clock_words(when_at), share, drawn.fills_of(f"in sun at {clock}"))
+            )
+
+    schedule = _cos_schedule(connection, schedule_name, hour_fills, hourly=hourly, sheet=sheet)
 
     if sheet and not storeys:
         typer.secho(
@@ -1515,6 +1541,7 @@ def report_zone_bands(
                 every_sheet_title=(
                     f"Sunlit communal open space by hour, {result.assessment_date:%d %B}"
                 ),
+                schedule=schedule,
                 **common,  # type: ignore[arg-type]
             )
 
@@ -1741,6 +1768,59 @@ def _draw_zone_groups(
         return None
     typer.echo(drawn.describe())
     return drawn
+
+
+def _cos_schedule(
+    connection: ArchicadConnection,
+    name: str,
+    hours: Sequence[HourFills],
+    *,
+    hourly: bool,
+    sheet: bool,
+) -> ScheduleView | None:
+    """Write each hour's time and share onto its fills; find the schedule that lists them.
+
+    ``None`` -- and the drawn table on the sheet, as before -- when no schedule
+    was named, when the project has none by that name, or when the values did
+    not all land. A schedule whose time and share columns are half empty is a
+    worse table than the one it would replace, so it is not swapped in.
+    """
+    if not name:
+        return None
+    typer.echo("")
+    if not hourly:
+        typer.secho(
+            f"  {name!r} lists the hourly plans' fills, and this run draws none: "
+            f"--zone-schedule needs --zone-hourly",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        return None
+    tagged = tag_hours(connection, hours)
+    if not tagged.complete:
+        typer.secho(tagged.describe(), fg=typer.colors.YELLOW, err=True)
+        typer.secho("  the sheets carry the drawn table instead", fg=typer.colors.YELLOW, err=True)
+        return None
+    typer.echo(tagged.describe())
+    if not sheet:
+        return None
+    try:
+        found = find_schedule(connection, name)
+    except ArchicadError as error:
+        typer.secho(
+            f"  {error}; the sheets carry the drawn table", fg=typer.colors.YELLOW, err=True
+        )
+        return None
+    if found is None:
+        typer.secho(
+            f"  the project has no schedule called {name!r}, so the sheets carry the drawn "
+            f"table. Import the office's scheme (Scheme Settings > Import) and run again.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        return None
+    typer.echo(f"  the hourly sheets carry the schedule {found.name!r} in place of the drawn table")
+    return found
 
 
 #: Refusals `_say_once` has already printed, so a run states each one once.
@@ -2512,6 +2592,7 @@ def _sheet_per_instant(
     every_sheet_title: str = "",
     sheets: str = "each",
     paper: PaperSink | None = None,
+    schedule: ScheduleView | None = None,
 ) -> None:
     """A layer combination, a set of views and the Layouts ``sheets`` says.
 
@@ -2526,6 +2607,12 @@ def _sheet_per_instant(
     one grid, or one each (the default here, which is what the study sheets
     were before there was a choice). With ``per_storey`` it deals each
     storey's hours the same way.
+
+    ``schedule`` goes on every sheet in place of the drawn table: by its top
+    left corner, in the column beside the title block, which the plans are
+    then dealt clear of. Placed with the plans, before the save, so a
+    Teamwork project that will not save still gets it. Not on paper, where
+    the study is drawn on the sheet and there are no fills for it to list.
 
     ``folder`` and the clearing out of the last run both belong to the *run*,
     not to this call: a study makes two sets of sheets and each of them
@@ -2638,6 +2725,10 @@ def _sheet_per_instant(
                 name = f"{prefix} {sheet_title(chunk_labels)}".strip()
             grouped.append((name, chunk_labels, chunk_views, cells))
 
+    if paper is not None:
+        schedule = None
+    #: The sheets the schedule went onto, which take no drawn table.
+    scheduled: set[str] = set()
     for name, chunk_labels, views, cells in grouped:
         try:
             placed = layout_from_views(
@@ -2647,6 +2738,7 @@ def _sheet_per_instant(
                 scale=scale,
                 master_layout=master_layout,
                 cells=cells,
+                keep_clear_mm=KEEP_CLEAR_MM if schedule is not None else 0.0,
             )
         except ArchicadError as error:
             typer.secho(f"  {name}: {error}", fg=typer.colors.RED, err=True)
@@ -2654,6 +2746,18 @@ def _sheet_per_instant(
         typer.echo(f"  {name}: {placed.describe().splitlines()[0]}")
         finished.append((name, placed.database_id, chunk_labels, cells))
         sheet_views[name] = list(views)
+        if schedule is not None and placed.sheet is not None:
+            try:
+                place_schedule(connection, placed.database_id, schedule, legend_place(placed.sheet))
+            except ArchicadError as error:
+                typer.secho(
+                    f"    {name}: {error}; the drawn table goes on instead",
+                    fg=typer.colors.YELLOW,
+                    err=True,
+                )
+            else:
+                scheduled.add(name)
+                typer.echo(f"    {name}: schedule {schedule.name!r} placed beside the plans")
 
     if not finished:
         return
@@ -2744,7 +2848,15 @@ def _sheet_per_instant(
         for label, database_id, chunk_labels, cells in finished:
             try:
                 sheet, _ = layout_sheet(connection, database_id)
-                pass_over = straighten_and_tile(connection, database_id, sheet, cells=cells)
+                leave: tuple[str, ...] = ()
+                if label in scheduled and schedule is not None:
+                    # Dealt clear of the schedule's column, and the schedule
+                    # itself left where it was put, at its own size.
+                    sheet = replace(sheet, right_mm=sheet.right_mm + KEEP_CLEAR_MM)
+                    leave = (schedule.name,)
+                pass_over = straighten_and_tile(
+                    connection, database_id, sheet, cells=cells, leave=leave
+                )
                 # ``every_sheet_table`` wins where it is given: a per-storey sheet
                 # is not one instant, so there is no per-label table to look up --
                 # what belongs on it is the whole day, the same on each storey.
@@ -2762,7 +2874,7 @@ def _sheet_per_instant(
                         beside=table_beside,
                         height_mm=table_height_mm,
                     )
-                    if rows
+                    if rows and label not in scheduled
                     else 0
                 )
             except ArchicadError as error:
@@ -3054,6 +3166,25 @@ def band_styles(overrides: list[str] | None) -> tuple[BandStyle, ...]:
     )
 
 
+#: ``--see-through-glass``, said once for the three commands that measure sun,
+#: so they cannot come to mean different things by it.
+SEE_THROUGH_GLASS_HELP = (
+    "Let sun through glass: every surface at least this transparent, in percent. "
+    "30 takes all the glass in an office's surfaces, tinted and frosted too; 80 "
+    "clear glass only. Glass balustrades, screens and canopies stop casting "
+    "shade; windows, doors, skylights and curtain walls stay solid. Needs the "
+    "add-on's own export, which says how transparent each surface is. Left "
+    "out, all glass is solid."
+)
+
+
+def glass_percent(value: int | None) -> int | None:
+    """``--see-through-glass`` checked: a percentage, or nothing."""
+    if value is not None and not 1 <= value <= 100:
+        raise typer.BadParameter("takes a percentage, 1 to 100", param_hint="--see-through-glass")
+    return value
+
+
 def scene_config(
     *,
     timezone: str,
@@ -3071,6 +3202,7 @@ def scene_config(
     exclude_above: float | None = None,
     exclude_below: float | None = None,
     patch_grid: float | None = None,
+    see_through_glass: int | None = None,
 ) -> SceneConfig:
     """Turn the shared scene options into a config.
 
@@ -3094,6 +3226,7 @@ def scene_config(
         exclude_above_m=exclude_above,
         exclude_below_m=exclude_below,
         floor_patch_spacing_m=patch_grid,
+        see_through_glass_pct=glass_percent(see_through_glass),
     )
 
 
@@ -3575,6 +3708,22 @@ def massing(
             ),
         ),
     ] = False,
+    zone_schedule: Annotated[
+        str,
+        typer.Option(
+            "--zone-schedule",
+            help=(
+                "A schedule of the project's -- 'Areas COS solar' in the office "
+                "template -- to put on the hourly sheets in place of the drawn "
+                "table. Each hour's sunlit fills get its time ('9 AM') and share "
+                "('68.8%') as the IFC properties Time and Percentage, in the set "
+                "'Solar Analysis', for the schedule to list; Archicad sums the area "
+                "itself. Archicad cannot make a schedule through its API, so the "
+                "scheme has to be in the project. Needs --zone-hourly, and Archicad "
+                "26 to 28: 29 and 30 cannot store an IFC property from an add-on."
+            ),
+        ),
+    ] = "",
     zone_storey: Annotated[
         list[str] | None,
         typer.Option(
@@ -3612,6 +3761,9 @@ def massing(
                 "finer grid than a whole site can afford."
             ),
         ),
+    ] = None,
+    see_through_glass: Annotated[
+        int | None, typer.Option("--see-through-glass", help=SEE_THROUGH_GLASS_HELP)
     ] = None,
     zone_subset: Annotated[
         str,
@@ -4019,6 +4171,7 @@ def massing(
         zone_storeys=tuple(zone_storey or ()),
         zone_height_m=zone_height,
         zone_spacing_m=zone_grid,
+        see_through_glass_pct=glass_percent(see_through_glass),
     )
 
     try:
@@ -4135,6 +4288,7 @@ def massing(
             max_residual_m=zone_max_residual,
             fill_name=zone_fill,
             outline=zone_outline,
+            schedule_name=zone_schedule,
         ):
             raise typer.Exit(code=1)
 
@@ -5779,6 +5933,9 @@ def archicad_run(
             ),
         ),
     ] = None,
+    see_through_glass: Annotated[
+        int | None, typer.Option("--see-through-glass", help=SEE_THROUGH_GLASS_HELP)
+    ] = None,
     plan_instant: Annotated[
         list[str] | None,
         typer.Option(
@@ -6033,6 +6190,7 @@ def archicad_run(
             if (series_worksheet or plan_instant or plan_bands or plan_hours)
             else None
         ),
+        see_through_glass=see_through_glass,
     )
 
     with tempfile.TemporaryDirectory(prefix="sun-study-") as scratch:

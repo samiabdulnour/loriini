@@ -18,7 +18,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from sun_study.ingest.native import MAGIC, VERSION, NativeModelError, read_native_model
+from sun_study.ingest.native import (
+    MAGIC,
+    VERSION,
+    VERSION_WITH_TRANSPARENCY,
+    NativeModelError,
+    read_native_model,
+)
 
 
 def _text(value: str) -> bytes:
@@ -52,6 +58,9 @@ def write_model(
         triangles = np.asarray(element["triangles"], dtype=np.float32).reshape(-1, 3, 3)
         out += struct.pack("<I", len(triangles))
         out += triangles.astype(np.float32).tobytes()
+        if version == VERSION_WITH_TRANSPARENCY:
+            shades = element.get("transparency", [0] * len(triangles))
+            out += np.asarray(shades, dtype=np.uint8).tobytes()
     path.write_bytes(bytes(out))
     return path
 
@@ -164,7 +173,7 @@ def test_a_version_this_reader_does_not_know_is_refused_rather_than_guessed(
     path = write_model(
         tmp_path / "future.loriini",
         [{"guid": "g", "layer": "L", "kind": "IfcWall", "name": "", "triangles": FLAT}],
-        version=VERSION + 1,
+        version=VERSION_WITH_TRANSPARENCY + 1,
     )
     with pytest.raises(NativeModelError, match="version"):
         read_native_model(path)
@@ -281,3 +290,47 @@ def test_version_two_is_refused_because_its_library_parts_were_misplaced(
     )
     with pytest.raises(NativeModelError, match="version"):
         read_native_model(path)
+
+
+def test_version_four_carries_each_triangles_transparency(tmp_path: Path) -> None:
+    """A byte a triangle, after its corners, so a glass panel can be told
+    from the rail it hangs on -- and the element after it still reads."""
+    two = [*FLAT, [[0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0]]]
+    path = write_model(
+        tmp_path / "glass.loriini",
+        [
+            {
+                "guid": "RAIL",
+                "layer": "01 | Balustrade",
+                "kind": "IfcBuildingElementProxy",
+                "name": "PANEL -001",
+                "triangles": two,
+                "transparency": [88, 0],
+            },
+            {
+                "guid": "WALL",
+                "layer": "01 | Wall",
+                "kind": "IfcWall",
+                "name": "",
+                "triangles": FLAT,
+                "transparency": [0],
+            },
+        ],
+        version=VERSION_WITH_TRANSPARENCY,
+    )
+    panel, wall = read_native_model(path).elements
+
+    assert panel.transparency is not None and panel.transparency.tolist() == [88, 0]
+    assert wall.global_id == "WALL"
+    assert wall.mesh.triangle_count == 1
+
+
+def test_version_three_still_reads_and_says_nothing_about_glass(tmp_path: Path) -> None:
+    """An add-on that was not asked, or is older, writes 3: read as before,
+    with no transparency rather than a transparency of nothing."""
+    path = write_model(
+        tmp_path / "plain.loriini",
+        [{"guid": "A", "layer": "", "kind": "IfcWall", "name": "", "triangles": FLAT}],
+    )
+    (wall,) = read_native_model(path).elements
+    assert wall.transparency is None

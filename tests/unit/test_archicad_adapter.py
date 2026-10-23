@@ -2753,6 +2753,48 @@ def test_a_storey_plan_is_placed_at_full_magnification_in_metres() -> None:
     assert all(0.010 <= d["position"]["y"] <= 0.584 for d in drawings), "on the page, in metres"
 
 
+def test_every_drawing_is_created_square_to_the_sheet() -> None:
+    """Asked at creation, because afterwards does not hold: on Tweed Heads the
+    drawings came down at 349.55 degrees, a written angle left their frames
+    tilted, and the turn that does work waits on a save Teamwork refuses."""
+    connection, transport = connect(_layout_responses())
+    layout_results(connection, [8, 9], layout_name="Solar Analysis", scale=100.0)
+
+    drawings = transport.parameters_for("CreateDrawings")["drawingsData"]
+    assert [d["angle"] for d in drawings] == [0.0, 0.0]
+
+
+def test_an_add_on_that_refuses_the_angle_is_asked_again_without_it() -> None:
+    """An add-on from before the angle was in CreateDrawings' schema refuses
+    the whole call; its drawings are placed and straightened as they were."""
+
+    class Refusing(FakeTransport):
+        def send(self, payload: dict[str, Any]) -> dict[str, Any]:
+            parameters = payload.get("parameters") or {}
+            asked = (parameters.get("addOnCommandParameters") or {}).get("drawingsData") or []
+            if any("angle" in drawing for drawing in asked):
+                self.sent.append(payload)
+                return {
+                    "succeeded": False,
+                    "error": {
+                        "code": 4002,
+                        "message": "Invalid command parameters (Validation failed on schema "
+                        "rule 'additionalProperties' while trying to validate field on "
+                        "path '#/drawingsData/0/angle'.)",
+                    },
+                }
+            return super().send(payload)
+
+    transport = Refusing({"GetAddOnVersion": {"version": "1.5.7"}, **_layout_responses()})
+    connection = ArchicadConnection(transport)
+    report = layout_results(connection, [8, 9], layout_name="Solar Analysis", scale=100.0)
+
+    first, second = transport.all_parameters_for("CreateDrawings")
+    assert all("angle" in d for d in first["drawingsData"])
+    assert not any("angle" in d for d in second["drawingsData"])
+    assert report.drawings_placed == 2
+
+
 def test_the_storeys_are_pinned_to_the_scale_the_run_reports() -> None:
     """Otherwise the drawing inherits whatever scale the storey was saved at,
     and "placed 2 drawings at 1:200" describes something that did not happen."""

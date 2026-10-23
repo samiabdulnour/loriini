@@ -386,16 +386,21 @@ def test_the_communal_study_sends_the_settings_that_change_the_answer(
     assert flag(communal.args, "--zone-grid") == ["0.5"]
 
 
-def test_the_finest_grid_is_offered_wherever_a_solar_study_grids(hidden_window: Any) -> None:
-    """0.2 m on the facade skin, the communal ground and the apartments' floor.
+def test_every_solar_grid_offers_the_same_four_steps(hidden_window: Any) -> None:
+    """Rough 1 m, Normal 0.5 m, Detailed 0.25 m, Finest 0.1 m -- on the facade
+    skin, the communal ground and the apartments' floor alike, so a word on a
+    tile means one grid whichever study it is pressed in.
 
-    Each is a tile of its own row and goes to the run as that study's own
-    flag; the apartments keep 0.25 m unless asked, because that is what the
-    study has always drawn its floors at.
+    Each goes to the run as that study's own flag, and the defaults keep the
+    metres they always had: 0.5 m on the facade and the communal space, 0.25 m
+    on the apartments' floor.
     """
+    steps = {"1.0": "Rough", "0.5": "Normal", "0.25": "Detailed", "0.1": "Finest"}
     rows = (hidden_window.grid_m, hidden_window.communal_grid, hidden_window.floor_grid)
     for row in rows:
-        assert "0.2" in row._buttons
+        assert list(row._buttons) == list(steps)
+        assert {value: button.cget("text") for value, button in row._buttons.items()} == steps
+    assert [row.get() for row in rows] == ["0.5", "0.5", "0.25"]
 
     def only(tick: Any) -> None:
         for _name, other, _where in hidden_window._studies():
@@ -403,29 +408,70 @@ def test_the_finest_grid_is_offered_wherever_a_solar_study_grids(hidden_window: 
         tick.set(True)
 
     only(hidden_window.do_facade)
-    hidden_window.grid_m.set("0.2")
+    hidden_window.grid_m.set("0.1")
     (facade,) = hidden_window.jobs()
-    assert flag(facade.args, "--model-grid") == ["0.2"]
+    assert flag(facade.args, "--model-grid") == ["0.1"]
 
     only(hidden_window.do_communal)
     hidden_window.communal.set("06 | Zone.Balcony")
-    hidden_window.communal_grid.set("0.2")
+    hidden_window.communal_grid.set("0.25")
     (communal,) = hidden_window.jobs()
-    assert flag(communal.args, "--zone-grid") == ["0.2"]
+    assert flag(communal.args, "--zone-grid") == ["0.25"]
 
     only(hidden_window.do_plans)
     hidden_window.apartments.set("06 | Zone.Units")
     (plans,) = hidden_window.jobs()
     assert flag(plans.args, "--patch-grid") == ["0.25"]
-    hidden_window.floor_grid.set("0.2")
+    hidden_window.floor_grid.set("0.1")
     (plans,) = hidden_window.jobs()
-    assert flag(plans.args, "--patch-grid") == ["0.2"]
+    assert flag(plans.args, "--patch-grid") == ["0.1"]
+    hidden_window.floor_grid.set("1.0")
+    (plans,) = hidden_window.jobs()
+    assert flag(plans.args, "--patch-grid") == ["1.0"]
     hidden_window.plan_kinds.set("Apartment total")
     (plans,) = hidden_window.jobs()
     assert not flag(plans.args, "--patch-grid"), "no floor plan, no second ray cast"
 
     hidden_window.apply({"floor_grid": "0.25"})
     assert hidden_window.floor_grid.get() == "0.25"
+
+
+def test_a_step_from_before_the_four_is_kept_rather_than_rounded(hidden_window: Any) -> None:
+    """0.2 m was Finest and 2 m was Rough until the steps were redone. A
+    settings file holding either still sends it, with no tile lit, rather
+    than being moved to a neighbour and measuring something else unsaid."""
+    hidden_window.apply({"communal_grid": "0.2", "floor_grid": "0.2"})
+    assert hidden_window.communal_grid.get() == "0.2"
+    assert hidden_window.floor_grid.get() == "0.2"
+    assert "0.2" not in hidden_window.communal_grid._on & set(hidden_window.communal_grid._buttons)
+
+
+def test_see_through_glass_goes_to_all_three_solar_studies_and_no_other(
+    hidden_window: Any,
+) -> None:
+    """One choice, in the card the three share. Solid sends nothing, which is
+    the command's own default; the shadow diagram is not a solar study."""
+    assert set(hidden_window.see_glass._buttons) == {"off", "30", "80"}
+    assert hidden_window.see_glass.get() == "off"
+    hidden_window.apartments.set("06 | Zone.Units")
+    hidden_window.communal.set("06 | Zone.Balcony")
+    for tick in (hidden_window.do_facade, hidden_window.do_plans, hidden_window.do_communal):
+        tick.set(True)
+    hidden_window.do_shadows.set(True)
+
+    assert not any("--see-through-glass" in job.args for job in hidden_window.jobs())
+
+    hidden_window.see_glass.set("30")
+    sent = {job.args[0]: flag(job.args, "--see-through-glass") for job in hidden_window.jobs()}
+    assert sent["massing"] == ["30"]
+    assert sent["archicad-run"] == ["30"]
+    assert sent["shadows"] == []
+    assert (
+        sum(flag(job.args, "--see-through-glass") == ["30"] for job in hidden_window.jobs()) == 3
+    ), "the facade and the communal space are both massing runs"
+
+    hidden_window.apply({"see_through_glass": "80"})
+    assert hidden_window.see_glass.get() == "80"
 
 
 def test_a_neighbouring_layer_is_exported_and_kept_out_of_the_denominator(
@@ -4145,3 +4191,53 @@ def test_a_long_queue_is_counted_rather_than_listed(hidden_window: Any) -> None:
     said = hidden_window.queue_line.cget("text")
     assert len(said) <= window.Window.QUEUE_LONGEST
     assert said.startswith(f"Queued: {len(hidden_window._studies())} studies")
+
+
+def test_the_communal_schedule_goes_with_the_hourly_plans_and_only_when_chosen(
+    hidden_window: Any,
+) -> None:
+    """The schedule lists the hourly plans' fills, so it rides on the hours:
+    asked for without them it would have nothing to list."""
+    hidden_window.communal.set("06 | Zone.Balcony")
+    hidden_window.do_communal.set(True)
+    hidden_window.do_plans.set(True)
+    hidden_window.apartments.set("06 | Zone.Units")
+
+    hidden_window.cos_schedule.set("")
+    _, communal = hidden_window.jobs()
+    assert "--zone-schedule" not in communal.args, "blank draws the table as before"
+
+    hidden_window.cos_schedule.set("Areas COS solar")
+    _, communal = hidden_window.jobs()
+    assert flag(communal.args, "--zone-schedule") == ["Areas COS solar"]
+
+    hidden_window.plan_kinds.set("Bands by hour")
+    _, communal = hidden_window.jobs()
+    assert "--zone-schedule" not in communal.args
+
+
+def test_the_offices_cos_schedule_is_offered_first_and_nothing_else_is_guessed(
+    hidden_window: Any,
+) -> None:
+    """Picked where the project has it; the drawn table where it does not,
+    rather than whichever schedule sorts first; and a "None" chosen by hand
+    survives a Refresh."""
+    offered = (window.NO_SCHEDULE, "Areas COS solar", "Areas COS solar 2hr")
+    hidden_window.cos_schedule.set("")
+    hidden_window._fill(hidden_window.cos_schedule, offered, ("COS solar",))
+    assert hidden_window.cos_schedule.get() == "Areas COS solar"
+
+    hidden_window.cos_schedule.set(window.NO_SCHEDULE)
+    hidden_window._fill(hidden_window.cos_schedule, offered, ("COS solar",))
+    assert hidden_window.cos_schedule.get() == window.NO_SCHEDULE
+
+    hidden_window.cos_schedule.set("")
+    hidden_window._fill(
+        hidden_window.cos_schedule, (window.NO_SCHEDULE, "Areas GFA"), ("COS solar",)
+    )
+    assert hidden_window.cos_schedule.get() == window.NO_SCHEDULE
+
+    hidden_window.communal.set("06 | Zone.Balcony")
+    hidden_window.do_communal.set(True)
+    communal = hidden_window.jobs()[-1]
+    assert "--zone-hourly" in communal.args and "--zone-schedule" not in communal.args

@@ -241,3 +241,39 @@ def test_a_storey_with_no_name_falls_back_to_its_index() -> None:
     blank = NavigatorItem(identifier="x", name="   ", kind="StoryItem", prefix="8")
     assert _storey_label(blank, 8) == "Level 8"
     assert _storey_label(None, 14) == "Level 14"
+
+
+def test_each_fill_drawn_is_reported_with_the_group_it_was_drawn_for() -> None:
+    """What the COS schedule writes an hour's time and share onto: the fills
+    of that hour's sunlit group, and none of its shade or the legend's."""
+    transport = DrawingTransport()
+    positions = np.array(
+        [[0.5, 0.5, 0.0], [1.5, 0.5, 0.0], [10.5, 0.5, 0.0], [11.5, 0.5, 0.0]],
+        dtype=np.float64,
+    )
+    lit = np.array([True, True, False, False])
+    report = draw_cell_groups(
+        ArchicadConnection(transport),
+        groups=[
+            CellGroup("in sun at 09:00", lit, BandStyle("sun", float("inf"), fill_pen=1), 2.0, 0.5),
+            CellGroup("in shade at 09:00", ~lit, BandStyle("shade", 0.0, fill_pen=2), 2.0, 0.5),
+        ],
+        positions=positions,
+        parent_ids=["ifc-lower", "ifc-lower", "ifc-upper", "ifc-upper"],
+        spacing_m=1.0,
+        zone_by_apartment={"ifc-lower": "guid-lower", "ifc-upper": "guid-upper"},
+        zones=[LOWER, UPPER],
+        export_extents={
+            "ifc-lower": np.array([[0.0, 0.0, 0.0], [2.0, 2.0, 0.0]]),
+            "ifc-upper": np.array([[10.0, 0.0, 0.0], [12.0, 2.0, 0.0]]),
+        },
+        layer_name="14 | X",
+    )
+
+    sunlit = report.fills_of("in sun at 09:00")
+    shaded = report.fills_of("in shade at 09:00")
+    assert sunlit and shaded
+    assert len(report.measured) == len(sunlit) + len(shaded) == report.patches
+    assert {fill.element["elementId"]["guid"] for fill in sunlit}.isdisjoint(
+        fill.element["elementId"]["guid"] for fill in shaded
+    )

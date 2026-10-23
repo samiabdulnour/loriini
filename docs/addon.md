@@ -242,6 +242,28 @@ anchor, frame, bounds and the content box from
 coordinate space is a drawing off the page, and this is how that is seen
 rather than guessed.
 
+### `Loriini.GetIfcProperties` and `SetIfcProperties`
+
+What a Fill can carry. A custom property reaches an element only through its
+classification and Archicad will not classify a Fill, so the hour and share a
+COS schedule lists cannot be properties. An IFC property is stored on the
+element itself, and a value typed into a schedule cell against one lands
+there. `SetIfcProperties` writes single-value properties -- text as an
+IfcLabel, a number as an IfcReal -- one result per value, in one undo step;
+`GetIfcProperties` reads back the ones stored on an element, which the JSON
+API never shows.
+
+`ACAPI_Element_SetIFCProperty` is in the kits for Archicad 26 to 28 and gone
+from 29: the IFC API there reads properties and builds them for export hooks,
+and nothing in it stores one on an element. Both commands are registered on
+29 and 30 regardless and answer `APIERR_NOTSUPPORTED` with the reason, so the
+run says why the drawn table went on rather than reporting a missing command.
+
+Tapir's `CreateDrawings` takes an `anchor` beside its `angle`: `topLeft`
+places a drawing by its top-left corner instead of its middle. A schedule's
+size is unknown until Archicad draws it and changes with every row, so its
+corner is the only point that can be put somewhere on purpose.
+
 ### `Loriini.GetCurrentDatabase` and `SetCurrentDatabase`
 
 Where the tool is standing, asked rather than remembered.
