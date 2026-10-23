@@ -3404,6 +3404,39 @@ def test_the_strip_always_has_exactly_one_tab_open(hidden_window: Any) -> None:
     assert hidden_window._open_section() == window.Window.SHADOWS
 
 
+def test_a_page_settles_in_from_the_side_you_came_from(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Down the sidebar, the page rises into place; up it, the page drops.
+    Only on a screen, and only where the system has not asked for less
+    movement; the page is in place from the moment it is opened either way,
+    so nothing in the window waits on the movement."""
+    from sun_study.app import motion
+
+    made = hidden_window
+    asked: list[bool] = []
+
+    def arrive(self: Any, from_below: bool) -> None:
+        asked.append(from_below)
+
+    monkeypatch.setattr(window.Scroller, "arrive", arrive)
+    made._show_section(window.Window.GENERAL)
+    made._show_section(window.Window.SHADOWS)
+    assert asked == [], "a window nobody can see has nothing to show arriving"
+
+    monkeypatch.setattr(made, "_on_screen", lambda: True)
+    monkeypatch.setattr(motion, "reduced", lambda: True)
+    made._show_section(window.Window.GENERAL)
+    assert asked == [], "and none where the system was asked for none"
+
+    monkeypatch.setattr(motion, "reduced", lambda: False)
+    made._show_section(window.Window.SHADOWS)
+    made._show_section(window.Window.GENERAL)
+    made._show_section(window.Window.GENERAL)
+    assert asked == [True, False], "down, then up, and not at all for the same page"
+    assert made._open_section() == window.Window.GENERAL
+
+
 def test_open_and_queued_are_two_marks_and_never_the_same_one(hidden_window: Any) -> None:
     """The fault the launcher had: one blue tint that had to mean both "this
     is the page you are on" and "this will run", and so meant neither.
