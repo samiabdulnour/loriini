@@ -5061,3 +5061,72 @@ and tiles already did.
 The ☰ menu carries About and the web site on both platforms, since the
 menu is where the program's own things now are. Trackpad scrolling follows
 Tk 9's ``<TouchpadScroll>``, which it sends in place of the wheel on a Mac.
+
+### D132 — The window refreshed: a pale accent under ink, rounder corners, a warm ground, Inter
+
+Asked 23 October 2026, after the web site was rebuilt (D-site, `docs/website.md`)
+and the window was put beside it: *"have a deep think about good redesign of
+it. to make it look better. maybe more rounded edges. lighter green or
+yellow. just to make it look fresher"*, with two references -- pale lime bars
+under black figures, and a lemon ground under a magenta line -- and, from the
+three drawings that followed, the lemon chosen: *"lemon. build it into the
+app!"* Two earlier drafts were refused on the way and are recorded so they
+are not drawn again: a dense, flat, Ableton-like instrument panel with
+monospace labels (*"too much"*), and pixel marks in the sidebar and on the
+day buttons (*"i dont like the pixel like things. just forget them"*).
+
+**What the references share is one idea.** Both put pale colour under dark
+text. The window did the opposite: a dark blue that carried white, which is
+Windows' own way of saying *chosen*. Flipping that is the whole redesign.
+Once *chosen* is a pale fill with ink on it, the open sidebar row, the chosen
+day, the switch that is on and the Run button all become light shapes on a
+light window instead of dark blocks, and the window lifts without any other
+trick. So the accent is a pale lemon, `theme.ACCENT` `#FFF07A`, with its
+tint `#FFF9CF` for a chosen card's header and a chip, its edge `#E6D65A` for
+a hover and the rule under a chosen header, and `ON_ACCENT`, which is ink,
+for whatever sits on it. Nothing in the interface is blue any more. The
+icons and the sheet thumbnails keep theirs, deliberately: they are pictures
+of the interface drawn in Archicad's blue, and a picture of a chosen thing
+is not the chosen thing. `theme.BLUE` and its three companions stay for
+them, and say so.
+
+**The ground is warm.** `CHROME` is `#F1F0E6`, the web site's sage lightened
+to an off-white; the page is a shade lighter still, `#F8F7F0`, a rounded
+panel the white cards sit on. The sidebar and the dock are the surround's
+own colour: neither is a panel of its own, the rows and the cards on them
+are the things with edges. D109's reason for Archicad's neutral grey -- that
+a warm grey "made it look like a different program parked on top of"
+Archicad -- was weighed and set aside: the warmth is slight, the window
+still sits beside Archicad's grey, and it is the one thing that says the
+window and the site are the same product. The help card at the sidebar's
+foot is a white card like the others.
+
+**Rounder, and flat.** Eight pixels on a control, twelve on a card, ten on
+the open sidebar row; the corner slices of the nine-slice faces follow
+(`FACE_SLICE` 9, `PANEL_SLICE` 13), one more than the radius so the curve
+is never in the part that is tiled. No face is lifted any more: the pixel of
+shadow under a button and the two-stop ramp across it are gone, and a face
+is one colour and one edge. A switch that is on is the one dark shape in
+the window -- an ink track with a lemon knob -- so it reads as *on* on the
+surround and on the open row alike. Fields keep an edge that clears 3:1 on
+white, as before; a button's edge is lighter, as before.
+
+**Inter.** The face the site is set in, carried in `assets/fonts` (Regular
+and Bold, with its OFL licence) and registered for the running process
+alone with `AddFontResourceEx(FR_PRIVATE)` when the theme is applied:
+nothing is installed, no administrator is asked, it is gone when the
+program exits. GDI is what Tk enumerates fonts through on Windows, so a
+face registered that way is one Tk can be given. Anywhere that fails --
+not Windows, no files, a GDI that refuses -- the window is set in Segoe UI
+as it was. A Mac keeps the system's own face (D130). The Windows build
+carries the folder (`Loriini.spec`).
+
+**Where it was decided.** On a design canvas, with the window as built
+rendered beside the drawings from the program's own code, so the comparison
+was against the real thing and not a memory of it. The drawings are
+`Fresh.dc.html` (lime) and `FreshLemon.dc.html`; the window follows the
+lemon one.
+
+*What this does not change:* the layout, the controls, the words, and the
+principles of D109 except where its text named the grey, the blue and Segoe
+UI; those lines in `theme.py`'s docstring now read as D132 has them.

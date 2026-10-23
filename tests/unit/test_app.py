@@ -4045,7 +4045,7 @@ def test_the_programs_actions_share_one_menu(hidden_window: Any) -> None:
 def test_run_is_the_one_filled_button(hidden_window: Any) -> None:
     style = tk.ttk.Style(hidden_window.root)
     assert hidden_window.go.cget("style") == "Run.TButton"
-    assert style.lookup("Run.TButton", "foreground") == theme.SURFACE
+    assert style.lookup("Run.TButton", "foreground") == theme.INK
 
 
 @pytest.mark.skipif(not theme.MACOS, reason="the program menu is a Mac's")

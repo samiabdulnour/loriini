@@ -21,6 +21,10 @@ datas = [(ICON, 'assets')]
 # which reads photographs with it; the icons still never need it.
 # `sun_study.app.icons` looks for them at exactly this path under _MEIPASS.
 datas += [(str(ROOT / 'assets' / 'icons'), 'assets/icons')]
+# The window's face, Inter, with its licence. `sun_study.app.theme` registers
+# the files with Windows for the running process alone, so nothing is
+# installed; without them the window falls back to Segoe UI.
+datas += [(str(ROOT / 'assets' / 'fonts'), 'assets/fonts')]
 # The bird at 256 pixels, for the agent's client to show beside the server's
 # name (`sun_study.agent.tools.icon` looks for it at `assets` under _MEIPASS),
 # and at 32 for the window's tool bar (`sun_study.app.window.brand_mark`).

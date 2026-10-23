@@ -1668,7 +1668,7 @@ class Dock(ttk.Frame):
 
     def _light(self, on: bool) -> None:
         """Tint the spine's words under the pointer, as a link is."""
-        self.spine.itemconfigure(self._spine_text, fill=theme.BLUE_DEEP if on else theme.BODY)
+        self.spine.itemconfigure(self._spine_text, fill=theme.ON_ACCENT if on else theme.BODY)
 
     def fold(self, shut: bool, *, by_hand: bool = True) -> None:
         """Put the panel away, or bring it back."""
@@ -1799,10 +1799,12 @@ class Dock(ttk.Frame):
             paper.tag_lower(under)
 
         def lit(on: bool) -> None:
-            # The sheet under the pointer takes the blue edge, which is what
+            # The sheet under the pointer takes the ink edge, which is what
             # says the figures in the band below belong to *this* one.
             resting = theme.EDGE if sheet.paper else ""
-            paper.itemconfigure("edge", outline=theme.BLUE if on else resting, width=2 if on else 1)
+            paper.itemconfigure(
+                "edge", outline=theme.ON_ACCENT if on else resting, width=2 if on else 1
+            )
             self._on_pick(sheet if on else None)
 
         paper.bind("<Enter>", lambda _event: lit(True), add="+")
@@ -3119,9 +3121,12 @@ class Window:
         self.strip = self.side
         ttk.Frame(middle, style="Rule.TFrame", width=1).pack(side="left", fill="y")
         # At the foot of the sidebar, the card that explains whatever is under
-        # the pointer. Packed before the pages so it keeps the bottom.
+        # the pointer. Made here, packed by ``_strip`` *after* the pages: the
+        # packer gives room in packing order, and a card packed first kept
+        # its whole height on a short screen while the last page's row was
+        # the thing that went unmapped. Packed last it still keeps the
+        # bottom, and is the thing cut when the sidebar is short.
         self.info = InfoBand(self.side)
-        self.info.pack(side="bottom", fill="x")
         Tooltip.band = self.info
 
         self.dock = Dock(middle, on_pick=self._sheet_under, on_fold=self._dock_folded)
@@ -3425,6 +3430,9 @@ class Window:
         """The pages, in their three groups, down the sidebar."""
         pages = ttk.Frame(self.side, style="Side.TFrame")
         pages.pack(side="top", fill="x")
+        # And only now the help card, so the pages are given their height
+        # first and the card takes what is left.
+        self.info.pack(side="bottom", fill="x")
         first = True
         for kind, group in self.GROUPS:
             ttk.Label(pages, text=kind, style="Group.TLabel").pack(

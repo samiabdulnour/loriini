@@ -98,7 +98,7 @@ class LicenceBox(tk.Toplevel):
             relief="flat",
             highlightthickness=1,
             highlightbackground=theme.EDGE,
-            highlightcolor=theme.BLUE,
+            highlightcolor=theme.ON_ACCENT,
         )
         self.text.grid(row=2, column=0, sticky="ew")
         self.text.bind("<<Modified>>", self._changed)

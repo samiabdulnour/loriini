@@ -425,7 +425,9 @@ class Overlay(tk.Toplevel):
             else:
                 self.keyed = True
                 ground = KEY
-        self.configure(background=ground, highlightthickness=1, highlightbackground=theme.BLUE)
+        self.configure(
+            background=ground, highlightthickness=1, highlightbackground=theme.ACCENT_EDGE
+        )
 
         #: The picture, read once and the right way up, at most ``LONGEST_SIDE``
         #: on its longer side; ``None`` until one has been read.
@@ -451,7 +453,7 @@ class Overlay(tk.Toplevel):
 
         self.face = tk.Label(self, bd=0, highlightthickness=0, background=ground)
         self.face.place(x=0, y=0)
-        self.grip = tk.Frame(self, width=HANDLE, height=HANDLE, background=theme.BLUE)
+        self.grip = tk.Frame(self, width=HANDLE, height=HANDLE, background=theme.ACCENT)
         self.grip.place(relx=1.0, rely=1.0, anchor="se")
         # X11's names for the cursors; Tk on Windows maps them to its own.
         for widget, cursor in ((self.face, "fleur"), (self.grip, "bottom_right_corner")):

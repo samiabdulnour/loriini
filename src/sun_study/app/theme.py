@@ -35,19 +35,29 @@ brief in Sami's words: *airy; Archicad's light grey and light blue; Apple kind
 of style; thin contour.* Everything below is one of these, and a change that
 is none of them is a change to argue about first.
 
-1. **Three surfaces, and nothing else is a colour.** The ground is light grey:
-   ``CHROME`` for the window's surround and the dock, ``PAGE`` -- a shade
-   lighter -- for the page a section is laid out on. Anything you edit or
-   anything the run makes is a white card on that ground. Blue tint means
-   chosen or switched on. Ochre is the sun and red is a warning, and neither
-   is ever decoration.
+Refreshed 23 October 2026 (D132), to the brief *fresher: rounder, lighter, a
+pale accent*. The structure is D109's; what changed is the ground, the
+corners, the face, and above all the accent: a pale lemon under dark text
+where a dark blue carried white. Where a principle below says what the
+window does today, the D132 reading is the one that holds.
+
+1. **Three surfaces, and nothing else is a colour.** The ground is a warm
+   off-white: ``CHROME`` for the window's surround, the sidebar and the
+   dock, ``PAGE`` -- a shade lighter -- for the page a section is laid out
+   on. Anything you edit or anything the run makes is a white card on that
+   ground. The accent means chosen or switched on, and it is pale, so what
+   is chosen carries ink, never white. Ochre is the sun and red is a
+   warning, and neither is ever decoration. The icons and the thumbnails
+   keep their blue: they are drawings of the interface, not the interface.
 2. **Thin contours, everywhere a region ends.** A card has a one-pixel edge in
    ``LINE``; a field has one in ``EDGE`` because you can type in it. A
    one-pixel rule in ``LINE`` parts the page from the dock, the body from the
    info band, and the band from the run bar. Nothing is ever framed twice, and
-   nothing heavier than a pixel is drawn.
-3. **One radius scale.** Four pixels on a control, six on a card -- and a tab
-   is a card, as is the page it sits a gap above. Zero on paper and on
+   nothing heavier than a pixel is drawn. No face is lifted: flat, with its
+   edge, and nothing under it.
+3. **One radius scale.** Eight pixels on a control, twelve on a card -- and
+   a tab is a card, as is the page it sits a gap above; the open sidebar row
+   is ten, a chip or a pill is its own half-height. Zero on paper and on
    anything drawn: a sheet has corners, and so does a model.
 4. **Air.** Cards sit sixteen pixels in from the page and eight apart; rows
    step six pixels; the run bar keeps its two kinds of button a clear gap
@@ -60,8 +70,11 @@ is none of them is a change to argue about first.
    the tinted header. No focus ring is drawn on a tab or a tile, because it
    read as a second mark. The count on a card's header is what its tick is
    worth, and the dock draws the same.
-7. **Type is Segoe UI, at the body size the operating system uses.** Titles
-   are bold, hints are ``HINT`` grey and clear 4.5:1, group captions are small
+7. **Type is Inter, at the body size the operating system uses.** The face
+   the web site is set in, carried with the program (``assets/fonts``) and
+   registered for this process alone when the window opens, so nothing is
+   installed; a machine where that fails falls back to Segoe UI. Titles are
+   bold, hints are ``HINT`` grey and clear 4.5:1, group captions are small
    capitals. Nothing on a thumbnail carries anything a person must read. On a
    Mac it is the Mac's own face at the same size on screen -- see ``points``.
 """
@@ -70,52 +83,71 @@ from __future__ import annotations
 
 import sys
 import tkinter as tk
+from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import ttk
 from typing import Any
 
 # -- the palette, the same one the icons are drawn from --------------------
 
-#: Archicad's own chrome, sampled off a screenshot of it rather than guessed:
-#: its toolbars and palette surrounds are a neutral #F0F0F0, its panels are
-#: white, and its field edges are around #8D8D8D. This window sits inside
-#: Archicad all day and an earlier warm grey made it look like a different
-#: program parked on top of it.
-CHROME = "#F4F4F4"
+#: The window's surround, the sidebar and the dock: the warm off-white the
+#: web site's ground is lightened to. It was Archicad's own neutral #F0F0F0
+#: from D109 to D132, sampled so the window would not look like a different
+#: program parked on top of Archicad; the warmth is slight enough that the
+#: window still sits beside Archicad's grey, and it is the one thing that
+#: says the window and the site are the same product.
+CHROME = "#F1F0E6"
 
 #: Where the settings are. White, because the icons are drawn on white and a
 #: sheet of paper on grey is not a sheet of paper. Archicad's panels agree.
 SURFACE = "#FFFFFF"
 
-#: The page a section is laid out on: a step darker than the bars, so the
-#: white panels on it read as panels, the way Archicad's settings dialogs set
-#: their panels on a grey ground.
-PAGE = "#E9E9E9"
+#: The page a section is laid out on: a shade *lighter* than the surround
+#: now, a rounded panel the cards sit on, so the page reads as the lit
+#: thing and the surround as what holds it.
+PAGE = "#F8F7F0"
 
-#: The sidebar of pages down the left, and the sheets panel down the right:
-#: the two columns either side of the page, a step darker again.
-SIDEBAR = "#E1E1E1"
-#: The panel at the foot of the sidebar that explains what is under the
-#: pointer. A shade off white, so it reads as a note rather than a panel.
-HELP = "#F7F7F7"
+#: The sidebar of pages down the left, and the sheets panel down the right.
+#: The surround's own colour: neither is a panel of its own any more, the
+#: rows and the cards on them are the things with edges.
+SIDEBAR = CHROME
+#: The card at the foot of the sidebar that explains what is under the
+#: pointer. A white card like the others.
+HELP = "#FFFFFF"
 #: A panel's edge when its study is off, or it has no study.
-PANEL_EDGE = "#CFCFCF"
+PANEL_EDGE = "#E3E2D8"
 #: The grey of a sidebar group's caption -- SET UP, STUDIES, TOOLS. Darker
-#: than ``HINT`` because it sits on the sidebar's grey, not on white.
-CAPTION = "#5A5A5A"
+#: than ``HINT`` because it sits on the surround, not on white.
+CAPTION = "#5B5A52"
 
 #: A control nobody has chosen, and the trough of the progress bar.
-MUTED = "#E4E4E4"
+MUTED = "#ECEBE2"
 
-INK = "#1F1F1F"
-BODY = "#3C3C3C"
-#: The line under a control. 5.5:1 on white, which is the point of it.
-HINT = "#6A6A6A"
-#: A divider. Archicad's own are lighter than its field edges, and so are
-#: these -- LINE separates, EDGE encloses something you can type in.
-LINE = "#DCDCDC"
-EDGE = "#8D8D8D"
+INK = "#1F1F1D"
+BODY = "#3C3C3A"
+#: The line under a control. 5.3:1 on white, which is the point of it.
+HINT = "#6B6A63"
+#: A divider. Lighter than a field's edge, and warm -- LINE separates, EDGE
+#: encloses something you can type in, and clears 3:1 on white because a
+#: control's boundary owes the eye that much.
+LINE = "#E3E2D8"
+EDGE = "#8A8980"
 
+#: The accent: what is chosen, switched on, or the action a page leads to.
+#: Pale lemon, after the web site's lemon board (D132), and pale on purpose:
+#: it carries ink, never white, so the open row, the chosen day and the Run
+#: button are light shapes on a light window rather than dark blocks.
+ACCENT = "#FFF07A"
+#: The accent's tint, for a chosen card's header and a chip; its edge, for
+#: a hover and the rule under a chosen header; and what sits on it.
+ACCENT_TINT = "#FFF9CF"
+ACCENT_EDGE = "#E6D65A"
+ON_ACCENT = INK
+
+#: The drawings' blue. The icons (``scripts/make_icons.py``) and the sheet
+#: thumbnails are pictures of the interface drawn in Archicad's blue, and
+#: they keep it: a picture of a chosen thing is not the chosen thing. No
+#: control is this colour since D132.
 BLUE = "#1E63C8"
 BLUE_TINT = "#E8F0FC"
 BLUE_EDGE = "#9DBDEB"
@@ -130,9 +162,11 @@ PAD = 8
 #: Type. Segoe UI because this is a Windows tool and it is the face the rest of
 #: the operating system is set in; the log stays monospaced because it prints
 #: layer names and numbers that have to line up.
-#: How many pixels of a face are corner rather than stretch. The faces are
-#: 16 px with a 4 px radius, so 5 leaves the middle 6 to be pulled about.
-FACE_SLICE = 5
+#: How many pixels of a face are corner rather than stretch: one more than
+#: the radius, so the curve is never in the part that is tiled. Controls
+#: are drawn with an 8 px radius, so 9; a card with 12, so 13.
+FACE_SLICE = 9
+PANEL_SLICE = 13
 
 #: How tall a panel's header is. ``scripts/make_icons.py`` holds the same
 #: number, and has to: the header's tint and the rule under it are drawn into
@@ -142,7 +176,7 @@ PANEL_HEAD = 32
 
 #: The tint behind a study's header, on and off. Drawn into the panel faces
 #: and worn by the tick that sits on them, so they have to match to the digit.
-HEAD_ON = BLUE_TINT
+HEAD_ON = ACCENT_TINT
 HEAD_OFF = SURFACE
 
 #: Every button style this theme defines, and which face it wears.
@@ -206,7 +240,7 @@ STANDS_ON: dict[str, str] = {
     # stand on the sidebar's grey.
     "SideRowOpen.TFrame": SIDEBAR,
     "Badge.TLabel": SIDEBAR,
-    "BadgeOpen.TLabel": BLUE,
+    "BadgeOpen.TLabel": ACCENT,
     "Help.TFrame": SIDEBAR,
     "TEntry": SURFACE,
     "TCombobox": SURFACE,
@@ -230,7 +264,7 @@ STANDS_ON: dict[str, str] = {
 INSIDE: dict[str, str] = {
     "Box.TFrame": SURFACE,
     "BoxOff.TFrame": SURFACE,
-    "SideRowOpen.TFrame": BLUE,
+    "SideRowOpen.TFrame": ACCENT,
     "Help.TFrame": HELP,
 }
 
@@ -239,15 +273,77 @@ INSIDE: dict[str, str] = {
 #: the window that has to look different there -- which is the type and the
 #: Dock's icon, and nothing else.
 MACOS = sys.platform == "darwin"
+#: And the Windows build, where the bundled face can be registered.
+WINDOWS = sys.platform == "win32"
 
-#: The face and the log's face. On a Mac, the system's own: Tk gives its
-#: default font the family ``.AppleSystemUIFont``, which is San Francisco --
-#: the Mac's Segoe UI -- and a family Tk cannot find falls back to that same
-#: font rather than failing, so this cannot leave a Mac without type. Menlo
-#: has been the Mac's monospace since 10.6 and lines up the log the way
-#: Consolas does.
+#: The face and the log's face. On Windows, Inter -- the web site's face,
+#: carried in ``assets/fonts`` and registered for this process by
+#: ``_load_fonts`` when the theme is applied; ``FACE`` is settled then, and
+#: falls back to Segoe UI, the face the rest of the operating system is set
+#: in, on a machine where the registering fails. On a Mac, the system's own:
+#: Tk gives its default font the family ``.AppleSystemUIFont``, which is San
+#: Francisco, and a family Tk cannot find falls back to that same font rather
+#: than failing, so this cannot leave a Mac without type. Menlo has been the
+#: Mac's monospace since 10.6 and lines up the log the way Consolas does.
 FACE = ".AppleSystemUIFont" if MACOS else "Segoe UI"
 MONO = "Menlo" if MACOS else "Consolas"
+
+#: The face the program carries, and what it falls back to without it.
+BUNDLED_FACE = "Inter"
+FALLBACK_FACE = "Segoe UI"
+
+
+def fonts_folder() -> Path:
+    """Where the bundled font files are: beside the icons, in the checkout
+    and in the frozen program alike (``icons.folder`` has the two places)."""
+    bundled = getattr(sys, "_MEIPASS", None)
+    if bundled is not None:
+        return Path(bundled) / "assets" / "fonts"
+    return Path(__file__).resolve().parents[3] / "assets" / "fonts"
+
+
+#: Whether the bundled face has been registered with this process. Asked
+#: once; ``AddFontResourceEx`` is idempotent but there is no need to ask twice.
+_FONTS_LOADED: bool | None = None
+
+
+def _load_fonts() -> bool:
+    """Register the bundled face with Windows, for this process alone.
+
+    ``AddFontResourceExW`` with ``FR_PRIVATE`` makes a font file available to
+    the calling process without installing it: nothing is written to the
+    system, no administrator is asked, and it is gone when the program
+    exits. GDI is what Tk enumerates fonts through on Windows, so a face
+    registered this way is a face Tk can be given.
+
+    True when every file registered. False anywhere it cannot be done -- not
+    Windows, no files, a GDI that refuses -- and the window is set in the
+    fallback face, which is the one it was set in before D132.
+    """
+    global _FONTS_LOADED
+    if _FONTS_LOADED is not None:
+        return _FONTS_LOADED
+    _FONTS_LOADED = False
+    if not WINDOWS:
+        return False
+    try:
+        import ctypes
+
+        # ``getattr`` rather than ``ctypes.windll``: mypy knows the attribute
+        # on Windows and not elsewhere, and this file is checked on both.
+        windll = getattr(ctypes, "windll", None)
+        if windll is None:
+            return False
+        add = windll.gdi32.AddFontResourceExW
+        files = sorted(fonts_folder().glob("*.ttf"))
+        if not files:
+            return False
+        fr_private = 0x10
+        _FONTS_LOADED = all(add(str(path), fr_private, 0) > 0 for path in files)
+    except (OSError, AttributeError):
+        return False
+    return _FONTS_LOADED
+
 
 #: How many of a Mac's points make one of this window's.
 #:
@@ -304,8 +400,13 @@ def apply(root: tk.Misc) -> ttk.Style:
     the interpreter rather than objects, so the second call overwrites the
     first with the same values.
     """
+    global FACE
     style = ttk.Style(root)
     _fit_points(root)
+    if not MACOS:
+        # Before any font is looked up: the face has to be registered before
+        # Tk enumerates families, and ``_has_face`` below is that enumeration.
+        FACE = BUNDLED_FACE if _load_fonts() and _has_face(BUNDLED_FACE) else FALLBACK_FACE
 
     # clam is the themeable one. Without it every `configure` below is
     # accepted and then ignored by the platform engine, which is worse than
@@ -350,7 +451,7 @@ def apply(root: tk.Misc) -> ttk.Style:
         bordercolor=LINE,
         lightcolor=SURFACE,
         darkcolor=SURFACE,
-        focuscolor=BLUE,
+        focuscolor=ON_ACCENT,
     )
     style.configure("TFrame", background=SURFACE)
     style.configure("TLabel", background=SURFACE, foreground=BODY)
@@ -373,10 +474,10 @@ def apply(root: tk.Misc) -> ttk.Style:
     #: has to look unlike the two hundred labels that do nothing -- and blue
     #: is already the colour of the interface here, so it costs the palette
     #: nothing to say "this one answers".
-    style.configure("Link.TLabel", background=SURFACE, foreground=BLUE, font=link)
+    style.configure("Link.TLabel", background=SURFACE, foreground=INK, font=link)
     #: The same, on the window's surround: the way from the run's one line to
     #: its whole transcript.
-    style.configure("ChromeLink.TLabel", background=CHROME, foreground=BLUE, font=link)
+    style.configure("ChromeLink.TLabel", background=CHROME, foreground=INK, font=link)
 
     #: The window's surround: the project strip at the top, the run bar at the
     #: bottom, the summary down the left.
@@ -416,7 +517,7 @@ def apply(root: tk.Misc) -> ttk.Style:
         )
         style.map(
             kind,
-            bordercolor=[("focus", BLUE), ("hover", BLUE_EDGE)],
+            bordercolor=[("focus", ON_ACCENT), ("hover", ACCENT_EDGE)],
             fieldbackground=[("disabled", MUTED), ("readonly", SURFACE)],
             foreground=[("disabled", HINT)],
         )
@@ -443,9 +544,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     )
     style.map(
         "TCheckbutton",
-        indicatorbackground=[("selected", BLUE), ("disabled", MUTED), ("active", BLUE_TINT)],
-        indicatorforeground=[("selected", SURFACE)],
-        bordercolor=[("selected", BLUE_DEEP), ("active", BLUE_EDGE)],
+        indicatorbackground=[("selected", ACCENT), ("disabled", MUTED), ("active", ACCENT_TINT)],
+        indicatorforeground=[("selected", INK)],
+        bordercolor=[("selected", ON_ACCENT), ("active", ACCENT_EDGE)],
         foreground=[("disabled", HINT)],
         background=[("active", SURFACE)],
     )
@@ -491,7 +592,7 @@ def apply(root: tk.Misc) -> ttk.Style:
         padding=(5, 0),
         font=strong,
     )
-    style.map("Fold.TButton", foreground=[("active", BLUE_DEEP)], background=[("active", SIDEBAR)])
+    style.map("Fold.TButton", foreground=[("active", ON_ACCENT)], background=[("active", SIDEBAR)])
 
     #: A tool on the project bar: no face until the pointer is on it.
     style.configure(
@@ -507,36 +608,38 @@ def apply(root: tk.Misc) -> ttk.Style:
     )
     style.map(
         "Tool.TButton",
-        background=[("pressed", BLUE_EDGE), ("active", BLUE_TINT)],
-        bordercolor=[("active", BLUE_TINT)],
-        lightcolor=[("active", BLUE_TINT)],
-        darkcolor=[("active", BLUE_TINT)],
-        foreground=[("active", BLUE_DEEP)],
+        background=[("pressed", ACCENT_EDGE), ("active", ACCENT_TINT)],
+        bordercolor=[("active", ACCENT_TINT)],
+        lightcolor=[("active", ACCENT_TINT)],
+        darkcolor=[("active", ACCENT_TINT)],
+        foreground=[("active", ON_ACCENT)],
     )
 
-    #: Run. The one filled control in the window. It was tinted, on the
-    #: grounds that solid blue beside grey reads as a warning; in use the tint
-    #: read as one more of the six buttons on the bar, and the action every
-    #: page leads to was the hardest thing on it to find. Off, it wears the
-    #: grey face every button does, and its words say why.
+    #: Run. The one filled control in the window: the accent, with ink on
+    #: it. It was tinted once, on the grounds that a solid colour beside grey
+    #: reads as a warning; in use the tint read as one more of the six
+    #: buttons on the bar, and the action every page leads to was the hardest
+    #: thing on it to find. Off, it wears the grey face every button does,
+    #: and its words say why.
     style.configure(
         "Run.TButton",
-        foreground=SURFACE,
+        foreground=INK,
         padding=(12, 0),
         font=strong,
     )
     style.map(
         "Run.TButton",
-        foreground=[("disabled", HINT), ("!disabled", SURFACE)],
+        foreground=[("disabled", HINT), ("!disabled", INK)],
     )
 
     # -- the sidebar ------------------------------------------------------
     #
     # The pages down the left, in three groups under small capitals, the way
     # Archicad lists the pages of a settings dialog. A row is a frame -- the
-    # open one wears a rounded blue face -- holding the page's name, what it
-    # will make, and the switch that queues it; each of those takes the row's
-    # colour, so there are two of every style: on the grey, and on the blue.
+    # open one wears a rounded face in the accent -- holding the page's name,
+    # what it will make, and the switch that queues it; each of those takes
+    # the row's colour, so there are two of every style: on the surround, and
+    # on the accent.
     caption = (family, points(8), "bold")
     style.configure("Side.TFrame", background=SIDEBAR)
     style.configure("SideRow.TFrame", background=SIDEBAR)
@@ -544,7 +647,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure("Group.TLabel", background=SIDEBAR, foreground=CAPTION, font=caption)
     for name, ground, text, face in (
         ("Side.TButton", SIDEBAR, INK, body),
-        ("SideOpen.TButton", BLUE, SURFACE, strong),
+        ("SideOpen.TButton", ACCENT, INK, strong),
     ):
         style.configure(
             name,
@@ -562,9 +665,9 @@ def apply(root: tk.Misc) -> ttk.Style:
         )
         style.map(name, background=[("active", ground)], foreground=[("active", text)])
     #: What a page will make, as a pill beside its name: the tinted pill on
-    #: the grey, the deep blue one on the open row.
-    style.configure("Badge.TLabel", background=SIDEBAR, foreground=BLUE_DEEP, font=small)
-    style.configure("BadgeOpen.TLabel", background=BLUE, foreground=SURFACE, font=small)
+    #: the surround, a white one on the open row.
+    style.configure("Badge.TLabel", background=SIDEBAR, foreground=ON_ACCENT, font=small)
+    style.configure("BadgeOpen.TLabel", background=ACCENT, foreground=INK, font=small)
 
     #: The card at the foot of the sidebar: whatever is under the pointer,
     #: what it is, and what happens when it is wrong.
@@ -574,7 +677,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure("Help.TLabel", background=HELP, foreground=INK)
     style.configure("HelpHint.TLabel", background=HELP, foreground="#4A4A4A", font=small)
     style.configure(
-        "HelpState.TLabel", background=BLUE_TINT, foreground=BLUE_DEEP, font=small, padding=(6, 0)
+        "HelpState.TLabel", background=ACCENT_TINT, foreground=ON_ACCENT, font=small, padding=(6, 0)
     )
 
     #: The page's own name over its panels, and the one line under it.
@@ -598,7 +701,7 @@ def apply(root: tk.Misc) -> ttk.Style:
             width=0,
             font=body,
         )
-        style.map(name, background=[("active", ground)], foreground=[("active", BLUE_DEEP)])
+        style.map(name, background=[("active", ground)], foreground=[("active", ON_ACCENT)])
 
     #: The newest line out of a run, and the only one shown. Monospaced
     #: because it prints layer names and tallies that want to line up.
@@ -620,9 +723,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure(
         "TileOn.TButton",
         padding=(4, 1),
-        foreground=SURFACE,
+        foreground=INK,
     )
-    style.map("TileOn.TButton", foreground=[("disabled", HINT), ("!disabled", SURFACE)])
+    style.map("TileOn.TButton", foreground=[("disabled", HINT), ("!disabled", INK)])
 
     # -- chips: a chosen name, and the button that drops it ----------------
     #
@@ -631,29 +734,31 @@ def apply(root: tk.Misc) -> ttk.Style:
     # a name can be dropped from the keyboard as well as the pointer.
     style.configure(
         "Chip.TFrame",
-        background=BLUE_TINT,
-        bordercolor=BLUE_EDGE,
-        lightcolor=BLUE_TINT,
-        darkcolor=BLUE_TINT,
+        background=ACCENT_TINT,
+        bordercolor=ACCENT_EDGE,
+        lightcolor=ACCENT_TINT,
+        darkcolor=ACCENT_TINT,
         relief="solid",
         borderwidth=1,
     )
-    style.configure("Chip.TLabel", background=BLUE_TINT, foreground=BLUE_DEEP, padding=(7, 2, 3, 2))
+    style.configure(
+        "Chip.TLabel", background=ACCENT_TINT, foreground=ON_ACCENT, padding=(7, 2, 3, 2)
+    )
     style.configure(
         "ChipDrop.TButton",
-        background=BLUE_TINT,
-        foreground=BLUE_DEEP,
-        bordercolor=BLUE_TINT,
-        lightcolor=BLUE_TINT,
-        darkcolor=BLUE_TINT,
+        background=ACCENT_TINT,
+        foreground=ON_ACCENT,
+        bordercolor=ACCENT_TINT,
+        lightcolor=ACCENT_TINT,
+        darkcolor=ACCENT_TINT,
         relief="flat",
         padding=(0, 0),
         font=body,
     )
     style.map(
         "ChipDrop.TButton",
-        background=[("active", BLUE_EDGE), ("pressed", BLUE_EDGE)],
-        foreground=[("active", BLUE_DEEP)],
+        background=[("active", ACCENT_EDGE), ("pressed", ACCENT_EDGE)],
+        foreground=[("active", ON_ACCENT)],
     )
     #: The button that opens the project's own list. Dashed, because it is an
     #: invitation rather than a value -- the chips beside it are the values.
@@ -665,7 +770,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     )
     style.map(
         "Add.TButton",
-        foreground=[("active", BLUE_DEEP)],
+        foreground=[("active", ON_ACCENT)],
     )
 
     # -- the info band -----------------------------------------------------
@@ -673,7 +778,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure("Info.TLabel", background=CHROME, foreground=INK)
     style.configure("InfoTitle.TLabel", background=CHROME, foreground=INK, font=strong)
     style.configure("InfoIdle.TLabel", background=CHROME, foreground=HINT, font=strong)
-    style.configure("InfoState.TLabel", background=CHROME, foreground=BLUE_DEEP)
+    style.configure("InfoState.TLabel", background=CHROME, foreground=ON_ACCENT)
     style.configure("InfoHint.TLabel", background=CHROME, foreground=HINT)
 
     # -- the sheets dock ---------------------------------------------------
@@ -682,7 +787,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     # InDesign's panel rather than reading as part of the page beside it.
     style.configure("Dock.TFrame", background=SIDEBAR)
     style.configure("DockTitle.TLabel", background=SIDEBAR, foreground=INK, font=strong)
-    style.configure("DockCount.TLabel", background=SIDEBAR, foreground=BLUE_DEEP, font=strong)
+    style.configure("DockCount.TLabel", background=SIDEBAR, foreground=ON_ACCENT, font=strong)
     style.configure("DockHint.TLabel", background=SIDEBAR, foreground=CAPTION, font=small)
     style.configure("DockStudy.TLabel", background=SIDEBAR, foreground=INK, font=strong)
     style.configure("DockDay.TLabel", background=SIDEBAR, foreground=CAPTION, font=small)
@@ -704,12 +809,12 @@ def apply(root: tk.Misc) -> ttk.Style:
     study_pad = (7, 0) if MACOS else (7, 6)
     style.configure(
         "Study.TCheckbutton",
-        background=BLUE_TINT,
+        background=ACCENT_TINT,
         foreground=INK,
         font=heading,
         padding=study_pad,
     )
-    style.map("Study.TCheckbutton", background=[("active", BLUE_TINT)])
+    style.map("Study.TCheckbutton", background=[("active", ACCENT_TINT)])
     style.configure(
         "StudyOff.TCheckbutton",
         background=HEAD_OFF,
@@ -731,7 +836,7 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure("StudyTitle.TLabel", background=HEAD_ON, foreground=INK, font=strong)
     style.configure("StudyTitleOff.TLabel", background=HEAD_OFF, foreground=INK, font=strong)
     #: What the box will make, at the right of its header.
-    style.configure("PanelSays.TLabel", background=HEAD_ON, foreground=BLUE_DEEP)
+    style.configure("PanelSays.TLabel", background=HEAD_ON, foreground=ON_ACCENT)
     style.configure("PanelSaysOff.TLabel", background=HEAD_OFF, foreground=HINT)
 
     _own_tick(style)
@@ -739,11 +844,11 @@ def apply(root: tk.Misc) -> ttk.Style:
 
     style.configure(
         "Horizontal.TProgressbar",
-        background=BLUE,
+        background=ACCENT,
         troughcolor=SURFACE,
         bordercolor=LINE,
-        lightcolor=BLUE,
-        darkcolor=BLUE,
+        lightcolor=ACCENT,
+        darkcolor=ACCENT,
         thickness=10,
     )
     #: The one slider in the program: the reference image's opacity. A white
@@ -761,8 +866,8 @@ def apply(root: tk.Misc) -> ttk.Style:
     )
     style.map(
         "Horizontal.TScale",
-        background=[("active", BLUE_TINT)],
-        bordercolor=[("active", BLUE), ("focus", BLUE)],
+        background=[("active", ACCENT_TINT)],
+        bordercolor=[("active", ON_ACCENT), ("focus", ON_ACCENT)],
     )
     style.configure(
         "Vertical.TScrollbar",
@@ -960,7 +1065,7 @@ def _rounded(style: ttk.Style) -> None:
     if panels is not None:
         # The header's tint and the rule under it are in the top slice, so
         # that slice is exactly as tall as the header plus its rule.
-        box = (7, PANEL_HEAD + 1, 7, 7)
+        box = (PANEL_SLICE, PANEL_HEAD + 1, PANEL_SLICE, PANEL_SLICE)
         element("Loriini.box", [panels[0]], (), box)
         element("Loriini.boxoff", [panels[1]], (), box)
         style.layout("Box.TFrame", [("Loriini.box", {"sticky": "nswe"})])
@@ -969,7 +1074,7 @@ def _rounded(style: ttk.Style) -> None:
     # The sidebar: the open row's blue bar, the count pills, and the card at
     # the foot that explains what is under the pointer.
     if side is not None:
-        element("Loriini.sideopen", side, (), 7)
+        element("Loriini.sideopen", side, (), 11)
         style.layout("SideRowOpen.TFrame", [("Loriini.sideopen", {"sticky": "nswe"})])
     if badges is not None:
         pill: Any = inside(("Label.padding", inside(("Label.label", {"sticky": "nswe"}))))
@@ -980,7 +1085,7 @@ def _rounded(style: ttk.Style) -> None:
         for name in ("Badge.TLabel", "BadgeOpen.TLabel"):
             style.configure(name, padding=(2, 0), anchor="center")
     if help_card is not None:
-        element("Loriini.help", help_card, (), 9)
+        element("Loriini.help", help_card, (), PANEL_SLICE)
         style.layout("Help.TFrame", [("Loriini.help", {"sticky": "nswe"})])
 
     chevron = _chevron(style)
@@ -1187,7 +1292,7 @@ def _switches(style: ttk.Style) -> None:
 
     for name, ground, element in (
         ("Switch.TCheckbutton", SIDEBAR, "Loriini.switch"),
-        ("SwitchOpen.TCheckbutton", BLUE, "Loriini.switchlight"),
+        ("SwitchOpen.TCheckbutton", ACCENT, "Loriini.switchlight"),
         ("SwitchHead.TCheckbutton", HEAD_ON, "Loriini.switch"),
         ("SwitchHeadOff.TCheckbutton", HEAD_OFF, "Loriini.switch"),
         ("SwitchPanel.TCheckbutton", SURFACE, "Loriini.switch"),

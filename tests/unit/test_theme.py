@@ -119,8 +119,8 @@ def test_the_sidebar_rows_take_their_rows_colour(styled: object) -> None:
     for name in ("Side.TButton", "SideOpen.TButton"):
         assert theme.WEARS[name] == "flat"
     assert styled.layout("SideRowOpen.TFrame")[0][0] == "Loriini.sideopen"  # type: ignore[attr-defined]
-    assert styled.lookup("SideOpen.TButton", "background") == theme.BLUE  # type: ignore[attr-defined]
-    assert theme.INSIDE["SideRowOpen.TFrame"] == theme.BLUE
+    assert styled.lookup("SideOpen.TButton", "background") == theme.ACCENT  # type: ignore[attr-defined]
+    assert theme.INSIDE["SideRowOpen.TFrame"] == theme.ACCENT
 
 
 # -- the second trap: an image element ignores ``background`` ---------------
@@ -323,7 +323,7 @@ def test_a_missing_face_leaves_a_working_window(monkeypatch: pytest.MonkeyPatch)
         style = theme.apply(root)
         for name in theme.WEARS:
             assert style.layout(name), f"{name} was left with no layout at all"
-        assert str(style.lookup("Horizontal.TProgressbar", "background")).upper() == theme.BLUE
+        assert str(style.lookup("Horizontal.TProgressbar", "background")).upper() == theme.ACCENT
     finally:
         root.destroy()
 
