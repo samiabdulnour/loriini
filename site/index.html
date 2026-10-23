@@ -70,9 +70,27 @@
   bird.src = 'lorikeet.png';
 
   var C = {
-    sky: '#2a2b2e', ground: '#161616', shadow: '#060606',
+    ground: '#161616', shadow: '#060606',
     sun: '#ffd21e', core: '#ff8a1f', ray: '#ffe98a', glass: 'rgba(255,255,255,.32)'
   };
+  // The sky takes the hour's colour from how high the sun stands: purple at
+  // dusk and dawn, red then orange and gold as it climbs, blue overhead.
+  var skyStops = [
+    [0, [84, 56, 158]],
+    [.09, [168, 40, 30]],
+    [.16, [224, 122, 34]],
+    [.30, [238, 192, 76]],
+    [.55, [116, 166, 220]],
+    [1, [62, 118, 190]]
+  ];
+  function sky(elev) {
+    var e = Math.min(Math.max(elev, 0), 1), a = skyStops[0], b = a;
+    for (var i = 1; i < skyStops.length; i++) { a = b; b = skyStops[i]; if (e <= b[0]) break; }
+    var f = (e - a[0]) / (b[0] - a[0] || 1);
+    return 'rgb(' + [0, 1, 2].map(function (k) {
+      return Math.round(a[1][k] + (b[1][k] - a[1][k]) * f);
+    }).join(',') + ')';
+  }
   // Towers: left edge and width as shares of the width, height as a share of the sky.
   var towers = [
     { x: .16, w: .12, h: .30, c: '#f0301e' },
@@ -100,10 +118,9 @@
 
   function scene(t, frame) {
     var g = rows - Math.max(3, Math.round(rows * .07));
-    rect(0, 0, cols, rows, C.sky);
-    rect(0, g, cols, rows - g, C.ground);
-
     var elev = Math.sin(Math.PI * t);
+    rect(0, 0, cols, rows, sky(elev));
+    rect(0, g, cols, rows - g, C.ground);
     var R = Math.max(3, Math.round(rows * .065));
     var sx = Math.round(cols * (.04 + .92 * t));
     var sy = Math.round(g - R - 2 - elev * (g * .72));
