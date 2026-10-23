@@ -73,11 +73,12 @@
     ground: '#161616', shadow: '#060606',
     sun: '#ffd21e', core: '#ff8a1f', ray: '#ffe98a', glass: 'rgba(255,255,255,.32)'
   };
-  // The sky takes the hour's colour from how high the sun stands: red at the
-  // low ends of the day, through orange and gold as it climbs, blue overhead.
+  // The sky takes the hour's colour from how high the sun stands: purple at
+  // dusk and dawn, red then orange and gold as it climbs, blue overhead.
   var skyStops = [
-    [0, [168, 40, 30]],
-    [.14, [224, 122, 34]],
+    [0, [84, 56, 158]],
+    [.09, [168, 40, 30]],
+    [.16, [224, 122, 34]],
     [.30, [238, 192, 76]],
     [.55, [116, 166, 220]],
     [1, [62, 118, 190]]
