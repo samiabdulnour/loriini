@@ -5118,8 +5118,11 @@ nothing is installed, no administrator is asked, it is gone when the
 program exits. GDI is what Tk enumerates fonts through on Windows, so a
 face registered that way is one Tk can be given. Anywhere that fails --
 not Windows, no files, a GDI that refuses -- the window is set in Segoe UI
-as it was. A Mac keeps the system's own face (D130). The Windows build
-carries the folder (`Loriini.spec`).
+as it was. A Mac takes the same face, registered through CoreText with
+the process scope (`CTFontManagerRegisterFontsForURL`), and falls back to
+the system's own (D130) where that fails; the sizes go through `points` as
+before. Both builds carry the folder: the Mac spec takes its collection
+from `Loriini.spec`.
 
 **Where it was decided.** On a design canvas, with the window as built
 rendered beside the drawings from the program's own code, so the comparison
