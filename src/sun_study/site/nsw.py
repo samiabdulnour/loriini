@@ -22,6 +22,7 @@ takes and uses the local government areas to say where a council's stop.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ from sun_study.site.arcgis import (
     query_by_extent,
     query_by_geometry,
     query_by_point,
+    query_where,
     rings_of,
 )
 from sun_study.site.geo import Extent, Point, ring_area, ring_centroid
@@ -53,6 +55,8 @@ __all__ = [
     "height_of_building",
     "heritage",
     "local_government_areas",
+    "lot_id",
+    "lots_by_id",
     "named_areas",
     "neighbour_addresses",
     "park_points",
@@ -99,6 +103,30 @@ def site_lots(points: Sequence[Point]) -> FeatureCollection:
             seen.add(identifier)
             features.append(feature)
     return {"type": "FeatureCollection", "features": features}
+
+
+#: A lot as it is written on a title or a survey: ``34//DP1206876``,
+#: ``34/DP1206876``, ``Lot 34 DP1206876``, or with a section, ``1/2/DP123``.
+_LOT = re.compile(r"^(?:LOT\s*)?([0-9A-Z]+)(?:\s*/\s*(\d*))?\s*/?\s*([A-Z]{1,3})\s*(\d+)$")
+
+
+def lot_id(text: str) -> str:
+    """The cadastre's own spelling of a lot, ``34//DP1206876``, however it
+    was typed. Raises ``ValueError`` showing the shape it wants."""
+    match = _LOT.match(" ".join(text.upper().split()))
+    if match is None:
+        raise ValueError(f'"{text}" is not a lot: write it as on the title, e.g. 34//DP1206876.')
+    lot, section, plan, number = match.groups()
+    return f"{lot}/{section or ''}/{plan}{number}"
+
+
+def lots_by_id(ids: Sequence[str]) -> FeatureCollection:
+    """The lots named, by the cadastre's ``lotidstring``: the site said
+    outright, for an address the register places on more than one lot."""
+    if not ids:
+        return empty()
+    named = ", ".join(f"'{lot_id(i)}'" for i in ids)
+    return query_where(f"{CADASTRE}/8", f"lotidstring IN ({named})", "lotidstring,plannumber")
 
 
 def rail_corridors(extent: Extent) -> FeatureCollection:

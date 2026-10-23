@@ -1321,6 +1321,25 @@ def test_what_the_yield_page_does_not_say_about_the_site_is_read_at_the_address(
     assert "--renovation-filter" not in job.args
     assert "--residential-layer" not in job.args, "empty counts what is showing"
     assert flag(job.args, "--option") == ["Option 01"]
+    assert "--lot" not in job.args
+    # An address the register puts on two lots is read on the one named.
+    hidden_window.site_lot.insert(0, "34//DP1206876")
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--lot") == ["34//DP1206876"]
+
+
+def test_the_site_lot_is_sent_only_when_one_is_named(hidden_window: Any) -> None:
+    """For 22A O'Connell Street, Parramatta, which the register holds on two
+    lots at once: blank leaves the address to say where the site is."""
+    hidden_window.do_facade.set(False)
+    hidden_window.do_site.set(True)
+    hidden_window.site_address.insert(0, "22A O'Connell Street, Parramatta")
+    (site,) = hidden_window.jobs()
+    assert "--lot" not in site.args
+    hidden_window.site_lot.insert(0, "34//DP1206876")
+    (site,) = hidden_window.jobs()
+    assert flag(site.args, "--lot") == ["34//DP1206876"]
+    assert hidden_window.settings()["site_lot"] == "34//DP1206876"
 
 
 def test_a_studio_given_a_share_joins_the_mix_at_its_size(hidden_window: Any) -> None:

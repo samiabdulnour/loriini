@@ -16,6 +16,7 @@ wildcard is a full scan (31 s).
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ __all__ = [
     "ADDRESS_POINT",
     "Geocode",
     "ParsedAddress",
+    "Place",
     "covers",
     "expand_numbers",
     "geocode",
@@ -105,6 +107,17 @@ class ParsedAddress:
 
 
 @dataclass(frozen=True)
+class Place:
+    """One point of the register's for one address."""
+
+    address: str
+    point: Point
+    """Web Mercator."""
+    registered: str
+    """When the register made it, ``July 2019``, or empty when it does not say."""
+
+
+@dataclass(frozen=True)
 class Geocode:
     points: tuple[Point, ...]
     """Web Mercator, one per matched address point."""
@@ -112,6 +125,17 @@ class Geocode:
     matched: tuple[str, ...]
     """The register's own spelling of each address found."""
     query: str
+    places: tuple[Place, ...] = ()
+    """Every point found, with its address. One address can have more than
+    one: the register holds 22A O'Connell Street, Parramatta twice, on two
+    lots 150 m apart, both current (October 2026)."""
+
+    def repeated(self) -> dict[str, tuple[Place, ...]]:
+        """The addresses the register places at more than one point."""
+        by_address: dict[str, list[Place]] = {}
+        for place in self.places:
+            by_address.setdefault(place.address, []).append(place)
+        return {a: tuple(ps) for a, ps in by_address.items() if len(ps) > 1}
 
     @property
     def lonlat_points(self) -> tuple[tuple[float, float], ...]:
@@ -221,21 +245,38 @@ class _Candidate:
     house_number: str
     lon: float
     lat: float
+    created_ms: float | None = None
+
+    @property
+    def key(self) -> tuple[str, float, float]:
+        """The address and where it is, to a tenth of a metre. Keyed by the
+        address alone, a second point for the same address replaced the
+        first, and which one survived was the server's order."""
+        return (self.address, round(self.lon, 6), round(self.lat, 6))
+
+
+def registered(created_ms: float | None) -> str:
+    """``July 2019`` from the register's creation time, in milliseconds."""
+    if created_ms is None:
+        return ""
+    return f"{dt.datetime.fromtimestamp(created_ms / 1000.0, dt.UTC):%B %Y}"
 
 
 def _candidates(where: str, cap: int = 200) -> list[_Candidate]:
-    collection = query_where(ADDRESS_POINT, where, "address,housenumber", cap)
+    collection = query_where(ADDRESS_POINT, where, "address,housenumber,createdate", cap)
     found: list[_Candidate] = []
     for feature in collection["features"]:
         geometry = feature.get("geometry")
         if not geometry:
             continue
+        created = feature["properties"].get("createdate")
         found.append(
             _Candidate(
                 address=str(feature["properties"].get("address") or ""),
                 house_number=str(feature["properties"].get("housenumber") or ""),
                 lon=float(geometry["coordinates"][0]),
                 lat=float(geometry["coordinates"][1]),
+                created_ms=float(created) if isinstance(created, (int, float)) else None,
             )
         )
     return found
@@ -249,12 +290,12 @@ def _anchors(number: str) -> list[str]:
 def geocode(text: str) -> Geocode:
     parsed = parse_address(text)
     tail = f"{parsed.street} {parsed.locality}" if parsed.locality else parsed.street
-    found: dict[str, _Candidate] = {}
+    found: dict[tuple[str, float, float], _Candidate] = {}
 
     # Stage A: exact matches, the fast path.
     for number in parsed.numbers:
         for candidate in _candidates(f"address = '{_sql(f'{number} {tail}')}'", 5):
-            found[candidate.address] = candidate
+            found[candidate.key] = candidate
 
     wanted = [n for n in parsed.numbers if "-" not in n]
 
@@ -272,7 +313,7 @@ def geocode(text: str) -> Geocode:
             )
             for candidate in pool:
                 if covers(candidate.house_number, number):
-                    found[candidate.address] = candidate
+                    found[candidate.key] = candidate
 
     # Stage B2, unindexed: a number inside a range starts with a different
     # number -- 214 lives in "212-218" -- and only a scan finds it.
@@ -281,7 +322,7 @@ def geocode(text: str) -> Geocode:
         for number in wanted:
             for candidate in pool:
                 if covers(candidate.house_number, number):
-                    found[candidate.address] = candidate
+                    found[candidate.key] = candidate
 
     # Stage C: drop the locality, but only accept candidates that still name it.
     if not found and parsed.locality:
@@ -296,7 +337,7 @@ def geocode(text: str) -> Geocode:
                 matching.extend(c for c in pool if covers(c.house_number, number))
         for candidate in matching:
             if parsed.locality in candidate.address:
-                found[candidate.address] = candidate
+                found[candidate.key] = candidate
         if not found and matching:
             near = list(dict.fromkeys(c.address for c in matching))[:5]
             raise ValueError(
@@ -338,7 +379,17 @@ def geocode(text: str) -> Geocode:
         sum(p[0] for p in points) / len(points),
         sum(p[1] for p in points) / len(points),
     )
-    return Geocode(points=points, centre=centre, matched=tuple(found), query=text)
+    places = tuple(
+        Place(c.address, point, registered(c.created_ms))
+        for c, point in zip(found.values(), points, strict=True)
+    )
+    return Geocode(
+        points=points,
+        centre=centre,
+        matched=tuple(dict.fromkeys(c.address for c in found.values())),
+        query=text,
+        places=places,
+    )
 
 
 def suggest(text: str, limit: int = 8) -> list[str]:

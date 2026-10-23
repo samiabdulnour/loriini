@@ -123,3 +123,41 @@ def test_suggestions_put_the_typed_street_first(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(module, "query_where", fake_query)
     assert suggest("212 bondi rd")[0] == "212-218 BONDI ROAD BONDI"
     assert suggest("21") == []
+
+
+def test_one_address_at_two_points_keeps_both(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The register holds 22A O'Connell Street, Parramatta twice, both
+    current: on its own lot since 2019, and with 22 to 22D since 2026. Keyed
+    by the address alone, the second point replaced the first, and the run
+    drew whichever the server sent last."""
+
+    def fake_query(
+        _url: str, where: str, _fields: str, _count: int | None = None
+    ) -> dict[str, Any]:
+        if where != "address = '22A O''CONNELL STREET PARRAMATTA'":
+            return {"type": "FeatureCollection", "features": []}
+        return {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "properties": {
+                        "address": "22A O'CONNELL STREET PARRAMATTA",
+                        "housenumber": "22A",
+                        "createdate": created,
+                    },
+                }
+                for lon, lat, created in (
+                    (151.001057, -33.811945, 1562170279000),
+                    (151.000695, -33.813297, 1778002569000),
+                )
+            ],
+        }
+
+    monkeypatch.setattr(module, "query_where", fake_query)
+    found = geocode("22A O'Connell Street, Parramatta")
+    assert found.matched == ("22A O'CONNELL STREET PARRAMATTA",)
+    assert len(found.points) == 2
+    (places,) = found.repeated().values()
+    assert [p.registered for p in places] == ["July 2019", "May 2026"]

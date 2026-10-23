@@ -39,6 +39,7 @@ from sun_study.site.geo import (
     mga_zone,
     point_in_ring,
     ring_area,
+    ring_centroid,
     scale_factor,
 )
 from sun_study.site.geocode import Geocode, geocode
@@ -489,6 +490,82 @@ def _geocode(address: str, log: Log) -> Geocode:
     return found
 
 
+def inside_point(ring: Sequence[Point]) -> Point:
+    """A point inside a lot, near its middle, in the ring's own units.
+
+    Worked from the first corner, because the area centroid taken straight
+    in degrees loses a 20 m lot to rounding -- it landed 60 m out. And
+    inside, because the controls are read at it: a lot shaped like a C or a
+    U has its centroid on the lot next door.
+    """
+    x0, y0 = ring[0]
+    local = [(x - x0, y - y0) for x, y in ring]
+    cx, cy = ring_centroid(local)
+    if not point_in_ring(cx, cy, local):
+        xs, ys = [x for x, _ in local], [y for _, y in local]
+        steps = [(i + 0.5) / 16 for i in range(16)]
+        grid = [
+            (min(xs) + (max(xs) - min(xs)) * a, min(ys) + (max(ys) - min(ys)) * b)
+            for a in steps
+            for b in steps
+        ]
+        inside = [p for p in grid if point_in_ring(p[0], p[1], local)]
+        if inside:
+            cx, cy = min(inside, key=lambda p: (p[0] - cx) ** 2 + (p[1] - cy) ** 2)
+    return x0 + cx, y0 + cy
+
+
+def _lot_ids(lots: FeatureCollection) -> frozenset[str]:
+    return frozenset(str(f["properties"].get("lotidstring") or "") for f in lots["features"])
+
+
+def locate(
+    address: str, lots: Sequence[str] = (), log: Log | None = None
+) -> tuple[Geocode, FeatureCollection]:
+    """The site: the lots named, or else the lots under the address's points.
+
+    The register can hold one address on more than one lot, both current --
+    22A O'Connell Street, Parramatta was on lot 34//DP1206876 from 2019 and
+    on 2//DP874120 with 22 to 22D from 2026 -- and the run used to draw
+    whichever point the server sent last. Such an address is now refused
+    with the lots it could be, and ``lots`` says which. Named lots are taken
+    as they are and the address is not looked up: it only titles the sheets.
+    """
+    say = log or (lambda _line: None)
+    if lots:
+        wanted = [nsw.lot_id(lot) for lot in lots]
+        site = nsw.lots_by_id(wanted)
+        missing = [lot for lot in wanted if lot not in _lot_ids(site)]
+        if missing:
+            raise ValueError(f"Not in the NSW cadastre: lot {', '.join(missing)}.")
+        say(f"the site is lot {', '.join(wanted)}, as asked; the address only titles the sheets")
+        points = tuple(
+            lonlat_to_mercator(*inside_point(rings_of(f["geometry"])[0])) for f in site["features"]
+        )
+        centre = (
+            sum(p[0] for p in points) / len(points),
+            sum(p[1] for p in points) / len(points),
+        )
+        return Geocode(points=points, centre=centre, matched=(address,), query=address), site
+    found = _geocode(address, say)
+    for spelled, places in found.repeated().items():
+        under = [_lot_ids(nsw.site_lots([place.point])) for place in places]
+        if len(set(under)) < 2:
+            continue
+        choices = [
+            f"  lot {', '.join(sorted(ids)) or '(none)'}"
+            + (f", registered {place.registered}" if place.registered else "")
+            for place, ids in zip(places, under, strict=True)
+        ]
+        example = next((sorted(ids)[0] for ids in under if ids), "34//DP1206876")
+        raise ValueError(
+            f"The NSW address register puts {spelled} on more than one lot:\n"
+            + "\n".join(choices)
+            + f"\nSay which with --lot, e.g. --lot {example} (in the window: Site lot)."
+        )
+    return found, nsw.site_lots(found.points)
+
+
 def run_context(
     address: str,
     *,
@@ -498,12 +575,12 @@ def run_context(
     out_dir: Path | None = None,
     with_aerial: bool = False,
     aerial_px_width: int = 3200,
+    lots: Sequence[str] = (),
     log: Log | None = None,
 ) -> ContextBundle:
     """Everything the context analysis draws, for the sheet extent around the site."""
     say = log or (lambda _line: None)
-    found = _geocode(address, say)
-    site = nsw.site_lots(found.points)
+    found, site = locate(address, lots, say)
     if not site["features"]:
         raise ValueError("No cadastral lots found for the site.")
 
@@ -655,12 +732,12 @@ def run_site(
     map_height_mm: float = MAP_HEIGHT_MM,
     out_dir: Path | None = None,
     with_aerial: bool = False,
+    lots: Sequence[str] = (),
     log: Log | None = None,
 ) -> SiteBundle:
     """The site-scale bundle: boundary, contours, neighbours, street furniture."""
     say = log or (lambda _line: None)
-    found = _geocode(address, say)
-    site = nsw.site_lots(found.points)
+    found, site = locate(address, lots, say)
     if not site["features"]:
         raise ValueError("No cadastral lots found for the site.")
 
@@ -827,6 +904,7 @@ def run_model(
     *,
     radius_m: float = 500.0,
     out_dir: Path | None = None,
+    lots: Sequence[str] = (),
     log: Log | None = None,
 ) -> SiteBundle:
     """What a context model needs, for a square of ``radius_m`` each way
@@ -844,8 +922,7 @@ def run_model(
     bundle, and one loader serves both.
     """
     say = log or (lambda _line: None)
-    found = _geocode(address, say)
-    site = nsw.site_lots(found.points)
+    found, site = locate(address, lots, say)
     if not site["features"]:
         raise ValueError("No cadastral lots found for the site.")
     lon0, _ = mercator_to_lonlat(*found.centre)
@@ -905,12 +982,15 @@ def run_model(
 
 
 def run_summary(
-    address: str, *, out_dir: Path | None = None, log: Log | None = None
+    address: str,
+    *,
+    out_dir: Path | None = None,
+    lots: Sequence[str] = (),
+    log: Log | None = None,
 ) -> SummaryBundle:
     """The development summary: no map, just the lots and the controls at the site."""
     say = log or (lambda _line: None)
-    found = _geocode(address, say)
-    site = nsw.site_lots(found.points)
+    found, site = locate(address, lots, say)
     if not site["features"]:
         raise ValueError("No cadastral lots found for the site.")
     say("reading planning controls at the site...")
