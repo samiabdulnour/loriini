@@ -1,4 +1,4 @@
-# sun-study
+# loriini
 
 Direct sunlight hours from an Archicad model, written back into Archicad as Zone
 properties, so an ADG compliance table becomes a native Archicad schedule instead of a
