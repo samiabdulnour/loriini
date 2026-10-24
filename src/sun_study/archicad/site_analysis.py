@@ -158,6 +158,8 @@ RESERVE_M = {1: 30.0, 2: 24.0, 3: 20.0, 4: 16.0, 5: 12.0, 6: 10.0}
 #: at 3 mm ran 96 mm. The placer's 0.6 is a fair mean for mixed lettering;
 #: a legend is all capitals and ran past the sheet's margin at it.
 CAPS_WIDTH = 0.85
+#: The climate marks' pen on paper, as the generator draws Heron's (PEN_W).
+MARK_PEN_MM = 0.7
 #: A numbered place's disc on the map, and the key's smaller one, radius on
 #: paper: the map's is the roundels' size, so every dot on the map is one size.
 PLACE_MM = 3.4
@@ -1321,6 +1323,31 @@ def _legend(
                     height_mm=size * (0.85 if len(item.mark) > 1 else 1.0),
                     colour="#ffffff" if solid else item.colour,
                 )
+        elif item.kind == "wave":
+            top_edge: list[Point] = []
+            bottom_edge: list[Point] = []
+            steps = 36
+            for i in range(steps + 1):
+                u = (swatch_w - mm(2.0)) * i / steps
+                yc = middle + mm(0.6) * math.sin(u / mm(2.6))
+                w = mm(1.05 + 0.25 * math.sin(u / mm(1.7)))
+                top_edge.append((x + mm(1.0) + u, yc + w))
+                bottom_edge.append((x + mm(1.0) + u, yc - w))
+            drawing.fill(
+                "Legend",
+                [[*top_edge, *bottom_edge[::-1]]],
+                "#ffffff",
+                contour=item.colour,
+                weight_mm=0.3,
+                element_id="SA LEGEND",
+            )
+        elif item.kind == "zigzag":
+            drawing.line(
+                "Legend",
+                [(x + mm(1.0 + i * 1.4), middle + mm(1.3 if i % 2 else -1.3)) for i in range(11)],
+                colour=item.colour,
+                weight_mm=0.5,
+            )
         elif item.kind == "outline":
             # A white outline on the grey of the photograph it stands on.
             drawing.fill(
@@ -2484,6 +2511,109 @@ def _arrow(
         )
 
 
+def _noise(
+    drawing: Drawing,
+    bundle: SiteBundle,
+    frame: Frame,
+    look: themes.SiteLook,
+    site: Sequence[Point],
+    centroid: Point,
+) -> None:
+    """Noise along each busy road (hierarchy 4 and under, one run a name)
+    and the longest line of each railway, in the theme's hand.
+
+    As the sheets were first drawn, a zigzag on the road's own line. As the
+    generator draws it (``siteSheet.ts``), beside the source on the site's
+    side and broken where it would cross the site or leave the sheet: a
+    white band in the noise pen, swaying and swelling a little along its
+    length but never pinching shut, or the office's sharp zigzag, a tooth
+    every 1.2 mm.
+    """
+    mm = drawing.mm
+    sources: list[list[Point]] = []
+    named: set[str] = set()
+    for road in bundle.roads:
+        if road.hierarchy > 4 or road.name in named:
+            continue
+        named.add(road.name)
+        sources.append(frame.ring(road.coords))
+    for group in (bundle.rail_lines.train, bundle.rail_lines.tram):
+        if group:
+            sources.append(max((frame.ring(line) for line in group), key=polyline_length))
+    if look.noise == "centre":
+        for points in sources:
+            drawing.line("Noise", _zigzag(points, mm(1.1), mm(2.4)), colour=look.noise_pen)
+        return
+    field = _map_rectangle(bundle, frame)
+
+    def clear(pt: Point) -> bool:
+        inside_site = bool(site) and point_in_ring(pt[0], pt[1], list(site))
+        return point_in_ring(pt[0], pt[1], field) and not inside_site
+
+    for k, points in enumerate(sources, start=1):
+        seed = k * 1.7
+        samples: list[tuple[Point, Point, float]] = []
+        run = 0.0
+        for (ax, ay), (bx, by) in pairwise(points):
+            length = math.hypot(bx - ax, by - ay)
+            if not length:
+                continue
+            n = (-(by - ay) / length, (bx - ax) / length)
+            d = 0.0
+            while d < length:
+                t = d / length
+                samples.append(((ax + (bx - ax) * t, ay + (by - ay) * t), n, (run + d) / mm(1)))
+                d += mm(0.8)
+            run += length
+        if len(samples) < 2:
+            continue
+        mid, normal, _ = samples[len(samples) // 2]
+        towards = (centroid[0] - mid[0]) * normal[0] + (centroid[1] - mid[1]) * normal[1]
+        side = 1.0 if towards >= 0 else -1.0
+        if look.noise == "zigzag":
+            teeth: list[Point] = []
+            nxt, up = 0.0, 1.0
+            for (px, py), (nx, ny), t in samples:
+                if t < nxt:
+                    continue
+                nxt, up = t + 1.2, -up
+                offset = mm(side * 10.0 + up * 2.0)
+                at = (px + nx * offset, py + ny * offset)
+                if not clear(at):
+                    drawing.line("Noise", teeth, colour=look.noise_pen, weight_mm=0.5)
+                    teeth = []
+                    continue
+                teeth.append(at)
+            drawing.line("Noise", teeth, colour=look.noise_pen, weight_mm=0.5)
+            continue
+        left: list[Point] = []
+        right: list[Point] = []
+        for (px, py), (nx, ny), t in samples:
+            offset = mm(side * 11.0 + 1.6 * math.sin(t / 11.0 + seed * 1.3))
+            centre = (px + nx * offset, py + ny * offset)
+            if not clear(centre):
+                _noise_band(drawing, left, right, look.noise_pen)
+                left, right = [], []
+                continue
+            half = mm(2.3 + 0.55 * math.sin(t / 9.5 + seed) + 0.3 * math.sin(t / 4.6 + seed * 2.1))
+            left.append((centre[0] + nx * half, centre[1] + ny * half))
+            right.append((centre[0] - nx * half, centre[1] - ny * half))
+        _noise_band(drawing, left, right, look.noise_pen)
+
+
+def _noise_band(drawing: Drawing, left: Sequence[Point], right: Sequence[Point], pen: str) -> None:
+    """One run of the noise band: white, in a fine line of the noise pen."""
+    if len(left) > 3:
+        drawing.fill(
+            "Noise",
+            [[*left, *right[::-1]]],
+            "#ffffff",
+            contour=pen,
+            weight_mm=0.35,
+            element_id="SA NOISE",
+        )
+
+
 def _significant_corners(ring: Sequence[Point], threshold_deg: float = 12.0) -> list[int]:
     """Vertices where the boundary turns; a survey corner, not a digitising node."""
     keep: list[int] = []
@@ -2562,6 +2692,40 @@ def _arc(
         points.append(_on_arc(frame, centroid, bearing, radius))
         bearing -= step
     return points
+
+
+def _arc_band(
+    frame: Frame,
+    centroid: Point,
+    rise: float,
+    radius: float,
+    half: float,
+    dash: float = 0.0,
+    gap: float = 0.0,
+) -> list[list[Point]]:
+    """The sun's path from its rise bearing over north to its set as a band
+    ``half`` either side of ``radius``: one ring, or a ring per dash where
+    ``dash`` is given, ``gap`` between them, all along the arc's length."""
+    span = 2.0 * rise
+    length = math.radians(span) * radius
+    if length <= 0:
+        return []
+    pieces: list[tuple[float, float]] = []
+    if dash <= 0:
+        pieces.append((0.0, length))
+    else:
+        start = 0.0
+        while start < length:
+            pieces.append((start, min(length, start + dash)))
+            start += dash + gap
+    out: list[list[Point]] = []
+    for a, b in pieces:
+        steps = max(2, math.ceil((b - a) / radius * 180 / math.pi / 2))
+        bearings = [rise - span * (a + (b - a) * i / steps) / length for i in range(steps + 1)]
+        outer = [_on_arc(frame, centroid, br, radius + half) for br in bearings]
+        inner = [_on_arc(frame, centroid, br, radius - half) for br in bearings[::-1]]
+        out.append(outer + inner)
+    return out
 
 
 def _angle_of(frame: Frame, bearing: float) -> float:
@@ -2676,8 +2840,21 @@ def _suns(
         return  # drawn with the climate circle, below
 
     if look.sun == "crown":
-        drawing.line("Sun path", summer_arc, colour=look.sun_pen, weight_mm=0.7)
-        drawing.line("Sun path", winter_arc, colour=look.sun_pen, weight_mm=0.7, dashed=True)
+        # Drawn as the winds and the telescopes are: a white band 2 mm wide in
+        # a fine outline of the pen, summer's whole and winter's broken into
+        # 6 mm dashes with 5 mm between them (siteSheet.ts).
+        for rise, radius, dashes in ((sol.summer, sol.outer, False), (sol.winter, sol.inner, True)):
+            for piece in _arc_band(
+                frame, c, rise, radius, mm(1.0), mm(6) if dashes else 0.0, mm(5)
+            ):
+                drawing.fill(
+                    "Sun path",
+                    [piece],
+                    "#ffffff",
+                    contour=look.sun_pen,
+                    weight_mm=MARK_PEN_MM,
+                    element_id="SA SUN PATH",
+                )
     elif look.sun == "drawn":
         # The office's drawn suns sit on dashed arcs, summer dashed and winter
         # dotted; where the winds are drawn too, the summer ring goes on round
@@ -2711,7 +2888,12 @@ def _suns(
                     continue
                 at = _on_arc(frame, c, az, radius)
                 drawing.circle(
-                    "Sun path", at, mm(2), colour=look.sun_pen, fill="#ffffff", weight_mm=0.35
+                    "Sun path",
+                    at,
+                    mm(2),
+                    colour=look.sun_pen,
+                    fill="#ffffff",
+                    weight_mm=MARK_PEN_MM,
                 )
                 lx, ly = _on_arc(frame, c, az, label_radius)
                 drawing.text(
@@ -2731,7 +2913,7 @@ def _suns(
                 [ring],
                 look.sun_fill,
                 contour=look.sun_edge,
-                weight_mm=0.35,
+                weight_mm=MARK_PEN_MM,
                 element_id="SA SUN",
             )
             drawing.circle(
@@ -2740,7 +2922,7 @@ def _suns(
                 inner_r,
                 colour=look.sun_edge,
                 fill=look.sun_fill,
-                weight_mm=0.35,
+                weight_mm=MARK_PEN_MM,
                 element_id="SA SUN",
             )
             below = mm(28)
@@ -2894,7 +3076,7 @@ def _winds(
                     [ring],
                     "#ffffff",
                     contour=look.wind_pen,
-                    weight_mm=0.35,
+                    weight_mm=MARK_PEN_MM,
                     element_id="SA WIND",
                 )
             at = (entry[0] - u[0] * mm(18), entry[1] - u[1] * mm(18))
@@ -3305,19 +3487,7 @@ def site_drawing(
         0.5,
     )
 
-    # Noise: one zigzag per main road, and the longest rail line.
-    noisy: set[str] = set()
-    for road in bundle.roads:
-        if road.hierarchy > 4 or road.name in noisy:
-            continue
-        noisy.add(road.name)
-        drawing.line(
-            "Noise", _zigzag(frame.ring(road.coords), mm(1.1), mm(2.4)), colour=look.noise_pen
-        )
-    for group in (bundle.rail_lines.train, bundle.rail_lines.tram):
-        if group:
-            longest = max((frame.ring(line) for line in group), key=polyline_length)
-            drawing.line("Noise", _zigzag(longest, mm(1.1), mm(2.4)), colour=look.noise_pen)
+    _noise(drawing, bundle, frame, look, site, centroid)
 
     for _name, coords in bundle.furniture.oneway_roads:
         points = frame.ring(coords)
@@ -3801,7 +3971,14 @@ def site_drawing(
             )
     if future:
         rows.append(Row("dashed", FUTURE_MAGENTA, None, "FUTURE CONTEXT: LEP + ADG 3F ENVELOPE"))
-    rows.append(Row("line", look.noise_pen, None, "NOISE SOURCE"))
+    rows.append(
+        Row(
+            {"band": "wave", "zigzag": "zigzag"}.get(look.noise, "line"),
+            look.noise_pen,
+            None,
+            "NOISE SOURCE",
+        )
+    )
     if look.wind in ("banners", "strands"):
         rows.append(Row("arrow", "#ffffff", look.wind_pen, "PREVAILING BREEZES"))
     elif look.wind == "circle":

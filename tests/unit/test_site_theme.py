@@ -9,6 +9,7 @@ tests use, so the content is known to be the same and only the hand differs.
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 from pathlib import Path
 from typing import cast
 
@@ -627,3 +628,63 @@ def test_every_label_on_a_layout_legend_stays_in_its_column() -> None:
             longest = max(len(line) for line in text.text.split("\n"))
             right = text.at[0] * 1000 + longest * text.height_mm * CAPS_WIDTH
             assert right <= 93.0 + 0.5, (text.text, right)
+
+
+def _distance_to_line(pt: tuple[float, float], line: list[tuple[float, float]]) -> float:
+    best = math.inf
+    for (ax, ay), (bx, by) in pairwise(line):
+        dx, dy = bx - ax, by - ay
+        l2 = dx * dx + dy * dy or 1e-12
+        t = max(0.0, min(1.0, ((pt[0] - ax) * dx + (pt[1] - ay) * dy) / l2))
+        best = min(best, math.hypot(pt[0] - ax - t * dx, pt[1] - ay - t * dy))
+    return best
+
+
+def test_heron_draws_noise_as_a_white_band_beside_the_road_on_the_sites_side() -> None:
+    from sun_study.site.geo import point_in_ring
+
+    bundle = site_bundle()
+    drawing = site_drawing(bundle, frame(), theme="heron")
+    bands = [f for f in drawing.fills if f.element_id == "SA NOISE"]
+    assert bands and all(f.colour == "#ffffff" and f.contour == "#3f6fc2" for f in bands)
+    road = frame().ring(bundle.roads[0].coords)
+    site = frame().ring(bundle.site_rings[0])
+    for band in bands:
+        for pt in band.rings[0]:
+            assert not point_in_ring(pt[0], pt[1], site), "never across the site"
+            # 11 mm out at 1:200 is 2.2 m, give or take its sway and width.
+            assert 0.9 <= _distance_to_line(pt, road) <= 3.6
+    centre = sum(x for x, _ in site) / len(site), sum(y for _, y in site) / len(site)
+    probe = bands[0].rings[0][0]
+    assert _distance_to_line(centre, road) > _distance_to_line(probe, road) - 4.0, "site's side"
+
+
+def test_canary_draws_the_offices_zigzag_beside_the_road() -> None:
+    bundle = site_bundle()
+    drawing = site_drawing(bundle, frame(), theme="canary")
+    road = frame().ring(bundle.roads[0].coords)
+    zigzags = [line for line in drawing.lines if line.part == "Noise"]
+    assert zigzags
+    for line in zigzags:
+        for pt in line.points:
+            assert 1.5 <= _distance_to_line(pt, road) <= 2.5, "10 mm out, teeth 2 mm either way"
+
+
+def test_oatley_keeps_the_zigzag_on_the_road() -> None:
+    bundle = site_bundle()
+    drawing = site_drawing(bundle, frame(), theme="oatley")
+    road = frame().ring(bundle.roads[0].coords)
+    zigzags = [line for line in drawing.lines if line.part == "Noise"]
+    assert zigzags and all(_distance_to_line(pt, road) < 0.5 for pt in zigzags[0].points)
+
+
+def test_herons_sun_paths_are_white_bands_winters_broken_into_dashes() -> None:
+    drawing = site_drawing(site_bundle(), frame(), theme="heron")
+    paths = [f for f in drawing.fills if f.element_id == "SA SUN PATH"]
+    assert len(paths) > 5, "summer's band whole, winter's in dashes"
+    assert all(
+        f.colour == "#ffffff" and f.contour == "#6f7377" and f.weight_mm == 0.7 for f in paths
+    )
+    largest = max(paths, key=lambda f: abs(ring_area(f.rings[0])))
+    smallest = min(paths, key=lambda f: abs(ring_area(f.rings[0])))
+    assert abs(ring_area(largest.rings[0])) > 10 * abs(ring_area(smallest.rings[0]))

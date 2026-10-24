@@ -5456,6 +5456,18 @@ field, `places`: the four site-analyst themes number, Oatley names, because
 Oatley is the sheet as it was first drawn. The legend's station and bus rows
 show the roundel itself now, not the letter alone.
 
+**Heron's sun path and the noise, as the generator draws them.** Asked the
+same day, with Heron's site sheet open: *"the sun path is not actual and
+noise line is not right."* Each solstice's path is now Heron's white band,
+2 mm wide in a 0.7 mm grey pen, summer's whole and winter's in 6 mm dashes
+5 mm apart, the hour dots and the crowns and strands in the same pen; it had
+been a bare grey line. And the noise had been the office's zigzag drawn on
+every theme along the road's own centre line, which the generator never
+does: it runs beside the source on the site's side and breaks where it would
+cross the site or leave the sheet -- Heron and the two paper themes as a
+white band swelling gently in the noise pen 11 mm out, Canary as the zigzag
+10 mm out. Oatley keeps the zigzag on the road, as first drawn.
+
 *What this does not change:* the worksheet's map, its title, north point and
 credit, where the site lands, and the site sheet's content.
 

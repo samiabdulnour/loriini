@@ -666,6 +666,12 @@ class SiteLook:
     wind_pen: str = "#2f9fd6"
     climate_ink: str = "#111111"
     """The winds' and the suns' words."""
+    noise: Literal["centre", "band", "zigzag"] = "centre"
+    """Noise beside the busy roads and the railway: a zigzag on the road's
+    own line, as the sheets were first drawn; or, as the generator draws it,
+    beside the source on the site's side -- a white band swelling gently in
+    the noise pen, or the office's zigzag -- broken where it would cross the
+    site or leave the sheet."""
     noise_pen: str = "#3b4fd8"
     parking: Literal["bays", "hatch"] = "bays"
     marks_fill: str = "#ffffff"
@@ -731,6 +737,7 @@ HERON_LOOK = SiteLook(
     wind="strands",
     wind_pen=CLIMATE_GREY,
     climate_ink=CLIMATE_GREY,
+    noise="band",
     noise_pen="#3f6fc2",
 )
 
@@ -773,6 +780,7 @@ CANARY_LOOK = SiteLook(
     wind="circle",
     wind_pen="#1c1c1c",
     climate_ink="#1c1c1c",
+    noise="zigzag",
     noise_pen=NAVY,
     parking="hatch",
 )
@@ -814,6 +822,7 @@ KINGFISHER_LOOK = SiteLook(
     wind="band",
     wind_pen="#4aa3e8",
     climate_ink="#2f86c9",
+    noise="band",
     noise_pen="#3f6fc2",
     marks_fill="#ffffff",
     marks_edge="#ffffff",
