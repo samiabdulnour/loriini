@@ -5187,6 +5187,13 @@ the filing now names the flag the command took the name from. Not changed:
 at 1:1000 an A3 cell shows about 150 m around the model origin, which is
 right for the office's sheets and small for this site's 420 m diamond.
 
+**Verified the same afternoon,** with the new bundle installed and Archicad
+restarted on the sample project: `GetPlace` answered `timeZoneInMinutes`
+180; the rerun printed *Archicad's clock is UTC+03:00 ... 09:00 as 08:00*
+and re-set the three documents; and the 3D window, handed the same date the
+documents now get -- hour 8, flag off -- read back altitude 43.6 and
+azimuth 9.8, this tool's sun for 09:00 Dubai, where hour 9 reads 57.1.
+
 *What this does not change:* which hours are drawn, their names and
 captions, the fills' route, or the sun views' own sun -- they take the same
 clock, through the same function.
