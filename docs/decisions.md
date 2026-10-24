@@ -5844,3 +5844,34 @@ cast of seven hours over half a million samples.
 *What this does not change:* the stack, its fit, its pen set and its legend
 (D141 to D143), and the fills route's own per-hour diagram, which a run
 without the new flag still draws.
+
+### D145 — The every-hour drawing is a fill per hour, empty, on a continuous line
+
+Asked 25 October 2026, of the design's every-hour drawing (D144): *"for some
+reason you choose dense dotted line. there is no reason to use this. if
+anything use continuous. but it should be a fill. not polyline"*.
+
+**Why it was dotted.** Each hour's outline was a polyline made through
+Tapir's `CreatePolylines` with a pen and no line type, so it took the
+Polyline tool's default -- `Dense Dotted` on the sample project. Nothing
+chose it; nothing chose against it either.
+
+**Decided.** Each hour's outline is a fill, made through the add-on's
+`CreateFills`: its contour in the outline pen on a named continuous line
+type (`Solid Line`, `Solid` or `Continuous`, first found), its pattern the
+project's empty fill (`Empty Fill`, `Empty` or `Background`), its background
+the transparent pen. Empty, because the seven hours lie over one another and
+a filled hour would hide the ones under it; a fill, so each hour is an
+element a person can select, measure, or give a pattern of their own. Not
+tagged with the study's Element ID, so a schedule of the shadow areas does
+not count the design's whole shadow seven times. A project with no empty
+fill is told which to add before anything is drawn, rather than given seven
+solid hours of which only the last shows.
+
+**Run, sample project.** The tower, 21 June at every hour from 9 to 3: the
+earlier run's nineteen dotted polylines and seven labels cleared, nineteen
+fills drawn in `Empty Fill` with a transparent background, the seven labels
+again, no polyline left on the layer; 5 min 29 s, the export and the cast.
+
+*What this does not change:* which shadow is drawn, the labels, the layer,
+its combination, view and sheet (D144).

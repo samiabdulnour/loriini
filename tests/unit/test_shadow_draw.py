@@ -95,7 +95,19 @@ class ShadowTransport:
             return {"version": "1.5.7"}
         if command == "GetAttributesByType":
             if given.get("attributeType") == "Fill":
-                return {"attributes": [{"name": "Solid Fill", "index": 65}]}
+                return {
+                    "attributes": [
+                        {"name": "Solid Fill", "index": 65},
+                        {"name": "Empty Fill", "index": 137},
+                    ]
+                }
+            if given.get("attributeType") == "Line":
+                return {
+                    "attributes": [
+                        {"name": "Dense Dotted", "index": 3},
+                        {"name": "Solid Line", "index": 1},
+                    ]
+                }
             if given.get("attributeType") == "Layer":
                 return {
                     "attributes": [
@@ -598,13 +610,20 @@ def test_every_hour_of_the_design_is_outlined_on_one_layer_of_its_own() -> None:
     transport.layers.append(("all-hours", all_hours_layer_name(day), 300, False))
     report = draw_shadow_series(connection, drawn_series, all_hours=key)
 
-    lines = [
-        line
-        for call in transport.all_parameters_for("CreatePolylines")
-        for line in call["polylinesData"]
+    assert not transport.all_parameters_for("CreatePolylines"), "fills, not polylines (D145)"
+    outlines = [
+        fill
+        for call in transport.all_parameters_for("CreateFills")
+        for fill in call["fills"]
+        if fill["layerIndex"] == 300
     ]
-    assert lines and all(line["layerIndex"] == 300 for line in lines)
-    assert all(line["coordinates"][0] == line["coordinates"][-1] for line in lines), "closed"
+    assert outlines
+    assert all(fill["fillIndex"] == 137 for fill in outlines), "the empty fill"
+    assert all(fill["lineTypeIndex"] == 1 for fill in outlines), "continuous, not dense dotted"
+    assert all(fill["backgroundPen"] == 0 and fill["contourPen"] == 1 for fill in outlines)
+    assert all(
+        fill["contours"][0]["points"][0] != fill["contours"][0]["points"][-1] for fill in outlines
+    ), "left open: the add-on closes it"
     texts = [
         text["text"]
         for call in transport.all_parameters_for("CreateTexts")
@@ -662,10 +681,10 @@ def test_only_the_every_hour_drawing_draws_no_hour_of_its_own() -> None:
 
     report = draw_shadow_series(connection, drawn_series, all_hours=key, only_all_hours=True)
 
-    assert not hatches(transport), "no fill for any hour"
+    assert not [h for h in hatches(transport) if h["layerIndex"] != 300], "no fill for any hour"
     assert report.fills == 0 and report.combinations == ()
     assert report.all_hours == (all_hours_combination_name(day),)
-    assert transport.all_parameters_for("CreatePolylines"), "the every-hour lines"
+    assert transport.all_parameters_for("CreateFills"), "the every-hour outlines, as fills"
     written = {
         entry["name"]
         for call in transport.all_parameters_for("CreateLayerCombinations")
@@ -678,6 +697,23 @@ def test_only_the_every_hour_drawing_needs_a_designed_building() -> None:
     connection, _ = connect(["9AM"])
     with pytest.raises(ArchicadError, match="no designed building"):
         draw_shadow_series(connection, series(["9AM"]), only_all_hours=True)
+
+
+def test_a_project_without_an_empty_fill_is_told_rather_than_hidden_under_solid_hours(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A solid fill per hour would hide every hour but the last; with no empty
+    fill to draw them in, the run stops and says which fill to add."""
+    from sun_study.archicad import shadows as module
+
+    monkeypatch.setattr(
+        module, "attribute_index", lambda _c, kind, _n: None if kind == "Fill" else 1
+    )
+    labels = ["9AM"]
+    drawn = series(labels)
+    connection, _ = connect(labels)
+    with pytest.raises(ArchicadError, match="Empty Fill"):
+        draw_shadow_series(connection, drawn, all_hours="PROPOSED")
 
 
 def test_the_designed_building_is_proposed_or_else_the_last_scenario() -> None:
