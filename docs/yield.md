@@ -11,26 +11,48 @@ This is roadmap item R3; D122 and D127 record how it is built.
 
 ## Which slabs count, and what they are
 
-The slabs that are the massing are chosen by layer, the ways the office
-asked for:
+The Yield page asks two questions, and shows only the rows the answers need
+(D140).
 
-- **A layer per use.** The slabs on the layers named *residential*,
-  *commercial* and *retail* are that kind of floor. A layer named for two
-  things is refused. A slab on a layer named for nothing is not counted,
-  and the run lists those layers so that a forgotten one is seen.
-- **A massing layer, the use by level.** An option modelled on one layer --
-  a podium with a tower on it, `01 | Massing - Main Building.3D OPT1` -- is
-  named as a *massing* layer, and each slab's use is told by the level it
-  stands on: the levels named *retail* are retail, the levels named
-  *commercial* are commercial, and every other level is residential. The
-  run prints which level took which use.
-- **By the renovation filter.** With *Only the slabs the renovation filter
-  shows* ticked, only what the floor plan's renovation filter shows is
-  counted. Archicad decides what the filter shows; set it on the floor plan
-  before pressing Run.
-- **By what is showing.** With no layer named, every slab on a layer that
-  is showing counts, as massing. The run says so in yellow, because a
-  structural floor slab on a showing layer is counted too.
+**Slabs** -- which slabs are the massing, and how each one's use is told:
+
+- **Everything showing** (the usual answer). Every slab on a layer that is
+  showing, its use told by the level it stands on: the *Retail levels* are
+  retail, the *Commercial levels* commercial, every other level
+  residential. The run says so in yellow, because a structural floor slab
+  on a showing layer is counted too.
+- **Chosen layers.** The slabs on the *Layers* chosen, the use told by level
+  the same way. An option modelled on one layer -- a podium with a tower on
+  it, `01 | Massing - Main Building.3D OPT1` -- is read this way. The run
+  prints which level took which use.
+- **Layer per use.** The slabs on the *Residential*, *Commercial* and
+  *Retail layers* are that kind of floor, whatever level they stand on. A
+  layer named for two things is refused; a slab on a layer named for
+  nothing is not counted, and the run lists those layers so a forgotten one
+  is seen.
+- **Layer per option.** Each of the *Option layers* is one whole option, a
+  sheet and a workbook page each, named after its OPT number, the use told
+  by level.
+
+A row the answer does not show sends nothing, so a layer left in it cannot
+change what is counted. The command line still takes any of these together
+(`--massing-layer`, `--residential-layer` and the others).
+
+**Renovation** -- which slabs count by their renovation status:
+
+- **Any** (the default): every slab, whatever its status.
+- **New only**: the slabs whose own *Renovation Status* is New -- a massing
+  modelled as New over a building that stays counts the new floors only.
+- **Existing and new**: every slab but those To Be Demolished.
+- **Floor plan's filter**: what the floor plan's renovation filter shows,
+  set on the floor plan before pressing Run.
+
+The first three are read off each slab's built-in *Renovation Status*
+(`--renovation-status new` or `existing-and-new`), so nothing has to be set
+on the floor plan first, and the run counts what it left out under each
+status. A status in a language it does not know is reported and left out,
+never guessed; English, German and French are known. The last is Archicad's
+own filter (`--renovation-filter`).
 
 Loriini's own slabs -- the context model's neighbours and the future
 context -- are never counted.
