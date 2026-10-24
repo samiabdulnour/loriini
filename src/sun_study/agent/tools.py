@@ -220,20 +220,20 @@ class SiteArguments(StudyArguments):
         default=None,
         description="The number the context analysis is filed under, when not the site's.",
     )
-    theme: Literal["flamingo", "kingfisher", "heron", "canary", "oatley"] | None = Field(
+    theme: Literal["flamingo", "kingfisher", "heron", "canary", "fuse"] | None = Field(
         default=None,
         description=(
             "The context sheet's house style: flamingo (paper and four tints, the default), "
             "kingfisher (the masterplan palette), heron (the office sheet over a grey aerial), "
-            "canary (heron in the ePlanning zone colours) or oatley (the office's own legend)."
+            "canary (heron in the ePlanning zone colours) or fuse (the office's own legend)."
         ),
     )
-    site_theme: Literal["heron", "kingfisher", "flamingo", "canary", "oatley"] | None = Field(
+    site_theme: Literal["heron", "kingfisher", "flamingo", "canary", "fuse"] | None = Field(
         default=None,
         description=(
             "The site sheet's house style: heron (grey aerial, crown suns, the default), "
             "kingfisher (paper, crescent sun paths), flamingo (paper, the office's drawn "
-            "marks), canary (the classic sheet with one climate circle) or oatley."
+            "marks), canary (the classic sheet with one climate circle) or fuse."
         ),
     )
     out: str | None = Field(

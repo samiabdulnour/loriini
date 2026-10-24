@@ -5471,3 +5471,54 @@ white band swelling gently in the noise pen 11 mm out, Canary as the zigzag
 *What this does not change:* the worksheet's map, its title, north point and
 credit, where the site lands, and the site sheet's content.
 
+### D139 — Each sheet has a pen table of its own, and the colours are the generator's
+
+Asked 24 October 2026: *"control the colour if they are accurate. compare
+the site-analyst output with created analysis by colour. if there are
+differences. create custom pens"*, and *"also go through all themes to check
+correct colours"*.
+
+**Measured three ways.** The palette, field by field against the generator's
+`template.ts` (loaded with Node and dumped as JSON): three differences --
+Flamingo's site buildings are edged 1.5 mm, not 0.8; its wind band is
+`#5ba8e1`, not Kingfisher's `#4aa3e8` it had inherited; and the generator's
+Canary site sheet draws on Flamingo for what it does not set, not on Canary.
+The colours the generator's site sheet sets outside any theme
+(`siteSheet.ts`): its trees in Flamingo's park teal at 38%, its parking in
+the plum at 35% (a hatched zone at 18% under lines of the plum's ink), bus
+stops a white disc in a `#2f7fd6` ring, the muted building `#d9d9d6`, white
+lots at 0.7 mm, contours at 0.6 mm, and no railway line on the site sheet;
+all now so in its four themes, Oatley keeping what it was first drawn in.
+And what Archicad paints: every colour a theme draws a pen in, against the
+nearest pen of the Untitled project's active table -- every theme off, most
+by 15 to 30 colour-difference units and some by over 50.
+
+**The pens are the sheet's.** A pen table per sheet, named for it, copied
+from the model's active one with the sheet's colours written exactly into
+pens 255 downward (a sheet uses 15 to 25; there is room for 120), its view
+set to it. Never made active for the model or for layouts, and a sheet's
+view shows only the tool's layers, so the overwritten pens mean nothing else
+there. One table per sheet and not one for both, so that rerunning one sheet
+in another theme cannot recolour the other. The office's `Site Analysis` pen
+table is the fallback when the table cannot be made.
+
+**The layout legend takes none.** A layout's own elements draw in the
+layouts' pen table, which is the title blocks', and that is not the tool's to
+rewrite. So on paper every colour is a fill's RGB: lines become the thin
+fills that draw them (dashes as dashes), a contour of a colour of its own
+becomes its line, and every fill's own contour is a white 0.01 mm hairline.
+
+**Two choices of hand.** Archicad lines have no opacity, so Flamingo's lots
+(the road grey at 60%) are drawn in the blend, `#bababa`. And the generator
+draws the traffic arrows white in every theme, which on the paper themes is
+white on the white road; they are white over the photograph here and stay
+the road grey on paper, where they can be seen.
+
+**Oatley is called FUSE.** Asked the same day: *"call oatley FUSE"*. The
+theme is the office's own legend, still read off its Oatley (2546) sheet,
+which is where the old name came from. `oatley` and `office` still resolve
+to it on the command line, and a preset saved with "Oatley" in a style row
+draws FUSE.
+
+*What this does not change:* what a sheet shows, or any fill's colour.
+

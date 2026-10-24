@@ -8585,7 +8585,7 @@ def site_analysis(
             help=(
                 "The context sheet's house style: flamingo (paper and four tints), kingfisher "
                 "(the masterplan palette), heron (the office sheet over a grey aerial), canary "
-                "(heron in the ePlanning zone colours) or oatley (the office's own legend, as "
+                "(heron in the ePlanning zone colours) or fuse (the office's own legend, as "
                 "the sheets were first drawn)."
             ),
         ),
@@ -8597,7 +8597,7 @@ def site_analysis(
             help=(
                 "The site sheet's house style: heron (grey aerial, crown suns), kingfisher "
                 "(paper, crescent sun paths), flamingo (paper, the office's drawn marks), "
-                "canary (the classic sheet, one climate circle) or oatley (as first drawn)."
+                "canary (the classic sheet, one climate circle) or fuse (as first drawn)."
             ),
         ),
     ] = site_theme.DEFAULT_SITE_THEME,

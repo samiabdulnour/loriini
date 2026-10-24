@@ -67,27 +67,29 @@ def test_every_theme_has_the_whole_legend_in_colours_the_add_on_can_take() -> No
             curate.rgb(ink)
 
 
-def test_oatley_is_the_office_legend_the_sheets_were_first_drawn_in() -> None:
-    oatley = theme.theme("oatley")
-    assert [(c.id, c.fill, c.stroke) for c in oatley.categories] == [
+def test_fuse_is_the_office_legend_the_sheets_were_first_drawn_in() -> None:
+    fuse = theme.theme("fuse")
+    assert [(c.id, c.fill, c.stroke) for c in fuse.categories] == [
         (c.id, c.fill, c.stroke) for c in curate.CATEGORIES
     ]
-    assert oatley.ground == "aerial" and oatley.streets == "lines" and oatley.roundel == "ring"
-    assert theme.site_theme("oatley").look.sun == "discs"
+    assert fuse.ground == "aerial" and fuse.streets == "lines" and fuse.roundel == "ring"
+    assert theme.site_theme("fuse").look.sun == "discs"
 
 
 def test_themes_resolve_by_id_and_by_their_former_names() -> None:
     assert theme.theme("Kingfisher").id == "kingfisher"
     assert theme.theme("conure").id == "canary"
     assert theme.theme("flamingo-2").id == "kingfisher"
-    assert theme.theme("office").id == "oatley"
+    assert theme.theme("office").id == "fuse"
+    assert theme.theme("oatley").id == "fuse", "the name it had"
+    assert theme.site_theme("oatley").id == "fuse"
     assert theme.theme(None).id == theme.DEFAULT_THEME == "flamingo"
     assert theme.theme("no such bird").id == "flamingo"
     assert theme.site_theme("dove").id == "heron"
     assert theme.site_theme("kookaburra").id == "kingfisher"
     assert theme.site_theme(None).id == theme.DEFAULT_SITE_THEME == "heron"
-    assert theme.theme_ids() == ("flamingo", "kingfisher", "heron", "canary", "oatley")
-    assert theme.site_theme_ids() == ("heron", "kingfisher", "flamingo", "canary", "oatley")
+    assert theme.theme_ids() == ("flamingo", "kingfisher", "heron", "canary", "fuse")
+    assert theme.site_theme_ids() == ("heron", "kingfisher", "flamingo", "canary", "fuse")
 
 
 def test_a_tint_on_paper_is_the_colour_laid_over_white() -> None:
@@ -514,8 +516,8 @@ def test_the_site_analyst_themes_number_the_places_and_key_them() -> None:
     ]
 
 
-def test_oatley_keeps_the_names_on_the_map() -> None:
-    drawing = context_drawing(context_bundle(), frame(), theme="oatley")
+def test_fuse_keeps_the_names_on_the_map() -> None:
+    drawing = context_drawing(context_bundle(), frame(), theme="fuse")
     on_map = {t.text for t in drawing.texts if not t.layer.endswith(".Sheet")}
     assert {"ST GEORGE\nHOSPITAL", "JUBILEE OVAL", "KOGARAH"} <= on_map
     assert not any(f.element_id.startswith("SA PLACE ") for f in drawing.fills)
@@ -670,9 +672,9 @@ def test_canary_draws_the_offices_zigzag_beside_the_road() -> None:
             assert 1.5 <= _distance_to_line(pt, road) <= 2.5, "10 mm out, teeth 2 mm either way"
 
 
-def test_oatley_keeps_the_zigzag_on_the_road() -> None:
+def test_fuse_keeps_the_zigzag_on_the_road() -> None:
     bundle = site_bundle()
-    drawing = site_drawing(bundle, frame(), theme="oatley")
+    drawing = site_drawing(bundle, frame(), theme="fuse")
     road = frame().ring(bundle.roads[0].coords)
     zigzags = [line for line in drawing.lines if line.part == "Noise"]
     assert zigzags and all(_distance_to_line(pt, road) < 0.5 for pt in zigzags[0].points)
@@ -688,3 +690,105 @@ def test_herons_sun_paths_are_white_bands_winters_broken_into_dashes() -> None:
     largest = max(paths, key=lambda f: abs(ring_area(f.rings[0])))
     smallest = min(paths, key=lambda f: abs(ring_area(f.rings[0])))
     assert abs(ring_area(largest.rings[0])) > 10 * abs(ring_area(smallest.rings[0]))
+
+
+# -- colours as Archicad draws them (D139) -----------------------------------------
+
+
+def test_a_legend_on_paper_carries_every_colour_in_a_fill_and_none_in_a_pen() -> None:
+    from sun_study.archicad.site_analysis import Row, _in_fills, _legend
+
+    rows = [
+        Row("dashed", "#cf4a2e", None, "SITE"),
+        Row("fill", "#ceddde", "#4a5a63", "MEDICAL"),
+        Row("ring", "#2f7fd6", None, "BUS STOPS", mark="B"),
+    ]
+    paper = Drawing(1.0, "Site Analysis")
+    _legend(paper, rows, (0.731, 0.567), title="LEGEND", width_mm=93.0)
+    exact = _in_fills(paper)
+    assert not exact.lines, "no line left to take a pen"
+    assert all(f.contour == "#ffffff" and f.weight_mm == 0.01 for f in exact.fills)
+    colours = {f.colour for f in exact.fills}
+    assert {"#cf4a2e", "#4a5a63", "#2f7fd6", "#ceddde"} <= colours, "outlines and lines as fills"
+    dashes = [f for f in exact.fills if f.colour == "#cf4a2e"]
+    assert len(dashes) > 3, "the site's dashed line as dashes"
+    assert exact.texts == paper.texts
+
+
+def test_a_line_becomes_rectangles_its_width_dashes_with_gaps() -> None:
+    from sun_study.archicad.site_analysis import Line, _line_fills
+
+    mm = Drawing(1.0, "x").mm
+    solid = _line_fills(Line("l", [(0.0, 0.0), (0.01, 0.0)], weight_mm=0.5), mm)
+    assert len(solid) == 1
+    ys = [y for _, y in solid[0]]
+    assert max(ys) - min(ys) == pytest.approx(0.0005)
+    dashed = _line_fills(Line("l", [(0.0, 0.0), (0.01, 0.0)], dashed=True, weight_mm=0.5), mm)
+    assert len(dashed) == 3, "2.5 mm on, 1.2 mm off, along 10 mm"
+
+
+def test_an_opacity_is_blended_on_paper_and_washed_over_the_photo() -> None:
+    from sun_study.archicad.site_analysis import _tint
+
+    assert _tint("#000000", 0.5, True) == ("#808080", False)
+    assert _tint("#5a9c89", 0.38, False) == ("#5a9c89", True)
+    assert _tint("#9b5b6e", 1.0, True) == ("#9b5b6e", False)
+
+
+def test_the_generator_themes_draw_the_site_sheets_furniture_in_its_colours() -> None:
+    drawing = site_drawing(site_bundle(), frame(), theme="kingfisher")
+    tree = next(
+        f
+        for f in drawing.fills
+        if f.element_id.startswith("SA TREE") and "TRUNK" not in f.element_id
+    )
+    assert tree.colour == theme.blend("#5a9c89", "#ffffff", 0.38) and tree.contour == "#3f7f6d"
+    trunk = next(f for f in drawing.fills if f.element_id == "SA TREE TRUNK")
+    assert trunk.colour == "#3f7f6d"
+    heron = site_drawing(site_bundle(), frame(), theme="heron")
+    canopy = next(
+        f for f in heron.fills if f.element_id.startswith("SA TREE") and "TRUNK" not in f.element_id
+    )
+    assert canopy.colour == "#5a9c89" and canopy.wash, "over the photo, a wash of the teal"
+    fuse = site_drawing(site_bundle(), frame(), theme="fuse")
+    old = next(
+        f for f in fuse.fills if f.element_id.startswith("SA TREE") and "TRUNK" not in f.element_id
+    )
+    assert old.colour == "#7dbb57", "FUSE keeps the colours it was first drawn in"
+
+
+def test_bus_stops_on_the_site_sheet_are_the_blue_ring_in_every_theme() -> None:
+    from sun_study.site import osm
+
+    for name in theme.site_theme_ids():
+        bundle = site_bundle()
+        bundle.bus_stops = (osm.Stop(LON + 0.0002, LAT + 0.0002, "Test St"),)
+        drawing = site_drawing(bundle, frame(), theme=name)
+        stop = next(f for f in drawing.fills if f.part == "Bus stops")
+        assert stop.colour == "#ffffff" and stop.contour == "#2f7fd6", name
+        letter = next(t for t in drawing.texts if t.part == "Bus stops")
+        assert letter.colour == "#2f7fd6", name
+
+
+def test_flamingo_and_canary_take_the_generators_settings() -> None:
+    flamingo = theme.site_theme("flamingo").look
+    assert flamingo.building_edge_mm == 1.5 and flamingo.wind_band == "#5ba8e1"
+    assert (
+        flamingo.lot_ink == theme.blend("#8c8c8c", "#ffffff", 0.6) and flamingo.lot_width_mm == 0.3
+    )
+    assert theme.site_theme("canary").base == "flamingo", (
+        "as the generator's Canary draws on Flamingo"
+    )
+    for name in ("heron", "kingfisher", "canary"):
+        assert theme.site_theme(name).look.lot_width_mm == 0.7, name
+
+
+def test_a_preset_saved_under_a_former_style_name_still_draws_that_style() -> None:
+    from sun_study.app.window import CONTEXT_STYLES, SITE_STYLES, _style_id
+
+    assert "FUSE" in CONTEXT_STYLES and "FUSE" in SITE_STYLES and "Oatley" not in CONTEXT_STYLES
+    assert _style_id("FUSE", site=False) == "fuse"
+    assert _style_id("Oatley", site=False) == "fuse", "a preset saved before the rename"
+    assert _style_id("Oatley", site=True) == "fuse"
+    assert _style_id("Heron", site=True) == "heron"
+    assert _style_id("nonsense", site=False) == ""
