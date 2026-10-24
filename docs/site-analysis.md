@@ -65,6 +65,8 @@ Options worth knowing:
 | `--model-radius 500` | how far each way the model reaches; `0` keeps to the site sheet's extent |
 | `--fit-layer auto` | fit the fetched lot onto the boundary drawn on this layer (below); `none` skips it |
 | `--north grid` | the project's north angle is an MGA grid bearing from the survey, not a true one |
+| `--theme flamingo` | the context sheet's house style: `flamingo`, `kingfisher`, `heron`, `canary` or `oatley` (below) |
+| `--site-theme heron` | the site sheet's: `heron`, `kingfisher`, `flamingo`, `canary` or `oatley` |
 
 Needs the Loriini add-on beside Tapir. A worksheet can only be drawn into in
 the session that made it if the add-on's own `CreateWorksheet` made it and
@@ -74,6 +76,82 @@ entered it (D33), and the fills carry the legend's own RGB through
 Put `TFNSW_API_KEY=...` in the environment for authoritative bus stops; free
 from opendata.transport.nsw.gov.au. Without it the stops come from
 OpenStreetMap along with the routes.
+
+## Themes
+
+A theme is how a sheet looks -- the land-use palette, the inks, the line
+styles, which marks stand for the sun and the winds. What a sheet says is
+the same in every theme. They are the generator's four, ported colour for
+colour from its `src/render/template.ts` into `sun_study.site.theme`, and a
+fifth, **Oatley**, which is the office's own legend these sheets were first
+drawn in, so a saved run still draws what it drew. The context sheet takes
+`--theme`, the site sheet `--site-theme`; the window's Site analysis page
+has a *Context style* and a *Site style* row. Flamingo and Heron are the
+defaults, as the generator's are.
+
+The generator prints to a PDF, where a tint has an opacity and a texture is
+a pattern. Archicad has neither on a fill, so each is realised as what
+Archicad does have, and that is the whole of the port (D137):
+
+- a tint **on paper** is the colour laid over white before it is sent, so a
+  peach at 22% arrives as the blush a reader would see; a tint **over the
+  aerial** is the project's `50%` fill in the colour, as before;
+- a **texture** (dots, lines, cross) is a hatch of the drawing's own lines
+  in the texture's ink at 2 mm on paper -- lines at 45°, crossed at 135°,
+  and dots as lines in the project's `Dotted` line type (`Dashed` where it
+  has none);
+- a **grey or veiled aerial** is the tile toned with Pillow -- greyscale,
+  blended toward white by the veil -- and saved beside the original as
+  `aerial_r_c-grey36.jpg`, the site's own lot left in colour; Archicad can
+  neither tone a Figure nor mask one. Oatley keeps the white `50%` wash;
+- a **white street** is the road centre line widened to the reserve its
+  function hierarchy suggests (30 m for a motorway down to 6 m for a lane),
+  mitred and round-ended, as one white fill;
+- the office's **drawn marks** -- its suns, winds and arrows, taken as paths
+  from its symbol sheet -- are flattened to polygons (`sun_study.site.marks`),
+  a cubic walked in six straight steps, the eye's pupil a hole;
+- a theme's **text scale** applies to the map's words and not the sheet's:
+  the title, the legend and the credit keep their size.
+
+Every zone, institution and heritage fill is cut to the map field, with the
+site's own lot cut out of the zone it lies in on the site sheet, and a cut
+ring that pinches is split into its loops, because Archicad refuses a fill
+whose contour touches or nearly touches itself (D137 records what the first
+live run refused and why).
+
+Fonts are not themed: the add-on's `CreateTexts` takes no face, so a text
+is in the Text tool's default. The generator's Arial Narrow and DejaVu are
+a project-template matter.
+
+### The context sheet
+
+| theme | |
+|---|---|
+| **Flamingo** (default) | plain paper; four tints, each a family -- peach for the residential zones, sand for the centres, teal for open space and the institutions, blue for water, grey for the rest -- told apart within a family by tone and texture; the streets white strips over the tints; the cadastre a faint grey hairline; street and place names in a light green; solid roundels with a white letter; the bus routes a faint dotted line, the railway a red dotted one; the catchments dotted green with `5 MIN` along them; the site coral |
+| **Kingfisher** | Flamingo in a masterplan reference's palette: every zone a pale ground (yellow for R2, pink for R3, cyan for R4, peach mixed use, the centres the blue family told apart by texture, the institutions lavender, industry grey on stone, open space a deep mint with black dots); the cadastre a heavy white line; street names and the discs a peach; the site magenta, heritage purple |
+| **Heron** | the office sheet over the aerial in greyscale under a 36% veil; the lots a heavy white line; no street strips and no centre lines (the photo shows them) and the names plain in white; Heron's palette (tan centres, peach residential, mint open space, the institutions outlined in slate); the catchments a continuous green line with solid walker discs; the railway red dotted; the site in Heron's red |
+| **Canary** | Heron with the zoning in exactly the NSW ePlanning Land Zoning colours, keyed by code and name in the legend (`R3 MEDIUM DENSITY RESIDENTIAL`, `SP2 INFRASTRUCTURE`...), no institution or railway tint over them, heritage in the ePlanning item tan; the catchments plain black lines with `5 MIN · 400M` along them |
+| **Oatley** | the office's own legend over the colour aerial under the white `50%` wash, the grey centre lines, the arrow bands under the street names, ring roundels: the sheet as it was first drawn |
+
+### The site sheet
+
+| theme | |
+|---|---|
+| **Heron** (default) | the aerial grey outside the site, which keeps its colours; the zones hatched in Heron's palette and tinted under the hatch, since its tints are too pale to read as a hatch alone; the site, its levels, its boundary dimensions and the FALL/AREA words in Heron's red, the fall arrow in its slate; the neighbours as a fine white outline with number and storeys in white; the contours light grey; every word on the map a fifth larger; the sun an open jagged crown of twelve uneven teeth, the four on the diagonals drawn out as flames, each sun from its own seed, on arcs with the solar hours marked; the winds three hand-drawn strands abreast, white in the climate grey, coming in from their compass quarter |
+| **Kingfisher** | Kingfisher on paper, no photograph: each lot filled in its zone's pale ground so the roads stay white, water drawn whole; every building in its family's strong colour with a white edge; the white cadastre; the site in magenta on its pink; each solstice's sun path a yellow crescent, deepest at noon, with the office's small rayed sun at each rise and set; each wind a blue crescent over the quarter it blows from with three white broken-shaft arrows on it pointing in |
+| **Flamingo** | the same paper and plan in Flamingo's palette, as its context sheet draws them: the lots in its tints and textures, every building white in a heavy outline of its family's ink and finely hatched in it, the cadastre fine grey, the site coral, the names green; the office's drawn marks -- an eight-rayed sun at each rise and set on dashed arcs (winter dotted), the ring carried on round the side the sun never reaches dashed in the wind's blue, the two-curl wind on it -- each solid in the ink of its name |
+| **Canary** | the office's classic site sheet in the context Canary's colours: the aerial greyed under its veil, the zones washed in the ePlanning colours and keyed by code; the LEP's heritage items hatched in the ePlanning tan and its conservation areas in red; the site a dash in Canary's red with its levels, the dimensions and the fall in its slate; no contours; each neighbour's number and storeys in black; kerbside parking a hatched zone; the sun and the winds one black dashed circle about the site -- the winds named around it outside over hatched quarters, the two solstice paths inside it (summer solid, winter dashed, a step further in) with four plain suns named toward the centre, and north an arrowhead standing out of the ring |
+| **Oatley** | the sheet as it was first drawn: the colour aerial, the office's red site, blue dimensions and fall, grey building masses with number, storeys and zone, yellow suns with rays, white wind banners at the corners |
+
+Each site theme draws on a context theme for what it does not set itself --
+the zones' palette and the categories' inks -- and the four stay paired, so
+a context sheet in Kingfisher beside a site sheet in Kingfisher reads as one
+package. The retired names still resolve: `conure` is Canary, `flamingo-2`
+Kingfisher, `dove` and `cardinal` Heron, `kookaburra` Kingfisher.
+
+The potential views, the indicative kerbs and the neighbours' height limits
+the generator's site sheet draws are not here: the Loriini bundle carries
+no sight lines, no kerbs and no `HOB` per neighbour.
 
 ## Where the site lands
 
@@ -152,7 +230,8 @@ a context sheet.
 The curation is the office's: zoning is the base, and a named complex is
 coloured by what its name says it is -- `SCHOOL` is education, `HOSPITAL` is
 medical, `CHURCH` is community -- because the register's type codes are
-unreliable and its names are not. The palette is the Oatley legend's.
+unreliable and its names are not. The palette is the theme's (above);
+Oatley's is the office's own legend.
 
 ### Whose data it is
 

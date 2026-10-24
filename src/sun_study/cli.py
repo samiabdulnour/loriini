@@ -312,6 +312,8 @@ from sun_study.rules.area_yield import (
 from sun_study.rules.days import DAY_HELP, day_tag, day_title, parse_day, with_day
 from sun_study.rules.ruleset import BUILTIN_RULESETS, Ruleset, RulesetError, load_ruleset
 from sun_study.site import pipeline as site_pipeline
+from sun_study.site import theme as site_theme
+from sun_study.site.arcgis import rings_of
 from sun_study.site.geocode import geocode
 from sun_study.site.http import FetchError
 
@@ -8338,6 +8340,22 @@ def _stacked_shadow_plans(
     typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
 
 
+def _site_rings_of(
+    bundle: site_pipeline.ContextBundle | site_pipeline.SiteBundle,
+) -> tuple[tuple[tuple[float, float], ...], ...]:
+    """The site's rings, in longitude and latitude, from whichever bundle is
+    the run's reference: the site bundle carries them; the context bundle,
+    which stands in with --no-site, carries the site's lots."""
+    rings = getattr(bundle, "site_rings", None)
+    if rings:
+        return tuple(tuple(ring) for ring in rings)
+    return tuple(
+        tuple(ring)
+        for feature in bundle.site_lots["features"]
+        for ring in rings_of(feature.get("geometry"))
+    )
+
+
 def _site_out_dir(address: str, out: Path | None) -> Path:
     """Where a run keeps what it fetched: under Documents, by address, unless told."""
     if out is not None:
@@ -8560,6 +8578,29 @@ def site_analysis(
         ),
     ] = future_context.DEFAULT_REACH_M,
     datum: Annotated[str, typer.Option("--datum", help=context_model.DATUM_HELP)] = "project",
+    theme: Annotated[
+        str,
+        typer.Option(
+            "--theme",
+            help=(
+                "The context sheet's house style: flamingo (paper and four tints), kingfisher "
+                "(the masterplan palette), heron (the office sheet over a grey aerial), canary "
+                "(heron in the ePlanning zone colours) or oatley (the office's own legend, as "
+                "the sheets were first drawn)."
+            ),
+        ),
+    ] = site_theme.DEFAULT_THEME,
+    site_theme_id: Annotated[
+        str,
+        typer.Option(
+            "--site-theme",
+            help=(
+                "The site sheet's house style: heron (grey aerial, crown suns), kingfisher "
+                "(paper, crescent sun paths), flamingo (paper, the office's drawn marks), "
+                "canary (the classic sheet, one climate circle) or oatley (as first drawn)."
+            ),
+        ),
+    ] = site_theme.DEFAULT_SITE_THEME,
     aerial_as: Annotated[
         str,
         typer.Option(
@@ -8651,6 +8692,19 @@ def site_analysis(
     if north not in ("true", "grid"):
         typer.secho("  --north takes 'true' or 'grid'.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2)
+    if not site_theme.is_theme(theme):
+        typer.secho(
+            f"  no context theme named {theme!r}; drawing in {site_theme.theme(theme).label}.",
+            fg=typer.colors.YELLOW,
+        )
+    if not site_theme.is_site_theme(site_theme_id):
+        typer.secho(
+            f"  no site theme named {site_theme_id!r}; drawing in "
+            f"{site_theme.site_theme(site_theme_id).label}.",
+            fg=typer.colors.YELLOW,
+        )
+    theme = site_theme.theme(theme).id
+    site_theme_id = site_theme.site_theme(site_theme_id).id
     if anchor is not None and anchor not in ("location", "site"):
         typer.secho("  --anchor takes 'location' or 'site'.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2)
@@ -8816,7 +8870,7 @@ def site_analysis(
             points = context_model.boundary_points(connection, layer_name)
             if len(points) >= 3:
                 try:
-                    fit = site_drawing.fit_frame(base, reference.site_rings, points)
+                    fit = site_drawing.fit_frame(base, _site_rings_of(reference), points)
                 except ValueError as error:
                     typer.secho(f"  no fit: {error}", fg=typer.colors.YELLOW)
             else:
@@ -8867,7 +8921,7 @@ def site_analysis(
         )
         if anchor == "site" and placing and reference is not None:
             frame = site_drawing.placed_frame(
-                frame, reference.site_rings, square=square_to_site, origin_at=origin_at
+                frame, _site_rings_of(reference), square=square_to_site, origin_at=origin_at
             )
         if quiet:
             return frame
@@ -8976,7 +9030,7 @@ def site_analysis(
 
     try:
         if context_bundle is not None:
-            typer.echo("drawing the context analysis...")
+            typer.echo(f"drawing the context analysis in {site_theme.theme(theme).label}...")
             report = site_drawing.draw_context(
                 connection,
                 context_bundle,
@@ -8988,11 +9042,14 @@ def site_analysis(
                 master_layout=master_layout,
                 title_block_mm=title_block_mm,
                 pictures_as=aerial_as,
+                theme=theme,
             )
             typer.echo(report.describe())
             unplaced |= any("PlaceFigures" in note for note in report.notes)
         if site_bundle is not None:
-            typer.echo("drawing the site analysis...")
+            typer.echo(
+                f"drawing the site analysis in {site_theme.site_theme(site_theme_id).label}..."
+            )
             report = site_drawing.draw_site(
                 connection,
                 site_bundle,
@@ -9005,6 +9062,7 @@ def site_analysis(
                 title_block_mm=title_block_mm,
                 future=future_report.envelopes if future_report is not None else (),
                 pictures_as=aerial_as,
+                theme=site_theme_id,
             )
             typer.echo(report.describe())
             unplaced |= any("PlaceFigures" in note for note in report.notes)

@@ -103,6 +103,7 @@ from sun_study.cli import DEFAULT_SHADOW_HOURS
 from sun_study.core.solar import UnknownTimezoneError, resolve_timezone, solar_position
 from sun_study.licence import credential
 from sun_study.rules.days import ASSESSMENT_DAYS, day_name, parse_day
+from sun_study.site import theme as site_theme
 
 PAD = theme.PAD
 #: Kept as a name because a dozen widgets still pass it directly. The value
@@ -140,6 +141,18 @@ TURN_WORDS: dict[str, bool] = {
 FIT_WORDS: dict[str, str] = {
     "Fit the context to it": "auto",
     "Ignore it: use the project's north": "none",
+}
+
+#: The house styles the sheets are drawn in, named as the site-analysis
+#: site's STYLE row names them -- Flamingo, Kingfisher, Heron, Canary, a bird
+#: each, the site sheet's in the context sheet's order -- and Oatley, the
+#: office's own legend, after them; and the ``--theme`` / ``--site-theme``
+#: each sends. What each one looks like is the row's tooltip.
+CONTEXT_STYLES: dict[str, str] = {t.label: t.id for t in site_theme.THEMES}
+SITE_STYLES: dict[str, str] = {
+    site_theme.site_theme(t.id).label: t.id
+    for t in site_theme.THEMES
+    if site_theme.is_site_theme(t.id)
 }
 
 #: What RL project zero stands for when the 3D context is placed, and the
@@ -5401,6 +5414,42 @@ class Window:
             "where the station is a long way off. The site sheet ignores this "
             "and picks the scale its boundary fits at.",
         )
+        # The house style each sheet is drawn in: the generator's four, and
+        # the office's own legend the sheets were first drawn in. Two rows,
+        # because the two sheets take different styles -- a context sheet on
+        # paper beside a site sheet on the photograph is how the office's
+        # packages have it.
+        self.site_theme, row = self._combo(
+            frame,
+            row,
+            "Context style",
+            "The context sheet's style, named as on the site-analysis site. Flamingo by default.",
+            "Flamingo sits on plain paper: four tints with textures, every "
+            "street white, green street names. Kingfisher is the masterplan "
+            "palette, pale zone grounds and a white cadastre. Heron is the "
+            "office sheet over a grey aerial, white lots and lettering. Canary "
+            "is Heron with the zoning in the NSW ePlanning colours, keyed by "
+            "zone code. Oatley is the office's own legend over the aerial, as "
+            "these sheets were first drawn.",
+        )
+        self.site_theme.configure(values=list(CONTEXT_STYLES), state="readonly")
+        self.site_theme.set(site_theme.theme(site_theme.DEFAULT_THEME).label)
+        self.site_site_theme, row = self._combo(
+            frame,
+            row,
+            "Site style",
+            "The site sheet's style, named as on the site-analysis site. Heron by default.",
+            "Heron is the grey aerial with the zones hatched in its palette, the "
+            "site in its red, the sun as an open crown and the winds as "
+            "hand-drawn strands. Kingfisher is on paper: the buildings in their "
+            "zone's colour, the sun paths as yellow crescents, the winds as "
+            "blue ones. Flamingo is on paper with the office's drawn suns and "
+            "winds. Canary is the office's classic sheet: one black circle for "
+            "the sun and the winds, the zones in the ePlanning colours. Oatley "
+            "is the sheet as it was first drawn.",
+        )
+        self.site_site_theme.configure(values=list(SITE_STYLES), state="readonly")
+        self.site_site_theme.set(site_theme.site_theme(site_theme.DEFAULT_SITE_THEME).label)
         self.site_anchor, row = self._tiles(
             frame,
             row,
@@ -7100,6 +7149,8 @@ class Window:
             "eye_hours": self.eye_hours,
             "site_address": self.site_address,
             "site_scale": self.site_scale,
+            "site_theme": self.site_theme,
+            "site_site_theme": self.site_site_theme,
             "site_anchor": self.site_anchor,
             "site_origin": self.site_origin,
             "site_turn": self.site_turn,
@@ -8880,6 +8931,13 @@ class Window:
                 args += ["--keep-location"]
             if self.site_scale.get().strip():
                 args += ["--scale", self.site_scale.get().strip()]
+            if CONTEXT_STYLES.get(self.site_theme.get(), "") not in ("", site_theme.DEFAULT_THEME):
+                args += ["--theme", CONTEXT_STYLES[self.site_theme.get()]]
+            if SITE_STYLES.get(self.site_site_theme.get(), "") not in (
+                "",
+                site_theme.DEFAULT_SITE_THEME,
+            ):
+                args += ["--site-theme", SITE_STYLES[self.site_site_theme.get()]]
             # The combobox says it in words; the command takes a keyword.
             at_origin = "origin" in self.site_anchor.get().lower()
             args += ["--anchor", "site" if at_origin else "location"]
