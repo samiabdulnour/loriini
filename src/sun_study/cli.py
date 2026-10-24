@@ -35,6 +35,7 @@ from sun_study.archicad import context_model, future_context, naming
 from sun_study.archicad import layout as sheet_layout
 from sun_study.archicad import site_analysis as site_drawing
 from sun_study.archicad.area_sheet import draw_area_sheet
+from sun_study.archicad.clock import describe_clock, read_archicad_clock
 from sun_study.archicad.connection import (
     DEFAULT_PORT,
     DEFAULT_TIMEOUT_SECONDS,
@@ -7648,7 +7649,10 @@ def sun_eye_views(
         )
 
     geo = read_geo_location(connection)
-    eyes = sun_eyes(geo, date=when, hours=hours, timezone=timezone)
+    archicad_clock = read_archicad_clock(connection)
+    eyes = sun_eyes(geo, date=when, hours=hours, timezone=timezone, clock_minutes=archicad_clock)
+    if eyes:
+        typer.echo(describe_clock(timezone, archicad_clock, eyes[0].when))
     turn = (eyes[0].project_bearing_deg - eyes[0].true_bearing_deg) % 360.0 if eyes else 0.0
     typer.echo(
         f"  {when:%d %B %Y}, {len(eyes)} instants; project +Y at true bearing "
@@ -7982,7 +7986,10 @@ def shadow_plan_documents(
         raise typer.Exit(code=2)
 
     geo = read_geo_location(connection)
-    plans, down = shadow_plans(geo, moments, labels)
+    archicad_clock = read_archicad_clock(connection)
+    plans, down = shadow_plans(geo, moments, labels, clock_minutes=archicad_clock)
+    if moments:
+        typer.echo(describe_clock(timezone, archicad_clock, moments[0]))
     for plan in down:
         typer.secho(
             f"  {plan.caption}: the sun is below the horizon, so there is no plan to draw",
@@ -8148,7 +8155,9 @@ def shadow_plan_documents(
             for report in placed:
                 typer.echo(report.describe())
             if subset:
-                filing = file_under_subset(connection, [r.layout_name for r in placed], subset)
+                filing = file_under_subset(
+                    connection, [r.layout_name for r in placed], subset, flag="--subset"
+                )
                 typer.echo(filing.describe())
             typer.echo(clock.said("placed them on sheets"))
     typer.echo(
@@ -8327,7 +8336,9 @@ def _stacked_shadow_plans(
             for report in placed:
                 typer.echo(report.describe())
             if subset:
-                filing = file_under_subset(connection, [r.layout_name for r in placed], subset)
+                filing = file_under_subset(
+                    connection, [r.layout_name for r in placed], subset, flag="--subset"
+                )
                 typer.echo(filing.describe())
             typer.echo(clock.said("placed them on sheets"))
     typer.echo(

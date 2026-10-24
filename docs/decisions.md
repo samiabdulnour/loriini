@@ -5133,3 +5133,60 @@ lemon one.
 *What this does not change:* the layout, the controls, the words, and the
 principles of D109 except where its text named the grey, the blue and Segoe
 UI; those lines in `theme.py`'s docstring now read as D132 has them.
+
+### D135 — A sun date is read in Archicad's own clock, and the add-on says what that is
+
+Asked 24 October 2026: *"i want you to check current project which is
+opened. sample project. I want to work on shadows diagram via 3d doc"*. The
+Graphisoft sample project -- the Sheung Wan tower, 7,785 elements, 23
+storeys, in a diamond of site context -- open in Archicad 30 on the Mac,
+with the add-on answering. The second live run of the shadow plans after
+Redfern (8 October, R1), the first on a Mac, and the first on a project
+whose time zone was not the hours' own.
+
+**What held.** Three documents for 21 June in 3.4 s; the shadows on and
+drawn in the `50 %` fill, `effects3D` 128 read back from each; the plan
+north up and matching the floor plan exactly (a first look read a quarter
+turn into it; the *site* is a diamond, and the walls in model coordinates
+are at 0 and 90). A re-aim takes: tilted to 45 degrees from the south and
+set back, the document redrew each time. A second run found the three by
+name, re-set them, and made the sheets once a master was named. The stacked
+run made its two combinations -- the named one with the context on and the
+tower's nine layers off, and with them on -- four documents and two sheets
+in 17 s, the pens matched from the legend's colours.
+
+**What did not: the hour.** Loriini's sun at 09:00 Dubai stands at 43.6
+degrees; Archicad's documents carried the sun of 10:00. Measured where the
+sun can be read back, the 3D window: `SetProjection` with the date 21 June
+09:00 and `GetProjection` after it gave azimuth 5.8 and altitude 57.1, and
+this tool's own sun for 10:00 Dubai is altitude 57.14 at bearing 84.2 --
+90 minus 84.2 is 5.8, so Archicad's `sunAzimuth` runs anticlockwise from +X
+toward the sun, like its camera azimuth. The same date with `summerTime` on
+gave 9.8 and 43.6: this tool's 09:00. So Archicad reads a sun date in the
+project location's own time zone, `API_PlaceInfo::timeZoneInMinutes`, +180
+on this file against Asia/Dubai's +240, with the daylight flag taking an
+hour off. Loriini sent the wall-clock of `--timezone` with that zone's
+daylight flag, which agrees with Archicad exactly where the project's zone
+is that zone's standard offset -- an AEST project with Sydney hours, which
+is why Redfern showed nothing -- and is an hour out anywhere else.
+
+**Decided.** The sun stays a date, not a pair of angles: the point of a
+date was that a disagreement would show on the drawing, and it did. What
+changes is whose clock the date is in. The add-on reports the project
+location whole, zone included (`Loriini.GetPlace`); `archicad.clock` turns
+the instant into that zone with the flag off, so 09:00 Dubai goes over as
+08:00 and Archicad draws 09:00 Dubai under a document still named for
+09:00; and the run prints whose clock the hours are in, with one worked
+example. An add-on built before `GetPlace` cannot say, gets the old
+behaviour, and the run says the clock is unknown rather than guessing --
+a quiet guess here is the hour's error that was found.
+
+**Also found and fixed.** The run's advice for a subset the Layout Book
+does not have named `--layout-subset`, which `shadow-plans` does not have;
+the filing now names the flag the command took the name from. Not changed:
+at 1:1000 an A3 cell shows about 150 m around the model origin, which is
+right for the office's sheets and small for this site's 420 m diamond.
+
+*What this does not change:* which hours are drawn, their names and
+captions, the fills' route, or the sun views' own sun -- they take the same
+clock, through the same function.

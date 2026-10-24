@@ -408,6 +408,7 @@ def test_the_documents_just_made_are_mended_after_they_are_made(monkeypatch) -> 
     monkeypatch.setattr(
         cli, "read_geo_location", lambda *a, **k: GeoLocation(-33.9, 151.2, 37.0, 0.0)
     )
+    monkeypatch.setattr(cli, "read_archicad_clock", lambda *a, **k: 600)
     monkeypatch.setattr(cli, "sun_eyes", lambda *a, **k: [eye])
     monkeypatch.setattr(cli, "sun_eye_layer_combination", lambda *a, **k: ("combo", []))
     monkeypatch.setattr(cli, "planned_renovation_filter", lambda *a, **k: None)
@@ -421,3 +422,14 @@ def test_the_documents_just_made_are_mended_after_they_are_made(monkeypatch) -> 
     assert order.index("make_documents") < order.index("mend", 1), (
         "the documents this run made were never mended; only earlier runs' were"
     )
+
+
+def test_the_sun_date_follows_archicads_clock_when_known() -> None:
+    """D135: Archicad reads the date in the project location's time zone."""
+    (eye,) = sun_eyes(
+        KOGARAH, date=MIDWINTER, hours=[9], timezone="Australia/Sydney", clock_minutes=540
+    )
+    sent = eye.sun_for_archicad()
+    # 09:00 AEST is 08:00 in a project that keeps UTC+9.
+    assert (sent["hour"], sent["summerTime"]) == (8, False)
+    assert eye.label == "21 Jun 09:00"

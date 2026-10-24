@@ -115,6 +115,20 @@ context layers on, and take the `50 %` fill when the project has it
 the two routes side by side, the documents where the fills' edges on a
 building are too coarse, and the fills for the areas and the split.
 
+**Run live again (24 October),** this time on a Mac, in Archicad 30, on the
+Graphisoft sample project -- a 23-storey tower in a diamond of context,
+7,785 elements, located at 24.5 N 54.4 E with the project clock at UTC+3.
+Three documents in 3.4 s, shadows on in the `50 %` fill, the plan north up
+and matching the floor plan; a second run found and re-set them; the stacked
+run made its two combinations, four documents and two sheets in 17 s. The
+sun was the finding: every document carried the sun of an hour later than
+asked, because Archicad reads a sun date in the project location's time
+zone and Loriini had sent the wall-clock of `--timezone`. The add-on now
+reports the zone (`GetPlace`) and the hour goes over in Archicad's own clock
+([D135](decisions.md)). The sheets themselves -- the fill pen, the stack's
+uncut surfaces and order -- are still to be read; the display slept before
+they could be.
+
 ## R2 — An agent that operates Loriini
 
 **Asked.** Could an AI agent run Loriini natively, for more users? It saves

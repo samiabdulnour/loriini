@@ -290,6 +290,29 @@ person. The answer carries `opened`. Measured on the Redfern project the same
 evening: Archicad opens a fresh worksheet's window this way, the move then
 takes, and the sheet draws with nobody touching the Project Map.
 
+### `Loriini.GetPlace`
+
+The project location whole, as `API_PlaceInfo` holds it: `longitude`,
+`latitude`, `altitude`, `north` (radians, exactly as `GetGeoLocation` reports
+it), and the part Tapir's `GetGeoLocation` leaves out -- `timeZoneInMinutes`,
+the location's time zone east of Greenwich, with `timeZoneOffset`,
+`summerTime` and the `date` the dialog keeps. Nothing is written.
+
+It exists because of what the first live shadow plans on a project whose zone
+was not the hours' zone showed ([D135](decisions.md)). Archicad works a sun
+given by date out in the *project location's* time zone, with the date's
+daylight-saving flag taking an hour off; Loriini had handed the hour over as
+the wall-clock of `--timezone`, and on the sample project -- zone +3, hours
+asked for in Asia/Dubai, +4 -- every document carried the sun of an hour
+later. Measured through the 3D window, where the sun can be read back:
+`SetProjection` with 21 June 09:00 came back from `GetProjection` as azimuth
+5.8, altitude 57.1, which is this tool's sun for 10:00 Dubai (altitude 57.14,
+bearing 84.2, and 90 - 84.2 is 5.8: Archicad's `sunAzimuth` runs anticlockwise
+from +X toward the sun, as its camera azimuth does); the same date with
+`summerTime` on came back as 9.8 and 43.6, this tool's 09:00. With the zone
+reported, `archicad.clock` hands the hour over in Archicad's own clock, and
+the run says whose clock the hours are in.
+
 ### `Loriini.CreateWorksheet`
 
 The same wall from the other side. Tapir's `CreateWorksheets` works, and

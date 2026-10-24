@@ -137,6 +137,9 @@ class PlanTransport:
                     {"success": True} for _ in given["navigatorItemIdsWithViewSettings"]
                 ]
             }
+        if command == "GetPlace":
+            # A Sydney project keeping AEST (D135): the hours go over unchanged.
+            return {"success": True, "timeZoneInMinutes": 600, "summerTime": False}
         raise AssertionError(f"unscripted command {command!r}")
 
     def asked(self, command: str) -> list[dict[str, Any]]:
@@ -742,3 +745,57 @@ def test_the_stacked_command_builds_a_combination_per_set_and_stacks_the_sheets(
     assert [stack.label for stack in stacks] == ["Proposed 1", "Proposed 2"]
     assert kwargs["sheets"] == "two"
     assert "lies over each proposal's in every cell" in result.output
+
+
+def test_the_sun_date_is_in_archicads_own_clock_when_the_add_on_reports_one() -> None:
+    """D135. Archicad reads a sun date in the project location's time zone.
+    The sample project keeps UTC+3 while its hours were asked for in Dubai
+    (UTC+4), and every document was drawn an hour late. With the clock
+    known, 09:00 Dubai goes over as 08:00 in Archicad's clock, daylight
+    saving off, and the document is still named for 09:00."""
+    dubai = ZoneInfo("Asia/Dubai")
+    plan = ShadowPlan(
+        when=dt.datetime(2024, 6, 21, 9, tzinfo=dubai),
+        label="9AM",
+        altitude_deg=43.6,
+        clock_minutes=180,
+    )
+    assert plan.sun_for_archicad() == {
+        "year": 2024,
+        "month": 6,
+        "day": 21,
+        "hour": 8,
+        "minute": 0,
+        "second": 0,
+        "summerTime": False,
+    }
+    assert plan.name() == f"{SS} Shadow Plan 21 Jun 09:00"
+    assert plan.reference == "SP0621-0900"
+
+
+def test_daylight_saving_is_folded_into_archicads_clock_rather_than_flagged() -> None:
+    """A Sydney 21 December 09:00 is AEDT, UTC+11; a project keeping AEST,
+    UTC+10, is handed 08:00 with the flag off, which is the same instant."""
+    plan = ShadowPlan(
+        when=dt.datetime(2024, 12, 21, 9, tzinfo=ZONE),
+        label="9AM",
+        altitude_deg=50.0,
+        clock_minutes=600,
+    )
+    sent = plan.sun_for_archicad()
+    assert (sent["day"], sent["hour"], sent["summerTime"]) == (21, 8, False)
+
+
+def test_without_a_clock_the_wall_clock_and_its_daylight_flag_go_over_as_before() -> None:
+    plan = ShadowPlan(
+        when=dt.datetime(2024, 12, 21, 9, tzinfo=ZONE), label="9AM", altitude_deg=50.0
+    )
+    sent = plan.sun_for_archicad()
+    assert (sent["hour"], sent["summerTime"]) == (9, True)
+
+
+def test_shadow_plans_carry_the_clock_onto_every_plan() -> None:
+    moments = [dt.datetime(2024, 6, 21, hour, tzinfo=ZONE) for hour in (9, 12)]
+    up, _ = shadow_plans(SYDNEY, moments, ["9AM", "12PM"], clock_minutes=600)
+    assert [plan.clock_minutes for plan in up] == [600, 600]
+    assert [plan.sun_for_archicad()["hour"] for plan in up] == [9, 12]

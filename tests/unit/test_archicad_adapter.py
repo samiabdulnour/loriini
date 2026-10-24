@@ -211,7 +211,15 @@ SS = naming.prefix()
 
 
 def connect(responses: dict[str, Any]) -> tuple[ArchicadConnection, FakeTransport]:
-    transport = FakeTransport({"GetAddOnVersion": {"version": "1.5.7"}, **responses})
+    transport = FakeTransport(
+        {
+            "GetAddOnVersion": {"version": "1.5.7"},
+            # The add-on's own clock answer (D135): a Sydney project keeping AEST,
+            # which every scripted run here is, so an hour goes over unchanged.
+            "GetPlace": {"success": True, "timeZoneInMinutes": 600, "summerTime": False},
+            **responses,
+        }
+    )
     return ArchicadConnection(transport), transport
 
 

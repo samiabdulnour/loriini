@@ -51,6 +51,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from sun_study.archicad import naming
+from sun_study.archicad.clock import sun_date
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError, CommandFailedError
 from sun_study.archicad.layout import LayoutReport, remove_stale_layouts
 from sun_study.archicad.read import GeoLocation
@@ -172,6 +173,10 @@ class ShadowPlan:
     """The sun's height, from this tool's own astronomy: said beside the
     document so a shadow that looks too long can be checked against it."""
 
+    clock_minutes: int | None = None
+    """Archicad's clock -- the project location's time zone, in minutes east
+    of Greenwich -- or ``None`` for an add-on that cannot report it (D135)."""
+
     @property
     def caption(self) -> str:
         """``JUNE 21 -9AM``, the fills' sheets' own words, under the drawing."""
@@ -198,20 +203,19 @@ class ShadowPlan:
         A date rather than angles, as for the sun views: the shadow is then
         Archicad's, from the project's georeferencing, and a disagreement with
         this tool's astronomy shows on the drawing rather than being hidden.
+        The hour is in Archicad's own clock where the add-on can say what that
+        is, since Archicad reads a sun date in the project location's time
+        zone and not in the one the hours were asked for (D135).
         """
-        return {
-            "year": self.when.year,
-            "month": self.when.month,
-            "day": self.when.day,
-            "hour": self.when.hour,
-            "minute": self.when.minute,
-            "second": 0,
-            "summerTime": bool(self.when.dst()),
-        }
+        return sun_date(self.when, self.clock_minutes)
 
 
 def shadow_plans(
-    geo: GeoLocation, moments: Sequence[dt.datetime], labels: Sequence[str]
+    geo: GeoLocation,
+    moments: Sequence[dt.datetime],
+    labels: Sequence[str],
+    *,
+    clock_minutes: int | None = None,
 ) -> tuple[list[ShadowPlan], list[ShadowPlan]]:
     """The hours to draw, and the ones left out because the sun is down.
 
@@ -219,6 +223,8 @@ def shadow_plans(
     draw the same hours under the same names. An hour with the sun below the
     horizon is left out rather than drawn: a document of it would be a plan
     with no sun at all, which is not a shadow diagram of anything.
+    ``clock_minutes`` is Archicad's clock, carried onto every plan for the
+    date it hands over (``clock.read_archicad_clock``).
     """
     if len(moments) != len(labels):
         raise ValueError(f"{len(moments)} moments but {len(labels)} labels")
@@ -228,7 +234,9 @@ def shadow_plans(
     up: list[ShadowPlan] = []
     down: list[ShadowPlan] = []
     for when, label, altitude in zip(moments, labels, position.elevation_deg, strict=True):
-        plan = ShadowPlan(when=when, label=label, altitude_deg=float(altitude))
+        plan = ShadowPlan(
+            when=when, label=label, altitude_deg=float(altitude), clock_minutes=clock_minutes
+        )
         (up if plan.altitude_deg > 0.0 else down).append(plan)
     return up, down
 

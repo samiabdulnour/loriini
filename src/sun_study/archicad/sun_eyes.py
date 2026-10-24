@@ -44,6 +44,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from sun_study.archicad import naming
+from sun_study.archicad.clock import sun_date
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError
 from sun_study.archicad.layout import (
     MM_PER_M,
@@ -139,6 +140,10 @@ class SunEye:
 
     altitude_deg: float
 
+    clock_minutes: int | None = None
+    """Archicad's clock -- the project location's time zone, in minutes east
+    of Greenwich -- or ``None`` for an add-on that cannot report it (D135)."""
+
     @property
     def label(self) -> str:
         """``21 Jun 09:00`` -- the instant, as a human names it."""
@@ -155,17 +160,10 @@ class SunEye:
         A date rather than angles, on purpose: Archicad then works the sun out
         from the project's own georeferencing, and a disagreement with this
         tool's astronomy becomes visible on the drawing instead of being
-        hidden by writing our answer into both sides.
+        hidden by writing our answer into both sides. The hour is in
+        Archicad's own clock where the add-on can say what that is (D135).
         """
-        return {
-            "year": self.when.year,
-            "month": self.when.month,
-            "day": self.when.day,
-            "hour": self.when.hour,
-            "minute": self.when.minute,
-            "second": 0,
-            "summerTime": bool(self.when.dst()),
-        }
+        return sun_date(self.when, self.clock_minutes)
 
 
 def sun_eyes(
@@ -174,11 +172,14 @@ def sun_eyes(
     date: dt.date,
     hours: Sequence[int],
     timezone: str,
+    clock_minutes: int | None = None,
 ) -> list[SunEye]:
     """The sun at each whole hour, in the project's frame as well as true.
 
     Hours when the sun is below the horizon are left out rather than drawn:
     a sun eye view from under the ground is not a diagram of anything.
+    ``clock_minutes`` is Archicad's clock, carried onto every eye for the
+    date it hands over (``clock.read_archicad_clock``, D135).
     """
     zone = ZoneInfo(timezone)
     times = [dt.datetime.combine(date, dt.time(hour), tzinfo=zone) for hour in hours]
@@ -203,6 +204,7 @@ def sun_eyes(
                 true_bearing_deg=float(bearing) % 360.0,
                 project_bearing_deg=(float(bearing) - project_plus_y) % 360.0,
                 altitude_deg=float(altitude),
+                clock_minutes=clock_minutes,
             )
         )
     return found

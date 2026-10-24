@@ -855,12 +855,16 @@ class Filing:
 
     no_such_subset: bool = False
 
+    flag: str = "--layout-subset"
+    """The option the caller took the subset's name from, so the advice
+    names the flag that command has: ``shadow-plans`` says ``--subset``."""
+
     def describe(self) -> str:
         if self.no_such_subset:
             return (
                 f"  no subset called {self.subset!r} in the Layout Book, so the "
                 f"sheets were left at the book root. Make the subset, or name an "
-                f"existing one with --layout-subset."
+                f"existing one with {self.flag}."
             )
         done = len(self.moved) + len(self.already)
         if not done:
@@ -929,7 +933,13 @@ def remove_stale_layouts(
     return [item.name for item in stale]
 
 
-def file_under_subset(connection: ArchicadConnection, names: Sequence[str], subset: str) -> Filing:
+def file_under_subset(
+    connection: ArchicadConnection,
+    names: Sequence[str],
+    subset: str,
+    *,
+    flag: str = "--layout-subset",
+) -> Filing:
     """Move these Layouts into a named subset of the Layout Book.
 
     Two commands, because the obvious one does not work. ``CreateLayout``
@@ -950,7 +960,7 @@ def file_under_subset(connection: ArchicadConnection, names: Sequence[str], subs
     """
     wanted = list(dict.fromkeys(names))
     if not wanted:
-        return Filing(subset=subset, moved=(), already=(), missing=())
+        return Filing(subset=subset, moved=(), already=(), missing=(), flag=flag)
 
     root = _book(connection)
     if root is None:
@@ -963,7 +973,12 @@ def file_under_subset(connection: ArchicadConnection, names: Sequence[str], subs
     )
     if target is None:
         return Filing(
-            subset=subset, moved=(), already=(), missing=tuple(wanted), no_such_subset=True
+            subset=subset,
+            moved=(),
+            already=(),
+            missing=tuple(wanted),
+            no_such_subset=True,
+            flag=flag,
         )
 
     by_name = {name: guid for guid, (name, _) in before.items() if name in set(wanted)}
@@ -1002,6 +1017,7 @@ def file_under_subset(connection: ArchicadConnection, names: Sequence[str], subs
         moved=tuple(n for n in wanted if n in by_name and n not in already),
         already=already,
         missing=missing,
+        flag=flag,
     )
 
 

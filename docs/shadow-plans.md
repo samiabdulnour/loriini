@@ -153,6 +153,17 @@ sun-study shadow-plans --shadow-date 06-21 --shadow-hour 9,10,11,12,13,14,15 ^
 keeps the project's own defaults for new 3D Documents. An agent connected to
 `Loriini.exe mcp` has the same as its `shadow_plans` tool.
 
+**Whose clock the hours are in.** Archicad reads a sun date in the project
+location's own time zone -- the one set beside the latitude and longitude in
+Project Location -- and not in the `--timezone` the hours were asked for. The
+add-on reports that zone (`GetPlace`), and the run hands each hour over in
+Archicad's clock and prints what it did: on a project keeping UTC+3 with
+hours asked for in Asia/Dubai, *09:00 as 08:00*; on an AEST project with
+Sydney hours, *handed over as they are*. An add-on built before `GetPlace`
+cannot say what the clock is, the hour then goes over as the asked-for
+wall-clock, and the run says so; check one document against the altitude
+printed beside it ([D135](decisions.md)).
+
 ## A second run
 
 A 3D Document cannot be deleted through the API, so a second run over the
@@ -167,8 +178,13 @@ is removed.
 
 ## What to check first on a workstation
 
-Built against the Archicad 26 kit and tested against a scripted Archicad,
-not yet a live project. In order:
+Built against the Archicad 26 kit, run live on the Redfern project (8
+October, Windows) and on the Graphisoft sample project in Archicad 30 on a
+Mac (24 October, [D135](decisions.md)). Of the list below, 1 and 2 hold on
+both, and the second run and the stacked run both complete; 3 found the hour
+out by the project's time zone on the sample project, which is what
+`GetPlace` and the clock line in the run's output now answer; 4 to 7 are
+still to be read on a workstation. In order:
 
 1. **The shadows are on.** Open one document. If it shows the plan with no
    shadows, the defaults switch did not reach it: open the document's
