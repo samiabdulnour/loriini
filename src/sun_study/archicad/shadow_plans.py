@@ -58,11 +58,23 @@ from typing import Any
 from sun_study.archicad import naming
 from sun_study.archicad.clock import sun_date
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError, CommandFailedError
-from sun_study.archicad.layout import LayoutReport, remove_stale_layouts, update_drawings
+from sun_study.archicad.layout import (
+    LayoutReport,
+    layout_sheet,
+    remove_stale_layouts,
+    update_drawings,
+)
+from sun_study.archicad.plan_sheet import PlanWindow, draw_legend_and_outline
 from sun_study.archicad.read import GeoLocation
 from sun_study.archicad.series import database_of
 from sun_study.archicad.sheeting import DEFAULT_SHEET_MODE, cells_for, sheet_chunks
-from sun_study.archicad.sun_eyes import TITLE_BLOCK_MM, place_on_sheets, place_stacks_on_sheets
+from sun_study.archicad.sheets import LEGEND_COLUMN_MM
+from sun_study.archicad.sun_eyes import (
+    TITLE_BLOCK_MM,
+    place_on_sheets,
+    place_stacks_on_sheets,
+    sheet_cells_for,
+)
 from sun_study.archicad.views import (
     ModelSource,
     StoreyView,
@@ -77,6 +89,7 @@ __all__ = [
     "COMBINED_LABEL",
     "DEFAULT_COMBINATION",
     "EXISTING_LABEL",
+    "LEGEND_TITLE",
     "OVERHEAD_DEG",
     "PLAN_SCALE",
     "PLAN_WORD",
@@ -547,12 +560,18 @@ def make_shadow_plan_sheets(
     scale: float = PLAN_SCALE,
     master_layout: str | None = None,
     title_block_mm: float = TITLE_BLOCK_MM,
+    window: PlanWindow | None = None,
 ) -> tuple[list[LayoutReport], list[str]]:
     """The documents on sheets, and this set's earlier sheets that are not
-    being remade removed. Each drawing's origin goes at the centre of its cell
-    and its frame is clipped to the cell, as for the sun views."""
+    being remade removed. Each drawing is clipped to its cell, as for the sun
+    views, with its origin at the cell's centre -- or, given a ``window``,
+    placed so the window's centre is there (D138)."""
     groups, cells = plan_sheet_groups(made, sheets=sheets, set_label=set_label)
     removed = remove_stale_layouts(connection, _sheet_stem(set_label), {name for name, _ in groups})
+    offset = (0.0, 0.0)
+    if window is not None:
+        cx, cy = window.centre
+        offset = (-cx / scale, -cy / scale)
     reports = place_on_sheets(
         connection,
         groups,
@@ -560,6 +579,8 @@ def make_shadow_plan_sheets(
         scale=scale,
         master_layout=master_layout,
         title_block_mm=title_block_mm,
+        offset=offset,
+        aspect=window.aspect if window is not None else None,
     )
     return reports, removed
 
@@ -618,6 +639,9 @@ class Stack:
 #: so a project that also has a plain set keeps both: a sheet finds its
 #: drawings by name and never clears the ones it does not know.
 COMBINED_LABEL = "Combined"
+
+#: What the legend on a combined sheet is headed.
+LEGEND_TITLE = "SHADOW LEGEND"
 
 #: How every document of a stack fills its uncut surfaces: filled, so
 #: Archicad draws its shadows -- it draws them on filled surfaces and on
@@ -781,29 +805,76 @@ def make_stack_sheets(
     scale: float = PLAN_SCALE,
     master_layout: str | None = None,
     title_block_mm: float = TITLE_BLOCK_MM,
+    window: PlanWindow | None = None,
+    pen_table_index: int | None = None,
+    legend: Sequence[tuple[str, tuple[int, int, int]]] = (),
+    legend_title: str = LEGEND_TITLE,
+    rings: Sequence[Sequence[tuple[float, float]]] = (),
+    outline_pen: int | None = None,
 ) -> tuple[list[LayoutReport], list[str], list[str]]:
-    """The stack on its sheets, every set's drawing of an hour in one cell,
-    each drawing above the lowest with a transparent background; the combined
-    sheets an earlier run made that are not being remade removed; and every
-    drawing redrawn, since a rerun's documents are re-set under drawings that
-    would otherwise keep showing the last run's. Returns the sheets, the names
-    removed, and anything worth saying."""
+    """The stack on its sheets, every set's drawing of an hour in one cell.
+
+    Each drawing above the lowest has a transparent background; with a
+    ``window``, every drawing's origin is put where the window's centre lands
+    in the middle of its cell at ``scale``; with ``pen_table_index``, every
+    drawing prints in that pen table. The combined sheets an earlier run made
+    and this one is not remaking are removed, every drawing is redrawn, and
+    with a ``legend`` the legend is drawn in the column left of the title
+    block -- which the cells then keep clear of -- and the site's ``rings``
+    over every drawing in ``outline_pen`` (D138). Returns the sheets, the
+    names removed, and anything worth saying.
+    """
     groups, cells = stack_sheet_groups(stack, sheets=sheets)
     stem = _sheet_stem(COMBINED_LABEL)
     removed = remove_stale_layouts(connection, stem, {name for name, _ in groups})
+    clear_of = title_block_mm + (LEGEND_COLUMN_MM if legend else 0.0)
+    offset = (0.0, 0.0)
+    if window is not None:
+        cx, cy = window.centre
+        offset = (-cx / scale, -cy / scale)
     reports = place_stacks_on_sheets(
         connection,
         groups,
         cells=cells,
         scale=scale,
         master_layout=master_layout,
-        title_block_mm=title_block_mm,
+        title_block_mm=clear_of,
         transparent_above_lowest=True,
+        offset=offset,
+        pen_table_index=pen_table_index,
+        aspect=window.aspect if window is not None else None,
     )
     said: list[str] = []
-    for report in reports:
-        if report.database_id:
-            note = update_drawings(connection, report.database_id)
-            if note and note not in said:
+    for report, (_, piles) in zip(reports, groups, strict=True):
+        if not report.database_id:
+            continue
+        note = update_drawings(connection, report.database_id)
+        if note and note not in said:
+            said.append(note)
+        if not legend and not rings:
+            continue
+        sheet, _ = layout_sheet(connection, report.database_id)
+        grid = sheet_cells_for(
+            sheet,
+            cells,
+            title_block_mm=clear_of,
+            aspect=window.aspect if window is not None else None,
+        )[: len(piles)]
+        try:
+            draw_legend_and_outline(
+                connection,
+                report.database_id,
+                title=legend_title,
+                rows=legend,
+                cells=grid,
+                window=window,
+                scale=scale,
+                rings=rings,
+                outline_pen=outline_pen,
+                title_block_mm=title_block_mm,
+            )
+        except ArchicadError as error:
+            note = f"the legend and the site outline could not be drawn on the sheet: {error}"
+            if note not in said:
                 said.append(note)
     return reports, removed, said

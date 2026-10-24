@@ -61,6 +61,7 @@ from sun_study.archicad.draw import (
     DEFAULT_BANDS,
     BandStyle,
     Pen,
+    _active_pen_table,
     default_layer_name,
     draw_assessment,
     hidden_layers,
@@ -92,6 +93,16 @@ from sun_study.archicad.penetration import (
     PlanInstant,
     draw_cell_groups,
     draw_penetration,
+)
+from sun_study.archicad.plan_sheet import (
+    BOUNDARY_RGB,
+    PlanWindow,
+    boundary_rings,
+    cell_size_mm,
+    fitted_scale,
+    legend_pen_set,
+    nearest_pen,
+    plan_window,
 )
 from sun_study.archicad.read import (
     ArchicadZone,
@@ -170,6 +181,9 @@ from sun_study.archicad.shadows import (
 from sun_study.archicad.shadows import (
     DEFAULT_SHEETS as SHADOW_SHEETS,
 )
+from sun_study.archicad.shadows import (
+    LEGEND as SHADOW_LEGEND,
+)
 from sun_study.archicad.sheeting import (
     SHEETS_HELP,
     cells_for,
@@ -178,6 +192,7 @@ from sun_study.archicad.sheeting import (
     sheet_title,
 )
 from sun_study.archicad.sheets import (
+    LEGEND_COLUMN_MM,
     TableRow,
     draw_statistics,
     draw_table,
@@ -7931,8 +7946,15 @@ def shadow_plan_documents(
         typer.Option("--shadow-contours/--no-shadow-contours", help="Outline each shadow."),
     ] = False,
     scale: Annotated[
-        float, typer.Option("--scale", help="Scale of the plans' views, and so of the drawings.")
-    ] = PLAN_SCALE,
+        float | None,
+        typer.Option(
+            "--scale",
+            help=(
+                "Scale of the plans' views, and so of the drawings. Left out, the largest "
+                "standard scale at which everything the plans show fits a cell of the sheet."
+            ),
+        ),
+    ] = None,
     layout: Annotated[
         bool, typer.Option("--layout/--no-layout", help="Place the plans on layouts.")
     ] = True,
@@ -8082,7 +8104,7 @@ def shadow_plan_documents(
         model_view_options=model_view_options,
         pen_set=pen_set,
         graphic_override=override,
-        scale=scale,
+        scale=scale or PLAN_SCALE,
         shadow_fill=fill,
         shadow_contours=shadow_contours,
     )
@@ -8145,9 +8167,20 @@ def shadow_plan_documents(
             f"  {layer_combination!r} hides what the plans need; views on {pinned!r} "
             f"instead, which is that combination with {', '.join(repr(n) for n in wanted)} on"
         )
+    fitted, window, master_layout = _plan_fit(
+        connection,
+        plans,
+        combinations=[settings.layer_combination],
+        sheets=sheets,
+        master_layout=master_layout,
+        title_block_mm=title_block_mm,
+        scale=scale,
+        layout=layout,
+    )
+    settings = replace(settings, scale=fitted)
     typer.echo(
         f"  {len(plans)} plans, overhead with north up, each with Archicad's sun and "
-        f"shadows; views on {settings.layer_combination!r} at 1:{scale:g}"
+        f"shadows; views on {settings.layer_combination!r} at 1:{fitted:g}"
         + ("" if guid else ", no renovation filter pinned (no view carries one)")
     )
 
@@ -8180,9 +8213,10 @@ def shadow_plan_documents(
                 made,
                 sheets=sheets,
                 set_label=set_label,
-                scale=scale,
+                scale=fitted,
                 master_layout=master_layout,
                 title_block_mm=title_block_mm,
+                window=window,
             )
         except ArchicadError as error:
             typer.secho(
@@ -8259,16 +8293,17 @@ def _legend_rows(
 
 
 def _legend_pens(
-    connection: ArchicadConnection, legend: Sequence[LegendRow], given: Mapping[str, int]
-) -> dict[str, int]:
-    """A solid pen per legend row, by label.
+    legend: Sequence[LegendRow], given: Mapping[str, int], pens: Sequence[Pen]
+) -> dict[str, tuple[int, tuple[int, int, int], tuple[int, int, int] | None]]:
+    """A solid pen per legend row, by label: ``(pen, legend colour, the pen's
+    own colour in the table, or None when unknown)``.
 
-    The ones given win; the rest are matched by colour against the project's
-    pen table, as the shadow diagram's rows are: a row the legend knows by
-    name -- EXISTING, FUTURE, TOD, SEARS, PROPOSED, in its short words or its
-    sheet words -- takes the legend's colour, and any other row takes the next
-    grey for a source or the next blue for a scenario. So the stacked sheet
-    and the shadow diagram of one project read in the same colours.
+    The ones given win; the rest are the nearest pens in ``pens`` to the
+    row's colour, one to a row, as the shadow diagram's rows are matched: a
+    row the legend knows by name -- EXISTING, FUTURE, TOD, SEARS, PROPOSED,
+    in its short words or its sheet words -- takes the legend's colour, and
+    any other row takes the next grey for a source or the next blue for a
+    scenario.
     """
     seen = {BASELINE: 0, SCENARIO: 0}
     wanted: list[BandStyle] = []
@@ -8284,22 +8319,110 @@ def _legend_pens(
                 rgb=legend_colour(row.label) or ramp[min(position, len(ramp) - 1)],
             )
         )
-    try:
-        pens = pen_table(connection)
-    except ArchicadError as error:
+    matched, _ = match_pens(wanted, pens)
+    colour_of = {pen.index: pen.rgb for pen in pens}
+    chosen: dict[str, tuple[int, tuple[int, int, int], tuple[int, int, int] | None]] = {}
+    for row, band, asked in zip(legend, matched, wanted, strict=True):
+        pen = given.get(row.label, band.fill_pen)
+        chosen[row.label] = (pen, asked.rgb, colour_of.get(pen))
+    return chosen
+
+
+def _legend_words(label: str) -> str:
+    """The legend's own words for a row named either way, or the row's name."""
+    tidy = " ".join(label.split()).casefold()
+    for short, words, _role, _rgb in SHADOW_LEGEND:
+        if tidy in (short.casefold(), words.casefold()):
+            return words
+    return label.upper()
+
+
+def _pen_source(connection: ArchicadConnection, pen_set: str | None) -> tuple[str, str]:
+    """The pen table the stack's pen set is copied from: the one named, or the
+    model's active one, which is what a document's drawing prints in. Its
+    guid and name."""
+    response = connection.run_tapir("GetAttributesByType", {"attributeType": "PenTable"})
+    tables = [
+        (str((a.get("attributeId") or {}).get("guid", "")), str(a.get("name", "")))
+        for a in (response or {}).get("attributes") or []
+        if isinstance(a, dict)
+    ]
+    if pen_set:
+        for guid, name in tables:
+            if name.casefold() == pen_set.casefold():
+                return guid, name
+    active = _active_pen_table(connection, [guid for guid, _ in tables])
+    return active, next((name for guid, name in tables if guid == active), active)
+
+
+def _plan_fit(
+    connection: ArchicadConnection,
+    plans: Sequence[ShadowPlan],
+    *,
+    combinations: Sequence[str],
+    sheets: str,
+    master_layout: str | None,
+    title_block_mm: float,
+    scale: float | None,
+    layout: bool,
+) -> tuple[float, PlanWindow | None, str | None]:
+    """The scale the plans are drawn at, the window of the plan each drawing
+    centres in its cell, and the master the sheets go on (D138).
+
+    The master is settled here, before anything is made, since its page is
+    what a cell is cut from; the window is everything the combinations show;
+    and with no ``--scale`` the scale is the largest standard one the window
+    fits a cell at. A window or a page that cannot be read leaves the scale
+    at 1:1000 and the drawings around the model's origin, as before, and the
+    run says so.
+    """
+    master = None
+    if layout:
+        try:
+            master = choose_master(master_layouts(connection), master_layout)
+        except ArchicadError as error:
+            typer.secho(f"  {error}", fg=typer.colors.YELLOW)
+    window = plan_window(connection, combinations)
+    if window is None:
         typer.secho(
-            f"  could not read the pen table ({error}); the shadow pens not given are a guess",
+            "  could not measure what the plans show; the drawings are placed around the "
+            "model's origin",
             fg=typer.colors.YELLOW,
         )
-        pens = ()
-    matched, _ = match_pens(wanted, pens)
-    chosen: dict[str, int] = {}
-    for row, band in zip(legend, matched, strict=True):
-        told = row.label in given
-        chosen[row.label] = given[row.label] if told else band.fill_pen
-        how = "given" if told else ("matched" if pens else "guessed")
-        typer.echo(f"    {row.label:<24} rgb{band.rgb} -> pen {chosen[row.label]:<4} {how}")
-    return chosen
+    else:
+        cx, cy = window.centre
+        typer.echo(
+            f"  the plans show {window.width:.0f} x {window.height:.0f} m, centred at "
+            f"({cx:.0f}, {cy:.0f}) in the project"
+        )
+    name = master.name if master is not None else master_layout
+    if scale is not None:
+        return scale, window, name
+    per_day = collections.Counter(plan.when.date() for plan in plans)
+    cells = max((cells_for(sheet_chunks(n, sheets)) for n in per_day.values()), default=1)
+    cell = (
+        cell_size_mm(
+            connection,
+            master.identifier,
+            cells,
+            title_block_mm=title_block_mm,
+            aspect=window.aspect if window is not None else None,
+        )
+        if master is not None
+        else None
+    )
+    if window is None or cell is None:
+        typer.secho(
+            f"  the plans are drawn at 1:{PLAN_SCALE:g}; give --scale to choose another",
+            fg=typer.colors.YELLOW,
+        )
+        return PLAN_SCALE, window, name
+    fitted = float(fitted_scale(window, cell))
+    typer.echo(
+        f"  drawn at 1:{fitted:g}, the largest standard scale at which that fits a "
+        f"{cell[0]:.0f} x {cell[1]:.0f} mm cell of {name!r}, {cells} to a sheet"
+    )
+    return fitted, window, name
 
 
 def _stacked_shadow_plans(
@@ -8316,7 +8439,7 @@ def _stacked_shadow_plans(
     master_layout: str | None,
     subset: str | None,
     title_block_mm: float,
-    scale: float,
+    scale: float | None,
     clock: Stopwatch,
 ) -> None:
     """The stacked mode of ``shadow-plans``: every legend row in one drawing.
@@ -8331,7 +8454,41 @@ def _stacked_shadow_plans(
     pen, so what is seen of each row is what it adds (D137).
     """
     typer.echo("  shadow pens for the legend:")
-    pens = _legend_pens(connection, legend, given_pens)
+    source_guid, source_name = _pen_source(connection, settings.pen_set)
+    try:
+        table = pen_table(connection, table=source_guid)
+    except ArchicadError as error:
+        typer.secho(
+            f"  could not read the pen table ({error}); the shadow pens not given are a guess",
+            fg=typer.colors.YELLOW,
+        )
+        table = ()
+    chosen = _legend_pens(legend, given_pens, table)
+    pens = {label: pen for label, (pen, _, _) in chosen.items()}
+    # The stack's own pen set: the source's pens with each matched row's pen
+    # set to the legend's colour, so the drawings print in the legend's
+    # colours and not the nearest the office's table happens to have (D138).
+    exact = {pen: asked for label, (pen, asked, _) in chosen.items() if label not in given_pens}
+    pen_set_name = naming.named(SET_WORD)
+    pen_index = legend_pen_set(connection, pen_set_name, source_guid, exact) if exact else None
+    swatches: dict[str, tuple[int, int, int]] = {}
+    for label, (pen, asked, own) in chosen.items():
+        printed = asked if (pen_index is not None and label not in given_pens) else (own or asked)
+        swatches[label] = printed
+        how = "given" if label in given_pens else "matched"
+        off = "" if own is None else f", the table's own {own}"
+        typer.echo(f"    {label:<24} pen {pen:<4} {how}, printed in rgb{printed}{off}")
+    if pen_index is not None:
+        typer.echo(
+            f"  the drawings print in {pen_set_name!r}: {source_name!r} with those pens set to "
+            f"the legend's colours"
+        )
+    elif exact:
+        typer.secho(
+            f"  this Archicad cannot make a pen set (CreatePenTables needs Archicad 27), so "
+            f"the drawings print in {source_name!r}'s own colours, the nearest it has",
+            fg=typer.colors.YELLOW,
+        )
     combos: dict[str, str] = {}
     for label, show, hide in legend_combinations(legend, also_show=also_show):
         name = ensure_layer_combination(
@@ -8345,6 +8502,17 @@ def _stacked_shadow_plans(
         PlanSet(label=row.label, layer_combination=combos[row.label], shadow_pen=pens[row.label])
         for row in stack_order(legend)
     ]
+    fitted, window, master_layout = _plan_fit(
+        connection,
+        plans,
+        combinations=list(combos.values()),
+        sheets=sheets,
+        master_layout=master_layout,
+        title_block_mm=title_block_mm + LEGEND_COLUMN_MM,
+        scale=scale,
+        layout=layout,
+    )
+    settings = replace(settings, scale=fitted)
     typer.echo(
         f"  {len(plans)} hours in {len(members)} sets, overhead with north up, each with "
         f"Archicad's sun and shadows; stacked bottom to top as "
@@ -8372,15 +8540,40 @@ def _stacked_shadow_plans(
             )
     typer.echo(clock.said("made the documents"))
 
+    rings: list[list[tuple[float, float]]] = []
+    outline_pen: int | None = None
+    if layout:
+        boundary = context_model.boundary_layer(connection, "auto")
+        if boundary:
+            rings = boundary_rings(connection, boundary)
+        if rings:
+            try:
+                outline_pen = nearest_pen(pen_table(connection, for_layout=True), BOUNDARY_RGB)
+            except ArchicadError:
+                outline_pen = None
+            typer.echo(
+                f"  the site: {len(rings)} outline(s) on {boundary!r}, drawn over every plan"
+            )
+        else:
+            typer.secho(
+                "  no site outline: no layer named for a boundary holds a slab, a fill or a "
+                "polyline",
+                fg=typer.colors.YELLOW,
+            )
     if layout:
         try:
             placed, removed, notes = make_stack_sheets(
                 connection,
                 stack,
                 sheets=sheets,
-                scale=scale,
+                scale=fitted,
                 master_layout=master_layout,
                 title_block_mm=title_block_mm,
+                window=window,
+                pen_table_index=pen_index,
+                legend=[(_legend_words(row.label), swatches[row.label]) for row in legend],
+                rings=rings,
+                outline_pen=outline_pen,
             )
         except ArchicadError as error:
             typer.secho(

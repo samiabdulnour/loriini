@@ -724,6 +724,12 @@ def test_a_transparent_background_is_sent_per_drawing_only_when_asked() -> None:
         )
 
 
+def cli_module() -> Any:
+    from sun_study import cli
+
+    return cli
+
+
 def _stacked_command(
     monkeypatch: pytest.MonkeyPatch, *legend_args: str
 ) -> tuple[Any, PlanTransport, list[tuple[str, list[str], list[str], str]], list[Any]]:
@@ -753,9 +759,32 @@ def _stacked_command(
     monkeypatch.setattr(cli, "mend_document_filters", lambda _c: (0, 0, ""))
     monkeypatch.setattr(cli, "planned_renovation_filter", lambda *a, **k: "PLANNED")
     monkeypatch.setattr(cli, "ensure_layer_combination", pin)
-    monkeypatch.setattr(cli, "pen_table", lambda _c: ())
+    from sun_study.archicad.layout import NavigatorItem
+    from sun_study.archicad.plan_sheet import PlanWindow
+
+    pen_sets: list[tuple[str, str, dict[int, Any]]] = []
+
+    def make_pen_set(_c: object, name: str, source: str, colours: Any) -> int:
+        pen_sets.append((name, source, dict(colours)))
+        return 42
+
+    monkeypatch.setattr(cli, "pen_table", lambda _c, **_k: ())
+    monkeypatch.setattr(cli, "_pen_source", lambda _c, _p: ("PT-GUID", "Office Pens"))
+    monkeypatch.setattr(cli, "legend_pen_set", make_pen_set)
+    monkeypatch.setattr(cli, "plan_window", lambda _c, _n: PlanWindow(-100.0, -60.0, 100.0, 140.0))
+    monkeypatch.setattr(cli, "master_layouts", lambda _c: ())
+    monkeypatch.setattr(
+        cli,
+        "choose_master",
+        lambda _m, wanted: NavigatorItem("MASTER", wanted or "A1", "MasterLayoutItem", ""),
+    )
+    monkeypatch.setattr(cli, "cell_size_mm", lambda *_a, **_k: (230.0, 540.0))
+    from sun_study.archicad import context_model
+
+    monkeypatch.setattr(context_model, "boundary_layer", lambda *_a: None)
     monkeypatch.setattr(cli, "make_stack_sheets", place)
     monkeypatch.setattr(naming, "_prefix", naming.prefix())
+    monkeypatch.setattr(cli, "_PEN_SETS_MADE", pen_sets, raising=False)
 
     result = CliRunner().invoke(
         cli.app,
@@ -822,6 +851,25 @@ def test_the_stacked_command_takes_the_shadow_diagrams_legend(
     assert [label for label, _ in stack.piles] == ["TOD", "PROPOSED", "FUTURE", "EXISTING"]
     assert kwargs["sheets"] == "two"
     assert "TOD < PROPOSED < FUTURE < EXISTING" in result.output
+    # D138: a 200 m window in a 230 mm cell is 1:1000; the drawings print in
+    # the stack's own pen set; the legend is in the legend's words and colours.
+    assert kwargs["scale"] == 1000.0
+    assert kwargs["window"].centre == (0.0, 40.0)
+    assert kwargs["pen_table_index"] == 42
+    assert kwargs["legend"][0] == ("EXISTING NEIGHBOURING BUILDINGS", (235, 235, 235))
+    assert [words for words, _ in kwargs["legend"]][2:] == [
+        "CURRENT LEP 2023 BUILDING HEIGHT LIMIT",
+        "PROPOSED BUILDING ENVELOPE",
+    ]
+    ((name, source, colours),) = cli_module()._PEN_SETS_MADE
+    assert name == f"{prefix} Shadow Plans" and source == "PT-GUID"
+    assert set(colours.values()) == {
+        (235, 235, 235),
+        (216, 216, 216),
+        (207, 215, 224),
+        (156, 172, 191),
+    }, "every row's pen set to its legend colour"
+    assert "drawn at 1:1000" in result.output
 
 
 def test_existing_and_proposed_still_make_a_stack_and_take_their_pens(
@@ -851,6 +899,8 @@ def test_existing_and_proposed_still_make_a_stack_and_take_their_pens(
     pens = [c["shadowFill"]["fillPen"] for c in created[::2]]
     assert pens[0] == 150, "the pen given for Proposed 1, at the bottom"
     assert "pen 150  given" in result.output
+    ((_, _, colours),) = cli_module()._PEN_SETS_MADE
+    assert 150 not in colours, "a pen somebody gave keeps its own colour"
     ((stack, _),) = sheets
     assert [label for label, _ in stack.piles] == ["Proposed 1", "Proposed 2", "Existing"]
 

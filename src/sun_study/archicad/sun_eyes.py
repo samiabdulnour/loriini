@@ -618,12 +618,17 @@ def sheet_cells_for(
     *,
     title_block_mm: float = TITLE_BLOCK_MM,
     gap_mm: float = CELL_GAP_MM,
+    aspect: float | None = None,
 ) -> list[tuple[float, float, float, float]]:
     """Equal cells on the page, as ``(xMin, yMin, xMax, yMax)`` in metres.
 
     The page less the title block strip is cut into equal cells, as many
     across as wastes the fewest cells and then keeps them nearest square:
-    four drawings are two by two, not three and one. Layout coordinates run
+    four drawings are two by two, not three and one. Given the ``aspect`` --
+    width over height -- of what the cells will hold, as many across as lets
+    it be drawn largest instead, fewest wasted cells after that: three plans
+    of a square site are two by two with one cell empty, not three tall
+    strips that hold it at half the size (D138). Layout coordinates run
     upward from the bottom-left corner, so the first cell is put at the top
     by counting down from the page height rather than up from zero. Each cell
     is shrunk by ``gap_mm`` on every side, which is where the drawing's title
@@ -638,7 +643,13 @@ def sheet_cells_for(
         rows = -(-count // columns)
         return (columns * rows - count, abs(math.log((width / columns) / (height / rows))))
 
-    columns = min(range(1, count + 1), key=cost)
+    def fit(columns: int) -> tuple[float, int]:
+        rows = -(-count // columns)
+        held = min((width / columns) / (aspect or 1.0), height / rows)
+        return (-round(held, 1), columns * rows - count)
+
+    choose = fit if aspect else cost
+    columns = min(range(1, count + 1), key=choose)
     rows = -(-count // columns)
     cell_w, cell_h = width / columns, height / rows
     cells: list[tuple[float, float, float, float]] = []
@@ -671,6 +682,8 @@ def arrange_drawings(
     *,
     stack: bool = False,
     transparent: Sequence[bool] | None = None,
+    offset: tuple[float, float] = (0.0, 0.0),
+    pen_table_index: int | None = None,
 ) -> int:
     """Put each drawing's origin at the centre of a cell and clip it to the cell.
 
@@ -681,7 +694,12 @@ def arrange_drawings(
     add-on built before it refuses a field it does not know. ``transparent``
     is a flag per placement for the drawing's own transparent background --
     every drawing above the lowest of a stacked cell (D137) -- sent only when
-    given, for the same reason.
+    given, for the same reason. ``offset`` moves every drawing's origin off
+    its cell's centre, in layout metres, so a window of the plan that is not
+    around the model origin is what sits in the middle of the cell (D138);
+    the clip stays the cell. ``pen_table_index`` prints every drawing in that
+    pen table, since a drawing of a 3D Document otherwise prints in the
+    model's active one whatever its view pins (D138); sent only when given.
 
     The origin rather than the centre of the content, and a clip rather than a
     free frame, because of what a drawing of a 3D Document is: the whole site
@@ -694,11 +712,12 @@ def arrange_drawings(
         return 0
     if transparent is not None and len(transparent) != len(placements):
         raise ValueError(f"{len(transparent)} transparency flags for {len(placements)} drawings")
+    dx, dy = offset
     drawings: list[dict[str, Any]] = [
         {
             "guid": guid,
-            "x": (x0 + x1) / 2.0,
-            "y": (y0 + y1) / 2.0,
+            "x": (x0 + x1) / 2.0 + dx,
+            "y": (y0 + y1) / 2.0 + dy,
             "frame": {"xMin": x0, "yMin": y0, "xMax": x1, "yMax": y1},
         }
         for guid, (x0, y0, x1, y1) in placements
@@ -706,6 +725,9 @@ def arrange_drawings(
     if transparent is not None:
         for drawing, clear in zip(drawings, transparent, strict=True):
             drawing["transparentBackground"] = bool(clear)
+    if pen_table_index is not None:
+        for drawing in drawings:
+            drawing["penTableIndex"] = int(pen_table_index)
     asked: dict[str, Any] = {
         "layoutDatabaseId": {"guid": layout_database_id},
         "drawings": drawings,
@@ -775,6 +797,8 @@ def place_on_sheets(
     scale: float,
     master_layout: str | None = None,
     title_block_mm: float = TITLE_BLOCK_MM,
+    offset: tuple[float, float] = (0.0, 0.0),
+    aspect: float | None = None,
 ) -> list[LayoutReport]:
     """Each group of document views onto its layout, one to a cell.
 
@@ -796,13 +820,15 @@ def place_on_sheets(
         # The grid of the fullest sheet, whatever this one holds: an afternoon
         # of three drawings sits in the morning's two-by-two with one cell
         # empty, not in a row of three at a different size.
-        grid = sheet_cells_for(sheet, cells, title_block_mm=title_block_mm)[: len(views)]
+        grid = sheet_cells_for(sheet, cells, title_block_mm=title_block_mm, aspect=aspect)[
+            : len(views)
+        ]
         placements = [
             (str(placed[drawing_name]["elementId"]["guid"]), cell)
             for (_, drawing_name), cell in zip(views, grid, strict=True)
             if drawing_name in placed
         ]
-        arrange_drawings(connection, report.database_id, placements)
+        arrange_drawings(connection, report.database_id, placements, offset=offset)
     return reports
 
 
@@ -815,6 +841,9 @@ def place_stacks_on_sheets(
     master_layout: str | None = None,
     title_block_mm: float = TITLE_BLOCK_MM,
     transparent_above_lowest: bool = False,
+    offset: tuple[float, float] = (0.0, 0.0),
+    pen_table_index: int | None = None,
+    aspect: float | None = None,
 ) -> list[LayoutReport]:
     """Each group of piled views onto its layout, a pile to a cell.
 
@@ -824,7 +853,9 @@ def place_stacks_on_sheets(
     frame clipped to the cell, as ``place_on_sheets`` does with one, and the
     add-on then brings them to the front in order, so the last of a pile lies
     over the rest. ``transparent_above_lowest`` gives every drawing but the
-    lowest of each pile a transparent background.
+    lowest of each pile a transparent background; ``offset`` and
+    ``pen_table_index`` are ``arrange_drawings``'s, ``aspect``
+    ``sheet_cells_for``'s.
     """
     reports: list[LayoutReport] = []
     for name, piles in groups:
@@ -842,7 +873,9 @@ def place_stacks_on_sheets(
             continue
         sheet, _ = layout_sheet(connection, report.database_id)
         placed = _drawings_by_name(connection, report.database_id)
-        grid = sheet_cells_for(sheet, cells, title_block_mm=title_block_mm)[: len(piles)]
+        grid = sheet_cells_for(sheet, cells, title_block_mm=title_block_mm, aspect=aspect)[
+            : len(piles)
+        ]
         placements: list[tuple[str, tuple[float, float, float, float]]] = []
         clear: list[bool] = []
         for pile, cell in zip(piles, grid, strict=True):
@@ -856,6 +889,8 @@ def place_stacks_on_sheets(
             placements,
             stack=True,
             transparent=clear if transparent_above_lowest else None,
+            offset=offset,
+            pen_table_index=pen_table_index,
         )
     return reports
 

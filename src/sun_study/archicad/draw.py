@@ -234,8 +234,14 @@ class Pen:
     description: str = ""
 
 
-def pen_table(connection: ArchicadConnection) -> tuple[Pen, ...]:
+def pen_table(
+    connection: ArchicadConnection, *, table: str | None = None, for_layout: bool = False
+) -> tuple[Pen, ...]:
     """The pens of the pen table Archicad is using for the model.
+
+    ``table`` names another by its attribute guid -- the pen set a run pins,
+    when it pins one -- and ``for_layout`` asks for the one in effect for the
+    layouts, which is what a fill drawn on a sheet is printed in.
 
     Three calls, for the same reason ``_find_layer`` takes two.
     ``GetAttributesByType`` enumerates but reports only id, index and name;
@@ -264,17 +270,21 @@ def pen_table(connection: ArchicadConnection) -> tuple[Pen, ...]:
     if not identifiers:
         raise ArchicadError(f"The project lists no pen tables: {attributes!r}")
 
-    identifier = _active_pen_table(connection, identifiers)
+    identifier = (
+        table
+        if table in identifiers
+        else _active_pen_table(connection, identifiers, for_layout=for_layout)
+    )
     response = connection.run_tapir(
         "GetPenTables",
         {"attributeIds": [{"attributeId": {"guid": identifier}}], "fields": ["pens"]},
     )
-    table = _first_pen_table(response)
-    if table is None:
+    found = _first_pen_table(response)
+    if found is None:
         raise ArchicadError(f"GetPenTables returned no usable pen table: {response!r}")
 
     pens: list[Pen] = []
-    for pen in table.get("pens") or []:
+    for pen in found.get("pens") or []:
         colour = (pen or {}).get("color") if isinstance(pen, dict) else None
         index = (pen or {}).get("index") if isinstance(pen, dict) else None
         if not isinstance(colour, dict) or not isinstance(index, (int, float)):
@@ -300,8 +310,11 @@ def _channel(colour: dict[str, Any], name: str) -> int:
     return max(0, min(255, round(255 * float(colour.get(name, 0.0)))))
 
 
-def _active_pen_table(connection: ArchicadConnection, identifiers: Sequence[str]) -> str:
-    """Which pen table is in effect for the model.
+def _active_pen_table(
+    connection: ArchicadConnection, identifiers: Sequence[str], *, for_layout: bool = False
+) -> str:
+    """Which pen table is in effect for the model, or with ``for_layout`` for
+    the layouts.
 
     Falls back to the first one listed. A project with one pen table -- the
     common case -- gives the same answer either way, and a build that will not
@@ -310,12 +323,13 @@ def _active_pen_table(connection: ArchicadConnection, identifiers: Sequence[str]
     """
     if len(identifiers) == 1:
         return identifiers[0]
+    flag = "isActiveForLayout" if for_layout else "isActiveForModel"
     try:
         response = connection.run_tapir(
             "GetPenTables",
             {
                 "attributeIds": [{"attributeId": {"guid": guid}} for guid in identifiers],
-                "fields": ["isActiveForModel"],
+                "fields": [flag],
             },
         )
     except ArchicadError:
@@ -324,7 +338,7 @@ def _active_pen_table(connection: ArchicadConnection, identifiers: Sequence[str]
     tables = response.get("penTables") if isinstance(response, dict) else None
     for position, entry in enumerate(tables or []):
         table = _unwrap_pen_table(entry)
-        if table is not None and table.get("isActiveForModel"):
+        if table is not None and table.get(flag):
             guid = (table.get("attributeId") or {}).get("guid")
             return str(guid) if guid else identifiers[position]
     return identifiers[0]
