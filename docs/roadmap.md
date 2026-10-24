@@ -125,12 +125,17 @@ sun was the finding: every document carried the sun of an hour later than
 asked, because Archicad reads a sun date in the project location's time
 zone and Loriini had sent the wall-clock of `--timezone`. The add-on now
 reports the zone (`GetPlace`) and the hour goes over in Archicad's own clock
-([D135](decisions.md)). The stack was then read, and does not work: a 3D
-Document draws its shadows as fills on its surfaces, so the upper document,
-unfilled to let the proposal show through, draws no shadow ([D136]
-(decisions.md)). The split in two colours stays the fills route's, which
-ran on the same model the same afternoon: the full tower exported in 58 s,
-534,000 triangles cast in 80 s, 95 fills and two sheets.
+([D135](decisions.md)). The stack was then read and showed no shadow: a 3D
+Document draws its shadows on filled surfaces only, so the upper document,
+unfilled to let the proposal show through, drew none ([D136](decisions.md)).
+The office's answer was that the stacked documents are the main way, with
+the fills' legend: so the add-on now fills a document's surfaces in the
+transparent pen, which draws the shadows and nothing else, and the stack
+takes the legend's rows -- sources that accumulate, scenarios that are
+compared -- every row of an hour in one drawing on a combined sheet, each in
+its colour where it adds ([D137](decisions.md)). Run live the same evening on
+the sample project: the neighbours and the tower, three hours on one A1, in
+18 s. Next: the legend and the site outline on the combined sheet.
 
 ## R2 — An agent that operates Loriini
 

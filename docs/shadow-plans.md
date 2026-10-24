@@ -64,73 +64,86 @@ set the pens.
 
 ## The comparison: the stack
 
-A document shows one scenario's whole shadow. Two documents show the split,
-stacked. A drawing on a layout is clear wherever it draws nothing, so a
-document of what stands laid over a document of what stands plus the
-proposal shows the existing shadow in the upper document's pen and, wherever
-only the proposal casts, the proposal's pen through the gaps. Archicad casts
-both; nothing is measured or traced, which is what the fills route does and
-what the office found not precise enough on the model it tried it on.
-
-**Measured 24 October 2026, and it does not work ([D136](decisions.md)).**
-On the sample project in Archicad 30, a document with its uncut surfaces
-unfilled draws no shadow at all; switch the fill on and the whole shadow
-picture appears. Archicad draws a document's vectorial shadows as fills on
-its surfaces, so there is nothing to draw them on where the surfaces are
-not drawn, and a document whose surfaces are drawn is opaque. The upper
-document of the stack is therefore outlines only, and the sheet shows the
-proposal's document beneath it, shadowed in one pen. The run says so when
-`--proposed` is given and makes the sheets anyway. The split in two colours
-on one plan is the fills route's, `sun-study shadows` with
-`--shadow-source` and `--shadow-scenario`; the two sets side by side below
-remain the documents' own comparison.
+A document shows one scenario's whole shadow. A stack of documents shows the
+split, one per row of the shadow legend -- the same rows as the fills', from
+the same words -- and every row of an hour laid in one cell of one sheet.
+Archicad casts every shadow; nothing is measured or traced.
 
 ```
 sun-study shadow-plans --layer-combination "04 | Shadow Diagrams" ^
-  --existing "03 | Site Context.Buildings" ^
-  --proposed "20 | Massing.SEARs" ^
-  --proposed "20 | Massing.Envelope,20 | Massing.Podium"
+  --shadow-source "EXISTING=03 | Site Context.Buildings" ^
+  --shadow-source "FUTURE=03 | Site Context.Future" ^
+  --shadow-scenario "TOD=20 | Massing.TOD" ^
+  --shadow-scenario "PROPOSED=20 | Massing.Envelope,20 | Massing.Podium"
 ```
 
-`--existing` names the layers of what already stands, the neighbours,
-repeatable; `--proposed` names one proposal's layers, comma separated, and is
-repeated once per proposal. The proposals are called **Proposed 1, Proposed
-2** and on in the order given -- **Proposed** alone when there is one --
-whatever the office calls them this week, and the existing set **Existing**.
-Any `--label` is set aside.
+`--shadow-source` is a row that stands -- existing neighbours, future
+neighbours, existing structures on the site -- and these **accumulate**: each
+is drawn only where the ones named before it cast nothing. `--shadow-scenario`
+is a row that might be built -- the TOD envelope, the SEARs height, the
+proposal -- **compared**: each is cast against every source and against no
+other scenario, so two scenarios overlap, the last named on top. The words
+before `=` are the legend's (`EXISTING`, `FUTURE`, `EXISTING ON SITE`, `TOD`,
+`SEARS`, `ADG ENVELOPE`, `PROPOSED`, or the sheet's longer words), which is
+what picks each row's colour; any other word takes the next grey for a source
+or the next blue for a scenario. The layers after it are comma separated.
+
+The short way for one row that stands and the proposals still works:
+`--existing` names what stands, `--proposed` one proposal's layers and is
+repeated per proposal (**Existing**, **Proposed 1**, **Proposed 2**), with
+`--existing-pen` and `--proposed-pen`. The two ways do not mix. Any `--label`
+is set aside.
+
+From the window, the rows are the **Shadow diagram** page's own legend rows:
+choose layers for them once and the **Shadow plans** box stacks them, so the
+fills and the documents of one project are drawn from one legend.
 
 A run then makes, from the base combination:
 
-- **a layer combination per set**, `15 | Shadow Plans Existing` with the
-  existing layers on and every proposal's off, and `15 | Shadow Plans
-  Proposed 1` with the existing and its own on and the other proposals' off.
-  The ground and the rest keep the state the base gives them, and the site
-  context the plain mode switches on is switched on here the same way;
-- **a document per set and hour**, `15 | Shadow Plan Existing 21 Jun 09:00`,
-  `15 | Shadow Plan Proposed 1 21 Jun 09:00`, each with two things forced:
-  its shadows solid in its own pen (`Solid Fill` when the project has it,
-  `--shadow-fill` otherwise; a hatch would let the pen beneath show between
-  its lines), and its **uncut surfaces unfilled**, so a roof or the terrain is
-  an outline and the drawing beneath shows through. The pens are
-  `--existing-pen` and one `--proposed-pen` per proposal; left out, they are
-  matched by colour against the project's pen table as the fills' legend rows
-  are -- the existing shadow in the legend's grey, a single proposal in its
-  blue, several up the blue ramp in order;
-- **sheets per proposal**, `15 | Shadow Plans Proposed 1 - JUNE 21`, dealt as
-  a labelled set's are, with **two drawings in every cell**: the proposal's,
-  `JUNE 21 -9AM PROPOSED 1`, and over it the existing set's, `JUNE 21 -9AM
-  EXISTING`, both with their origin at the cell's centre and clipped to it.
-  The add-on brings them to the front in that order (`ArrangeDrawings`,
-  `stack`). The existing documents are made once and lie over every proposal.
+- **a layer combination per row**, `15 | Shadow Plans EXISTING`: a source
+  shows its own layers and every earlier source's, a scenario every source's
+  and its own, and each hides the other rows' layers. The ground and the rest
+  keep the state the base gives them, and the site context the plain mode
+  switches on is switched on here the same way;
+- **a document per row and hour**, `15 | Shadow Plan EXISTING 21 Jun 09:00`,
+  its shadows solid in the row's pen (`Solid Fill` when the project has it,
+  `--shadow-fill` otherwise), and its **uncut surfaces filled in the
+  transparent pen**: filled, because Archicad draws a document's shadows on
+  filled surfaces and on nothing else ([D136](decisions.md)), and in pen 0,
+  so the surfaces themselves draw nothing and the documents beneath show
+  ([D137](decisions.md)). Every document, the lowest too: filled with the
+  materials' own colours, Archicad draws a shadow as the material shaded
+  darker and ignores the shadow's pen. The pens are matched by colour
+  against the project's pen table, as the fills' rows are;
+- **one combined sheet set**, `15 | Shadow Plans Combined - JUNE 21`, dealt
+  as a labelled set's is, with **every row's drawing in each cell**, named
+  for the hour and the row (`JUNE 21 -9AM EXISTING`), their origins at the
+  cell's centre and clipped to it, laid bottom to top as the scenarios in
+  the order named and then the sources from the last to the first. The
+  add-on brings them to the front in that order, gives every drawing above
+  the lowest a transparent background (`ArrangeDrawings`), and every drawing
+  is then redrawn (Tapir's `UpdateDrawings`), since a drawing of a 3D
+  Document keeps showing what its document was until it is.
 
-The existing document on top rather than under, because that is what makes
-the split: where the existing shadow falls its pen covers whatever the
-proposal cast there, and what is left of the proposal's pen is exactly the
-shadow the proposal adds. The other way up the proposal's pen would cover
-everything, since its combination casts the existing shadow too.
+Why that order makes the split: a document draws the whole shadow of what it
+shows, and on the sheet a drawing is seen only where everything above it
+casts nothing. The first source is on top, so its whole shadow is in its
+colour; the second source's document is seen only where the first casts
+nothing -- what it adds; the scenarios lie under every source, so what is
+seen of each is the ground it shades that no source does, the last named
+over the earlier where two overlap. That is the fills' legend, with the
+subtraction done by the order on the sheet.
 
-From the agent, `shadow_plans` takes `existing`, `proposals` -- a list of
-layers per proposal -- `existing_pen` and `proposed_pens`.
+**Run live on 24 October 2026** on the Graphisoft sample project in
+Archicad 30 ([D137](decisions.md)): the existing neighbours as a source, the
+tower as the proposal, 21 June at 9, 12 and 3 on one A1 sheet. Six documents
+and the sheet in 18 s, a rerun in 12 s; the neighbours' shadow in its pen
+everywhere, and only the ground the tower adds in the proposal's -- to the
+south-west at 9, south at noon, south-east at 3.
+
+From the agent, `shadow_plans` takes `sources` and `scenarios` as
+`shadow_diagrams` does, or `existing`, `proposals`, `existing_pen` and
+`proposed_pens`.
 
 ### Two sets side by side
 
@@ -150,9 +163,10 @@ against each other.
 
 From the window: the **Shadow diagram** tab, the **Shadow plans** box under
 the days. It draws the days lit and the hours ticked above it. Tick it,
-choose the layer combination, optionally a set name, a pen set and the pen
-the shadows are filled in, and press Run. A floor plan tab must be in front
-in Archicad when it runs.
+choose the layer combination and a pen set, and press Run. With layers chosen
+for the page's legend rows it makes the stack and the combined sheets; with
+none, one set, which a set name and a shadow pen can be given. A floor plan
+tab must be in front in Archicad when it runs.
 
 From a command line:
 
@@ -193,11 +207,11 @@ is removed.
 
 Built against the Archicad 26 kit, run live on the Redfern project (8
 October, Windows) and on the Graphisoft sample project in Archicad 30 on a
-Mac (24 October, [D135](decisions.md)). Of the list below, 1 and 2 hold on
-both, and the second run and the stacked run both complete; 3 found the hour
-out by the project's time zone on the sample project, which is what
-`GetPlace` and the clock line in the run's output now answer; 4 to 7 are
-still to be read on a workstation. In order:
+Mac (24 October, [D135](decisions.md), [D137](decisions.md)). Of the list
+below, 1 and 2 hold on both; 3 found the hour out by the project's time zone
+on the sample project, which `GetPlace` and the clock line in the run's
+output now answer; 6 and 7 hold on the sample project's combined sheet; 4
+and 5 are still to be read. In order:
 
 1. **The shadows are on.** Open one document. If it shows the plan with no
    shadows, the defaults switch did not reach it: open the document's
@@ -216,25 +230,32 @@ still to be read on a workstation. In order:
    should have whatever *Vectorial Sun Shadows* setting the project had
    before, since the run puts the defaults back after each document.
 5. **The fill.** With `--shadow-pen` given, the shadows are in that pen.
-6. **The stack shows through.** On a stacked sheet, open one cell: the
-   proposal's roof and shadow must be visible under the existing document
-   wherever the existing shadow does not fall. If the upper drawing blanks
-   the page under it, its uncut surfaces are still filled -- open the
-   document's settings, Model Display, and check *Uncut Surfaces*; the
-   add-on writes `shouldUseUncutSurfaceFill` and answers what it read back
-   as `fillUncutSurfaces`. If the proposal's pen shows *through* the
-   existing shadow, the shadow fill is a hatch: name a solid with
-   `--shadow-fill`.
-7. **The order.** The existing drawing lies over the proposal's. If the sheet
-   shows the proposal's pen everywhere, the add-on's bring-to-front did not
-   take; select the existing drawing and *Bring to Front* by hand, and note
-   the `failures` the run printed from `ArrangeDrawings`.
+6. **The stack shows through.** On a combined sheet, every row's colour must
+   show where it adds and nowhere else. If an upper drawing blanks the page
+   under it, its document's uncut surfaces are not in the transparent pen --
+   open the document's settings, Model Display, *Uncut Surfaces*: filled,
+   uniform pen colour, pen 0; the add-on answers what it read back as
+   `uncutSurfaces`. If a row's shadow is a darker shade of grey rather than
+   its pen, the document is on the materials' colours. If one row's pen
+   shows *through* another's shadow, the shadow fill is a hatch: name a
+   solid with `--shadow-fill`.
+7. **The order.** Bottom to top, scenarios then sources from the last to the
+   first. If the sheet shows a scenario's pen everywhere, the add-on's
+   bring-to-front did not take; select the source drawings and *Bring to
+   Front* by hand, and note the `failures` the run printed from
+   `ArrangeDrawings`.
 
 ## What is not here yet
 
 - **The legend and the site outline on the sheets.** The drawings carry
-  their captions; a legend saying *shadow at the hour shown* and the site
-  boundary drawn over each drawing are the next step.
+  their captions; a legend of the rows in their colours, and the site
+  boundary drawn over each drawing, are the next step.
+- **A page the size of the site.** The cells are dealt across the sheet and
+  each drawing is clipped to its cell around the model's origin, so a site
+  wider than a cell at the scale asked for is cut at the cell's edge: on the
+  sample project, three hours across an A1 at 1:1000. A smaller scale
+  (`--scale 2000`) or fewer hours a sheet (`--sheets two`, `each`) is the
+  answer for now.
 - **Shadows on a single level.** The 3D window's style can cast vectorial
   shadows onto one level instead of onto every surface; a document's settings
   expose no such choice through the kit, so the plans need the ground in the

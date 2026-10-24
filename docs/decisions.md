@@ -5221,7 +5221,7 @@ designed cannot work in Archicad 30, and the dev kit's uncut-surface
 options -- `uncutSurfaceFillType`, `uncutSurfaceBkgPen` -- choose how the
 surfaces are filled, not whether a filled surface hides what lies under it.
 
-**Decided.** The stacked mode stays, since its documents and sheets are
+**Decided, and overtaken the same evening by D137.** The stacked mode stays, since its documents and sheets are
 made correctly and may be wanted, but the run says plainly that the split
 does not show and where it does: the fills route. `sun-study shadows` with
 `--shadow-source` and `--shadow-scenario` draws existing and additional
@@ -5239,3 +5239,73 @@ reused layouts took the new master is for the next look at the sheets.
 
 *What this does not change:* the plain shadow plans, their sun (D135), or
 the fills route's drawing.
+
+### D137 — The stack draws on surfaces filled in the transparent pen, and takes the fills' legend
+
+Asked 24 October 2026, after D136 and after the fills route was run in its
+place without asking: *"why you produced fills? this should go only by 3d doc
+route"*, and then *"the combinig 3d docs with multiple colours for shadow is
+the main way. please stick to it and try to make it work. kind of same
+categories as in previous version - you select layers of different object.
+neighbour building, neighbor future building, proposed TOD etc. and want one
+sheet with all"*. The fills, their views, sheets, layers and combinations
+were taken out of the sample project first; the shadow diagrams are the 3D
+Documents' from here, and the fills route is not run in their place.
+
+**The lever.** D136 found that a document draws its shadows on filled
+surfaces only, and a filled document is opaque. The Archicad 30 kit's
+`API_UniformAttributeOptions` has two more fields than the add-on wrote:
+`uncutSurfaceFillType` -- the Model Display's *Pen color*, *Material color,
+shaded* and *not shaded* -- and `uncutSurfaceBkgPen`, the pen a *Pen color*
+fill is drawn in; and pen 0 is `APIPen_Transparent`. The same fields are in
+the Archicad 26 kit, so every build takes them. `CreateDocumentFrom3D` and
+`SetDocumentFrom3D` now take `uncutSurfaces {fill, fillType, pen}` and read
+it back, and `ArrangeDrawings` takes a drawing's own `transparentBackground`.
+
+**Measured, sample project, Archicad 30 on the Mac.** The Existing 09:00
+document set to filled, *Pen color*, pen 0: its shadows drew in their pen
+(236, a pale green in this project's table) and the surfaces drew nothing,
+white with their outlines. A stack of two rows, neighbours over the tower,
+made in that mode with every upper drawing's background transparent: in each
+cell the neighbours' shadow in its pen and, where only the tower casts, the
+tower's -- except that the lowest document, left on the materials' colours,
+drew its shadows as the material shaded darker, dark grey, ignoring its pen.
+Put in the same *Pen color*, pen 0 mode, it drew them in its pen, 156, a
+pale blue. So every document of a stack takes the mode, the lowest too.
+
+Two more things the same evening. A drawing of a 3D Document is **not
+redrawn** when its document's settings change, and opening the layout does
+not do it: the sheet kept the dark grey until Tapir's `UpdateDrawings` was
+asked for. The combined sheet now asks for it after every run, best effort,
+since it needs Archicad 27. And reopening a project does not reload an
+add-on: the new build took only after Archicad itself was quit and started,
+three tries in.
+
+**Decided: the legend.** The stack takes the fills' own rows, from the same
+words and the same parser: `--shadow-source` rows accumulate, `--shadow-scenario`
+rows are compared, `LABEL=layer,layer`, coloured by the legend's name or by
+role and position. `--existing` and `--proposed` remain as the short way for
+one row that stands and the proposals, and the two do not mix. A layer
+combination per row (a source shows itself and every earlier source, a
+scenario every source and itself), a document per row and hour, and one
+**combined** sheet set, `15 | Shadow Plans Combined - JUNE 21`, with every
+row's drawing of an hour in one cell. The order, bottom to top, is the
+scenarios in the order named and then the sources from the last to the
+first: a document draws its whole shadow and a drawing is seen only where
+everything above it casts nothing, so the first source shows whole, each
+later source what it adds, and each scenario what it adds over every source,
+the last named over the earlier where two overlap -- the fills' legend, with
+the subtraction done by the order on the sheet. The window's Shadow plans
+box takes the Shadow diagram page's legend rows, so one legend is chosen
+once for both routes; the agent's tool takes `sources` and `scenarios`.
+
+**Run.** The neighbours as `EXISTING`, the tower's structure layers as
+`PROPOSED`, 21 June at 9, 12 and 3, one A1 sheet: six documents and the
+sheet in 18 s, a rerun in 12 s with the drawings redrawn. The tower's
+additional shadow showed south-west at 9, south at noon and south-east at
+3, and nowhere the neighbours already shade.
+
+*Still to do:* the legend and the site outline on the combined sheet; a page
+size or scale that fits a wide site, since each drawing is clipped to its
+cell; and the colours, which are the nearest pens in the project's table --
+on the sample project the legend's pale grey matched a pale green.

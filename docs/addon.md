@@ -126,6 +126,7 @@ will say what Archicad did (`docs/shadow-plans.md`).
 | `shadowContours` | with `sunShadows`, outline each shadow; off by default |
 | `shadowFill` | `fillIndex`, `fillPen`, `backgroundPen`, `contourPen`, each optional |
 | `fillUncutSurfaces` | whether the document fills its uncut surfaces -- `shouldUseUncutSurfaceFill`, the *Uncut Surfaces* switch of its Model Display. False leaves roofs and ground as outlines, so a drawing of the document on a layout shows what lies under it wherever no shadow falls: how the stacked shadow plans put the existing set's document over a proposal's (`docs/shadow-plans.md`). Written onto the defaults for the creation and onto the document, like the fill; left out, the project's default stands |
+| `uncutSurfaces` | `{fill, fillType, pen}`: the switch, which of the Model Display's three uncut-surface fills (`penColor`, `materialShaded`, `materialNotShaded`), and `uncutSurfaceBkgPen`, the pen a `penColor` fill is drawn in -- 0 is Archicad's transparent pen. Archicad draws a document's shadows on filled surfaces only (D136), and draws them as darker material, not in the shadow's pen, when the surfaces take the materials' colours; filled in pen 0, the surfaces draw nothing and the shadows draw in their pen, which is how the stacked shadow plans lay documents over each other (D137). Read back on every answer |
 
 Neither write is undoable, and the first build's attempt to make them so is
 why it failed. The kit documents both `APIDb_NewDatabaseID` and
@@ -153,8 +154,8 @@ with `sunShadows` -- because which of its bits is the shadow is not written
 down, and copying Archicad's own value is safer than guessing one.
 
 Takes `databaseId` (required), `viewAzimuth` and `viewAltitude`, `sun`,
-`shadowFill`, `fillUncutSurfaces` and `effects3D`; answers `effects3D`,
-`shadowFill` and `fillUncutSurfaces` read back.
+`shadowFill`, `fillUncutSurfaces`, `uncutSurfaces` and `effects3D`; answers
+`effects3D`, `shadowFill`, `fillUncutSurfaces` and `uncutSurfaces` read back.
 
 ### `Loriini.CreateFills`
 
@@ -235,6 +236,12 @@ documents share a cell: the stacked shadow plans put the existing set's
 document over the proposal's. A drawing the order could not be set on is
 reported in `failures` with `"step": "bringToFront"`, and the rest are left
 arranged.
+
+`transparentBackground` (24 October 2026), per drawing, writes the drawing's
+own `isTransparentBk`: what lies under it on the layout shows wherever it
+draws only background. The stacked shadow plans set it on every drawing above
+the lowest of a cell, beside filling each document's surfaces in the
+transparent pen (D137). Left out, a drawing keeps what it has.
 
 `GetDrawings` beside it reads every Drawing on a layout back -- position,
 anchor, frame, bounds and the content box from

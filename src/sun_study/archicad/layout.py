@@ -97,6 +97,7 @@ __all__ = [
     "sheet_positions",
     "storey_items",
     "tile_positions",
+    "update_drawings",
     "view_extents",
 ]
 
@@ -1074,6 +1075,33 @@ def _create_drawings(connection: ArchicadConnection, drawings: list[dict[str, An
         if "angle" not in str(error):
             raise
     return connection.run_tapir("CreateDrawings", {"drawingsData": drawings})
+
+
+def update_drawings(connection: ArchicadConnection, database_id: str) -> str | None:
+    """Have Archicad redraw every Drawing on a sheet now. ``None``, or why not.
+
+    A Drawing of a 3D Document is not redrawn when the document's settings
+    change, and opening the layout does not do it either: measured on the
+    sample project (D137), a stacked sheet kept showing its documents as the
+    run before had set them until ``UpdateDrawings`` was asked for. Best
+    effort, since Tapir's command needs Archicad 27: a sheet that cannot be
+    refreshed is still the right sheet the first time it is made, and a rerun
+    says so instead of failing.
+    """
+    placed = _drawings_by_name(connection, database_id)
+    if not placed:
+        return None
+    try:
+        connection.run_tapir(
+            "UpdateDrawings",
+            {"elements": [{"elementId": drawing["elementId"]} for drawing in placed.values()]},
+        )
+    except ArchicadError as error:
+        return (
+            f"the drawings could not be redrawn ({error}); a sheet an earlier run made "
+            f"shows that run's documents until each drawing is updated by hand"
+        )
+    return None
 
 
 def _drawings_by_name(connection: ArchicadConnection, database_id: str) -> dict[str, Any]:

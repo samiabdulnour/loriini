@@ -29,9 +29,11 @@ the documents of an hour are laid in one cell of one sheet: the scenarios at
 the bottom in the order named, the sources above them from the last to the
 first. A drawing is seen only where everything above it casts nothing, so
 what shows of each row is what it adds. Archicad draws a document's shadows
-only on filled surfaces (D136), so every document above the lowest fills its
-surfaces in the transparent pen and its drawing has a transparent background
-(D137). ``LegendRow`` is a row, ``legend_combinations`` works the layer
+only on filled surfaces (D136), so every document fills its surfaces in
+the transparent pen, and every drawing above the lowest has a transparent
+background (D137); filled with the materials' colours instead, a document
+draws its shadows as darker material and not in its row's pen.
+``LegendRow`` is a row, ``legend_combinations`` works the layer
 combinations out from the layers, ``make_shadow_plan_stack`` makes the sets
 and ``make_stack_sheets`` deals them onto the combined sheets. The plain mode
 remains: one set under one combination, ``set_label`` naming it, read
@@ -56,7 +58,7 @@ from typing import Any
 from sun_study.archicad import naming
 from sun_study.archicad.clock import sun_date
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError, CommandFailedError
-from sun_study.archicad.layout import LayoutReport, remove_stale_layouts
+from sun_study.archicad.layout import LayoutReport, remove_stale_layouts, update_drawings
 from sun_study.archicad.read import GeoLocation
 from sun_study.archicad.series import database_of
 from sun_study.archicad.sheeting import DEFAULT_SHEET_MODE, cells_for, sheet_chunks
@@ -75,14 +77,13 @@ __all__ = [
     "COMBINED_LABEL",
     "DEFAULT_COMBINATION",
     "EXISTING_LABEL",
-    "LOWEST_SURFACES",
     "OVERHEAD_DEG",
     "PLAN_SCALE",
     "PLAN_WORD",
     "PROPOSED_LABEL",
     "SET_WORD",
     "STACK_SHADOW_FILLS",
-    "UPPER_SURFACES",
+    "STACK_SURFACES",
     "LegendRow",
     "MadePlan",
     "PlanSet",
@@ -618,16 +619,15 @@ class Stack:
 #: drawings by name and never clears the ones it does not know.
 COMBINED_LABEL = "Combined"
 
-#: How a document above the lowest fills its uncut surfaces: filled, so
+#: How every document of a stack fills its uncut surfaces: filled, so
 #: Archicad draws its shadows -- it draws them on filled surfaces and on
 #: nothing else (D136) -- in one pen colour, the transparent pen, so the
 #: surfaces themselves draw nothing and the documents beneath show (D137).
-UPPER_SURFACES: dict[str, Any] = {"fill": True, "fillType": "penColor", "pen": 0}
-
-#: How the lowest document fills them: filled and otherwise as the project
-#: draws a 3D Document, which is what the plain shadow plans look like. Sent
-#: so a document an earlier run made transparent is put back.
-LOWEST_SURFACES: dict[str, Any] = {"fill": True}
+#: The lowest document too: filled with the materials' own colours, Archicad
+#: draws a shadow as the material shaded darker and ignores the shadow's pen,
+#: and the lowest row came out a dark grey on the sample project instead of
+#: its legend blue.
+STACK_SURFACES: dict[str, Any] = {"fill": True, "fillType": "penColor", "pen": 0}
 
 
 def stack_labels(count: int) -> list[str]:
@@ -715,13 +715,13 @@ def make_shadow_plan_stack(
     Each set is made as ``make_shadow_plans`` makes one, under its own
     combination and label, with its shadows a solid in its own pen -- the
     background pen the fill pen, so a hatch left in the settings covers as a
-    solid would. The lowest set's uncut surfaces are filled as the project
-    fills them; every set above it fills them in the transparent pen, so its
-    drawing shows its shadows and lets the ones beneath show everywhere else.
+    solid would -- and its uncut surfaces filled in the transparent pen, so
+    its drawing shows its shadows and lets the ones beneath show everywhere
+    else (``STACK_SURFACES``).
     """
     said: list[str] = []
     piles: list[tuple[str, tuple[MadePlan, ...]]] = []
-    for position, member in enumerate(members):
+    for member in members:
         fill = dict(settings.shadow_fill)
         fill["fillPen"] = member.shadow_pen
         fill["backgroundPen"] = member.shadow_pen
@@ -730,7 +730,7 @@ def make_shadow_plan_stack(
             layer_combination=member.layer_combination,
             shadow_fill=fill,
             fill_uncut_surfaces=None,
-            uncut_surfaces=dict(LOWEST_SURFACES if position == 0 else UPPER_SURFACES),
+            uncut_surfaces=dict(STACK_SURFACES),
         )
         made, notes = make_shadow_plans(connection, plans, settings=own, set_label=member.label)
         for note in notes:
@@ -781,10 +781,13 @@ def make_stack_sheets(
     scale: float = PLAN_SCALE,
     master_layout: str | None = None,
     title_block_mm: float = TITLE_BLOCK_MM,
-) -> tuple[list[LayoutReport], list[str]]:
+) -> tuple[list[LayoutReport], list[str], list[str]]:
     """The stack on its sheets, every set's drawing of an hour in one cell,
-    each drawing above the lowest with a transparent background, and the
-    combined sheets an earlier run made that are not being remade removed."""
+    each drawing above the lowest with a transparent background; the combined
+    sheets an earlier run made that are not being remade removed; and every
+    drawing redrawn, since a rerun's documents are re-set under drawings that
+    would otherwise keep showing the last run's. Returns the sheets, the names
+    removed, and anything worth saying."""
     groups, cells = stack_sheet_groups(stack, sheets=sheets)
     stem = _sheet_stem(COMBINED_LABEL)
     removed = remove_stale_layouts(connection, stem, {name for name, _ in groups})
@@ -797,4 +800,10 @@ def make_stack_sheets(
         title_block_mm=title_block_mm,
         transparent_above_lowest=True,
     )
-    return reports, removed
+    said: list[str] = []
+    for report in reports:
+        if report.database_id:
+            note = update_drawings(connection, report.database_id)
+            if note and note not in said:
+                said.append(note)
+    return reports, removed, said

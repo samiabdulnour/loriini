@@ -23,7 +23,7 @@ from sun_study.archicad.connection import ArchicadConnection, ArchicadError
 from sun_study.archicad.read import GeoLocation
 from sun_study.archicad.shadow_plans import (
     OVERHEAD_DEG,
-    UPPER_SURFACES,
+    STACK_SURFACES,
     LegendRow,
     MadePlan,
     PlanSet,
@@ -516,9 +516,8 @@ def test_the_stack_reads_scenarios_first_then_sources_last_to_first() -> None:
 
 def test_a_stack_makes_a_set_per_row_and_lets_the_lower_ones_show_through() -> None:
     """Each set under its own combination and label, each solid in its own
-    pen. The lowest set's surfaces are filled as the project fills them; every
-    set above draws them in the transparent pen, so the shadows are drawn and
-    nothing else is (D137)."""
+    pen, every set's surfaces filled in the transparent pen: the shadows are
+    drawn, in the row's pen, and nothing else is (D137)."""
     transport = PlanTransport()
     settings = ShadowPlanSettings(shadow_fill={"fillIndex": 1})
 
@@ -542,12 +541,8 @@ def test_a_stack_makes_a_set_per_row_and_lets_the_lower_ones_show_through() -> N
         f"{SS} Shadow Plan EXISTING 21 Jun 09:00",
     ]
     assert all("fillUncutSurfaces" not in c for c in created)
-    assert [c["uncutSurfaces"] for c in created[::2]] == [
-        {"fill": True},
-        UPPER_SURFACES,
-        UPPER_SURFACES,
-    ]
-    assert UPPER_SURFACES == {"fill": True, "fillType": "penColor", "pen": 0}
+    assert [c["uncutSurfaces"] for c in created[::2]] == [STACK_SURFACES] * 3
+    assert STACK_SURFACES == {"fill": True, "fillType": "penColor", "pen": 0}
     assert [c["shadowFill"] for c in created[::2]] == [
         {"fillIndex": 1, "fillPen": 95, "backgroundPen": 95},
         {"fillIndex": 1, "fillPen": 94, "backgroundPen": 94},
@@ -567,8 +562,7 @@ def test_a_stack_makes_a_set_per_row_and_lets_the_lower_ones_show_through() -> N
 
 
 def test_a_rerun_of_a_stack_re_sets_the_surfaces_too() -> None:
-    """A document an earlier run made is put back the way this run wants it,
-    the lowest one filled again included."""
+    """A document an earlier run made is put back the way this run wants it."""
     transport = PlanTransport(
         existing=(
             f"{SS} Shadow Plan PROPOSED 21 Jun 09:00",
@@ -582,8 +576,7 @@ def test_a_rerun_of_a_stack_re_sets_the_surfaces_too() -> None:
         members=[PlanSet("PROPOSED", "P", 94), PlanSet("EXISTING", "X", 93)],
     )
     lowest, upper = transport.asked("SetDocumentFrom3D")
-    assert lowest["uncutSurfaces"] == {"fill": True}
-    assert upper["uncutSurfaces"] == UPPER_SURFACES
+    assert lowest["uncutSurfaces"] == STACK_SURFACES == upper["uncutSurfaces"]
     assert upper["shadowFill"] == {"fillPen": 93, "backgroundPen": 93}
 
 
@@ -639,13 +632,32 @@ def test_the_combined_sheets_remove_their_stale_sheets_and_clear_the_upper_drawi
         placed.append((groups, kwargs))
         return []
 
+    from sun_study.archicad.layout import LayoutReport
+
+    redrawn: list[str] = []
+
+    def place_one(_connection: object, groups: Any, **kwargs: Any) -> list[Any]:
+        place(_connection, groups, **kwargs)
+        return [
+            LayoutReport(name, 2, (), 500.0, (), database_id=f"DB-{name}") for name, _ in groups
+        ]
+
+    def redraw(_connection: object, database_id: str) -> str | None:
+        redrawn.append(database_id)
+        return "could not redraw"
+
     monkeypatch.setattr(module, "remove_stale_layouts", forget)
-    monkeypatch.setattr(module, "place_stacks_on_sheets", place)
+    monkeypatch.setattr(module, "place_stacks_on_sheets", place_one)
+    monkeypatch.setattr(module, "update_drawings", redraw)
     stack = _stack(dt.date(2024, 6, 21), [9, 12], "PROPOSED", "EXISTING")
 
-    _, gone = make_stack_sheets(
+    reports, gone, said = make_stack_sheets(
         ArchicadConnection(PlanTransport()), stack, sheets="one", scale=500.0
     )
+
+    assert len(reports) == 1
+    assert redrawn == [f"DB-{SS} Shadow Plans Combined - JUNE 21"], "every sheet redrawn"
+    assert said == ["could not redraw"]
 
     assert removed == [
         (f"{SS} Shadow Plans Combined - ", {f"{SS} Shadow Plans Combined - JUNE 21"})
@@ -729,9 +741,11 @@ def _stacked_command(
 
     sheets: list[Any] = []
 
-    def place(_connection: object, stack: Any, **kwargs: Any) -> tuple[list[Any], list[str]]:
+    def place(
+        _connection: object, stack: Any, **kwargs: Any
+    ) -> tuple[list[Any], list[str], list[str]]:
         sheets.append((stack, kwargs))
-        return [], []
+        return [], [], []
 
     monkeypatch.setattr(cli, "_connect", lambda *a, **k: ArchicadConnection(transport))
     monkeypatch.setattr(cli, "read_geo_location", lambda *a, **k: SYDNEY)
@@ -800,12 +814,7 @@ def test_the_stacked_command_takes_the_shadow_diagrams_legend(
         f"{prefix} Shadow Plan FUTURE 21 Jun 09:00",
         f"{prefix} Shadow Plan EXISTING 21 Jun 09:00",
     ], "made bottom to top"
-    assert [c["uncutSurfaces"] for c in created[::2]] == [
-        {"fill": True},
-        UPPER_SURFACES,
-        UPPER_SURFACES,
-        UPPER_SURFACES,
-    ]
+    assert [c["uncutSurfaces"] for c in created[::2]] == [STACK_SURFACES] * 4
     pens = {c["name"].split()[-4]: c["shadowFill"]["fillPen"] for c in created[::2]}
     assert list(pens) == ["TOD", "PROPOSED", "FUTURE", "EXISTING"]
     assert len(set(pens.values())) == 4, "a pen of its own for every row"
@@ -910,3 +919,50 @@ def test_shadow_plans_carry_the_clock_onto_every_plan() -> None:
     up, _ = shadow_plans(SYDNEY, moments, ["9AM", "12PM"], clock_minutes=600)
     assert [plan.clock_minutes for plan in up] == [600, 600]
     assert [plan.sun_for_archicad()["hour"] for plan in up] == [9, 12]
+
+
+class RedrawTransport:
+    """Answers UpdateDrawings with success, or with Tapir's error, and records it."""
+
+    def __init__(self, *, refuse: bool = False) -> None:
+        self.refuse = refuse
+        self.sent: list[tuple[str, dict[str, Any]]] = []
+
+    def send(self, payload: dict[str, Any]) -> dict[str, Any]:
+        name = payload["parameters"]["addOnCommandId"]["commandName"]
+        given = payload["parameters"].get("addOnCommandParameters") or {}
+        self.sent.append((name, given))
+        if name == "GetAddOnVersion":
+            answer: dict[str, Any] = {"version": "1.5.8"}
+        elif self.refuse:
+            answer = {"error": {"code": 1, "message": "needs Archicad 27"}}
+        else:
+            answer = {"success": True}
+        return {"succeeded": True, "result": {"addOnCommandResponse": answer}}
+
+
+def test_a_sheet_is_redrawn_through_tapir_and_a_refusal_is_said_not_raised(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D137: a drawing of a 3D Document is not redrawn when the document is
+    re-set, so the combined sheet asks for it; an Archicad that cannot is
+    told about, and the sheet stands."""
+    from sun_study.archicad import layout as module
+
+    monkeypatch.setattr(
+        module,
+        "_drawings_by_name",
+        lambda _c, _d: {"A": {"elementId": {"guid": "G1"}}, "B": {"elementId": {"guid": "G2"}}},
+    )
+    ok = RedrawTransport()
+    assert module.update_drawings(ArchicadConnection(ok), "LAYOUT") is None
+    asked = [given for name, given in ok.sent if name == "UpdateDrawings"]
+    assert asked == [{"elements": [{"elementId": {"guid": "G1"}}, {"elementId": {"guid": "G2"}}]}]
+
+    note = module.update_drawings(ArchicadConnection(RedrawTransport(refuse=True)), "LAYOUT")
+    assert note is not None and "redrawn" in note
+
+    monkeypatch.setattr(module, "_drawings_by_name", lambda _c, _d: {})
+    quiet = RedrawTransport()
+    assert module.update_drawings(ArchicadConnection(quiet), "LAYOUT") is None
+    assert not [name for name, _ in quiet.sent if name == "UpdateDrawings"]

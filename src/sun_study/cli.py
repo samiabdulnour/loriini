@@ -7866,10 +7866,10 @@ def shadow_plan_documents(
             help=(
                 "The layers of one proposal, comma separated. Repeatable, one per "
                 "proposal: named Proposed 1, Proposed 2 and on in the order given, "
-                "or Proposed alone. Turns on the stacked mode: the existing set's "
-                "document is laid over each proposal's in every cell, so the existing "
-                "shadow is in one pen and what the proposal adds is in another, on one "
-                "plan, cast by Archicad both times."
+                "or Proposed alone. The short way to a stack with --existing: every "
+                "row of an hour in one drawing on a combined sheet, the existing "
+                "shadow in one pen and what each proposal adds in another, all cast "
+                "by Archicad. Not with --shadow-source or --shadow-scenario."
             ),
         ),
     ] = None,
@@ -7967,11 +7967,13 @@ def shadow_plan_documents(
     day. Archicad casts the shadows, at any size of model it can display --
     the route for a model too large for the shadow diagram's own caster, and
     the record beside its fills. One document cannot give the split between
-    existing and additional shadow; two can, stacked: with --existing and
-    --proposed the existing set's document is laid over each proposal's on
-    one sheet, in two pens, and the sheet reads as the fills do. Without them,
-    run it once per layer combination, with --label, and read the sheets
-    against each other.
+    existing and additional shadow; a stack of them can: with the shadow
+    diagram's legend -- --shadow-source rows that accumulate and
+    --shadow-scenario rows that are compared, or --existing and --proposed --
+    a document is made per row and every row of an hour is laid in one
+    drawing on a combined sheet, each row's shadow in its legend colour where
+    it adds. Without a legend, one set; run it once per layer combination,
+    with --label, and read the sheets against each other.
 
     Needs the Loriini add-on, current build: the document's sun shadows are
     switched on as it is made, which older builds cannot do.
@@ -8372,7 +8374,7 @@ def _stacked_shadow_plans(
 
     if layout:
         try:
-            placed, removed = make_stack_sheets(
+            placed, removed, notes = make_stack_sheets(
                 connection,
                 stack,
                 sheets=sheets,
@@ -8391,6 +8393,8 @@ def _stacked_shadow_plans(
                 typer.echo(f"  removed the earlier sheet {name!r}")
             for report in placed:
                 typer.echo(report.describe())
+            for note in notes:
+                typer.secho(f"  {note}", fg=typer.colors.YELLOW)
             if subset:
                 filing = file_under_subset(
                     connection, [r.layout_name for r in placed], subset, flag="--subset"

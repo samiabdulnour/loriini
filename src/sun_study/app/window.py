@@ -4435,18 +4435,21 @@ class Window:
             "The hours and days above as 3D Documents looking straight down, "
             "each with Archicad's sun for that hour and its own vectorial sun "
             "shadows, placed on sheets by day. Archicad casts the shadows, so "
-            "a model too large for the diagram's own caster still draws. What "
-            "it cannot show is the split between existing and additional "
-            "shadow: run it once per layer combination, with a set name for "
-            "each, and read the sheets side by side. Needs the current add-on, "
-            "and a floor plan tab in front when it runs.",
+            "a model too large for the diagram's own caster still draws. With "
+            "layers chosen for the legend rows above, a document is made per "
+            "row and every row of an hour is stacked in one drawing on a "
+            "combined sheet, each row's shadow in its legend colour where it "
+            "adds to the rows above it. With none, one set under the layer "
+            "combination. Needs the current add-on, and a floor plan tab in "
+            "front when it runs.",
         )
         row += 1
         self._caption(
             frame,
             row,
             "The same hours as 3D Documents from overhead: Archicad draws each hour's "
-            "shadows, at any size of model. The record beside the fills' argument.",
+            "shadows, at any size of model. Given the legend rows above, every row "
+            "of an hour in one drawing, each in its colour.",
         )
         row += 1
         self.shadow_plan_combination, row = self._combo(
@@ -4465,11 +4468,11 @@ class Window:
             row,
             "Set name",
             "",
-            "A word in every document and sheet name: Existing, Proposed.",
-            "Two sets side by side are the comparison the documents can make: "
-            "run once with the existing massing's combination named Existing, "
-            "once with the proposal's named Proposed, and the Layout Book holds "
-            "both. Blank names neither.",
+            "A word in every document and sheet name, for a set without the legend.",
+            "Without legend rows the plans are one set under the layer "
+            "combination, and a name tells two such sets apart: Existing, "
+            "Proposed. With legend rows each set is named for its row, and "
+            "this is not used. Blank names neither.",
         )
         self.shadow_plan_pen_set, row = self._combo(
             frame,
@@ -4483,10 +4486,10 @@ class Window:
             row,
             "Shadow pen",
             "",
-            "The pen the shadows are filled in. Blank keeps the project's own.",
-            "A pen number from the project's pen set. The 3D Document's shadow "
-            "fill is otherwise whatever the project's defaults for new 3D "
-            "Documents say.",
+            "The pen the shadows are filled in, for a set without the legend.",
+            "A pen number from the project's pen set. With legend rows each row "
+            "takes the pen nearest its legend colour and this is not used. "
+            "Blank keeps the project's defaults for new 3D Documents.",
         )
 
     def _sun_eyes(self, frame: ttk.Frame) -> None:
@@ -7912,6 +7915,24 @@ class Window:
             short = f"{sheet.kind}."
         self.info.show(sheet.glyph, sheet.number, short, detail, state="not drawn yet")
 
+    def _legend_args(self) -> list[str]:
+        """The shadow legend's rows as flags, one per filled row.
+
+        ``NAME=layer,layer``: the name is the row's short name, which the
+        drawing matches to the legend's colour, and the layers are what find
+        its geometry. A row that accumulates is a ``--shadow-source`` and one
+        that is compared a ``--shadow-scenario``. An empty row is left off
+        the sheet. The shadow diagram and the shadow plans take the same rows,
+        so one legend is chosen once for both.
+        """
+        args: list[str] = []
+        for short, role, box in self.shadow_rows:
+            layers = self._listed(box)
+            if layers:
+                flag = "--shadow-source" if role == "baseline" else "--shadow-scenario"
+                args += [flag, f"{short}={','.join(layers)}"]
+        return args
+
     def jobs(self) -> list[Job]:
         """The command lines the ticked boxes mean. Public, and pure, because
         this is the part worth testing without a window on screen."""
@@ -8140,15 +8161,7 @@ class Window:
                 *common,
                 *self._prefix_flag(self.prefix_shadow),
             ]
-            # One legend row per flag, "NAME=layer,layer": the name is the
-            # row's short name, which the drawing matches to the legend's
-            # colour, and the layers are what find its geometry in the
-            # add-on's model. An empty row is left off the sheet.
-            for short, role, box in self.shadow_rows:
-                layers = self._listed(box)
-                if layers:
-                    flag = "--shadow-source" if role == "baseline" else "--shadow-scenario"
-                    args += [flag, f"{short}={','.join(layers)}"]
+            args += self._legend_args()
             for name in self._listed(self.terrain_layers):
                 args += ["--shadow-terrain", name]
             args += ["--export", "native"]
@@ -8182,6 +8195,13 @@ class Window:
                 "--shadow-date",
                 ",".join(self._shadow_days()),
             ]
+            # The diagram's legend rows too, when any is filled: the plans
+            # then make a document per row and stack every row of an hour in
+            # one drawing, each in its legend colour (D137). The set name and
+            # the shadow pen are for the plain set and are not sent with them.
+            legend = self._legend_args()
+            args += legend
+            plain_only = ("--label", "--shadow-pen")
             for flag, field in (
                 ("--shadow-hour", self.shadow_hours),
                 ("--layer-combination", self.shadow_plan_combination),
@@ -8191,7 +8211,7 @@ class Window:
                 ("--subset", self.shadow_study_subset),
                 ("--master-layout", self.master),
             ):
-                if field.get().strip():
+                if field.get().strip() and not (legend and flag in plain_only):
                     args += [flag, field.get().strip()]
             args += ["--year", self.year.get().strip() or "2024"]
             args += self._sheet_args()
