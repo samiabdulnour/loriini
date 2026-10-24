@@ -670,6 +670,7 @@ def arrange_drawings(
     placements: Sequence[tuple[str, tuple[float, float, float, float]]],
     *,
     stack: bool = False,
+    transparent: Sequence[bool] | None = None,
 ) -> int:
     """Put each drawing's origin at the centre of a cell and clip it to the cell.
 
@@ -677,7 +678,10 @@ def arrange_drawings(
     metres on the layout. Returns how many the add-on arranged. ``stack``
     has the add-on bring them to the front in the order given as well, so a
     cell that holds two reads bottom to top; sent only when asked, since an
-    add-on built before it refuses a field it does not know.
+    add-on built before it refuses a field it does not know. ``transparent``
+    is a flag per placement for the drawing's own transparent background --
+    every drawing above the lowest of a stacked cell (D137) -- sent only when
+    given, for the same reason.
 
     The origin rather than the centre of the content, and a clip rather than a
     free frame, because of what a drawing of a 3D Document is: the whole site
@@ -688,17 +692,23 @@ def arrange_drawings(
     """
     if not placements:
         return 0
+    if transparent is not None and len(transparent) != len(placements):
+        raise ValueError(f"{len(transparent)} transparency flags for {len(placements)} drawings")
+    drawings: list[dict[str, Any]] = [
+        {
+            "guid": guid,
+            "x": (x0 + x1) / 2.0,
+            "y": (y0 + y1) / 2.0,
+            "frame": {"xMin": x0, "yMin": y0, "xMax": x1, "yMax": y1},
+        }
+        for guid, (x0, y0, x1, y1) in placements
+    ]
+    if transparent is not None:
+        for drawing, clear in zip(drawings, transparent, strict=True):
+            drawing["transparentBackground"] = bool(clear)
     asked: dict[str, Any] = {
         "layoutDatabaseId": {"guid": layout_database_id},
-        "drawings": [
-            {
-                "guid": guid,
-                "x": (x0 + x1) / 2.0,
-                "y": (y0 + y1) / 2.0,
-                "frame": {"xMin": x0, "yMin": y0, "xMax": x1, "yMax": y1},
-            }
-            for guid, (x0, y0, x1, y1) in placements
-        ],
+        "drawings": drawings,
         "anchor": "origin",
         "frameRelativeToOrigin": False,
         "autoUpdate": True,
@@ -804,15 +814,17 @@ def place_stacks_on_sheets(
     scale: float,
     master_layout: str | None = None,
     title_block_mm: float = TITLE_BLOCK_MM,
+    transparent_above_lowest: bool = False,
 ) -> list[LayoutReport]:
     """Each group of piled views onto its layout, a pile to a cell.
 
     ``groups`` is ``(layout name, [[(navigator id, drawing name), ...] per
     cell])``, each cell's list bottom to top, as the stacked shadow plans deal
-    them: the proposal's document under the existing set's. Every drawing of
-    a cell has its origin at the cell's centre and its frame clipped to the
-    cell, as ``place_on_sheets`` does with one, and the add-on then brings
-    them to the front in order, so the last of a pile lies over the rest.
+    them. Every drawing of a cell has its origin at the cell's centre and its
+    frame clipped to the cell, as ``place_on_sheets`` does with one, and the
+    add-on then brings them to the front in order, so the last of a pile lies
+    over the rest. ``transparent_above_lowest`` gives every drawing but the
+    lowest of each pile a transparent background.
     """
     reports: list[LayoutReport] = []
     for name, piles in groups:
@@ -831,13 +843,20 @@ def place_stacks_on_sheets(
         sheet, _ = layout_sheet(connection, report.database_id)
         placed = _drawings_by_name(connection, report.database_id)
         grid = sheet_cells_for(sheet, cells, title_block_mm=title_block_mm)[: len(piles)]
-        placements = [
-            (str(placed[drawing_name]["elementId"]["guid"]), cell)
-            for pile, cell in zip(piles, grid, strict=True)
-            for _, drawing_name in pile
-            if drawing_name in placed
-        ]
-        arrange_drawings(connection, report.database_id, placements, stack=True)
+        placements: list[tuple[str, tuple[float, float, float, float]]] = []
+        clear: list[bool] = []
+        for pile, cell in zip(piles, grid, strict=True):
+            for position, (_, drawing_name) in enumerate(pile):
+                if drawing_name in placed:
+                    placements.append((str(placed[drawing_name]["elementId"]["guid"]), cell))
+                    clear.append(position > 0)
+        arrange_drawings(
+            connection,
+            report.database_id,
+            placements,
+            stack=True,
+            transparent=clear if transparent_above_lowest else None,
+        )
     return reports
 
 

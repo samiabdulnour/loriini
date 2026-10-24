@@ -19,19 +19,22 @@ document keeps the filter it was made under (D98); a view of each document
 pinned to a layer combination, the renovation filter and the scale; and the
 views dealt onto sheets by day, a cell each, the way the fills' sheets are.
 
-What one document does not give is what the fills give. A document shows the
-whole shadow of whatever its layer combination shows, at one hour: there is
-no "existing" and "additional" inside it. Two documents give it, stacked. A
-drawing on a layout is clear wherever it draws nothing, so a document of what
-stands -- its uncut surfaces unfilled, its shadow in one solid pen -- laid
-over a document of what stands plus the proposal, in another pen, shows the
-existing shadow in the first pen and, wherever only the proposal casts, the
-proposal's in the second. That is the **stacked** mode: ``PlanSet`` names
-each scenario, ``stack_combinations`` works the layer combinations out from
-the layers, ``make_shadow_plan_stacks`` makes the existing set once and a set
-per proposal, and ``make_stacked_shadow_plan_sheets`` deals a proposal's
-documents onto its sheets with the existing set's on top of each. The plain
-mode remains: one set under one combination, ``set_label`` naming it, read
+What one document does not give is what the fills give. A document shows
+the whole shadow of whatever its layer combination shows, at one hour: there
+is no "existing" and "additional" inside it. A stack of documents gives it,
+one per row of the shadow legend -- the same rows as the fills', sources that
+accumulate and scenarios that are compared. Each row's document shows that
+row and everything it stands on, its shadow a solid in the row's colour, and
+the documents of an hour are laid in one cell of one sheet: the scenarios at
+the bottom in the order named, the sources above them from the last to the
+first. A drawing is seen only where everything above it casts nothing, so
+what shows of each row is what it adds. Archicad draws a document's shadows
+only on filled surfaces (D136), so every document above the lowest fills its
+surfaces in the transparent pen and its drawing has a transparent background
+(D137). ``LegendRow`` is a row, ``legend_combinations`` works the layer
+combinations out from the layers, ``make_shadow_plan_stack`` makes the sets
+and ``make_stack_sheets`` deals them onto the combined sheets. The plain mode
+remains: one set under one combination, ``set_label`` naming it, read
 against another set sheet by sheet. The two routes answer different
 questions, and the office may want both: the documents as the record, the
 fills as the argument (docs/shadow-plans.md).
@@ -65,31 +68,38 @@ from sun_study.archicad.views import (
     three_d_sources,
     views_for_sources,
 )
+from sun_study.core.shadow import BASELINE, SCENARIO
 from sun_study.core.solar import solar_position
 
 __all__ = [
+    "COMBINED_LABEL",
     "DEFAULT_COMBINATION",
     "EXISTING_LABEL",
+    "LOWEST_SURFACES",
     "OVERHEAD_DEG",
     "PLAN_SCALE",
     "PLAN_WORD",
     "PROPOSED_LABEL",
     "SET_WORD",
     "STACK_SHADOW_FILLS",
+    "UPPER_SURFACES",
+    "LegendRow",
     "MadePlan",
     "PlanSet",
     "ShadowPlan",
     "ShadowPlanSettings",
     "Stack",
+    "legend_combinations",
+    "legend_from_existing_and_proposed",
     "make_shadow_plan_sheets",
-    "make_shadow_plan_stacks",
+    "make_shadow_plan_stack",
     "make_shadow_plans",
-    "make_stacked_shadow_plan_sheets",
+    "make_stack_sheets",
     "plan_sheet_groups",
     "shadow_plans",
-    "stack_combinations",
     "stack_labels",
-    "stacked_sheet_groups",
+    "stack_order",
+    "stack_sheet_groups",
 ]
 
 #: What one document is called, after the prefix, and what the set is.
@@ -257,10 +267,13 @@ class ShadowPlanSettings:
     shadow_contours: bool = False
     fill_uncut_surfaces: bool | None = None
     """Whether the document fills its uncut surfaces -- roofs, the ground.
-    ``False`` leaves them as outlines, which is what lets a drawing of the
-    document be seen through on a layout; ``None`` keeps the project's own
-    default, and sends nothing, so an add-on built before the switch is not
-    handed a field it refuses."""
+    ``False`` leaves them as outlines and draws no shadow either (D136);
+    ``None`` keeps the project's own default, and sends nothing, so an add-on
+    built before the switch is not handed a field it refuses."""
+    uncut_surfaces: dict[str, Any] | None = None
+    """``{fill, fillType, pen}`` for the add-on's ``uncutSurfaces``: how the
+    uncut surfaces are filled, as ``UPPER_SURFACES`` and ``LOWEST_SURFACES``
+    ask for them in a stack (D137). ``None`` sends nothing."""
 
     def for_view(self) -> dict[str, Any]:
         """Tapir's ``viewSettings`` for the view of one document.
@@ -337,6 +350,8 @@ def make_shadow_plans(
             asked["shadowFill"] = dict(settings.shadow_fill)
         if settings.fill_uncut_surfaces is not None:
             asked["fillUncutSurfaces"] = settings.fill_uncut_surfaces
+        if settings.uncut_surfaces is not None:
+            asked["uncutSurfaces"] = dict(settings.uncut_surfaces)
         try:
             response = connection.run_loriini("CreateDocumentFrom3D", asked)
         except CommandFailedError as error:
@@ -418,6 +433,8 @@ def _reset(
         asked["shadowFill"] = dict(settings.shadow_fill)
     if settings.fill_uncut_surfaces is not None:
         asked["fillUncutSurfaces"] = settings.fill_uncut_surfaces
+    if settings.uncut_surfaces is not None:
+        asked["uncutSurfaces"] = dict(settings.uncut_surfaces)
     if fresh is not None:
         asked["effects3D"] = fresh
     try:
@@ -546,17 +563,32 @@ def make_shadow_plan_sheets(
     return reports, removed
 
 
-# -- the stack: existing over proposed, on one sheet ----------------------------
+# -- the stack: every legend row, one drawing per hour -------------------------
+
+
+@dataclass(frozen=True)
+class LegendRow:
+    """One row of the shadow legend, as the layers that hold it.
+
+    The same rows as the fills' legend (``archicad.shadows.LEGEND``) and the
+    same two roles: a **baseline** accumulates -- existing neighbours, then
+    future neighbours, each charged only for the ground the ones before had
+    not darkened -- and a **scenario** is compared, cast against every
+    baseline and no other scenario, so two scenarios overlap.
+    """
+
+    label: str
+    """The legend's words, and the word in this set's names: ``EXISTING``,
+    ``TOD - scenario 2``."""
+    layers: tuple[str, ...]
+    role: str
+    """``BASELINE`` or ``SCENARIO``, from ``core.shadow``."""
 
 
 @dataclass(frozen=True)
 class PlanSet:
-    """One scenario of a stack: what its layer combination shows, in its pen.
-
-    ``label`` is the word in its documents', views' and sheets' names --
-    ``Existing``, ``Proposed 2`` -- and ``shadow_pen`` the solid pen its
-    shadows are drawn in, which is the colour the legend gives that row.
-    """
+    """One row of a stack as it is drawn: the layer combination its documents'
+    views pin, and the solid pen its shadows are drawn in."""
 
     label: str
     layer_combination: str
@@ -565,27 +597,41 @@ class PlanSet:
 
 @dataclass(frozen=True)
 class Stack:
-    """One proposal's documents, and the existing set's that lie over them.
+    """Every set's documents for one stacked drawing per hour, bottom to top.
 
-    A sheet of the stack holds the proposal's document in each cell with the
-    existing set's document for the same hour on top of it. Where the
-    existing shadow falls its pen covers; wherever only the proposal casts,
-    the proposal's pen shows through -- the split between what stands and
-    what is added, drawn by Archicad's own caster twice rather than measured.
+    ``piles`` is ``(label, documents)`` per set in drawing order: the
+    scenarios first in the order named, then the baselines from the last to
+    the first. A document draws the whole shadow of everything its set shows,
+    so stacked in that order each one is seen only where everything above it
+    casts nothing -- the first baseline's shadow in its colour, what the
+    second adds in its colour, and each scenario's addition beneath them all,
+    the last named over the earlier ones where two overlap. That is the fills'
+    legend, cast by Archicad, with the split made by the order on the sheet
+    instead of by subtracting.
     """
 
-    label: str
-    """The proposal's label: what the sheets are named for."""
-    above_label: str
-    """The existing set's label, in the upper drawings' names."""
-    below: tuple[MadePlan, ...]
-    """The proposal's documents, in the order of the hours."""
-    above: tuple[MadePlan, ...]
-    """The existing set's documents, the same hours."""
+    piles: tuple[tuple[str, tuple[MadePlan, ...]], ...]
+
+
+#: The word the combined sheets carry after ``Shadow Plans``. Their own word,
+#: so a project that also has a plain set keeps both: a sheet finds its
+#: drawings by name and never clears the ones it does not know.
+COMBINED_LABEL = "Combined"
+
+#: How a document above the lowest fills its uncut surfaces: filled, so
+#: Archicad draws its shadows -- it draws them on filled surfaces and on
+#: nothing else (D136) -- in one pen colour, the transparent pen, so the
+#: surfaces themselves draw nothing and the documents beneath show (D137).
+UPPER_SURFACES: dict[str, Any] = {"fill": True, "fillType": "penColor", "pen": 0}
+
+#: How the lowest document fills them: filled and otherwise as the project
+#: draws a 3D Document, which is what the plain shadow plans look like. Sent
+#: so a document an earlier run made transparent is put back.
+LOWEST_SURFACES: dict[str, Any] = {"fill": True}
 
 
 def stack_labels(count: int) -> list[str]:
-    """What the proposals are called: ``Proposed`` alone, or numbered.
+    """What ``--proposed`` sets are called: ``Proposed`` alone, or numbered.
 
     Numbered in the order given, whatever the office calls them this week --
     the SEARs massing, the building envelope -- so a reader of the Layout Book
@@ -597,62 +643,85 @@ def stack_labels(count: int) -> list[str]:
     return [f"{PROPOSED_LABEL} {number}" for number in range(1, count + 1)]
 
 
-def stack_combinations(
-    existing_layers: Sequence[str],
-    proposals: Sequence[Sequence[str]],
-    *,
-    also_show: Sequence[str] = (),
-) -> list[tuple[str, tuple[str, ...], tuple[str, ...]]]:
-    """What each set's layer combination shows and hides, from the layers.
-
-    ``(label, show, hide)`` for the existing set first, then one per
-    proposal. The existing set shows the neighbours' layers and hides every
-    proposal's; a proposal shows the neighbours' and its own and hides the
-    other proposals'. A layer two proposals share is shown by both. Anything
-    else keeps the state the base combination gives it -- the ground among it
-    -- and ``also_show`` is what the base hides that every set needs, the
-    site context the plain mode switches on the same way.
-    """
-    every = [layer for layers in proposals for layer in layers]
-    existing = tuple(dict.fromkeys([*also_show, *existing_layers]))
-    standing = {layer.casefold() for layer in existing}
-    out: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = [
-        (
-            EXISTING_LABEL,
-            existing,
-            tuple(dict.fromkeys(layer for layer in every if layer.casefold() not in standing)),
-        )
+def legend_from_existing_and_proposed(
+    existing_layers: Sequence[str], proposals: Sequence[Sequence[str]]
+) -> list[LegendRow]:
+    """``--existing`` and ``--proposed`` as legend rows: what stands as one
+    baseline, each proposal as a scenario named by ``stack_labels``."""
+    rows: list[LegendRow] = []
+    if existing_layers:
+        rows.append(LegendRow(EXISTING_LABEL, tuple(existing_layers), BASELINE))
+    rows += [
+        LegendRow(label, tuple(layers), SCENARIO)
+        for label, layers in zip(stack_labels(len(proposals)), proposals, strict=True)
     ]
-    for label, layers in zip(stack_labels(len(proposals)), proposals, strict=True):
-        own = {layer.casefold() for layer in layers} | standing
-        show = tuple(dict.fromkeys([*existing, *layers]))
-        hide = tuple(dict.fromkeys(layer for layer in every if layer.casefold() not in own))
-        out.append((label, show, hide))
-    return out
+    return rows
 
 
-def make_shadow_plan_stacks(
+def stack_order(rows: Sequence[LegendRow]) -> list[LegendRow]:
+    """The rows bottom to top, as ``Stack`` describes: scenarios in the order
+    named, then baselines from the last named to the first."""
+    scenarios = [row for row in rows if row.role == SCENARIO]
+    baselines = [row for row in rows if row.role == BASELINE]
+    return scenarios + baselines[::-1]
+
+
+def legend_combinations(
+    rows: Sequence[LegendRow], *, also_show: Sequence[str] = ()
+) -> list[tuple[str, tuple[str, ...], tuple[str, ...]]]:
+    """What each set's layer combination shows and hides, in legend order.
+
+    ``(label, show, hide)`` per row. A baseline shows its own layers and every
+    earlier baseline's; a scenario shows every baseline's and its own. Each
+    hides every other row's layers it does not show, so a layer two rows
+    share is shown by both. Anything else keeps the state the base
+    combination gives it -- the ground among it -- and ``also_show`` is what
+    the base hides that every set needs, the site context the plain mode
+    switches on the same way.
+    """
+    every = [layer for row in rows for layer in row.layers]
+    out: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
+    standing: list[str] = []
+    for row in rows:
+        if row.role != BASELINE:
+            continue
+        standing = [*standing, *row.layers]
+        out.append((row.label, *_show_hide(also_show, standing, every)))
+    for row in rows:
+        if row.role == SCENARIO:
+            out.append((row.label, *_show_hide(also_show, [*standing, *row.layers], every)))
+    order = [row.label for row in rows]
+    return sorted(out, key=lambda entry: order.index(entry[0]))
+
+
+def _show_hide(
+    also_show: Sequence[str], shown: Sequence[str], every: Sequence[str]
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    show = tuple(dict.fromkeys([*also_show, *shown]))
+    on = {layer.casefold() for layer in show}
+    hide = tuple(dict.fromkeys(layer for layer in every if layer.casefold() not in on))
+    return show, hide
+
+
+def make_shadow_plan_stack(
     connection: ArchicadConnection,
     plans: Sequence[ShadowPlan],
     *,
     settings: ShadowPlanSettings,
-    existing: PlanSet,
-    proposals: Sequence[PlanSet],
-) -> tuple[list[Stack], list[str]]:
-    """The existing set once, and a set per proposal, each as a stack.
+    members: Sequence[PlanSet],
+) -> tuple[Stack, list[str]]:
+    """Every set's documents, ``members`` bottom to top, as one stack.
 
-    Every set is made as ``make_shadow_plans`` makes one, under its own
-    combination and label, with two things forced: its shadows in its own pen
-    as a solid -- the background pen the fill pen, so a hatch left in the
-    settings covers as a solid would -- and its uncut surfaces unfilled, so a
-    drawing of it is clear wherever no shadow falls. The existing documents
-    are the same objects in every stack, which is also what the Project Map
-    holds: one existing set, read against each proposal.
+    Each set is made as ``make_shadow_plans`` makes one, under its own
+    combination and label, with its shadows a solid in its own pen -- the
+    background pen the fill pen, so a hatch left in the settings covers as a
+    solid would. The lowest set's uncut surfaces are filled as the project
+    fills them; every set above it fills them in the transparent pen, so its
+    drawing shows its shadows and lets the ones beneath show everywhere else.
     """
-
     said: list[str] = []
-
-    def one_set(member: PlanSet) -> tuple[MadePlan, ...]:
+    piles: list[tuple[str, tuple[MadePlan, ...]]] = []
+    for position, member in enumerate(members):
         fill = dict(settings.shadow_fill)
         fill["fillPen"] = member.shadow_pen
         fill["backgroundPen"] = member.shadow_pen
@@ -660,75 +729,65 @@ def make_shadow_plan_stacks(
             settings,
             layer_combination=member.layer_combination,
             shadow_fill=fill,
-            fill_uncut_surfaces=False,
+            fill_uncut_surfaces=None,
+            uncut_surfaces=dict(LOWEST_SURFACES if position == 0 else UPPER_SURFACES),
         )
         made, notes = make_shadow_plans(connection, plans, settings=own, set_label=member.label)
         for note in notes:
             if note not in said:
                 said.append(note)
-        return tuple(made)
-
-    above = one_set(existing)
-    stacks = [
-        Stack(label=member.label, above_label=existing.label, below=one_set(member), above=above)
-        for member in proposals
-    ]
-    return stacks, said
+        piles.append((member.label, tuple(made)))
+    return Stack(piles=tuple(piles)), said
 
 
-def stacked_sheet_groups(
-    stacks: Sequence[Stack], *, sheets: str = DEFAULT_SHEET_MODE
+def stack_sheet_groups(
+    stack: Stack, *, sheets: str = DEFAULT_SHEET_MODE
 ) -> tuple[list[tuple[str, list[list[tuple[str, str]]]]], int]:
-    """Each stack's sheets, a cell holding the proposal's view under the
-    existing set's, and the cells the fullest sheet has.
+    """The stack's sheets, a cell per hour holding every set's drawing, and the
+    cells the fullest sheet has.
 
-    ``(layout name, [[(navigator id, drawing name), ...] per cell])``, the
-    inner list bottom to top. The sheets are named as a labelled set's are,
-    *15 | Shadow Plans Proposed 1 - JUNE 21*; the two drawings of a cell are
-    named for the hour and the set, ``JUNE 21 -9AM PROPOSED 1`` under
-    ``JUNE 21 -9AM EXISTING``, since a sheet finds its drawings by name and
-    two of one name would be one. An hour the existing set lacks -- it
-    cannot, both are made from one list of hours, but a rerun over a Project
-    Map somebody has pruned might -- leaves the proposal's drawing alone in
-    its cell.
+    ``(layout name, [[(navigator id, drawing name), ...] per cell])``, each
+    cell's list bottom to top. The sheets are dealt as a labelled set's are,
+    by the lowest set's hours, and named *15 | Shadow Plans Combined - JUNE
+    21*; each drawing is named for the hour and its set, ``JUNE 21 -9AM
+    EXISTING``, since a sheet finds its drawings by name and two of one name
+    would be one. A set that lacks an hour -- a rerun over a Project Map
+    somebody has pruned -- is left out of that hour's cell.
     """
+    if not stack.piles:
+        return [], 0
+    _, lowest = stack.piles[0]
+    by_hour = [{one.plan.when: one for one in made} for _, made in stack.piles]
+    dealt, cells = _dealt(lowest, sheets=sheets, set_label=COMBINED_LABEL)
     groups: list[tuple[str, list[list[tuple[str, str]]]]] = []
-    cells = 0
-    for stack in stacks:
-        above = {one.plan.when: one for one in stack.above}
-        dealt, count = _dealt(stack.below, sheets=sheets, set_label=stack.label)
-        cells = max(cells, count)
-        for name, on_sheet in dealt:
-            piles: list[list[tuple[str, str]]] = []
-            for one in on_sheet:
-                pile = [(one.view.navigator_id, f"{one.plan.caption} {stack.label.upper()}")]
-                top = above.get(one.plan.when)
-                if top is not None:
-                    pile.append(
-                        (top.view.navigator_id, f"{one.plan.caption} {stack.above_label.upper()}")
-                    )
-                piles.append(pile)
-            groups.append((name, piles))
+    for name, on_sheet in dealt:
+        cells_here: list[list[tuple[str, str]]] = []
+        for one in on_sheet:
+            pile = [
+                (found.view.navigator_id, f"{one.plan.caption} {label.upper()}")
+                for (label, _), hours in zip(stack.piles, by_hour, strict=True)
+                if (found := hours.get(one.plan.when)) is not None
+            ]
+            cells_here.append(pile)
+        groups.append((name, cells_here))
     return groups, cells
 
 
-def make_stacked_shadow_plan_sheets(
+def make_stack_sheets(
     connection: ArchicadConnection,
-    stacks: Sequence[Stack],
+    stack: Stack,
     *,
     sheets: str = DEFAULT_SHEET_MODE,
     scale: float = PLAN_SCALE,
     master_layout: str | None = None,
     title_block_mm: float = TITLE_BLOCK_MM,
 ) -> tuple[list[LayoutReport], list[str]]:
-    """Each stack on its sheets, two drawings to a cell, and each stack's
-    earlier sheets that are not being remade removed."""
-    groups, cells = stacked_sheet_groups(stacks, sheets=sheets)
-    removed: list[str] = []
-    for stack in stacks:
-        stem = _sheet_stem(stack.label)
-        keep = {name for name, _ in groups if name.startswith(stem)}
-        removed += remove_stale_layouts(connection, stem, keep)
+    """The stack on its sheets, every set's drawing of an hour in one cell,
+    each drawing above the lowest with a transparent background, and the
+    combined sheets an earlier run made that are not being remade removed."""
+    groups, cells = stack_sheet_groups(stack, sheets=sheets)
+    stem = _sheet_stem(COMBINED_LABEL)
+    removed = remove_stale_layouts(connection, stem, {name for name, _ in groups})
     reports = place_stacks_on_sheets(
         connection,
         groups,
@@ -736,5 +795,6 @@ def make_stacked_shadow_plan_sheets(
         scale=scale,
         master_layout=master_layout,
         title_block_mm=title_block_mm,
+        transparent_above_lowest=True,
     )
     return reports, removed

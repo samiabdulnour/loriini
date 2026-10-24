@@ -21,7 +21,7 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Annotated, Any, NoReturn
@@ -132,26 +132,30 @@ from sun_study.archicad.series import (
     restore_after,
 )
 from sun_study.archicad.shadow_plans import (
-    DEFAULT_COMBINATION as SHADOW_PLAN_COMBINATION,
-)
-from sun_study.archicad.shadow_plans import (
+    COMBINED_LABEL,
     DEFAULT_SHADOW_FILL,
     EXISTING_LABEL,
     PLAN_SCALE,
     SET_WORD,
     STACK_SHADOW_FILLS,
+    LegendRow,
     PlanSet,
     ShadowPlan,
     ShadowPlanSettings,
     hidden_among,
+    legend_combinations,
+    legend_from_existing_and_proposed,
     make_shadow_plan_sheets,
-    make_shadow_plan_stacks,
+    make_shadow_plan_stack,
     make_shadow_plans,
-    make_stacked_shadow_plan_sheets,
+    make_stack_sheets,
     shadow_plans,
     site_context_layers,
-    stack_combinations,
     stack_labels,
+    stack_order,
+)
+from sun_study.archicad.shadow_plans import (
+    DEFAULT_COMBINATION as SHADOW_PLAN_COMBINATION,
 )
 from sun_study.archicad.shadows import (
     BASELINE_RAMP,
@@ -7820,6 +7824,30 @@ def shadow_plan_documents(
             ),
         ),
     ] = "",
+    shadow_source: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--shadow-source",
+            help=(
+                'A legend row that stands, as "LABEL=layer,layer". Repeatable; '
+                "these accumulate, as in the shadow diagram: each is drawn only where "
+                "the ones named before it cast nothing. With --shadow-scenario, turns "
+                "on the stacked mode: a document per row and hour, every row of an "
+                "hour stacked in one drawing, each row's shadow in its legend colour."
+            ),
+        ),
+    ] = None,
+    shadow_scenario: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--shadow-scenario",
+            help=(
+                'A legend row that might be built, as "LABEL=layer,layer". Repeatable; '
+                "each is cast against every --shadow-source and no other scenario, so "
+                "two scenarios overlap, the last named on top."
+            ),
+        ),
+    ] = None,
     existing: Annotated[
         list[str] | None,
         typer.Option(
@@ -7952,14 +7980,15 @@ def shadow_plan_documents(
     naming.set_prefix(layer_prefix, default=naming.SHADOW_PREFIX)
     clock = Stopwatch()
     proposals = _proposal_layers(proposed or [])
-    if proposals and set_label:
+    legend = _legend_rows(shadow_source or [], shadow_scenario or [], existing or [], proposals)
+    if legend and set_label:
         typer.secho(
             f"  --label {set_label!r} is set aside: the stacked mode names its sets "
-            f"{EXISTING_LABEL} and {', '.join(stack_labels(len(proposals)))}.",
+            f"for the legend, {', '.join(row.label for row in legend)}.",
             fg=typer.colors.YELLOW,
         )
         set_label = ""
-    if existing and not proposals:
+    if existing and not proposals and not legend:
         typer.secho(
             "  --existing names what stands, but no --proposed names what is added; "
             "the plans are made as one set under the layer combination.",
@@ -8006,7 +8035,7 @@ def shadow_plan_documents(
         typer.secho(f"  {trouble}", fg=typer.colors.YELLOW)
 
     fill: dict[str, int] = {}
-    if shadow_fill is None and proposals:
+    if shadow_fill is None and legend:
         # A stack needs the upper document's shadow to cover the lower's, so
         # the shadows are solid; the office's hatch would let the pen beneath
         # show between its lines, and the page would be neither colour.
@@ -8071,17 +8100,27 @@ def shadow_plan_documents(
             raise typer.Exit(code=2)
         names = {state.identifier: state.name for state in read_layers(connection)}
         wanted += [n for n in hidden_among(site_context_layers(), names, states) if n not in wanted]
-    if proposals:
+    if legend:
+        given_pens: dict[str, int] = {}
+        if existing_pen is not None and existing and proposals:
+            given_pens[EXISTING_LABEL] = existing_pen
+        if proposed_pen:
+            labels_given = stack_labels(len(proposals))
+            if len(proposed_pen) > len(labels_given):
+                typer.secho(
+                    f"  {len(proposed_pen)} --proposed-pen for {len(labels_given)} --proposed; "
+                    f"the last {len(proposed_pen) - len(labels_given)} are set aside",
+                    fg=typer.colors.YELLOW,
+                )
+            given_pens.update(zip(labels_given, proposed_pen, strict=False))
         _stacked_shadow_plans(
             connection,
             plans,
             settings=settings,
             base=layer_combination,
             also_show=wanted,
-            existing_layers=existing or [],
-            proposals=proposals,
-            existing_pen=existing_pen,
-            proposed_pens=proposed_pen or [],
+            legend=legend,
+            given_pens=given_pens,
             layout=layout,
             sheets=sheets,
             master_layout=master_layout,
@@ -8186,34 +8225,63 @@ def _proposal_layers(given: Sequence[str]) -> list[list[str]]:
     return proposals
 
 
-def _stack_pens(
-    connection: ArchicadConnection,
-    existing_pen: int | None,
-    proposed_pens: Sequence[int],
-    count: int,
-) -> tuple[int, list[int]]:
-    """A solid pen per set of the stack: the existing set's, then one per proposal.
+def _legend_rows(
+    sources: Sequence[str],
+    scenarios: Sequence[str],
+    existing: Sequence[str],
+    proposals: Sequence[Sequence[str]],
+) -> list[LegendRow]:
+    """The stack's legend, from either way of naming it.
+
+    ``--shadow-source`` and ``--shadow-scenario`` are the shadow diagram's own
+    rows, ``"LABEL=layer,layer"``, parsed by the same rules so one project's
+    two routes are named alike. ``--existing`` and ``--proposed`` are the
+    short way for the common case, one row that stands and the proposals; the
+    two ways do not mix, since which rows accumulate and which are compared
+    would then depend on how they happened to be typed. Neither given, there
+    is no legend and the plans are one plain set.
+    """
+    if (sources or scenarios) and (existing or proposals):
+        raise typer.BadParameter(
+            "Name the legend one way: --shadow-source and --shadow-scenario, or "
+            "--existing and --proposed, not both."
+        )
+    if sources or scenarios:
+        return [
+            LegendRow(label=rule.label, layers=rule.selectors, role=rule.role)
+            for rule in _shadow_source_rules(sources, scenarios)
+        ]
+    if proposals:
+        return legend_from_existing_and_proposed(existing, proposals)
+    return []
+
+
+def _legend_pens(
+    connection: ArchicadConnection, legend: Sequence[LegendRow], given: Mapping[str, int]
+) -> dict[str, int]:
+    """A solid pen per legend row, by label.
 
     The ones given win; the rest are matched by colour against the project's
-    pen table, as the fills' legend rows are -- the existing shadow in the
-    legend's grey, a single proposal in its blue, several proposals up the
-    blue ramp in order -- so the stacked sheet and the fills sheet of one
-    project read in the same colours.
+    pen table, as the shadow diagram's rows are: a row the legend knows by
+    name -- EXISTING, FUTURE, TOD, SEARS, PROPOSED, in its short words or its
+    sheet words -- takes the legend's colour, and any other row takes the next
+    grey for a source or the next blue for a scenario. So the stacked sheet
+    and the shadow diagram of one project read in the same colours.
     """
-    labels = stack_labels(count)
-    wanted = [
-        BandStyle(
-            EXISTING_LABEL.upper(), float("inf"), fill_pen=FIRST_SHADOW_PEN, rgb=BASELINE_RAMP[0]
+    seen = {BASELINE: 0, SCENARIO: 0}
+    wanted: list[BandStyle] = []
+    for index, row in enumerate(legend):
+        ramp = BASELINE_RAMP if row.role == BASELINE else SCENARIO_RAMP
+        position = seen[row.role]
+        seen[row.role] += 1
+        wanted.append(
+            BandStyle(
+                row.label.upper(),
+                float("inf"),
+                fill_pen=FIRST_SHADOW_PEN + index,
+                rgb=legend_colour(row.label) or ramp[min(position, len(ramp) - 1)],
+            )
         )
-    ] + [
-        BandStyle(
-            label.upper(),
-            float("inf"),
-            fill_pen=FIRST_SHADOW_PEN + 1 + index,
-            rgb=legend_colour(label) or SCENARIO_RAMP[index % len(SCENARIO_RAMP)],
-        )
-        for index, label in enumerate(labels)
-    ]
     try:
         pens = pen_table(connection)
     except ArchicadError as error:
@@ -8223,22 +8291,13 @@ def _stack_pens(
         )
         pens = ()
     matched, _ = match_pens(wanted, pens)
-    chosen = [band.fill_pen for band in matched]
-    given = [False] * len(chosen)
-    if existing_pen is not None:
-        chosen[0], given[0] = existing_pen, True
-    for index, pen in enumerate(proposed_pens[:count]):
-        chosen[1 + index], given[1 + index] = pen, True
-    if len(proposed_pens) > count:
-        typer.secho(
-            f"  {len(proposed_pens)} --proposed-pen for {count} --proposed; the last "
-            f"{len(proposed_pens) - count} are set aside",
-            fg=typer.colors.YELLOW,
-        )
-    for band, pen, told in zip(matched, chosen, given, strict=True):
+    chosen: dict[str, int] = {}
+    for row, band in zip(legend, matched, strict=True):
+        told = row.label in given
+        chosen[row.label] = given[row.label] if told else band.fill_pen
         how = "given" if told else ("matched" if pens else "guessed")
-        typer.echo(f"    {band.label:<12} rgb{band.rgb} -> pen {pen:<4} {how}")
-    return chosen[0], chosen[1:]
+        typer.echo(f"    {row.label:<24} rgb{band.rgb} -> pen {chosen[row.label]:<4} {how}")
+    return chosen
 
 
 def _stacked_shadow_plans(
@@ -8248,10 +8307,8 @@ def _stacked_shadow_plans(
     settings: ShadowPlanSettings,
     base: str,
     also_show: Sequence[str],
-    existing_layers: Sequence[str],
-    proposals: Sequence[Sequence[str]],
-    existing_pen: int | None,
-    proposed_pens: Sequence[int],
+    legend: Sequence[LegendRow],
+    given_pens: Mapping[str, int],
     layout: bool,
     sheets: str,
     master_layout: str | None,
@@ -8260,45 +8317,40 @@ def _stacked_shadow_plans(
     scale: float,
     clock: Stopwatch,
 ) -> None:
-    """The stacked mode of ``shadow-plans``: the existing set over each proposal.
+    """The stacked mode of ``shadow-plans``: every legend row in one drawing.
 
-    A layer combination per set is made from the base -- the existing layers
-    on and every proposal's off for the existing set; its own on and the
-    others' off for each proposal -- then the documents, then the sheets with
-    two drawings to a cell. The existing document lies on top, its uncut
-    surfaces unfilled, so its shadow covers in its pen and the proposal's pen
-    shows wherever only the proposal casts.
+    A layer combination per row is made from the base -- a source shows its
+    own layers and every earlier source's, a scenario every source's and its
+    own, and each hides the other rows' -- then a set of documents per row,
+    then the sheets, every row's drawing of an hour stacked in one cell:
+    scenarios at the bottom in the order named, sources above them from the
+    last to the first. Each document draws its whole shadow in its row's
+    pen; every one above the lowest draws its surfaces in the transparent
+    pen, so what is seen of each row is what it adds (D137).
     """
-    typer.secho(
-        "  the stack does not show its split in Archicad 30 (D136): a 3D Document draws "
-        "its shadows as fills on its surfaces, so the upper document, its surfaces "
-        "unfilled to let the proposal's pen through, draws no shadow at all. The sheets "
-        "are made as asked; for existing and additional shadow in two colours on one "
-        "plan, run 'sun-study shadows' with --shadow-source and --shadow-scenario.",
-        fg=typer.colors.YELLOW,
-    )
-    typer.echo("  shadow pens for the stack:")
-    first, rest = _stack_pens(connection, existing_pen, proposed_pens, len(proposals))
-    members: list[PlanSet] = []
-    rows = stack_combinations(existing_layers, proposals, also_show=also_show)
-    for (label, show, hide), pen in zip(rows, [first, *rest], strict=True):
+    typer.echo("  shadow pens for the legend:")
+    pens = _legend_pens(connection, legend, given_pens)
+    combos: dict[str, str] = {}
+    for label, show, hide in legend_combinations(legend, also_show=also_show):
         name = ensure_layer_combination(
             connection, naming.named(f"{SET_WORD} {label}"), show=show, hide=hide, base=base
         )
-        members.append(PlanSet(label=label, layer_combination=name, shadow_pen=pen))
+        combos[label] = name
         on = ", ".join(repr(layer) for layer in show) or "nothing more"
         off = ", ".join(repr(layer) for layer in hide) or "nothing"
         typer.echo(f"  {label}: views on {name!r}, which is {base!r} with {on} on and {off} off")
+    members = [
+        PlanSet(label=row.label, layer_combination=combos[row.label], shadow_pen=pens[row.label])
+        for row in stack_order(legend)
+    ]
     typer.echo(
         f"  {len(plans)} hours in {len(members)} sets, overhead with north up, each with "
-        f"Archicad's sun and shadows, uncut surfaces unfilled; the {members[0].label} "
-        f"document lies over each proposal's in every cell"
+        f"Archicad's sun and shadows; stacked bottom to top as "
+        + " < ".join(member.label for member in members)
     )
 
     try:
-        stacks, said = make_shadow_plan_stacks(
-            connection, plans, settings=settings, existing=members[0], proposals=members[1:]
-        )
+        stack, said = make_shadow_plan_stack(connection, plans, settings=settings, members=members)
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
@@ -8310,12 +8362,8 @@ def _stacked_shadow_plans(
     if note:
         typer.secho(f"  {note}", fg=typer.colors.YELLOW)
     typer.echo("    document                               sun altitude")
-    seen: set[str] = set()
-    for stack in stacks:
-        for one in (*stack.above, *stack.below):
-            if one.view.name in seen:
-                continue
-            seen.add(one.view.name)
+    for _, made in stack.piles:
+        for one in made:
             typer.echo(
                 f"    {one.view.name:<38} {one.plan.altitude_deg:6.1f}"
                 + ("  (already there, re-set)" if one.reused else "")
@@ -8324,9 +8372,9 @@ def _stacked_shadow_plans(
 
     if layout:
         try:
-            placed, removed = make_stacked_shadow_plan_sheets(
+            placed, removed = make_stack_sheets(
                 connection,
-                stacks,
+                stack,
                 sheets=sheets,
                 scale=scale,
                 master_layout=master_layout,
@@ -8350,9 +8398,9 @@ def _stacked_shadow_plans(
                 typer.echo(filing.describe())
             typer.echo(clock.said("placed them on sheets"))
     typer.echo(
-        "  Archicad draws the shadows when a sheet is opened or its drawings updated; open "
-        "one to check the existing shadow lies over the proposal's, and the proposal's "
-        "pen shows only where the existing set casts none."
+        f"  Archicad draws the shadows when a sheet is opened or its drawings updated; open "
+        f"a {COMBINED_LABEL.lower()} sheet to check each row's colour shows only where the "
+        f"rows above it cast nothing."
     )
     typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
 

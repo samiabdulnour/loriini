@@ -23,23 +23,28 @@ from sun_study.archicad.connection import ArchicadConnection, ArchicadError
 from sun_study.archicad.read import GeoLocation
 from sun_study.archicad.shadow_plans import (
     OVERHEAD_DEG,
+    UPPER_SURFACES,
+    LegendRow,
     MadePlan,
     PlanSet,
     ShadowPlan,
     ShadowPlanSettings,
     Stack,
     hidden_among,
-    make_shadow_plan_stacks,
+    legend_combinations,
+    legend_from_existing_and_proposed,
+    make_shadow_plan_stack,
     make_shadow_plans,
-    make_stacked_shadow_plan_sheets,
+    make_stack_sheets,
     plan_sheet_groups,
     shadow_plans,
     site_context_layers,
-    stack_combinations,
     stack_labels,
-    stacked_sheet_groups,
+    stack_order,
+    stack_sheet_groups,
 )
 from sun_study.archicad.views import StoreyView
+from sun_study.core.shadow import BASELINE, SCENARIO
 
 SYDNEY = GeoLocation(
     latitude_deg=-33.866667,
@@ -430,6 +435,11 @@ def test_the_context_the_site_tools_drew_is_shown_when_the_combination_hides_it(
 
 # -- the stack -----------------------------------------------------------------------
 
+EXISTING = LegendRow("EXISTING", ("03 | Site Context.Buildings",), BASELINE)
+FUTURE = LegendRow("FUTURE", ("03 | Site Context.Future",), BASELINE)
+TOD = LegendRow("TOD", ("20 | Massing.TOD",), SCENARIO)
+PROPOSED = LegendRow("PROPOSED", ("20 | Massing.Envelope", "20 | Massing.Podium"), SCENARIO)
+
 
 def test_the_proposals_are_named_proposed_and_numbered_in_the_order_given() -> None:
     """Whatever the office calls its massings this week, the sets are
@@ -439,77 +449,109 @@ def test_the_proposals_are_named_proposed_and_numbered_in_the_order_given() -> N
     assert stack_labels(3) == ["Proposed 1", "Proposed 2", "Proposed 3"]
 
 
-def test_the_stack_combinations_show_what_stands_and_hide_the_other_proposals() -> None:
-    """The existing set shows the neighbours and hides every proposal; each
-    proposal shows the neighbours and itself and hides the others. What the
-    base combination hides that every set needs rides along as also_show."""
-    rows = stack_combinations(
-        ["03 | Site Context.Buildings"],
-        [["20 | Massing.SEARs"], ["20 | Massing.Envelope", "20 | Massing.Podium"]],
-        also_show=["03 | Site Context.Terrain"],
+def test_existing_and_proposed_are_one_source_and_a_scenario_each() -> None:
+    rows = legend_from_existing_and_proposed(
+        ["03 | Site Context.Buildings"], [["20 | Massing.SEARs"], ["20 | Massing.Envelope"]]
     )
-    assert [label for label, _, _ in rows] == ["Existing", "Proposed 1", "Proposed 2"]
-    existing, first, second = rows
+    assert [(row.label, row.role) for row in rows] == [
+        ("Existing", BASELINE),
+        ("Proposed 1", SCENARIO),
+        ("Proposed 2", SCENARIO),
+    ]
+    assert legend_from_existing_and_proposed([], [["P"]])[0] == LegendRow(
+        "Proposed", ("P",), SCENARIO
+    )
+
+
+def test_sources_accumulate_and_scenarios_stand_on_every_source() -> None:
+    """A source shows itself and every earlier source; a scenario shows every
+    source and itself; each hides the other rows. What the base combination
+    hides that every set needs rides along as also_show."""
+    rows = legend_combinations(
+        [EXISTING, FUTURE, TOD, PROPOSED], also_show=["03 | Site Context.Terrain"]
+    )
+    assert [label for label, _, _ in rows] == ["EXISTING", "FUTURE", "TOD", "PROPOSED"]
+    existing, future, tod, proposed = rows
     assert existing[1] == ("03 | Site Context.Terrain", "03 | Site Context.Buildings")
-    assert existing[2] == ("20 | Massing.SEARs", "20 | Massing.Envelope", "20 | Massing.Podium")
-    assert first[1] == (
+    assert existing[2] == (
+        "03 | Site Context.Future",
+        "20 | Massing.TOD",
+        "20 | Massing.Envelope",
+        "20 | Massing.Podium",
+    )
+    assert future[1][-2:] == ("03 | Site Context.Buildings", "03 | Site Context.Future")
+    assert tod[1] == (
         "03 | Site Context.Terrain",
         "03 | Site Context.Buildings",
-        "20 | Massing.SEARs",
+        "03 | Site Context.Future",
+        "20 | Massing.TOD",
     )
-    assert first[2] == ("20 | Massing.Envelope", "20 | Massing.Podium")
-    assert second[2] == ("20 | Massing.SEARs",)
+    assert tod[2] == ("20 | Massing.Envelope", "20 | Massing.Podium")
+    assert proposed[2] == ("20 | Massing.TOD",)
 
 
-def test_a_layer_two_proposals_share_is_shown_by_both() -> None:
-    rows = stack_combinations(
-        [], [["20 | Podium", "20 | Tower A"], ["20 | Podium", "20 | Tower B"]]
-    )
-    _, first, second = rows
-    assert "20 | Podium" in first[1] and "20 | Podium" not in first[2]
-    assert "20 | Podium" in second[1] and "20 | Podium" not in second[2]
-    assert first[2] == ("20 | Tower B",)
-    assert second[2] == ("20 | Tower A",)
+def test_the_legend_order_is_kept_however_the_roles_are_interleaved() -> None:
+    rows = legend_combinations([TOD, EXISTING])
+    assert [label for label, _, _ in rows] == ["TOD", "EXISTING"]
+    assert rows[0][1] == ("03 | Site Context.Buildings", "20 | Massing.TOD")
 
 
-def test_a_stack_makes_the_existing_set_once_over_every_proposal() -> None:
-    """One existing set and a set per proposal, each under its own combination
-    and label, each solid in its own pen, every document's uncut surfaces
-    unfilled so the drawing beneath shows through. The existing documents are
-    the same objects in every stack."""
+def test_a_layer_two_scenarios_share_is_shown_by_both() -> None:
+    first = LegendRow("A", ("20 | Podium", "20 | Tower A"), SCENARIO)
+    second = LegendRow("B", ("20 | Podium", "20 | Tower B"), SCENARIO)
+    (_, show_a, hide_a), (_, show_b, hide_b) = legend_combinations([first, second])
+    assert "20 | Podium" in show_a and "20 | Podium" not in hide_a
+    assert "20 | Podium" in show_b and "20 | Podium" not in hide_b
+    assert hide_a == ("20 | Tower B",) and hide_b == ("20 | Tower A",)
+
+
+def test_the_stack_reads_scenarios_first_then_sources_last_to_first() -> None:
+    """Bottom to top. The first source is on top, so its shadow is drawn in
+    its colour; each later source is seen only where those above cast nothing;
+    the scenarios lie under every source, the last named over the earlier."""
+    order = stack_order([EXISTING, FUTURE, TOD, PROPOSED])
+    assert [row.label for row in order] == ["TOD", "PROPOSED", "FUTURE", "EXISTING"]
+    assert [row.label for row in stack_order([EXISTING])] == ["EXISTING"]
+
+
+def test_a_stack_makes_a_set_per_row_and_lets_the_lower_ones_show_through() -> None:
+    """Each set under its own combination and label, each solid in its own
+    pen. The lowest set's surfaces are filled as the project fills them; every
+    set above draws them in the transparent pen, so the shadows are drawn and
+    nothing else is (D137)."""
     transport = PlanTransport()
-    plans = _plans([9, 12])
-    settings = ShadowPlanSettings(shadow_fill={"fillIndex": 1}, fill_uncut_surfaces=None)
+    settings = ShadowPlanSettings(shadow_fill={"fillIndex": 1})
 
-    stacks, said = make_shadow_plan_stacks(
+    stack, said = make_shadow_plan_stack(
         ArchicadConnection(transport),
-        plans,
+        _plans([9, 12]),
         settings=settings,
-        existing=PlanSet("Existing", f"{SS} Shadow Plans Existing", 93),
-        proposals=[
-            PlanSet("Proposed 1", f"{SS} Shadow Plans Proposed 1", 94),
-            PlanSet("Proposed 2", f"{SS} Shadow Plans Proposed 2", 95),
+        members=[
+            PlanSet("PROPOSED", f"{SS} Shadow Plans PROPOSED", 95),
+            PlanSet("FUTURE", f"{SS} Shadow Plans FUTURE", 94),
+            PlanSet("EXISTING", f"{SS} Shadow Plans EXISTING", 93),
         ],
     )
 
     assert said == []
-    assert [stack.label for stack in stacks] == ["Proposed 1", "Proposed 2"]
-    assert stacks[0].above is stacks[1].above, "the existing set is made once"
+    assert [label for label, _ in stack.piles] == ["PROPOSED", "FUTURE", "EXISTING"]
     created = transport.asked("CreateDocumentFrom3D")
-    assert [c["name"] for c in created] == [
-        f"{SS} Shadow Plan Existing 21 Jun 09:00",
-        f"{SS} Shadow Plan Existing 21 Jun 12:00",
-        f"{SS} Shadow Plan Proposed 1 21 Jun 09:00",
-        f"{SS} Shadow Plan Proposed 1 21 Jun 12:00",
-        f"{SS} Shadow Plan Proposed 2 21 Jun 09:00",
-        f"{SS} Shadow Plan Proposed 2 21 Jun 12:00",
+    assert [c["name"] for c in created[::2]] == [
+        f"{SS} Shadow Plan PROPOSED 21 Jun 09:00",
+        f"{SS} Shadow Plan FUTURE 21 Jun 09:00",
+        f"{SS} Shadow Plan EXISTING 21 Jun 09:00",
     ]
-    assert all(c["fillUncutSurfaces"] is False for c in created)
-    assert all(c["sunShadows"] is True for c in created)
+    assert all("fillUncutSurfaces" not in c for c in created)
+    assert [c["uncutSurfaces"] for c in created[::2]] == [
+        {"fill": True},
+        UPPER_SURFACES,
+        UPPER_SURFACES,
+    ]
+    assert UPPER_SURFACES == {"fill": True, "fillType": "penColor", "pen": 0}
     assert [c["shadowFill"] for c in created[::2]] == [
-        {"fillIndex": 1, "fillPen": 93, "backgroundPen": 93},
-        {"fillIndex": 1, "fillPen": 94, "backgroundPen": 94},
         {"fillIndex": 1, "fillPen": 95, "backgroundPen": 95},
+        {"fillIndex": 1, "fillPen": 94, "backgroundPen": 94},
+        {"fillIndex": 1, "fillPen": 93, "backgroundPen": 93},
     ]
     pinned = transport.asked("SetViewSettings")
     combinations = dict.fromkeys(
@@ -518,76 +560,70 @@ def test_a_stack_makes_the_existing_set_once_over_every_proposal() -> None:
         for row in ask["navigatorItemIdsWithViewSettings"]
     )
     assert list(combinations) == [
-        f"{SS} Shadow Plans Existing",
-        f"{SS} Shadow Plans Proposed 1",
-        f"{SS} Shadow Plans Proposed 2",
+        f"{SS} Shadow Plans PROPOSED",
+        f"{SS} Shadow Plans FUTURE",
+        f"{SS} Shadow Plans EXISTING",
     ], "each set's views pinned to its own combination"
 
 
 def test_a_rerun_of_a_stack_re_sets_the_surfaces_too() -> None:
-    transport = PlanTransport(existing=(f"{SS} Shadow Plan Existing 21 Jun 09:00",))
-    make_shadow_plan_stacks(
+    """A document an earlier run made is put back the way this run wants it,
+    the lowest one filled again included."""
+    transport = PlanTransport(
+        existing=(
+            f"{SS} Shadow Plan PROPOSED 21 Jun 09:00",
+            f"{SS} Shadow Plan EXISTING 21 Jun 09:00",
+        )
+    )
+    make_shadow_plan_stack(
         ArchicadConnection(transport),
         _plans([9]),
         settings=ShadowPlanSettings(),
-        existing=PlanSet("Existing", "X", 93),
-        proposals=[PlanSet("Proposed", "P", 94)],
+        members=[PlanSet("PROPOSED", "P", 94), PlanSet("EXISTING", "X", 93)],
     )
-    (reset,) = transport.asked("SetDocumentFrom3D")
-    assert reset["fillUncutSurfaces"] is False
-    assert reset["shadowFill"] == {"fillPen": 93, "backgroundPen": 93}
+    lowest, upper = transport.asked("SetDocumentFrom3D")
+    assert lowest["uncutSurfaces"] == {"fill": True}
+    assert upper["uncutSurfaces"] == UPPER_SURFACES
+    assert upper["shadowFill"] == {"fillPen": 93, "backgroundPen": 93}
 
 
-def _stacked(day: dt.date, hours: list[int], *labels: str) -> list[Stack]:
-    """A stack per label after the first, which is the existing set's."""
-    existing, *proposed = labels
-    above = _made(day, hours, existing)
-    return [
-        Stack(
-            label=label,
-            above_label=existing,
-            below=tuple(_made(day, hours, label)),
-            above=tuple(above),
-        )
-        for label in proposed
-    ]
+def _stack(day: dt.date, hours: list[int], *labels: str) -> Stack:
+    """A stack of the labels, bottom to top, every set with every hour."""
+    return Stack(piles=tuple((label, tuple(_made(day, hours, label))) for label in labels))
 
 
-def test_a_stacked_sheet_holds_the_proposal_under_the_existing_in_every_cell() -> None:
-    """Named as a labelled set's sheets are; each cell's pile reads bottom to
-    top, and the two drawings of a cell are named apart for the hour and the
-    set, since a sheet finds its drawings by name."""
-    stacks = _stacked(dt.date(2024, 6, 21), [9, 12, 15], "Existing", "Proposed 1", "Proposed 2")
+def test_a_combined_sheet_holds_every_set_of_an_hour_in_one_cell() -> None:
+    """Named for the combined set; each cell's pile reads bottom to top, and
+    the drawings of a cell are named apart for the hour and the set, since a
+    sheet finds its drawings by name."""
+    stack = _stack(dt.date(2024, 6, 21), [9, 12, 15], "PROPOSED", "FUTURE", "EXISTING")
 
-    groups, cells = stacked_sheet_groups(stacks, sheets="one")
+    groups, cells = stack_sheet_groups(stack, sheets="one")
 
-    assert [name for name, _ in groups] == [
-        f"{SS} Shadow Plans Proposed 1 - JUNE 21",
-        f"{SS} Shadow Plans Proposed 2 - JUNE 21",
-    ]
+    assert [name for name, _ in groups] == [f"{SS} Shadow Plans Combined - JUNE 21"]
     assert cells == 3
     first_cell = groups[0][1][0]
     assert first_cell == [
-        ("VIEW-Proposed 1-21 Jun 09:00", "JUNE 21 -9AM PROPOSED 1"),
-        ("VIEW-Existing-21 Jun 09:00", "JUNE 21 -9AM EXISTING"),
+        ("VIEW-PROPOSED-21 Jun 09:00", "JUNE 21 -9AM PROPOSED"),
+        ("VIEW-FUTURE-21 Jun 09:00", "JUNE 21 -9AM FUTURE"),
+        ("VIEW-EXISTING-21 Jun 09:00", "JUNE 21 -9AM EXISTING"),
     ]
-    assert [pile[1][0] for pile in groups[1][1]] == [
-        "VIEW-Existing-21 Jun 09:00",
-        "VIEW-Existing-21 Jun 12:00",
-        "VIEW-Existing-21 Jun 15:00",
-    ], "the same existing documents lie over the second proposal"
+    assert [len(pile) for pile in groups[0][1]] == [3, 3, 3]
 
 
-def test_an_hour_the_existing_set_lacks_leaves_the_proposal_alone_in_its_cell() -> None:
-    above = _made(dt.date(2024, 6, 21), [9], "Existing")
-    below = _made(dt.date(2024, 6, 21), [9, 12], "Proposed")
-    stacks = [Stack("Proposed", "Existing", tuple(below), tuple(above))]
-    groups, _ = stacked_sheet_groups(stacks, sheets="one")
-    piles = groups[0][1]
-    assert len(piles[0]) == 2 and len(piles[1]) == 1
+def test_an_hour_a_set_lacks_is_left_out_of_that_cell() -> None:
+    day = dt.date(2024, 6, 21)
+    stack = Stack(
+        piles=(
+            ("PROPOSED", tuple(_made(day, [9, 12], "PROPOSED"))),
+            ("EXISTING", tuple(_made(day, [9], "EXISTING"))),
+        )
+    )
+    groups, _ = stack_sheet_groups(stack, sheets="one")
+    assert [len(pile) for pile in groups[0][1]] == [2, 1]
 
 
-def test_the_stacked_sheets_remove_each_stacks_stale_sheets_and_place_in_piles(
+def test_the_combined_sheets_remove_their_stale_sheets_and_clear_the_upper_drawings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from sun_study.archicad import shadow_plans as module
@@ -605,19 +641,19 @@ def test_the_stacked_sheets_remove_each_stacks_stale_sheets_and_place_in_piles(
 
     monkeypatch.setattr(module, "remove_stale_layouts", forget)
     monkeypatch.setattr(module, "place_stacks_on_sheets", place)
-    stacks = _stacked(dt.date(2024, 6, 21), [9, 12], "Existing", "Proposed 1", "Proposed 2")
+    stack = _stack(dt.date(2024, 6, 21), [9, 12], "PROPOSED", "EXISTING")
 
-    _, gone = make_stacked_shadow_plan_sheets(
-        ArchicadConnection(PlanTransport()), stacks, sheets="one", scale=500.0
+    _, gone = make_stack_sheets(
+        ArchicadConnection(PlanTransport()), stack, sheets="one", scale=500.0
     )
 
     assert removed == [
-        (f"{SS} Shadow Plans Proposed 1 - ", {f"{SS} Shadow Plans Proposed 1 - JUNE 21"}),
-        (f"{SS} Shadow Plans Proposed 2 - ", {f"{SS} Shadow Plans Proposed 2 - JUNE 21"}),
+        (f"{SS} Shadow Plans Combined - ", {f"{SS} Shadow Plans Combined - JUNE 21"})
     ]
-    assert gone == [f"{SS} Shadow Plans Proposed 1 - OLD", f"{SS} Shadow Plans Proposed 2 - OLD"]
+    assert gone == [f"{SS} Shadow Plans Combined - OLD"]
     ((groups, kwargs),) = placed
-    assert len(groups) == 2 and kwargs["cells"] == 2 and kwargs["scale"] == 500.0
+    assert len(groups) == 1 and kwargs["cells"] == 2 and kwargs["scale"] == 500.0
+    assert kwargs["transparent_above_lowest"] is True
 
 
 class ArrangeTransport:
@@ -653,15 +689,33 @@ def test_the_stacking_order_is_asked_of_the_add_on_only_when_wanted() -> None:
     assert stacked["stack"] is True
     assert [d["guid"] for d in stacked["drawings"]] == ["P", "E"], "bottom to top"
     assert stacked["drawings"][0]["frame"] == stacked["drawings"][1]["frame"]
+    assert all("transparentBackground" not in d for d in stacked["drawings"])
 
 
-def test_the_stacked_command_builds_a_combination_per_set_and_stacks_the_sheets(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """End to end over the scripted project: --existing and --proposed turn the
-    stacked mode on, --label is set aside, a combination per set is made from
-    the base with the right layers on and off, the pens given are used and
-    the rest guessed, and the sheets are the stacked ones."""
+def test_a_transparent_background_is_sent_per_drawing_only_when_asked() -> None:
+    from sun_study.archicad.sun_eyes import arrange_drawings
+
+    transport = ArrangeTransport()
+    cell = (0.1, 0.1, 0.4, 0.4)
+    arrange_drawings(
+        ArchicadConnection(transport),
+        "LAYOUT",
+        [("P", cell), ("F", cell), ("E", cell)],
+        stack=True,
+        transparent=[False, True, True],
+    )
+    (asked,) = transport.asked
+    assert [d["transparentBackground"] for d in asked["drawings"]] == [False, True, True]
+    with pytest.raises(ValueError, match="2 transparency flags for 1 drawings"):
+        arrange_drawings(
+            ArchicadConnection(transport), "LAYOUT", [("P", cell)], transparent=[False, True]
+        )
+
+
+def _stacked_command(
+    monkeypatch: pytest.MonkeyPatch, *legend_args: str
+) -> tuple[Any, PlanTransport, list[tuple[str, list[str], list[str], str]], list[Any]]:
+    """Run shadow-plans over the scripted project with the given legend."""
     from typer.testing import CliRunner
 
     from sun_study import cli
@@ -673,10 +727,10 @@ def test_the_stacked_command_builds_a_combination_per_set_and_stacks_the_sheets(
         combinations.append((name, list(show), list(hide), base))
         return name
 
-    stacked: list[Any] = []
+    sheets: list[Any] = []
 
-    def place(_connection: object, stacks: Any, **kwargs: Any) -> tuple[list[Any], list[str]]:
-        stacked.append((list(stacks), kwargs))
+    def place(_connection: object, stack: Any, **kwargs: Any) -> tuple[list[Any], list[str]]:
+        sheets.append((stack, kwargs))
         return [], []
 
     monkeypatch.setattr(cli, "_connect", lambda *a, **k: ArchicadConnection(transport))
@@ -686,7 +740,7 @@ def test_the_stacked_command_builds_a_combination_per_set_and_stacks_the_sheets(
     monkeypatch.setattr(cli, "planned_renovation_filter", lambda *a, **k: "PLANNED")
     monkeypatch.setattr(cli, "ensure_layer_combination", pin)
     monkeypatch.setattr(cli, "pen_table", lambda _c: ())
-    monkeypatch.setattr(cli, "make_stacked_shadow_plan_sheets", place)
+    monkeypatch.setattr(cli, "make_stack_sheets", place)
     monkeypatch.setattr(naming, "_prefix", naming.prefix())
 
     result = CliRunner().invoke(
@@ -699,52 +753,109 @@ def test_the_stacked_command_builds_a_combination_per_set_and_stacks_the_sheets(
             "9,12",
             "--layer-combination",
             "04 | Shadow Diagrams",
-            "--existing",
-            "03 | Site Context.Buildings",
-            "--proposed",
-            "20 | Massing.SEARs",
-            "--proposed",
-            "20 | Massing.Envelope, 20 | Massing.Podium",
-            "--proposed-pen",
-            "150",
-            "--label",
-            "Ignored",
             "--no-site-context",
+            *legend_args,
         ],
+    )
+    return result, transport, combinations, sheets
+
+
+def test_the_stacked_command_takes_the_shadow_diagrams_legend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End to end: --shadow-source and --shadow-scenario as the shadow diagram
+    takes them, a combination per row made from the base, a set of documents
+    per row in stacking order, the lowest filled and the rest transparent, and
+    one combined sheet set."""
+    result, transport, combinations, sheets = _stacked_command(
+        monkeypatch,
+        "--shadow-source",
+        "EXISTING=03 | Site Context.Buildings",
+        "--shadow-source",
+        "FUTURE=03 | Site Context.Future",
+        "--shadow-scenario",
+        "TOD=20 | Massing.TOD",
+        "--shadow-scenario",
+        "PROPOSED=20 | Massing.Envelope, 20 | Massing.Podium",
+        "--label",
+        "Ignored",
     )
 
     assert result.exit_code == 0, result.output
     assert "--label 'Ignored' is set aside" in result.output
-    # The command files everything under the shadow diagram's own number.
+    prefix = naming.SHADOW_PREFIX
     assert [row[0] for row in combinations] == [
-        f"{naming.SHADOW_PREFIX} Shadow Plans Existing",
-        f"{naming.SHADOW_PREFIX} Shadow Plans Proposed 1",
-        f"{naming.SHADOW_PREFIX} Shadow Plans Proposed 2",
+        f"{prefix} Shadow Plans EXISTING",
+        f"{prefix} Shadow Plans FUTURE",
+        f"{prefix} Shadow Plans TOD",
+        f"{prefix} Shadow Plans PROPOSED",
     ]
     assert all(row[3] == "04 | Shadow Diagrams" for row in combinations)
-    assert combinations[0][1] == ["03 | Site Context.Buildings"]
-    assert combinations[0][2] == [
-        "20 | Massing.SEARs",
-        "20 | Massing.Envelope",
-        "20 | Massing.Podium",
+    assert combinations[1][1] == ["03 | Site Context.Buildings", "03 | Site Context.Future"]
+    assert combinations[3][2] == ["20 | Massing.TOD"]
+    created = transport.asked("CreateDocumentFrom3D")
+    assert [c["name"] for c in created[::2]] == [
+        f"{prefix} Shadow Plan TOD 21 Jun 09:00",
+        f"{prefix} Shadow Plan PROPOSED 21 Jun 09:00",
+        f"{prefix} Shadow Plan FUTURE 21 Jun 09:00",
+        f"{prefix} Shadow Plan EXISTING 21 Jun 09:00",
+    ], "made bottom to top"
+    assert [c["uncutSurfaces"] for c in created[::2]] == [
+        {"fill": True},
+        UPPER_SURFACES,
+        UPPER_SURFACES,
+        UPPER_SURFACES,
     ]
-    assert combinations[2][1] == [
+    pens = {c["name"].split()[-4]: c["shadowFill"]["fillPen"] for c in created[::2]}
+    assert list(pens) == ["TOD", "PROPOSED", "FUTURE", "EXISTING"]
+    assert len(set(pens.values())) == 4, "a pen of its own for every row"
+    ((stack, kwargs),) = sheets
+    assert [label for label, _ in stack.piles] == ["TOD", "PROPOSED", "FUTURE", "EXISTING"]
+    assert kwargs["sheets"] == "two"
+    assert "TOD < PROPOSED < FUTURE < EXISTING" in result.output
+
+
+def test_existing_and_proposed_still_make_a_stack_and_take_their_pens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, transport, combinations, sheets = _stacked_command(
+        monkeypatch,
+        "--existing",
         "03 | Site Context.Buildings",
-        "20 | Massing.Envelope",
-        "20 | Massing.Podium",
+        "--proposed",
+        "20 | Massing.SEARs",
+        "--proposed",
+        "20 | Massing.Envelope, 20 | Massing.Podium",
+        "--proposed-pen",
+        "150",
+    )
+
+    assert result.exit_code == 0, result.output
+    prefix = naming.SHADOW_PREFIX
+    assert [row[0] for row in combinations] == [
+        f"{prefix} Shadow Plans Existing",
+        f"{prefix} Shadow Plans Proposed 1",
+        f"{prefix} Shadow Plans Proposed 2",
     ]
     assert combinations[2][2] == ["20 | Massing.SEARs"]
     created = transport.asked("CreateDocumentFrom3D")
-    assert len(created) == 6
-    assert all(c["fillUncutSurfaces"] is False for c in created)
     pens = [c["shadowFill"]["fillPen"] for c in created[::2]]
-    assert pens[1] == 150, "the pen given for Proposed 1"
-    assert pens[0] != pens[2] != pens[1], "the rest guessed apart"
+    assert pens[0] == 150, "the pen given for Proposed 1, at the bottom"
     assert "pen 150  given" in result.output
-    ((stacks, kwargs),) = stacked
-    assert [stack.label for stack in stacks] == ["Proposed 1", "Proposed 2"]
-    assert kwargs["sheets"] == "two"
-    assert "lies over each proposal's in every cell" in result.output
+    ((stack, _),) = sheets
+    assert [label for label, _ in stack.piles] == ["Proposed 1", "Proposed 2", "Existing"]
+
+
+def test_the_two_ways_of_naming_the_legend_do_not_mix(monkeypatch: pytest.MonkeyPatch) -> None:
+    result, _, _, _ = _stacked_command(
+        monkeypatch,
+        "--shadow-source",
+        "EXISTING=03 | Site Context.Buildings",
+        "--proposed",
+        "20 | Massing.SEARs",
+    )
+    assert result.exit_code != 0
+    assert "Name the legend one way" in result.output
 
 
 def test_the_sun_date_is_in_archicads_own_clock_when_the_add_on_reports_one() -> None:
