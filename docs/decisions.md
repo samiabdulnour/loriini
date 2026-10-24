@@ -5211,7 +5211,105 @@ moves nothing either.
 
 *What this does not change:* which page opens, when, and what it says.
 
-### D136 — The sheets take the generator's themes, each realised as what Archicad has
+### D136 — The sheets drawn as what the run makes, the info box as a page of the window, and the lorikeet as the mark
+
+Asked 24 October 2026, with the rounded sheets (D133) on screen and the
+manual's own output sheets open beside them: *"redesign the sheets so they
+look better, more united with an app"*, then, over seven rounds on a
+mock-up of the panel, *keep the right strip instead of a down strip, as is
+typical for sheets*; *remove the north mark*; *the communal heat map should
+look like the apartment heat map, pixelated*; *the facade bands should
+respect the colour bands of the heat maps*; *the site and context pictures
+full wide, with no margin*; *the sun could be more fun*; *not sure with the
+blue*; *the building we do should be red*; *not a U but an O, with the COS
+courtyard*; *the sun on the site, where there is more space*. Then: *"apply
+the lemon theme also on About Loriini"*, and a pixel lorikeet, *"add this
+logo to the app top left corner instead of the current one"*.
+
+**The paper and the block stay; what is on them changes.** A sheet is still
+D133's rounded paper with its lift, the field 10 mm in, and the title block
+down the right at the width General sets -- a strip on the right is what a
+sheet has, and a caption rail along the foot, tried first, read as a card
+and not as a sheet. The block is drawn as a title block is printed: four
+lines of text at its head and two lower down, as bars in the divider grey
+too small to read, which is what they are at this size; a rule at the foot
+boxes the scale, in the hint grey, over the sheet number in the chip the
+sidebar wears (lemon-tinted, hairline edge, ink on it, fully lemon under
+the pointer with the sheet's edge). The north ring goes: the master carries
+one, and a ring that was the only mark in the block read as the block's
+subject. Under the field, level with the block's two fields, the name at
+the body weight and under it the hour and which of a pair it is, in the
+hint grey -- one size still, two inks now, which is how every card header
+in the window is set. The hour under a cell is centred and in the same
+grey.
+
+**Each study in its own colours, taken from the sheets it makes.** The
+panel's drawings were one grey box under every study, and a reader could
+not tell a shadow sheet from an apartment sheet without the words. Now the
+context sheet is a grid of streets with the lots washed lilac where the
+LEP zones them, a park, the rail line with its station and the five-minute
+walk round it in the interface's blue, and the site red on its block; the
+site sheet is the aerial's terraces running back from two streets, the
+street trees' canopies, three contours across the slope in ochre, the lot
+with a circle at each survey corner and its frontage dimensioned, the pin,
+and the sun. Both run to the edges of the field, as the map and the aerial
+run to the sheet's margin on paper -- laid out inside the frame by
+construction, because a Tk canvas clips nothing. On an apartment sheet the
+sun stands where it stands at the hour, with eight rays and no dot in it,
+its light reaching the window wall of every flat it is in as a pale amber
+beam (pre-blended: no alpha on a canvas) and inside each lit flat the amber
+wedge the plans show falling across the floor; the hatching goes. The
+whole-day sheet grids each floor and bands it cell by cell on the communal
+legend's seven steps, and the ADG total shows each flat in the two
+answers: the sun's amber for one that reaches the two hours, the warm grey
+of no sun for one that falls short -- not blue, because on these sheets
+blue is the pin and the rail line and never an answer. The communal space
+is a courtyard building, a ring of flats round the open space, which is the
+shape a reader knows a communal open space by -- a U, tried first, read as
+a plan of something else -- with the courtyard gridded the way the study
+samples it and banded on the same seven steps, three trees over it and the
+sun on the site's north side where the boundary leaves it room; the hourly
+sheet is the same ring with the wings' shadow swinging across the courtyard
+and the sun crossing above it. The shadow diagram draws the town's own
+shadows in grey and the proposal's extra shadow in the blue the diagram
+tells it apart with, the lots over them and the boundary over those. A sun
+view is the white town the 3D Documents draw, the proposal a storey taller
+in the heavier line with its glazing lit yellow on the face the sun
+reaches, and the sun over it. A schedule has a tinted heading row and its
+labels and figures held inside their columns; the yield sheet is the
+section beside the office workbook's green-headed table. The two models
+gain the terrain's contours, the streets, the verge trees and a heritage
+block in the run's ochre; our building is the red block among the grey
+neighbours, the fetch radius a grey ring, and the facade model's skin is
+banded by storey on the heat maps' ramp, the top floors in the most sun.
+`HOURS_RAMP` grows from four steps to the legend's seven and is the one
+way the panel says hours of sun; the colours added are each the colour of
+a thing the run draws (`ZONING`, `CANOPY`, `CONTOUR`, `SHADOW_CAST`,
+`SHADOW_EXTRA`, `GLAZING`...), and the window's greys, blue and red stay.
+
+**The info box is a page of the window.** It was a white sheet of prose
+with separators between headings, themed but of no place. It is now the
+window's own anatomy: a chrome band at the top with the mark, the name,
+the version in the window's chip and the author and copyright lines under
+them; the page under it, with a white card per section headed the way a
+settings panel is headed; and a chrome band at the foot with the buttons,
+the one action -- the full terms -- in the Run button's lemon. `look_at`
+scrolls to a card rather than a heading, and the licence text window
+stands on the page grey.
+
+**The mark is the lorikeet.** The pixel bird, on no tile, standing on the
+chrome at the top left: `assets/loriini-mark-32.png`, reduced from the
+1024-pixel artwork with a proper filter (Tk can only drop pixels), with a
+64 for later and the artwork beside it. The application icon and the Dock's
+picture are not touched: a tile is right for a Dock and wrong for a tool
+bar.
+
+*What this does not change:* what a sheet says, how many sheets a tick is
+worth, the grid a sheet is dealt on, the block's width, the hover and the
+figures in the band below, the panel's heads and day lines, what the info
+box says, and anything the run itself draws in Archicad.
+
+### D137 — The sheets take the generator's themes, each realised as what Archicad has
 
 Asked 24 October 2026: *"introduce the themes for context analysis and site
 analysis. its basically visual upgrade of what we have now. you need to look
@@ -5312,4 +5410,3 @@ And one bug of the run's own: with `--no-site` the fit step read
 
 *What this does not change:* what either sheet says, where the site lands,
 the layers, the element IDs, the credit, or anything about the context model.
-

@@ -91,7 +91,7 @@ defaults, as the generator's are.
 
 The generator prints to a PDF, where a tint has an opacity and a texture is
 a pattern. Archicad has neither on a fill, so each is realised as what
-Archicad does have, and that is the whole of the port (D136):
+Archicad does have, and that is the whole of the port (D137):
 
 - a tint **on paper** is the colour laid over white before it is sent, so a
   peach at 22% arrives as the blush a reader would see; a tint **over the
@@ -116,7 +116,7 @@ Archicad does have, and that is the whole of the port (D136):
 Every zone, institution and heritage fill is cut to the map field, with the
 site's own lot cut out of the zone it lies in on the site sheet, and a cut
 ring that pinches is split into its loops, because Archicad refuses a fill
-whose contour touches or nearly touches itself (D136 records what the first
+whose contour touches or nearly touches itself (D137 records what the first
 live run refused and why).
 
 Fonts are not themed: the add-on's `CreateTexts` takes no face, so a text

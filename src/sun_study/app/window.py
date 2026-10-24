@@ -2040,15 +2040,15 @@ def draw_sheet(
 ) -> None:
     """One layout, drawn on a canvas at the size the panel has room for.
 
-    Laid out the way the run lays the sheet out, and drawn as plainly as a
-    drawing set is: a frame inset from the paper's edge, the drawings in the
-    field, and the title block down the right at the width General sets.
-    Everything that can only be read at print size -- the program's name,
-    the block's fields, a key, a scale bar -- is left off: at 300 px it was
-    grey smudge. What is left is set in one style on three shared baselines.
-    The sheet's name and which of a pair it is at the foot of the field; its
-    scale and its number at the foot of the block, level with them; and the
-    north arrow at the top of the block, on the same left edge as the words.
+    Laid out the way the run lays the sheet out: the drawings in the field,
+    and the title block down the right at the width General sets. Since
+    D136 the block is drawn as a title block is printed -- its lines of text
+    as bars too small to read, which is what they are at this size -- and at
+    its foot the scale and the sheet number, the number in the chip the
+    sidebar wears. Under the field, level with them, the sheet's name and
+    then its hour and which of a pair it is. No north: the master carries
+    one. Everything is set in one size; the second line and the scale are
+    the hint grey, the way a card's caption is.
     """
     scale = width / SHEET_MM_W
 
@@ -2064,6 +2064,7 @@ def draw_sheet(
         *,
         room: float = 0,
         anchor: Literal["sw", "s"] = "sw",
+        fill: str = theme.INK,
     ) -> int:
         # One line, always: a line wrapped on a baseline grows *up*, over
         # whatever is drawn above it. Too long for its room, it is cut short.
@@ -2077,9 +2078,15 @@ def draw_sheet(
                 x(mm_y),
                 text=text,
                 anchor=anchor,
-                fill=theme.INK,
+                fill=fill,
                 font=_face(SHEET_TEXT, False),
             )
+        )
+
+    def bar(mm_x: float, mm_y: float, long: float, tint: str = theme.LINE) -> None:
+        """A line of the block's text, as the bar it is at this size."""
+        _rounded(
+            paper, x(mm_x), x(mm_y), x(mm_x + long), x(mm_y + 1.6), x(0.8), fill=tint, outline=""
         )
 
     # -- the paper, and the block's rule down it -----------------------------
@@ -2120,10 +2127,17 @@ def draw_sheet(
             continue
         drawing = sheet.drawings[index]
         if len(frames) > 1:
-            # The hour inside its own cell, under the drawing: under the
-            # cell, it sat on the drawing below.
-            words(frame_mm[0], frame_mm[3], drawing.time, room=frame_mm[2] - frame_mm[0])
-            frame_mm = (frame_mm[0], frame_mm[1], frame_mm[2], frame_mm[3] - 14.0)
+            # The hour centred under its own cell, in the hint grey: under
+            # the cell, it sat on the drawing below.
+            words(
+                (frame_mm[0] + frame_mm[2]) / 2,
+                frame_mm[3],
+                drawing.time,
+                room=frame_mm[2] - frame_mm[0],
+                anchor="s",
+                fill=theme.HINT,
+            )
+            frame_mm = (frame_mm[0], frame_mm[1], frame_mm[2], frame_mm[3] - 13.0)
         frame = (x(frame_mm[0]), x(frame_mm[1]), x(frame_mm[2]), x(frame_mm[3]))
         _draw_drawing(paper, sheet.study, drawing, frame)
 
@@ -2135,47 +2149,37 @@ def draw_sheet(
     saying = [sheet.time] if sheet.time else []
     if sheet.parts > 1:
         saying.append(f"({sheet.part} of {sheet.parts})")
-    first, second = 182.0, 196.0
-    words(12, first, sheet.kind.upper(), room=left - 18)
+    first, second = 183.0, 198.0
+    words(12, first, sheet.kind, room=left - 18)
     if saying:
-        words(12, second, "   ".join(saying), room=left - 18)
+        words(12, second, "   ".join(saying), room=left - 18, fill=theme.HINT)
 
     # -- the title block -------------------------------------------------
-    # North at the top and the scale and the sheet number at the foot, all
-    # on the block's middle -- at the left edge, two short words and a ring
-    # in a narrow column read as left behind. A rule over the two closes
-    # them into a box of their own, the way a title block boxes its fields,
-    # and they stay level with the two lines beside them.
+    # Four lines of text at its head and two lower down, as the master
+    # prints them, then a rule that boxes its two fields at the foot: the
+    # scale in the hint grey and the sheet number in the chip, level with the
+    # two lines beside them. The chip is the sidebar's -- lemon-tinted, a
+    # hairline edge, ink on it -- and turns lemon under the pointer with the
+    # sheet's edge, which is why it carries a tag.
     middle = (left + SHEET_MM_W - inset) / 2
-    ring = 5.5
-    north_x, north_y = middle, inset + 6.0 + ring
-    paper.create_oval(
-        x(north_x - ring),
-        x(north_y - ring),
-        x(north_x + ring),
-        x(north_y + ring),
-        fill=theme.SURFACE,
-        outline=theme.INK,
-    )
-    paper.create_polygon(
-        x(north_x),
-        x(north_y - ring + 1.2),
-        x(north_x + 2.4),
-        x(north_y + ring - 1.8),
-        x(north_x),
-        x(north_y + 1.2),
-        x(north_x - 2.4),
-        x(north_y + ring - 1.8),
-        fill=theme.INK,
-        outline="",
-    )
-    # The scale the run will place the drawings at, not a number from the
-    # schematic: a reader checks the block for exactly this.
-    # Unwrapped: a scale or a number is one word, and broken over two lines
-    # it reads as two.
+    for row in range(4):
+        bar(left + 7, 14 + row * 5, 34 - (row % 2) * 10)
+    bar(left + 7, 118, 34, theme.FACE_EDGE)
+    bar(left + 7, 124, 22)
+    paper.create_line(x(left), x(166), x(SHEET_MM_W - inset), x(166), fill=theme.LINE)
     # "NTS", as a drawing set says it, for a sheet that has no scale.
-    paper.create_line(x(left), x(first - 17.0), width, x(first - 17.0), fill=theme.LINE)
-    words(middle, first, sheet.scale or "NTS", anchor="s")
+    words(middle, first, sheet.scale or "NTS", anchor="s", fill=theme.HINT)
+    _rounded(
+        paper,
+        x(middle - 17),
+        x(187),
+        x(middle + 17),
+        x(203),
+        x(5),
+        fill=theme.ACCENT_TINT,
+        outline=theme.ACCENT_EDGE,
+        tags="chip",
+    )
     words(middle, second, sheet.number, anchor="s")
 
     # -- the edge, last ------------------------------------------------
@@ -2217,9 +2221,17 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     no sheet of this. Isometric, from the south-east, which is the corner
     every icon in the set is seen from.
 
+    Since D136 the ground carries what the model carries: the terrain's
+    contours, the streets between the blocks and the trees on their verges,
+    one block in the ochre the run colours a heritage item, and our building
+    in the boundary's red so it is told from the neighbours at a glance. The
+    radius the data is fetched for is a grey ring on the ground.
+
     The future model is the same neighbourhood with the envelopes the
     controls allow drawn over the lots within reach, taller and hollow, so
-    the eye reads "what could stand here" rather than "what does".
+    the eye reads "what could stand here" rather than "what does". The
+    facade model's skin is banded by storey on the heat maps' own ramp, the
+    top floors in the most sun and the foot in the neighbours' shade.
     """
     future = sheet.kind == FUTURE_MODEL
     facade = sheet.kind == FACADE_MODEL
@@ -2233,11 +2245,12 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
         fill: str,
         outline: str,
         dash: tuple[int, ...] = (),
+        width: float = 1.0,
     ) -> None:
         flat: list[float] = []
         for x, y, z in points:
             flat += at(x, y, z)
-        paper.create_polygon(flat, fill=fill, outline=outline, dash=dash)
+        paper.create_polygon(flat, fill=fill, outline=outline, dash=dash, width=width)
 
     def block(
         x0: float,
@@ -2248,18 +2261,32 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
         tints: tuple[str, str, str],
         outline: str,
         dash: tuple[int, ...] = (),
+        width: float = 1.0,
     ) -> None:
         # The two faces towards the viewer, then the top over them.
-        face(((x0, y1, 0), (x1, y1, 0), (x1, y1, tall), (x0, y1, tall)), tints[1], outline, dash)
-        face(((x1, y0, 0), (x1, y1, 0), (x1, y1, tall), (x1, y0, tall)), tints[2], outline, dash)
+        face(
+            ((x0, y1, 0), (x1, y1, 0), (x1, y1, tall), (x0, y1, tall)),
+            tints[1],
+            outline,
+            dash,
+            width,
+        )
+        face(
+            ((x1, y0, 0), (x1, y1, 0), (x1, y1, tall), (x1, y0, tall)),
+            tints[2],
+            outline,
+            dash,
+            width,
+        )
         face(
             ((x0, y0, tall), (x1, y0, tall), (x1, y1, tall), (x0, y1, tall)),
             tints[0],
             outline,
             dash,
+            width,
         )
 
-    # -- the ground, with its contours ----------------------------------
+    # -- the ground, with its contours and streets ------------------------
     reach = 11.5
     face(
         ((-reach, -reach, 0), (reach, -reach, 0), (reach, reach, 0), (-reach, reach, 0)),
@@ -2272,60 +2299,63 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
             x = -reach + step * (2 * reach / 12)
             y = level + wobble * math.sin(step * 0.9) - 0.15 * x
             points += at(x, y, 0)
-        paper.create_line(points, fill="#CBD0BE", smooth=True)
+        paper.create_line(points, fill=CONTOUR, smooth=True)
+    for near, far in ((-4.4, -3.6), (3.6, 4.4)):
+        face(((-reach, near, 0), (reach, near, 0), (reach, far, 0), (-reach, far, 0)), ROAD, "")
+        face(((near, -reach, 0), (far, -reach, 0), (far, reach, 0), (near, reach, 0)), ROAD, "")
     # The radius the data is fetched for, drawn on the ground.
     ring: list[float] = []
     for step in range(48):
         angle = math.tau * step / 48
         ring += at(math.cos(angle) * reach * 0.92, math.sin(angle) * reach * 0.92, 0)
-    paper.create_polygon(ring, fill="", outline=theme.BLUE, dash=(4, 3), smooth=True)
+    paper.create_polygon(ring, fill="", outline=RING, dash=(4, 3), smooth=True)
 
     # -- the blocks, far to near ---------------------------------------
     grey = ("#F4F3EE", "#C6C5BE", "#DEDDD6")
-    blue = (theme.BLUE_TINT, "#9DBDEB", "#C3D7F5")
     # Painter's order: what is further from the viewer -- smaller x + y --
-    # is drawn first, and the site takes its turn among the blocks.
-    standing = [(*block_, grey, theme.INK) for block_ in MODEL_BLOCKS] + [
-        (*MODEL_SITE, blue, theme.BLUE)
-    ]
-    for x0, y0, x1, y1, tall, tints, edge in sorted(standing, key=lambda b: b[0] + b[1]):
-        if facade and edge is theme.BLUE:
-            # The building itself, its two visible faces striped by hours of
-            # sun from the sunny end to the shaded one -- which is the skin
-            # the study builds -- and the sun over it, because the bands
-            # are about the sun.
-            bands = ("#EBC27C", "#F6E2BE", "#FBF0DA", "#E7E6E2")
-            for index, tint in enumerate(bands):
-                along = (x1 - x0) / len(bands)
+    # is drawn first, and the site takes its turn among the blocks. The
+    # fifth block is the heritage item; the site is ours, in red.
+    standing = [
+        (*block_, HERITAGE if index == 4 else grey, theme.INK, False)
+        for index, block_ in enumerate(MODEL_BLOCKS)
+    ] + [(*MODEL_SITE, SITE_BLOCK, BOUNDARY, True)]
+    for x0, y0, x1, y1, tall, tints, edge, ours in sorted(standing, key=lambda b: b[0] + b[1]):
+        if facade and ours:
+            # The building itself, its two visible faces banded by storey on
+            # the heat maps' ramp -- the top in the most sun, the foot in the
+            # neighbours' shade -- which is the skin the study builds, and
+            # the sun over it, because the bands are about the sun.
+            steps = 6
+            for step in range(steps):
+                z0, z1 = tall * step / steps, tall * (step + 1) / steps
                 face(
-                    (
-                        (x0 + along * index, y1, 0),
-                        (x0 + along * (index + 1), y1, 0),
-                        (x0 + along * (index + 1), y1, tall),
-                        (x0 + along * index, y1, tall),
-                    ),
-                    tint,
+                    ((x0, y1, z0), (x1, y1, z0), (x1, y1, z1), (x0, y1, z1)),
+                    HOURS_RAMP[min(6, step + 1)],
                     "",
                 )
-                across = (y1 - y0) / len(bands)
                 face(
-                    (
-                        (x1, y0 + across * index, 0),
-                        (x1, y0 + across * (index + 1), 0),
-                        (x1, y0 + across * (index + 1), tall),
-                        (x1, y0 + across * index, tall),
-                    ),
-                    bands[-1 - index],
+                    ((x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)),
+                    HOURS_RAMP[min(6, step)],
                     "",
                 )
-            block(x0, y0, x1, y1, tall, ("#F6E2BE", "", ""), theme.SUN)
+            block(x0, y0, x1, y1, tall, (HOURS_RAMP[6], "", ""), theme.INK)
             sun_x, sun_y = at(x1 + 2.5, y0 - 4.0, tall + 2.5)
+            for ray in range(8):
+                angle = ray * math.pi / 4
+                paper.create_line(
+                    sun_x + math.cos(angle) * 9,
+                    sun_y + math.sin(angle) * 9,
+                    sun_x + math.cos(angle) * 13,
+                    sun_y + math.sin(angle) * 13,
+                    fill=theme.SUN,
+                    capstyle="round",
+                )
             paper.create_oval(
-                sun_x - 7, sun_y - 7, sun_x + 7, sun_y + 7, fill=theme.SUN, outline=""
+                sun_x - 6.5, sun_y - 6.5, sun_x + 6.5, sun_y + 6.5, fill=LIT, outline=theme.SUN
             )
             continue
-        block(x0, y0, x1, y1, tall, tints, edge)
-        if future and edge is theme.INK and max(abs(x0 + x1), abs(y0 + y1)) / 2 < 8.0:
+        block(x0, y0, x1, y1, tall, tints, edge, width=1.5 if ours else 1.0)
+        if future and not ours and max(abs(x0 + x1), abs(y0 + y1)) / 2 < 8.0:
             block(
                 x0 + 0.3,
                 y0 + 0.3,
@@ -2336,6 +2366,19 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
                 theme.BLUE,
                 dash=(3, 2),
             )
+    if not facade:
+        # Street trees on the verges, as the model carries them from the
+        # register.
+        for tree_x, tree_y in (
+            (-6.5, -5.2),
+            (1.5, -5.4),
+            (7.0, -5.0),
+            (-6.0, 5.3),
+            (0.5, 5.2),
+            (6.5, 5.5),
+        ):
+            tx, ty = at(tree_x, tree_y, 0.35)
+            paper.create_oval(tx - 3.2, ty - 3.2, tx + 3.2, ty + 3.2, fill=CANOPY, outline="")
 
     # -- what it is ----------------------------------------------------
     #
@@ -2346,8 +2389,8 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     mm = width / SHEET_MM_W
     paper.create_text(
         12 * mm,
-        182 * mm,
-        text=sheet.kind.upper(),
+        183 * mm,
+        text=sheet.kind,
         anchor="sw",
         fill=theme.INK,
         font=_face(SHEET_TEXT, False),
@@ -2360,16 +2403,16 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
         what = "envelopes the controls allow"
     else:
         what = "terrain and neighbours in 3D"
-    line = f"{sheet.day} \u00b7 {what}" if sheet.day else what
+    line = f"{sheet.day} · {what}" if sheet.day else what
     paper.create_text(
         12 * mm,
-        196 * mm,
+        198 * mm,
         text=line,
         anchor="sw",
-        fill=theme.INK,
+        fill=theme.HINT,
         font=_face(SHEET_TEXT, False),
     )
-    # The hover edge, invisible at rest: the item the panel turns blue, drawn
+    # The hover edge, invisible at rest: the item the panel turns lemon, drawn
     # last so that it lies over the model.
     _rounded(paper, 0, 0, width - 1, height - 1, SHEET_RADIUS, fill="", outline="", tags="edge")
 
@@ -2389,15 +2432,44 @@ ROAD = "#DAD9CF"
 RING = "#B5B4A9"
 LIT = "#F2C86B"
 HATCH = "#5A5A5A"
+#: What the drawings add since D136, each the colour of a thing the run
+#: draws and never decoration: the LEP wash on the context sheet, the
+#: aerial's lots and the canopies and contours over them on the site sheet,
+#: the shadow diagram's two shadows -- the town's own, and the proposal's
+#: extra one in the blue the diagram tells it apart with -- the glazing the
+#: sun views light, the tinted heading row of a schedule, and the pale amber
+#: of the sun's light on the plans, pre-blended because a Tk canvas has no
+#: alpha. The ground a courtyard's samples are drawn on, and the yield
+#: workbook's green heading row, are the two colours of those two sheets.
+ZONING = "#EBD6EA"
+ZONING_EDGE = "#D9A8D2"
+LOT = "#ECEAE2"
+TERRACE = "#E2E0D6"
+CANOPY = "#B5CFAA"
+CONTOUR = "#E2C98C"
+PARK = "#DCE7D2"
+SHADOW_CAST = "#CFCEC5"
+SHADOW_EXTRA = "#B9CDEF"
+GLAZING = "#F4D35E"
+BEAM = "#FBEFD6"
+COURT_GROUND = "#EEF0E8"
+YIELD_HEAD = "#CFE3C4"
+HERITAGE = ("#F3E3C4", "#D9B97E", "#E8D0A0")
+SITE_BLOCK = ("#F6DAD5", "#C9776C", "#E2A69D")
 #: A sheet's corner, and a drawn block's: the button's radius on the paper,
 #: and two pixels on every block and boundary in the drawing, so the drawing
 #: is as rounded as the paper it is on and no more.
 SHEET_RADIUS = 8
 BLOCK_RADIUS = 2
-#: Hours of sun, least to most, and the two answers to the ADG's two hours --
-#: told apart by how light they are as well as by hue.
-HOURS_RAMP = ("#F7F4EE", "#F3DDB0", "#E9B865", "#D48A2A")
-MEETS, FALLS_SHORT = "#A9C6EE", "#FBE3CC"
+#: Hours of sun, none to five and more: the communal legend's seven steps,
+#: from the blue of no sun through green and yellow to the orange of a full
+#: day. The two heat maps and the facade's skin are banded on the one ramp,
+#: so the panel has one way of saying hours of sun.
+HOURS_RAMP = ("#6B8ED6", "#9BB8E3", "#B5CFAA", "#EFE39A", "#F2C86B", "#E6A04E", "#D4702E")
+#: The two answers to the ADG's two hours: the sun's amber for a flat that
+#: reaches them, the warm grey of no sun for one that falls short. Not blue:
+#: on these sheets blue is the pin and the rail line, never an answer.
+MEETS, FALLS_SHORT = LIT, "#E7E6E2"
 
 
 def _rounded(
@@ -2497,6 +2569,42 @@ def _clip_to(
     return shape
 
 
+#: The ring the communal study's stand-in building makes round its
+#: courtyard, and the courtyard itself, in the sheet's millimetres: a
+#: courtyard building, because that is the shape a reader knows a communal
+#: open space by.
+RING_MM = (74.0, 68.0, 188.0, 160.0)
+COURT_MM = (90.0, 84.0, 172.0, 142.0)
+#: Where the sun is held on a plan: inside the site boundary with room for
+#: its rays, on the side it stands.
+SUN_BOX_MM = (78.0, 50.0, 184.0, 158.0)
+
+
+def _sun_spot(azimuth: float) -> tuple[float, float]:
+    """Where the sun is drawn for an azimuth: on the site's margin, the way
+    it stands from the middle of the plate, north up."""
+    mid_x, mid_y = (SITE_MM[0] + SITE_MM[2]) / 2, (SITE_MM[1] + SITE_MM[3]) / 2
+    dx, dy = math.sin(math.radians(azimuth)), -math.cos(math.radians(azimuth))
+    reach = math.inf
+    if abs(dx) > 1e-9:
+        reach = min(reach, ((SUN_BOX_MM[2] if dx > 0 else SUN_BOX_MM[0]) - mid_x) / dx)
+    if abs(dy) > 1e-9:
+        reach = min(reach, ((SUN_BOX_MM[3] if dy > 0 else SUN_BOX_MM[1]) - mid_y) / dy)
+    if not math.isfinite(reach):
+        reach = 0.0
+    return (mid_x + dx * reach, mid_y + dy * reach)
+
+
+def _sun_side(azimuth: float) -> Literal["east", "north", "west"]:
+    """Which wall of a flat the sun comes in by, north up."""
+    across = math.sin(math.radians(azimuth))
+    if across > 0.35:
+        return "east"
+    if across < -0.35:
+        return "west"
+    return "north"
+
+
 def _draw_drawing(
     paper: tk.Canvas, study: str, drawing: Drawing, frame: tuple[float, float, float, float]
 ) -> None:
@@ -2504,17 +2612,29 @@ def _draw_drawing(
     ``FRAME_MM`` sits on a full sheet.
 
     Each study puts a different thing on its sheets, so each is drawn as
-    that thing. A shadow under a site-analysis sheet, or under a view taken
-    from the sun -- where by construction there are no shadows to see -- is
-    a miniature of something the run will not make.
+    that thing, and since D136 in that thing's own colours: the sun in amber
+    on the plans, the communal courtyard banded by hours, the shadow
+    diagram's two shadows, the white town of a sun view. A shadow under a
+    site-analysis sheet, or under a view taken from the sun -- where by
+    construction there are no shadows to see -- is a miniature of something
+    the run will not make.
     """
+    kind = drawing.kind
+    # The two site sheets fill their frame: the map and the aerial run to
+    # the sheet's margin on paper, so they run to the field's edge here.
+    if kind == "Context Analysis":
+        _draw_context(paper, frame)
+        return
+    if kind == "Site Analysis":
+        _draw_site(paper, frame)
+        return
+
     fx0, fy0, fx1, fy1 = frame
     # Fitted to the site and what stands round it, not to the whole square
     # the drawing sits in on a sheet: in a cell of four that margin was a
     # third of the cell, and the plan a postage stamp in the middle of it.
-    # The context and the office's sheet reach past the site, so they keep
-    # the square.
-    fit = FRAME_MM if drawing.kind in (AREA_SHEET, "Context Analysis") else SITE_FIT_MM
+    # The schedules and the office's sheet keep the square.
+    fit = FRAME_MM if kind in (AREA_SHEET, COMMUNAL_AREAS, "Summary of Controls") else SITE_FIT_MM
     frame_w, frame_h = fit[2] - fit[0], fit[3] - fit[1]
     k = min((fx1 - fx0) / frame_w, (fy1 - fy0) / frame_h)
     ox = fx0 + ((fx1 - fx0) - frame_w * k) / 2 - fit[0] * k
@@ -2550,22 +2670,55 @@ def _draw_drawing(
             width=width,
         )
 
-    def poly(points: Sequence[tuple[float, float]], *, fill: str, outline: str) -> None:
+    def poly(
+        points: Sequence[tuple[float, float]], *, fill: str, outline: str = "", width: float = 1.0
+    ) -> None:
         flat: list[float] = []
         for point_x, point_y in points:
             flat += [px(point_x), py(point_y)]
-        paper.create_polygon(flat, fill=fill, outline=outline)
+        paper.create_polygon(flat, fill=fill, outline=outline, width=width)
 
-    def hatched(points: Sequence[tuple[float, float]]) -> None:
-        _hatch(paper, [(px(point_x), py(point_y)) for point_x, point_y in points])
+    def line(x0: float, y0: float, x1: float, y1: float, fill: str, width: float = 1.0) -> None:
+        paper.create_line(px(x0), py(y0), px(x1), py(y1), fill=fill, width=width, capstyle="round")
+
+    def disc(mm_x: float, mm_y: float, radius: float, fill: str, outline: str = "") -> None:
+        paper.create_oval(
+            px(mm_x - radius),
+            py(mm_y - radius),
+            px(mm_x + radius),
+            py(mm_y + radius),
+            fill=fill,
+            outline=outline,
+        )
+
+    def sun(mm_x: float, mm_y: float, radius: float) -> None:
+        """The sun with its rays, in the window's amber: the one playful
+        mark on a sheet."""
+        for ray in range(8):
+            angle = ray * math.pi / 4
+            line(
+                mm_x + math.cos(angle) * radius * 1.45,
+                mm_y + math.sin(angle) * radius * 1.45,
+                mm_x + math.cos(angle) * radius * 2.1,
+                mm_y + math.sin(angle) * radius * 2.1,
+                theme.SUN,
+            )
+        disc(mm_x, mm_y, radius, LIT, theme.SUN)
+
+    def boundary() -> None:
+        """The site's boundary, red and dash-dotted as a drawing set draws it."""
+        box(SITE_MM, outline=BOUNDARY, dash=BOUNDARY_DASH, radius=BLOCK_RADIUS + 1)
 
     def massing() -> None:
         """The building: grey, in the heaviest line on the drawing."""
         box(BLOCK_MM, fill=MASSING, outline=theme.INK, width=1.5)
 
-    def plate(tints: Sequence[str], shaded: set[int] = frozenset()) -> None:  # type: ignore[assignment]
+    def plate(
+        tints: Sequence[str],
+        inside: Callable[[int, tuple[float, float, float, float]], None] | None = None,
+    ) -> None:
         """The flats of a plate as one block of cells, edge to edge, in the
-        building's heavy outline; ``shaded`` are hatched."""
+        building's heavy outline; ``inside`` draws what is in each flat."""
         left = min(flat[0] for flat in FLATS_MM)
         top = min(flat[1] for flat in FLATS_MM)
         right = max(flat[2] for flat in FLATS_MM)
@@ -2579,278 +2732,640 @@ def _draw_drawing(
                 top + (index // 3 + 1) * tall,
             )
             box(cell, fill=tint, outline=theme.INK, width=0.6, radius=0)
-            if index in shaded:
-                hatched(
-                    ((cell[0], cell[1]), (cell[2], cell[1]), (cell[2], cell[3]), (cell[0], cell[3]))
-                )
+            if inside is not None:
+                inside(index, cell)
         box((left, top, right, foot), outline=theme.INK, width=1.5)
 
-    def line(x0: float, y0: float, x1: float, y1: float, fill: str) -> None:
-        paper.create_line(px(x0), py(y0), px(x1), py(y1), fill=fill)
-
-    def shadow() -> None:
-        """The block's shadow at this sun, as a hull of the block and its
-        shifted copy. Exact for the sun even though the block is schematic."""
-        reach, bearing = drawing.reach, drawing.bearing
-        if reach is None or bearing is None:
-            return
-        far = reach * BLOCK_HEIGHT_M
-        shift = (
-            math.sin(math.radians(bearing)) * far,
-            -math.cos(math.radians(bearing)) * far,
-        )
+    def shifted(
+        rect: tuple[float, float, float, float], far: float, bearing: float
+    ) -> list[tuple[float, float]]:
+        """The shadow a block throws at this sun, as the hull of the block
+        and its shifted copy. Exact for the sun even though the block is
+        schematic."""
+        shift = (math.sin(math.radians(bearing)) * far, -math.cos(math.radians(bearing)) * far)
         corners = [
             (corner_x + dx, corner_y + dy)
-            for corner_x in (BLOCK_MM[0], BLOCK_MM[2])
-            for corner_y in (BLOCK_MM[1], BLOCK_MM[3])
+            for corner_x in (rect[0], rect[2])
+            for corner_y in (rect[1], rect[3])
             for dx, dy in ((0.0, 0.0), shift)
         ]
-        # Held to the site: a long winter-morning shadow otherwise ran out
-        # of its cell and across the hour printed under it.
-        held = _clip_to(_hull(corners), SITE_MM)
-        if len(held) >= 3:
-            hatched(held)
+        return _hull(corners)
 
-    def yard() -> None:
-        """The courtyard, gridded the way the study samples it."""
-        court = (BLOCK_MM[0] - 14, BLOCK_MM[1] - 10, BLOCK_MM[2] + 14, BLOCK_MM[3] + 10)
-        box(court, fill=HOURS_RAMP[1], outline=theme.SUN)
-        for step in range(1, 6):
-            along = court[0] + (court[2] - court[0]) * step / 6
-            line(along, court[1], along, court[3], HOURS_RAMP[2])
-        for step in range(1, 4):
-            down = court[1] + (court[3] - court[1]) * step / 4
-            line(court[0], down, court[2], down, HOURS_RAMP[2])
+    def town(skip: tuple[float, float, float, float] | None) -> None:
+        """The lots round the site, each with its roof's ridge."""
+        for lot in TOWN_MM:
+            if skip is not None and not (
+                lot[2] < skip[0] or lot[0] > skip[2] or lot[3] < skip[1] or lot[1] > skip[3]
+            ):
+                continue
+            box(lot, fill=NEIGHBOUR, outline=NEIGHBOUR_EDGE, width=0.8)
+            line(
+                lot[0] + 3,
+                (lot[1] + lot[3]) / 2,
+                lot[2] - 3,
+                (lot[1] + lot[3]) / 2,
+                NEIGHBOUR_EDGE,
+                0.6,
+            )
 
-    kind = drawing.kind
-    # The site's boundary, red and dash-dotted as a drawing set draws it, on
-    # the plans -- not round a schedule or the yield sheet, which are not
-    # drawings of the site, nor round the site sheet, which draws its own lot
-    # with the frontage dimensioned. The neighbours light beside it, only where
-    # something falls on them: a shadow, or the sun's own view of the block.
-    # A plate of flats or the open space is the site alone, centred in it.
-    # The context sheet rings the site alone, in the middle of what is around it.
-    if kind not in (
-        AREA_SHEET,
-        COMMUNAL_AREAS,
-        "Summary of Controls",
-        "Site Analysis",
-        "Context Analysis",
-    ):
-        box(SITE_MM, outline=BOUNDARY, dash=BOUNDARY_DASH, radius=BLOCK_RADIUS + 1)
-        if not kind.startswith(("Apartments", "Communal open space")):
-            for neighbour in NEIGHBOURS_MM:
-                box(neighbour, fill=NEIGHBOUR, outline=NEIGHBOUR_EDGE)
+    def ring() -> None:
+        """The courtyard building, in the massing grey and its heavy line."""
+        box(RING_MM, fill=MASSING, outline=theme.INK, width=1.4, radius=0)
+
+    def court_edge() -> None:
+        box(COURT_MM, outline=theme.INK, width=1.1, radius=0)
+
+    def court_trees() -> None:
+        for tree_x, tree_y, radius in (
+            (104.0, 130.0, 7.0),
+            (158.0, 98.0, 6.0),
+            (146.0, 133.0, 5.0),
+        ):
+            disc(tree_x, tree_y, radius, CANOPY)
+
+    def court_cells(threshold: bool) -> None:
+        """The courtyard gridded the way the study samples it, each cell in
+        the band of its hours: most sun towards the open south side, least
+        under the north wing."""
+        cols, rows, gap = 8, 6, 0.7
+        cell_w = (COURT_MM[2] - COURT_MM[0]) / cols
+        cell_h = (COURT_MM[3] - COURT_MM[1]) / rows
+        box(COURT_MM, fill=COURT_GROUND, radius=0)
+        for gx in range(cols):
+            for gy in range(rows):
+                off = abs(gx - (cols - 1) / 2)
+                value = round(0.8 + gy * 1.05 - off * 0.7 + ((gx * 3 + gy * 5) % 3) * 0.45)
+                value = max(0, min(6, value))
+                tint = (MEETS if value >= 3 else FALLS_SHORT) if threshold else HOURS_RAMP[value]
+                box(
+                    (
+                        COURT_MM[0] + gx * cell_w + gap / 2,
+                        COURT_MM[1] + gy * cell_h + gap / 2,
+                        COURT_MM[0] + (gx + 1) * cell_w - gap / 2,
+                        COURT_MM[1] + (gy + 1) * cell_h - gap / 2,
+                    ),
+                    fill=tint,
+                    radius=0.4,
+                )
+
+    def table(cols: int, rows: int, head: str) -> None:
+        """A schedule: a tinted heading row, then a row per space or per
+        control, each label and figure held inside its own column."""
+        t = (78.0, 54.0, 184.0, 154.0)
+        box(t, fill=theme.SURFACE, outline=theme.FACE_EDGE)
+        box((t[0], t[1], t[2], t[1] + 13), fill=head)
+        box((t[0], t[1] + 8, t[2], t[1] + 13), fill=head, radius=0)
+        line(t[0], t[1] + 13, t[2], t[1] + 13, theme.LINE)
+        box((t[0] + 6, t[1] + 4.5, t[0] + 46, t[1] + 8.5), fill=theme.BODY, radius=1)
+        step = (t[3] - t[1] - 13) / rows
+        col_w = (t[2] - t[0]) / cols
+        for row in range(1, rows + 1):
+            y = t[1] + 13 + step * row
+            if row < rows:
+                line(t[0] + 4, y, t[2] - 4, y, theme.LINE)
+            label = min(col_w - 10, 22 + (row % 3) * 5)
+            box(
+                (t[0] + 5, y - step / 2 - 1.5, t[0] + 5 + label, y - step / 2 + 1.5),
+                fill=theme.HINT,
+                radius=1,
+            )
+            figure = min(12.0, col_w - 10)
+            for col in range(1, cols):
+                right = t[0] + (col + 1) * col_w - 5
+                box(
+                    (right - figure, y - step / 2 - 1.5, right, y - step / 2 + 1.5),
+                    fill=theme.FACE_EDGE,
+                    radius=1,
+                )
+        for col in range(1, cols):
+            line(t[0] + col * col_w, t[1] + 13, t[0] + col * col_w, t[3], theme.LINE)
+
     if kind.startswith("Apartments") and "total" in kind.lower():
-        # Each flat against the two hours: the share that meets it blue,
-        # the share that falls short orange.
+        # Each flat against the two hours: the share that meets it in the
+        # sun's amber, the share that falls short in the grey of no sun.
+        boundary()
         plate((MEETS, MEETS, FALLS_SHORT, MEETS, FALLS_SHORT, MEETS))
+        sun(131, 54, 4.5)
     elif kind.startswith("Apartments") and drawing.azimuth is None:
-        # The whole day: the flats in bands of hours, most sun to least.
-        ramp = HOURS_RAMP
-        plate((ramp[3], ramp[2], ramp[1], ramp[2], ramp[0], ramp[3]))
+        # The whole day: the floor of each flat gridded and banded cell by
+        # cell on the legend's ramp.
+        seeds = (6, 5, 3, 4, 1, 6)
+
+        def pixels(index: int, flat: tuple[float, float, float, float]) -> None:
+            cell_w, cell_h = (flat[2] - flat[0]) / 4, (flat[3] - flat[1]) / 3
+            for gx in range(4):
+                for gy in range(3):
+                    value = (
+                        seeds[index]
+                        - abs(gx - 1.5) * 0.9
+                        - gy * 0.8
+                        + ((gx + gy + index) % 2) * 0.6
+                    )
+                    box(
+                        (
+                            flat[0] + gx * cell_w,
+                            flat[1] + gy * cell_h,
+                            flat[0] + (gx + 1) * cell_w,
+                            flat[1] + (gy + 1) * cell_h,
+                        ),
+                        fill=HOURS_RAMP[max(0, min(6, round(value)))],
+                        radius=0,
+                    )
+
+        boundary()
+        plate([theme.SURFACE] * len(FLATS_MM), pixels)
     elif kind.startswith("Apartments"):
-        # One hour: the flats in the sun amber, the rest hatched in shade.
-        lit = _lit_flats(drawing.azimuth)
-        plate(
-            [LIT if index in lit else theme.SURFACE for index in range(len(FLATS_MM))],
-            {index for index in range(len(FLATS_MM)) if index not in lit},
-        )
+        # One hour: the sun with its rays where it stands, its light reaching
+        # the window wall of every flat it is in, and inside each lit flat
+        # the amber wedge where the plans show it falling across the floor.
+        azimuth = drawing.azimuth
+        assert azimuth is not None
+        boundary()
+        lit = _lit_flats(azimuth)
+        side = _sun_side(azimuth)
+        sun_x, sun_y = _sun_spot(azimuth)
+        for index in sorted(lit):
+            f = FLATS_MM[index]
+            if side == "east":
+                wall = ((f[2], f[1]), (f[2], f[3]))
+            elif side == "west":
+                wall = ((f[0], f[1]), (f[0], f[3]))
+            else:
+                wall = ((f[0], f[1]), (f[2], f[1]))
+            poly([(sun_x, sun_y), wall[0], wall[1]], fill=BEAM)
+
+        def wedge(index: int, flat: tuple[float, float, float, float]) -> None:
+            if index not in lit:
+                return
+            f = flat
+            mid = (f[0] + f[2]) / 2
+            if side == "east":
+                points = [
+                    (f[2], f[1] + 2),
+                    (f[2], f[3] - 2),
+                    (f[0] + 6, f[3] - 6),
+                    (f[0] + 10, f[1] + 8),
+                ]
+            elif side == "west":
+                points = [
+                    (f[0], f[1] + 2),
+                    (f[0], f[3] - 2),
+                    (f[2] - 6, f[3] - 6),
+                    (f[2] - 10, f[1] + 8),
+                ]
+            else:
+                points = [
+                    (f[0] + 2, f[1]),
+                    (f[2] - 2, f[1]),
+                    (mid + 8, f[3] - 6),
+                    (mid - 8, f[3] - 6),
+                ]
+            poly(points, fill=LIT)
+
+        plate([theme.SURFACE] * len(FLATS_MM), wedge)
+        sun(sun_x, sun_y, 5)
     elif kind == COMMUNAL_HOURLY:
-        # The space at one hour: the yard, and the shadow the block throws
-        # across it -- which is what the hourly plan measures.
-        yard()
-        shadow()
-        massing()
+        # The courtyard at one hour: in sun, with the shadow the building
+        # throws across it -- which is what the hourly plan measures.
+        boundary()
+        ring()
+        box(COURT_MM, fill=HOURS_RAMP[4], radius=0)
+        reach, bearing, azimuth = drawing.reach, drawing.bearing, drawing.azimuth
+        if reach is not None and bearing is not None and azimuth is not None:
+            wings = [(RING_MM[0], RING_MM[1], RING_MM[2], COURT_MM[1])]
+            if _sun_side(azimuth) == "east":
+                wings.append((COURT_MM[2], COURT_MM[1], RING_MM[2], COURT_MM[3]))
+            elif _sun_side(azimuth) == "west":
+                wings.append((RING_MM[0], COURT_MM[1], COURT_MM[0], COURT_MM[3]))
+            for wing in wings:
+                held = _clip_to(shifted(wing, min(reach, 3.0) * 7.0, bearing), COURT_MM)
+                if len(held) >= 3:
+                    poly(held, fill=HOURS_RAMP[0])
+        court_edge()
+        court_trees()
+        if azimuth is not None:
+            sun(131 + math.sin(math.radians(azimuth)) * 50, 54, 3.5)
     elif kind in (COMMUNAL_AREAS, "Summary of Controls"):
-        # A schedule: a heading rule, then a row per space or per control.
-        table = (SITE_MM[0] + 16, SITE_MM[1] + 18, SITE_MM[2] - 16, SITE_MM[3] - 18)
-        box(table, fill=theme.SURFACE, outline=theme.EDGE)
-        line(table[0], table[1] + 12, table[2], table[1] + 12, theme.INK)
-        row = table[1] + 24
-        while row < table[3] - 4:
-            line(table[0] + 4, row, table[2] - 4, row, theme.LINE)
-            row += 12
-        line(
-            table[0] + (table[2] - table[0]) * 0.55,
-            table[1],
-            table[0] + (table[2] - table[0]) * 0.55,
-            table[3],
-            theme.LINE,
+        table(
+            4 if kind == COMMUNAL_AREAS else 2,
+            6 if kind == COMMUNAL_AREAS else 7,
+            theme.ACCENT_TINT,
         )
+    elif kind.startswith("Communal open space"):
+        # The courtyard over the whole day, banded by hours -- or, on the
+        # sheet for the threshold, in the two answers.
+        boundary()
+        ring()
+        court_cells(threshold="or more" in kind)
+        court_edge()
+        court_trees()
+        sun(178, 54, 4.5)
     elif kind == AREA_SHEET:
-        # The office's sheet, as what it tells: the building in section,
-        # floor on floor -- the podium in the legend's lilac, the tower in
-        # its yellow -- and beside each floor a bar as long as its area, so
-        # the schedule reads as the building it adds up. The bars stand on
-        # the same ground line, and a heavy rule under them is the total.
-        storey, floors, podium = 9.0, 13, 2
-        ground = FRAME_MM[3] - 16
-        section = (FRAME_MM[0] + 14, FRAME_MM[0] + 62)
-        tower = (section[0] + 8, section[1] - 8)
-        bars = FRAME_MM[0] + 76
+        # The office's workbook: the building in section, floor on floor --
+        # the podium in the legend's lilac, the tower in its yellow -- and
+        # beside it the green-headed table, a bar per floor as long as its
+        # area, so the schedule reads as the building it adds up.
+        storey, floors, podium = 8.5, 13, 2
+        ground = FRAME_MM[3] - 18
         for floor in range(floors):
             low, high = ground - storey * floor, ground - storey * (floor + 1)
             under = floor < podium
-            tint = PODIUM if under else TOWER
-            left, right = section if under else tower
-            box((left, high, right, low), fill=tint, outline=theme.INK, width=0.6)
-            # The area: the podium's wide floors long, the tower's shorter,
-            # and the top floors stepping back a little.
-            reach = 62.0 if under else 44.0 - max(0, floor - 9) * 4.0
+            left, right = (66.0, 114.0) if under else (74.0, 106.0)
             box(
-                (bars, high + 1.8, bars + reach, low - 1.8), fill=tint, outline=theme.INK, width=0.6
-            )
-        line(FRAME_MM[0] + 6, ground, FRAME_MM[2] - 6, ground, theme.INK)
-        paper.create_line(
-            px(bars), py(ground + 6), px(bars + 70), py(ground + 6), fill=theme.INK, width=2
-        )
-    elif kind == "Context Analysis":
-        # The neighbourhood: the site in the middle of the radius the data
-        # is fetched for, the blocks around it, and the streets between.
-        mid_x, mid_y = (SITE_MM[0] + SITE_MM[2]) / 2, (SITE_MM[1] + SITE_MM[3]) / 2
-        paper.create_oval(
-            px(mid_x - 62),
-            py(mid_y - 62),
-            px(mid_x + 62),
-            py(mid_y + 62),
-            outline=RING,
-            dash=(4, 3),
-        )
-        # The streets, with round ends: a street cut square at the edge of
-        # the drawing reads as a bar, not a road going on.
-        for street in (mid_y - 28, mid_y + 32):
-            paper.create_line(
-                px(SITE_MM[0] - 12),
-                py(street),
-                px(SITE_MM[2] + 12),
-                py(street),
-                fill=ROAD,
-                width=3,
-                capstyle="round",
-            )
-        paper.create_line(
-            px(mid_x + 44),
-            py(SITE_MM[1] - 12),
-            px(mid_x + 44),
-            py(SITE_MM[3] + 12),
-            fill=ROAD,
-            width=3,
-            capstyle="round",
-        )
-        for block in CONTEXT_MM:
-            box(block, fill=NEIGHBOUR, outline=NEIGHBOUR_EDGE)
-        massing()
-        box(
-            (BLOCK_MM[0] - 6, BLOCK_MM[1] - 6, BLOCK_MM[2] + 6, BLOCK_MM[3] + 6),
-            outline=BOUNDARY,
-            dash=BOUNDARY_DASH,
-            radius=BLOCK_RADIUS + 1,
-        )
-    elif kind == "Site Analysis":
-        # The site itself: its boundary, the setbacks dashed inside it, the
-        # frontage dimensioned, and the pin where the address lands.
-        lot = (BLOCK_MM[0] - 22, BLOCK_MM[1] - 16, BLOCK_MM[2] + 22, BLOCK_MM[3] + 16)
-        box(lot, outline=BOUNDARY, dash=BOUNDARY_DASH, width=1.5, radius=BLOCK_RADIUS + 1)
-        box(BLOCK_MM, fill="", outline=NEIGHBOUR_EDGE, dash=(4, 2))
-        line(lot[0], lot[1] - 7, lot[2], lot[1] - 7, theme.INK)
-        for end in (lot[0], lot[2]):
-            line(end, lot[1] - 10, end, lot[1] - 4, theme.INK)
-        pin_x, pin_y = (BLOCK_MM[0] + BLOCK_MM[2]) / 2, BLOCK_MM[1] + 12
-        poly(
-            ((pin_x - 5, pin_y - 7), (pin_x + 5, pin_y - 7), (pin_x, pin_y + 6)),
-            fill=theme.BLUE,
-            outline="",
-        )
-        paper.create_oval(
-            px(pin_x - 6), py(pin_y - 15), px(pin_x + 6), py(pin_y - 3), fill=theme.BLUE, outline=""
-        )
-        paper.create_oval(
-            px(pin_x - 2.2),
-            py(pin_y - 11.2),
-            px(pin_x + 2.2),
-            py(pin_y - 6.8),
-            fill=theme.SURFACE,
-            outline="",
-        )
-    elif kind.startswith("Communal open space"):
-        yard()
-    elif kind == "Facade bands":
-        # The skin in its bands of sun hours, least to most.
-        bands = HOURS_RAMP
-        wide = (BLOCK_MM[2] - BLOCK_MM[0]) / len(bands)
-        for index, tint in enumerate(bands):
-            box(
-                (
-                    BLOCK_MM[0] + wide * index,
-                    BLOCK_MM[1],
-                    BLOCK_MM[0] + wide * (index + 1),
-                    BLOCK_MM[3],
-                ),
-                fill=tint,
-                outline="",
+                (left, high, right, low),
+                fill=PODIUM if under else TOWER,
+                outline=theme.INK,
+                width=0.6,
                 radius=0,
             )
-        box(BLOCK_MM, fill="", outline=theme.INK)
+        line(60, ground, 122, ground, theme.INK)
+        t = (130.0, 50.0, 200.0, 160.0)
+        box(t, fill=theme.SURFACE, outline=theme.FACE_EDGE)
+        box((t[0], t[1], t[2], t[1] + 10), fill=YIELD_HEAD)
+        box((t[0], t[1] + 6, t[2], t[1] + 10), fill=YIELD_HEAD, radius=0)
+        for row in range(13):
+            y = t[1] + 10 + (t[3] - t[1] - 10) * (row + 0.5) / 13
+            under = row >= 11
+            box((t[0] + 4, y - 1.5, t[0] + 14, y + 1.5), fill=theme.HINT, radius=1)
+            long = 36.0 if under else 26.0 - max(0, row - 7) * 1.5
+            box(
+                (t[0] + 18, y - 2.2, t[0] + 18 + long, y + 2.2),
+                fill=PODIUM if under else TOWER,
+                outline=theme.INK,
+                width=0.4,
+                radius=0,
+            )
+    elif kind == "Facade bands":
+        # The skin in its bands of sun hours, most at the top.
+        steps = 6
+        tall = (BLOCK_MM[3] - BLOCK_MM[1]) / steps
+        for step in range(steps):
+            box(
+                (
+                    BLOCK_MM[0],
+                    BLOCK_MM[1] + tall * step,
+                    BLOCK_MM[2],
+                    BLOCK_MM[1] + tall * (step + 1),
+                ),
+                fill=HOURS_RAMP[6 - step],
+                radius=0,
+            )
+        box(BLOCK_MM, outline=theme.INK)
     elif kind == "Sun view":
-        # The massing as the sun sees it: three faces and no shadow, because
-        # from where the light comes from there is none to see.
-        mid_x, top = (BLOCK_MM[0] + BLOCK_MM[2]) / 2, BLOCK_MM[1] - 12
-        half, rise, tall = 34.0, 17.0, 30.0
-        waist = top + rise * 2
-        for points, tint in (
-            (
-                (
-                    (mid_x, top),
-                    (mid_x + half, top + rise),
-                    (mid_x, waist),
-                    (mid_x - half, top + rise),
-                ),
-                theme.PAGE,
-            ),
-            (
-                (
-                    (mid_x - half, top + rise),
-                    (mid_x, waist),
-                    (mid_x, waist + tall),
-                    (mid_x - half, top + rise + tall),
-                ),
-                "#C4C3B8",
-            ),
-            (
-                (
-                    (mid_x + half, top + rise),
-                    (mid_x, waist),
-                    (mid_x, waist + tall),
-                    (mid_x + half, top + rise + tall),
-                ),
-                MASSING,
-            ),
-        ):
-            poly(points, fill=tint, outline=theme.INK)
+        # The town as the sun sees it: white blocks, the proposal a storey
+        # taller in the heavier line with its glazing lit on the face the
+        # sun reaches, and the sun over it. No shadow, because from where
+        # the light comes from there is none to see.
+        mid_x, mid_y, unit = 131.0, 104.0, 6.5
+        morning = drawing.azimuth is None or math.sin(math.radians(drawing.azimuth)) > 0
+
+        def at(x: float, y: float, z: float) -> tuple[float, float]:
+            return (mid_x + (x - y) * 0.866 * unit, mid_y + (x + y) * 0.5 * unit - z * unit)
+
+        poly(
+            [at(-9, -9, 0), at(9, -9, 0), at(9, 9, 0), at(-9, 9, 0)],
+            fill=theme.PAGE,
+            outline=ROAD,
+            width=0.6,
+        )
+        houses = [
+            (*house, ("#F7F6F1", "#DDDCD3", "#ECEBE4"), NEIGHBOUR_EDGE, 0.7) for house in TOWN_ISO
+        ] + [(-2.2, -2.2, 2.2, 2.2, 3.2, ("#F3F2EC", "#CFCEC5", "#E2E1DA"), theme.INK, 1.0)]
+        for x0, y0, x1, y1, tall, tints, edge, weight in sorted(houses, key=lambda h: h[0] + h[1]):
+            poly(
+                [at(x0, y1, 0), at(x1, y1, 0), at(x1, y1, tall), at(x0, y1, tall)],
+                fill=tints[1],
+                outline=edge,
+                width=weight,
+            )
+            poly(
+                [at(x1, y0, 0), at(x1, y1, 0), at(x1, y1, tall), at(x1, y0, tall)],
+                fill=tints[2],
+                outline=edge,
+                width=weight,
+            )
+            poly(
+                [at(x0, y0, tall), at(x1, y0, tall), at(x1, y1, tall), at(x0, y1, tall)],
+                fill=tints[0],
+                outline=edge,
+                width=weight,
+            )
+        # The glazing the sun reaches, on the proposal's face towards it.
+        z = 0.4
+        while z < 3.0:
+            w = -1.8
+            while w < 2.0:
+                if morning:
+                    corners = [
+                        at(2.2, w, z),
+                        at(2.2, w, z + 0.35),
+                        at(2.2, w + 0.5, z + 0.35),
+                        at(2.2, w + 0.5, z),
+                    ]
+                else:
+                    corners = [
+                        at(w, 2.2, z),
+                        at(w, 2.2, z + 0.35),
+                        at(w + 0.5, 2.2, z + 0.35),
+                        at(w + 0.5, 2.2, z),
+                    ]
+                poly(corners, fill=GLAZING)
+                w += 0.9
+            z += 0.7
+        sun_x, sun_y = at(7, -2, 5.5) if morning else at(-2, -7, 5.5)
+        sun(sun_x, sun_y, 3.4)
     elif study == "Site analysis":
         # The site itself, outlined, with the address dropped on it.
         box(BLOCK_MM, fill="", outline=BOUNDARY, dash=BOUNDARY_DASH)
-        pin_x, pin_y = (BLOCK_MM[0] + BLOCK_MM[2]) / 2, BLOCK_MM[1] + 12
-        poly(
-            ((pin_x - 5, pin_y - 7), (pin_x + 5, pin_y - 7), (pin_x, pin_y + 6)),
-            fill=theme.BLUE,
-            outline="",
-        )
-        paper.create_oval(
-            px(pin_x - 6), py(pin_y - 15), px(pin_x + 6), py(pin_y - 3), fill=theme.BLUE, outline=""
-        )
-        paper.create_oval(
-            px(pin_x - 2.2),
-            py(pin_y - 11.2),
-            px(pin_x + 2.2),
-            py(pin_y - 6.8),
-            fill=theme.SURFACE,
-            outline="",
-        )
+        _pin(paper, px((BLOCK_MM[0] + BLOCK_MM[2]) / 2), py(BLOCK_MM[1] + 12), k)
     else:
-        shadow()
+        # A shadow diagram: the town's own shadows in grey, the proposal's
+        # extra shadow in the blue the diagram tells it apart with, the lots
+        # over them and the site boundary over those.
+        reach, bearing = drawing.reach, drawing.bearing
+        site = (BLOCK_MM[0] - 8, BLOCK_MM[1] - 8, BLOCK_MM[2] + 8, BLOCK_MM[3] + 8)
+        if reach is not None and bearing is not None:
+            for lot in TOWN_MM:
+                if not (
+                    lot[2] < site[0] or lot[0] > site[2] or lot[3] < site[1] or lot[1] > site[3]
+                ):
+                    continue
+                held = _clip_to(shifted(lot, min(reach, 3.0) * 9.0, bearing), SITE_FIT_MM)
+                if len(held) >= 3:
+                    poly(held, fill=SHADOW_CAST)
+            held = _clip_to(
+                shifted(BLOCK_MM, min(reach, 3.0) * BLOCK_HEIGHT_M, bearing), SITE_FIT_MM
+            )
+            if len(held) >= 3:
+                poly(held, fill=SHADOW_EXTRA)
+        town(site)
+        box(site, outline=BOUNDARY, dash=BOUNDARY_DASH, width=1.2, radius=BLOCK_RADIUS + 1)
         massing()
+
+
+#: The lots round the site on a shadow diagram, in the sheet's millimetres,
+#: and the houses of the white town a sun view looks down on, in the view's
+#: own units about the proposal.
+TOWN_MM = (
+    (70.0, 44.0, 96.0, 66.0),
+    (100.0, 44.0, 130.0, 62.0),
+    (136.0, 44.0, 158.0, 64.0),
+    (164.0, 46.0, 190.0, 68.0),
+    (70.0, 76.0, 94.0, 106.0),
+    (174.0, 78.0, 192.0, 110.0),
+    (70.0, 132.0, 98.0, 162.0),
+    (106.0, 136.0, 136.0, 162.0),
+    (144.0, 136.0, 164.0, 162.0),
+    (170.0, 128.0, 192.0, 162.0),
+)
+TOWN_ISO = (
+    (-8.0, -8.0, -5.0, -4.0, 1.0),
+    (-3.0, -8.5, 1.0, -6.0, 0.8),
+    (3.0, -8.0, 7.5, -5.0, 1.2),
+    (-8.5, -2.0, -5.5, 2.0, 0.9),
+    (5.0, -2.0, 8.5, 2.5, 1.1),
+    (-8.0, 4.0, -4.5, 8.0, 0.8),
+    (-2.0, 5.0, 2.0, 8.5, 1.0),
+    (4.0, 4.5, 8.0, 8.0, 0.7),
+)
+
+
+def _pin(paper: tk.Canvas, x: float, y: float, k: float) -> None:
+    """The address pin, in the interface's blue, at canvas ``(x, y)`` with
+    its point there; ``k`` is the pixels per millimetre it is drawn at."""
+    paper.create_polygon(
+        x - 5 * k, y - 7 * k, x + 5 * k, y - 7 * k, x, y + 6 * k, fill=theme.BLUE, outline=""
+    )
+    paper.create_oval(x - 6 * k, y - 15 * k, x + 6 * k, y - 3 * k, fill=theme.BLUE, outline="")
+    paper.create_oval(
+        x - 2.2 * k, y - 11.2 * k, x + 2.2 * k, y - 6.8 * k, fill=theme.SURFACE, outline=""
+    )
+
+
+def _draw_context(paper: tk.Canvas, frame: tuple[float, float, float, float]) -> None:
+    """The context sheet, drawn to the edges of its frame: a grid of streets,
+    the lots along them washed where the LEP zones them, a park, the rail
+    line with its station and the five-minute walk round it in the
+    interface's blue, and the site red on its block. Everything is laid out
+    inside the frame by construction, because a Tk canvas clips nothing."""
+    fx0, fy0, fx1, fy1 = frame
+    w, h = fx1 - fx0, fy1 - fy0
+    u = w / 229.0  # the field's width on a full sheet, in millimetres
+
+    def rect(
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        *,
+        fill: str = "",
+        outline: str = "",
+        width: float = 1.0,
+        radius: float = 0.0,
+        dash: tuple[int, ...] = (),
+    ) -> None:
+        _rounded(paper, x0, y0, x1, y1, radius, fill=fill, outline=outline, width=width, dash=dash)
+
+    rect(fx0, fy0, fx1, fy1, fill=LOT, radius=3)
+    street = 4 * u
+    cols = 4
+    rows = 3
+    block_w = (w - (cols - 1) * street) / cols
+    block_h = (h - (rows - 1) * street) / rows
+    for col in range(cols):
+        for row in range(rows):
+            bx = fx0 + col * (block_w + street)
+            by = fy0 + row * (block_h + street)
+            if col == 3 and row == 2:
+                # A park on one block.
+                rect(
+                    bx + 2 * u,
+                    by + 2 * u,
+                    bx + block_w - 2 * u,
+                    by + block_h - 2 * u,
+                    fill=PARK,
+                    outline=CANOPY,
+                    width=0.7,
+                    radius=1.5,
+                )
+                for tx, ty, tr in ((16, 14, 5), (34, 28, 6)):
+                    paper.create_oval(
+                        bx + (tx - tr) * u,
+                        by + (ty - tr) * u,
+                        bx + (tx + tr) * u,
+                        by + (ty + tr) * u,
+                        fill=CANOPY,
+                        outline="",
+                    )
+                continue
+            zoned = ((col * 7 + row * 3 + 1) % 3) != 0
+            parts = 2 + ((col + row) % 2)
+            lot_w = (block_w - 4 * u - (parts - 1) * 2 * u) / parts
+            for part in range(parts):
+                lx = bx + 2 * u + part * (lot_w + 2 * u)
+                rect(
+                    lx,
+                    by + 2 * u,
+                    lx + lot_w,
+                    by + block_h - 2 * u,
+                    fill=ZONING if zoned else NEIGHBOUR,
+                    outline=ZONING_EDGE if zoned else NEIGHBOUR_EDGE,
+                    width=0.7,
+                    radius=1.5,
+                )
+                mid = by + block_h / 2
+                paper.create_line(
+                    lx + 3 * u,
+                    mid,
+                    lx + lot_w - 3 * u,
+                    mid,
+                    fill=ZONING_EDGE if zoned else NEIGHBOUR_EDGE,
+                    width=0.5,
+                )
+    # The rail, corner to corner, its station and the five-minute walk.
+    paper.create_line(fx0, fy1 - 18 * u, fx1, fy0 + 22 * u, fill=theme.BLUE, width=1.6, dash=(7, 2))
+    sx, sy = fx0 + 62 * u, fy0 + 104 * u
+    r = 48 * u
+    paper.create_oval(sx - r, sy - r, sx + r, sy + r, outline=RING, dash=(4, 3))
+    paper.create_oval(
+        sx - 5.5 * u,
+        sy - 5.5 * u,
+        sx + 5.5 * u,
+        sy + 5.5 * u,
+        fill=theme.SURFACE,
+        outline=theme.BLUE,
+        width=1.6,
+    )
+    paper.create_text(sx, sy, text="T", fill=theme.BLUE, font=_face(7, True))
+    # The site, among the lots on its block.
+    bx = fx0 + 2 * (block_w + street)
+    by = fy0 + 1 * (block_h + street)
+    rect(
+        bx + 10 * u,
+        by + 8 * u,
+        bx + 40 * u,
+        by + 28 * u,
+        fill=MASSING,
+        outline=theme.INK,
+        width=1.4,
+        radius=1.5,
+    )
+    rect(
+        bx + 6 * u,
+        by + 4 * u,
+        bx + 44 * u,
+        by + 32 * u,
+        outline=BOUNDARY,
+        dash=BOUNDARY_DASH,
+        radius=3,
+    )
+
+
+def _draw_site(paper: tk.Canvas, frame: tuple[float, float, float, float]) -> None:
+    """The site sheet, drawn to the edges of its frame: the aerial's terraces
+    running back from two streets in the warm lot grey, the street trees'
+    canopies, the contours across the slope in ochre, the lot with a circle
+    at each survey corner and its frontage dimensioned, the pin, and the
+    sun in the corner. Laid out inside the frame by construction."""
+    fx0, fy0, fx1, fy1 = frame
+    w = fx1 - fx0
+    u = w / 229.0
+
+    _rounded(paper, fx0, fy0, fx1, fy1, 3, fill=LOT, outline="")
+    streets = (fx0 + 52 * u, fx0 + 150 * u)
+    strips = (
+        (fx0, streets[0] - 2.5 * u, True),
+        (streets[0] + 2.5 * u, streets[1] - 2.5 * u, False),
+        (streets[1] + 2.5 * u, fx1, True),
+    )
+    # The terraces: narrow lots running back from the street, a house at
+    # the street end of each.
+    for left, right, flip in strips:
+        y = fy0 + 4 * u
+        while y < fy1 - 2 * u:
+            paper.create_line(left + u, y, right - u, y, fill=NEIGHBOUR_EDGE, width=0.45)
+            house_x = right - 14 * u if flip else left + 2 * u
+            if y + 7.5 * u < fy1:
+                _rounded(
+                    paper,
+                    house_x,
+                    y + 1.5 * u,
+                    house_x + 12 * u,
+                    y + 7.5 * u,
+                    0.8,
+                    fill=TERRACE,
+                    outline="",
+                )
+            y += 9 * u
+    for street in streets:
+        paper.create_line(street, fy0, street, fy1, fill=ROAD, width=5 * u, capstyle="butt")
+    # Contours, read across the slope, held inside the frame.
+    for start, end in ((128, 70), (90, 26), (168, 116)):
+        points: list[float] = []
+        for step in range(0, 9):
+            share = step / 8
+            x = fx0 + w * share
+            y = fy0 + (start + (end - start) * (share * share * (3 - 2 * share))) * u
+            points += [x, min(max(y, fy0 + u), fy1 - u)]
+        paper.create_line(points, fill=CONTOUR, smooth=True)
+    for tx, ty, tr in (
+        (48, 14, 8),
+        (58, 60, 6),
+        (46, 104, 9),
+        (56, 142, 6),
+        (146, 28, 7),
+        (156, 80, 9),
+        (146, 126, 6),
+        (154, 148, 7),
+    ):
+        paper.create_oval(
+            fx0 + (tx - tr) * u,
+            fy0 + (ty - tr) * u,
+            fx0 + (tx + tr) * u,
+            fy0 + (ty + tr) * u,
+            fill=CANOPY,
+            outline="",
+        )
+    # The lot: the boundary, a circle at each survey corner, the frontage
+    # dimensioned, the massing dashed inside it.
+    lot = (streets[0] + 10 * u, fy0 + 54 * u, streets[1] - 10 * u, fy0 + 110 * u)
+    paper.create_rectangle(*lot, fill=theme.SURFACE, outline=BOUNDARY, width=1.5)
+    for cx in (lot[0], lot[2]):
+        for cy in (lot[1], lot[3]):
+            paper.create_oval(
+                cx - 2.4 * u,
+                cy - 2.4 * u,
+                cx + 2.4 * u,
+                cy + 2.4 * u,
+                fill=theme.SURFACE,
+                outline=BOUNDARY,
+            )
+    paper.create_rectangle(
+        lot[0] + 10 * u,
+        lot[1] + 10 * u,
+        lot[2] - 10 * u,
+        lot[3] - 10 * u,
+        outline=NEIGHBOUR_EDGE,
+        dash=(3, 2),
+    )
+    dim = lot[1] - 8 * u
+    paper.create_line(lot[0], dim, lot[2], dim, fill=theme.INK, width=0.8)
+    for tick_x in (lot[0], lot[2]):
+        paper.create_line(tick_x, dim - 3 * u, tick_x, dim + 3 * u, fill=theme.INK, width=0.8)
+    _pin(paper, (lot[0] + lot[2]) / 2, (lot[1] + lot[3]) / 2 + 2 * u, u)
+    # The sun, in the corner the north side leaves free.
+    sx, sy, sr = fx1 - 22 * u, fy0 + 20 * u, 5 * u
+    for ray in range(8):
+        angle = ray * math.pi / 4
+        paper.create_line(
+            sx + math.cos(angle) * sr * 1.45,
+            sy + math.sin(angle) * sr * 1.45,
+            sx + math.cos(angle) * sr * 2.1,
+            sy + math.sin(angle) * sr * 2.1,
+            fill=theme.SUN,
+            capstyle="round",
+        )
+    paper.create_oval(sx - sr, sy - sr, sx + sr, sy + sr, fill=LIT, outline=theme.SUN)
 
 
 def _face(size: int, bold: bool) -> tuple[str, int] | tuple[str, int, str]:
@@ -3269,10 +3784,9 @@ class Window:
 
         brand = ttk.Frame(top, style="Chrome.TFrame")
         brand.pack(side="left", padx=(0, PAD * 2))
-        # The parrot, the program's own mark, as the Dock shows it. Its own
-        # 32-pixel file, reduced from the artwork by ``make_icon.py``: Tk
-        # can only shrink a picture by dropping pixels, which leaves the
-        # tile's rounded corners stepped and the eye in pieces.
+        # The parrot, the program's own mark: the pixel lorikeet on no tile,
+        # standing on the chrome (D136). Its own 32-pixel file: Tk can only
+        # shrink a picture by dropping pixels, which leaves the eye in pieces.
         mark = brand_mark(self.root)
         if mark is not None:
             self._mark = mark  # Tk forgets a picture nothing in Python holds
@@ -8648,8 +9162,10 @@ class Window:
 #: PNG, because a Mac does nothing with an .ico.
 MAC_DOCK_ICON = "loriini-icon-256.png"
 
-#: The same artwork at the size the tool bar shows it.
-BRAND_MARK = "loriini-icon-32.png"
+#: The mark the tool bar shows: the pixel lorikeet, at the size it is shown
+#: (D136). Its own file, reduced from ``loriini-mark-1024.png`` with a
+#: proper filter: Tk can only shrink a picture by dropping pixels.
+BRAND_MARK = "loriini-mark-32.png"
 
 
 def icon_path() -> Path | None:
