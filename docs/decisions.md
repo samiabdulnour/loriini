@@ -5133,3 +5133,80 @@ lemon one.
 *What this does not change:* the layout, the controls, the words, and the
 principles of D109 except where its text named the grey, the blue and Segoe
 UI; those lines in `theme.py`'s docstring now read as D132 has them.
+
+### D133 — The sheets in the panel rounded, on the button's edge and lift, in the window's greys
+
+Asked 23 October 2026, with D132 on screen: *"open claude visual artefact for
+sheets. they are not right. make them fresh too. maybe with rounded corners.
+not know. do multiple designs. look at colours used there. maybe even
+illustation there should be little rounded."* Five were drawn on a page at
+the panel's own width -- the sheet rounded with its title block kept; a card
+with the block turned under it as a footer; the drawing alone on a tile with
+its words under it on the chrome; a card with a lemon cap, after the study
+boxes; the number worn as a chip -- and the first chosen: *"please, make it
+Rounded sheet."*
+
+**The paper is a face.** Eight pixels of radius, the button's edge
+(`theme.FACE_EDGE`, `#CFCEC3`, the figure the faces are drawn with) and one
+pixel of lift under it, ink at a tenth over the chrome. It was square since
+D-dock, on the grounds that paper has corners and that was the line between
+the interface and the thing it makes; beside D132's rounded window the
+square sheets read as holes cut in it. The ink frame a printed sheet
+carries goes with the corners: the paper's own edge is the frame now, and a
+second line a few pixels inside a curve reads as a misregistration. The
+title block stays where General sets it, with its rule and the rule over its
+two figures in the divider grey the cards use, not ink. Under the pointer
+the rim turns the lemon edge every button turns, at a pixel and a half,
+where it was ink at two. The models, which have no paper, keep their rim
+hollow and take the same lemon.
+
+**The drawing is rounded too, by two pixels, and warmed.** Every block,
+boundary and table on a miniature is a `smooth` polygon with its corners
+cut, which is the one way Tk's canvas rounds anything, through `_rounded`;
+a boundary gets a pixel more than a block it rings. Bands that meet edge to
+edge -- the facade's, a plate's cells -- stay square, or a notch opens at
+each join. The streets on the context sheet end round. The greys were
+Archicad's cool ones, `#E4E4E4` and `#EDEDED` under `#8D8D8D`, and beside
+the lemon chrome they read blue; they are the window's warm greys now
+(`MASSING`, `NEIGHBOUR`, `NEIGHBOUR_EDGE`, `ROAD`, `RING`). The boundary's
+red and the pin's blue stay: they are a drawing set's conventions, not the
+interface's colours, and D132 said as much of the thumbnails' blue.
+
+*What this does not change:* what a sheet says, where its words sit, the
+block's width, and the panel round it.
+
+### D134 — A page settles into place as it opens, and that is the only movement
+
+Asked 23 October 2026, with the rounded sheets (D133) on screen: *"can you
+introduce good profesional ux? smooth effects when you click between tabs"*.
+
+**One movement, and small.** When a page opens, it settles into place from
+twelve pixels off, over 180 ms, easing out -- fast away from where it
+started and slowing to a stop. Which side it comes from says which way the
+person went: down the sidebar and the page rises into place, up it and the
+page drops. Nothing else moves: no fade (Tk cannot blend a widget, and a
+fade faked with a cover would cost more than it says), no bounce, nothing
+the person waits for. Opening the same page again moves nothing, and a
+page opened before the last has settled finds that one put in its place at
+once.
+
+**How, in Tk.** Tk has no animation; it has `after` and a canvas item that
+can be moved. Every page is one item in its `Scroller`'s canvas, so
+sliding a page is moving one item, which Tk does without laying anything
+out again; the scroll region is re-measured once it has stopped. The frames
+are paced by the clock and not counted, so a page slow to paint arrives in
+the same time as a quick one with fewer steps. The page is in place in
+the window from the moment it is opened -- `_show_section` packs it and
+returns -- and the movement is the item in its canvas, so nothing in the
+window, and no test, waits on it. All of it is `app/motion.py`.
+
+**And none of it where none was asked for.** macOS's Reduce Motion
+(`defaults read com.apple.universalaccess reduceMotion`) and Windows'
+client-area animation setting are read once, when the first page opens,
+and a page then opens where it belongs with no movement at all. Any doubt
+about what the system said -- no such tool, a key never set, a hang -- is
+taken as *move*: the setting is a request for less, and less is the
+default already. A window nobody can see (a test's, or one withdrawn)
+moves nothing either.
+
+*What this does not change:* which page opens, when, and what it says.

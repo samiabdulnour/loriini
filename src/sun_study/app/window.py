@@ -80,13 +80,14 @@ from itertools import pairwise
 from pathlib import Path
 from tkinter import filedialog, ttk
 from tkinter import font as tkfont
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 from sun_study import ADDON_FILE, PRODUCT, WEBSITE, licence
 from sun_study.app import (
     claude_mcp,
     icons,
     licence_box,
+    motion,
     overlay,
     preferences,
     probe,
@@ -354,10 +355,31 @@ class Scroller(ttk.Frame):
         self._item = self.canvas.create_window((0, 0), window=self.content, anchor="nw")
         self.content.bind("<Configure>", self._measured)
         self.canvas.bind("<Configure>", self._widened)
+        #: The page settling into place as it opens (D134), while it is.
+        self.sliding: motion.Slide | None = None
 
     def _measured(self, _event: object = None) -> None:
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         self._show_bar_if_needed()
+
+    def arrive(self, from_below: bool) -> None:
+        """Open with the page settling in from a few pixels below, or
+        above: which way the person went down the sidebar. Nothing is laid
+        out again -- the page is one canvas item, and the item is moved --
+        and the scroll region is re-measured once it has stopped, since it
+        was measured with the page off its mark."""
+        self.settle()
+        offset = motion.DISTANCE if from_below else -motion.DISTANCE
+        self.sliding = motion.Slide(self.canvas, self._item, offset, done=self._settled)
+
+    def _settled(self) -> None:
+        self.sliding = None
+        self._measured()
+
+    def settle(self) -> None:
+        """Put the page where it belongs, now, if it was still arriving."""
+        if self.sliding is not None:
+            self.sliding.cancel()
 
     def _widened(self, event: tk.Event[tk.Misc]) -> None:
         self.canvas.itemconfigure(self._item, width=event.width)
@@ -1754,9 +1776,12 @@ class Dock(ttk.Frame):
                 self._drawn.append(line)
             self._drawn.append(self._draw(sheet))
 
-    #: How far the paper sits in from the canvas edge, which is the room its
-    #: shadow falls into.
-    LIFT = 3
+    #: How far the paper sits in from the canvas edge: room for the pixel of
+    #: lift under it and the rim's antialiasing round it.
+    LIFT = 2
+    #: The lift: ink at a tenth over the panel's chrome, the figure the
+    #: button faces were lifted by before D132 flattened them.
+    LIFT_GREY = "#DCDBD2"
 
     def _draw(self, sheet: Sheet) -> tk.Canvas:
         """One sheet, at the master's proportions with its title block.
@@ -1767,10 +1792,11 @@ class Dock(ttk.Frame):
         drawn larger than they will print: a label nobody can read identifies
         nothing, and a thumbnail is not a print preview.
 
-        Paper stays square. Everything you press in this window is rounded
-        and the sheets are not, because paper has corners -- and that is the
-        line between the interface and the thing it is making. It gets a
-        shadow instead, the way a page sits in InDesign's panel.
+        The paper is rounded, since D133: the button's eight pixels, the
+        button's edge, and one pixel of lift under it, so a sheet in the
+        panel is a thing of the window like the controls beside it. It was
+        square until then, on the grounds that paper has corners; put beside
+        the rounded window of D132 the square read as a hole in it.
         """
         lift = self.LIFT
         paper = tk.Canvas(
@@ -1784,26 +1810,30 @@ class Dock(ttk.Frame):
         # A model is not a sheet, so it is not drawn as one: the geometry
         # alone, with no paper and no shadow under it.
         (draw_sheet if sheet.paper else draw_model)(paper, sheet, self.SHEET_W, self.SHEET_H)
-        paper.move("all", lift, lift - 1)
-        # The shadow: three greys, each a pixel further down and out, under
-        # everything else. Tk has no blur, and three steps read as one.
-        for step, grey in ((3, "#D9D9D9"), (2, "#CFCFCF"), (1, "#BDBDBD")) if sheet.paper else ():
-            under = paper.create_rectangle(
-                lift - 1 + step // 2,
-                lift - 1 + step,
-                lift + self.SHEET_W + step // 2,
-                lift - 1 + self.SHEET_H + step,
-                fill=grey,
+        paper.move("all", lift, lift)
+        # The lift: the same shape a pixel lower, under everything else, as
+        # the button faces had it. One pixel, because the panel's chrome is
+        # light and a sheet is not meant to float off it.
+        if sheet.paper:
+            under = _rounded(
+                paper,
+                lift,
+                lift + 1,
+                lift + self.SHEET_W - 1,
+                lift + self.SHEET_H,
+                SHEET_RADIUS,
+                fill=self.LIFT_GREY,
                 outline="",
             )
             paper.tag_lower(under)
 
         def lit(on: bool) -> None:
-            # The sheet under the pointer takes the ink edge, which is what
-            # says the figures in the band below belong to *this* one.
-            resting = theme.EDGE if sheet.paper else ""
+            # The sheet under the pointer takes the lemon edge every button
+            # takes, which is what says the figures in the band below belong
+            # to *this* one.
+            resting = theme.FACE_EDGE if sheet.paper else ""
             paper.itemconfigure(
-                "edge", outline=theme.ON_ACCENT if on else resting, width=2 if on else 1
+                "edge", outline=theme.ACCENT_EDGE if on else resting, width=1.5 if on else 1
             )
             self._on_pick(sheet if on else None)
 
@@ -2039,18 +2069,19 @@ def draw_sheet(
             )
         )
 
-    # -- the paper, and the frame inset from its edge ----------------------
+    # -- the paper, and the block's rule down it -----------------------------
     # Drawn, not left to the canvas: the canvas is the panel's grey, so the
-    # sheet can throw a shadow onto it. Its edge is an item of its own, the
-    # last one drawn, so the panel can turn it blue under the pointer and
-    # nothing on the sheet lies over the blue.
-    paper.create_rectangle(0, 0, width - 1, height - 1, fill=theme.SURFACE, outline="")
+    # sheet can lift off it. Rounded at the button's radius (D133), and so
+    # without the ink frame a sheet is printed with: the paper's own edge is
+    # the frame, and a second line a few pixels inside a curve reads as a
+    # misregistration. The block's rule is the divider grey, not ink, for
+    # the same reason the cards' rules are. The edge is an item of its own,
+    # the last one drawn, so the panel can turn it lemon under the pointer
+    # and nothing on the sheet lies over the lemon.
+    _rounded(paper, 0, 0, width - 1, height - 1, SHEET_RADIUS, fill=theme.SURFACE, outline="")
     inset = 5.0
-    paper.create_rectangle(
-        x(inset), x(inset), x(SHEET_MM_W - inset), x(SHEET_MM_H - inset), outline=theme.INK
-    )
     left = SHEET_MM_W - inset - block_mm
-    paper.create_line(x(left), x(inset), x(left), x(SHEET_MM_H - inset), fill=theme.INK)
+    paper.create_line(x(left), 0, x(left), height, fill=theme.LINE)
 
     # -- the drawings ----------------------------------------------------
     #
@@ -2130,16 +2161,24 @@ def draw_sheet(
     # Unwrapped: a scale or a number is one word, and broken over two lines
     # it reads as two.
     # "NTS", as a drawing set says it, for a sheet that has no scale.
-    paper.create_line(
-        x(left), x(first - 17.0), x(SHEET_MM_W - inset), x(first - 17.0), fill=theme.INK
-    )
+    paper.create_line(x(left), x(first - 17.0), width, x(first - 17.0), fill=theme.LINE)
     words(middle, first, sheet.scale or "NTS", anchor="s")
     words(middle, second, sheet.number, anchor="s")
 
     # -- the edge, last ------------------------------------------------
-    # Over everything, and hollow: lit blue under the pointer, it rims the
-    # whole sheet.
-    paper.create_rectangle(0, 0, width - 1, height - 1, fill="", outline=theme.EDGE, tags="edge")
+    # Over everything, and hollow: lit lemon under the pointer, it rims the
+    # whole sheet. The button's edge at rest, as every face has.
+    _rounded(
+        paper,
+        0,
+        0,
+        width - 1,
+        height - 1,
+        SHEET_RADIUS,
+        fill="",
+        outline=theme.FACE_EDGE,
+        tags="edge",
+    )
 
 
 #: The blocks around the site in the context model, as ``(x0, y0, x1, y1,
@@ -2319,23 +2358,67 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     )
     # The hover edge, invisible at rest: the item the panel turns blue, drawn
     # last so that it lies over the model.
-    paper.create_rectangle(0, 0, width - 1, height - 1, fill="", outline="", tags="edge")
+    _rounded(paper, 0, 0, width - 1, height - 1, SHEET_RADIUS, fill="", outline="", tags="edge")
 
 
 #: The drawing set's palette on a miniature, the same one the design review
 #: drew them in: the site boundary red and dash-dotted, the massing grey in a
 #: heavy line, the neighbours light, sun amber, and shade and shadow hatched.
+#: The greys are the window's warm ones since D133: Archicad's cool greys
+#: read blue beside the lemon chrome. The boundary's red and the pin's blue
+#: are a drawing set's conventions, not the interface's colours, and stay.
 BOUNDARY = "#C0392B"
 BOUNDARY_DASH = (6, 2, 1, 2)
-MASSING = "#E4E4E4"
-NEIGHBOUR = "#EDEDED"
-NEIGHBOUR_EDGE = "#8D8D8D"
+MASSING = "#E6E5DC"
+NEIGHBOUR = "#F3F2EB"
+NEIGHBOUR_EDGE = "#A3A298"
+ROAD = "#DAD9CF"
+RING = "#B5B4A9"
 LIT = "#F2C86B"
 HATCH = "#5A5A5A"
+#: A sheet's corner, and a drawn block's: the button's radius on the paper,
+#: and two pixels on every block and boundary in the drawing, so the drawing
+#: is as rounded as the paper it is on and no more.
+SHEET_RADIUS = 8
+BLOCK_RADIUS = 2
 #: Hours of sun, least to most, and the two answers to the ADG's two hours --
 #: told apart by how light they are as well as by hue.
 HOURS_RAMP = ("#F7F4EE", "#F3DDB0", "#E9B865", "#D48A2A")
 MEETS, FALLS_SHORT = "#A9C6EE", "#FBE3CC"
+
+
+def _rounded(
+    paper: tk.Canvas, x0: float, y0: float, x1: float, y1: float, radius: float, **how: Any
+) -> int:
+    """A rectangle with rounded corners -- canvas pixels -- as one item.
+
+    Tk's canvas rounds nothing by itself. A polygon drawn ``smooth`` is a
+    run of quadratic splines, one per pair of adjoining sides with their
+    shared point as its control, from the middle of one side to the middle
+    of the next; a point given twice is a side of no length, so the spline
+    passes through it and runs straight to it. So each corner is cut a
+    radius in on both sides, those two cuts are doubled, and the corner
+    itself is left single between them: the sides are straight to the
+    cuts, and the corner is one curve bent towards the corner point --
+    within a pixel of a circle of that radius. Hollow if ``fill`` is empty,
+    dashed if asked, like a rectangle.
+    """
+    radius = min(radius, (x1 - x0) / 2, (y1 - y0) / 2)
+    # Clockwise from the top left: into each corner along one side, the
+    # corner, and out along the next.
+    corners = (
+        ((x0 + radius, y0), (x1 - radius, y0), (x1, y0), (x1, y0 + radius)),
+        ((x1, y1 - radius), (x1, y1), (x1 - radius, y1)),
+        ((x0 + radius, y1), (x0, y1), (x0, y1 - radius)),
+        ((x0, y0 + radius), (x0, y0)),
+    )
+    flat: list[float] = []
+    for run in corners:
+        for point_x, point_y in run:
+            flat += [point_x, point_y]
+            if (point_x, point_y) not in ((x1, y0), (x1, y1), (x0, y1), (x0, y0)):
+                flat += [point_x, point_y]
+    return int(paper.create_polygon(flat, smooth=True, **how))
 
 
 def _hatch(
@@ -2437,12 +2520,17 @@ def _draw_drawing(
         outline: str = "",
         dash: tuple[int, ...] = (),
         width: float = 1.0,
+        radius: float = BLOCK_RADIUS,
     ) -> None:
-        paper.create_rectangle(
+        """A block, rounded by two pixels (D133); ``radius=0`` for a band
+        that has to meet the next band without a notch."""
+        _rounded(
+            paper,
             px(mm[0]),
             py(mm[1]),
             px(mm[2]),
             py(mm[3]),
+            radius,
             fill=fill,
             outline=outline,
             dash=dash,
@@ -2477,7 +2565,7 @@ def _draw_drawing(
                 left + (index % 3 + 1) * wide,
                 top + (index // 3 + 1) * tall,
             )
-            box(cell, fill=tint, outline=theme.INK, width=0.6)
+            box(cell, fill=tint, outline=theme.INK, width=0.6, radius=0)
             if index in shaded:
                 hatched(
                     ((cell[0], cell[1]), (cell[2], cell[1]), (cell[2], cell[3]), (cell[0], cell[3]))
@@ -2536,14 +2624,7 @@ def _draw_drawing(
         "Site Analysis",
         "Context Analysis",
     ):
-        paper.create_rectangle(
-            px(SITE_MM[0]),
-            py(SITE_MM[1]),
-            px(SITE_MM[2]),
-            py(SITE_MM[3]),
-            outline=BOUNDARY,
-            dash=BOUNDARY_DASH,
-        )
+        box(SITE_MM, outline=BOUNDARY, dash=BOUNDARY_DASH, radius=BLOCK_RADIUS + 1)
         if not kind.startswith(("Apartments", "Communal open space")):
             for neighbour in NEIGHBOURS_MM:
                 box(neighbour, fill=NEIGHBOUR, outline=NEIGHBOUR_EDGE)
@@ -2620,25 +2701,29 @@ def _draw_drawing(
             py(mid_y - 62),
             px(mid_x + 62),
             py(mid_y + 62),
-            outline=NEIGHBOUR_EDGE,
+            outline=RING,
             dash=(4, 3),
         )
+        # The streets, with round ends: a street cut square at the edge of
+        # the drawing reads as a bar, not a road going on.
         for street in (mid_y - 28, mid_y + 32):
             paper.create_line(
                 px(SITE_MM[0] - 12),
                 py(street),
                 px(SITE_MM[2] + 12),
                 py(street),
-                fill="#D3D3D0",
+                fill=ROAD,
                 width=3,
+                capstyle="round",
             )
         paper.create_line(
             px(mid_x + 44),
             py(SITE_MM[1] - 12),
             px(mid_x + 44),
             py(SITE_MM[3] + 12),
-            fill="#D3D3D0",
+            fill=ROAD,
             width=3,
+            capstyle="round",
         )
         for block in CONTEXT_MM:
             box(block, fill=NEIGHBOUR, outline=NEIGHBOUR_EDGE)
@@ -2647,20 +2732,13 @@ def _draw_drawing(
             (BLOCK_MM[0] - 6, BLOCK_MM[1] - 6, BLOCK_MM[2] + 6, BLOCK_MM[3] + 6),
             outline=BOUNDARY,
             dash=BOUNDARY_DASH,
+            radius=BLOCK_RADIUS + 1,
         )
     elif kind == "Site Analysis":
         # The site itself: its boundary, the setbacks dashed inside it, the
         # frontage dimensioned, and the pin where the address lands.
         lot = (BLOCK_MM[0] - 22, BLOCK_MM[1] - 16, BLOCK_MM[2] + 22, BLOCK_MM[3] + 16)
-        paper.create_rectangle(
-            px(lot[0]),
-            py(lot[1]),
-            px(lot[2]),
-            py(lot[3]),
-            outline=BOUNDARY,
-            dash=BOUNDARY_DASH,
-            width=1.5,
-        )
+        box(lot, outline=BOUNDARY, dash=BOUNDARY_DASH, width=1.5, radius=BLOCK_RADIUS + 1)
         box(BLOCK_MM, fill="", outline=NEIGHBOUR_EDGE, dash=(4, 2))
         line(lot[0], lot[1] - 7, lot[2], lot[1] - 7, theme.INK)
         for end in (lot[0], lot[2]):
@@ -2698,6 +2776,7 @@ def _draw_drawing(
                 ),
                 fill=tint,
                 outline="",
+                radius=0,
             )
         box(BLOCK_MM, fill="", outline=theme.INK)
     elif kind == "Sun view":
@@ -2714,7 +2793,7 @@ def _draw_drawing(
                     (mid_x, waist),
                     (mid_x - half, top + rise),
                 ),
-                "#F7F7F7",
+                theme.PAGE,
             ),
             (
                 (
@@ -2723,7 +2802,7 @@ def _draw_drawing(
                     (mid_x, waist + tall),
                     (mid_x - half, top + rise + tall),
                 ),
-                "#BDBDBD",
+                "#C4C3B8",
             ),
             (
                 (
@@ -6163,6 +6242,13 @@ class Window:
         """
         return self.showing
 
+    def _on_screen(self) -> bool:
+        """Whether the window is where anybody can see it."""
+        try:
+            return bool(self.root.winfo_viewable())
+        except tk.TclError:  # pragma: no cover - the window is gone
+            return False
+
     def _show_section(self, title: str) -> None:
         """Open that page. An empty name opens General.
 
@@ -6181,10 +6267,25 @@ class Window:
             if title:
                 return
             title = self.GENERAL
+        leaving = self.showing
         for pane in self.panes:
+            pane.settle()
             pane.pack_forget()
         self.pane_of[title].pack(side="top", fill="both", expand=True)
         self.showing = title
+        # The page settles in from the side you came from (D134): a few
+        # pixels, under a fifth of a second, and only on a screen -- a window
+        # nobody can see has nothing to show arriving -- and only where the
+        # system has not been asked for less movement. The page is in place
+        # from this line on either way; the movement is the item in its
+        # canvas, not the page in the window, so nothing waits on it.
+        if (
+            leaving != title
+            and leaving in self.titles
+            and self._on_screen()
+            and not motion.reduced()
+        ):
+            self.pane_of[title].arrive(self.titles.index(title) > self.titles.index(leaving))
         if hasattr(self, "_responding"):
             self._respond()
         self._paint_tabs()
