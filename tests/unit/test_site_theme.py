@@ -483,3 +483,108 @@ def test_a_ring_that_nearly_touches_itself_is_split_as_if_it_did() -> None:
     ]
     loops = _loops(ring)
     assert len(loops) == 2, [len(loop) for loop in loops]
+
+
+# -- numbered places and the legend on the layout (D138) ---------------------------
+
+
+def test_the_site_analyst_themes_number_the_places_and_key_them() -> None:
+    drawing = context_drawing(context_bundle(), frame(), theme="flamingo")
+    discs = [f for f in drawing.fills if f.element_id.startswith("SA PLACE ")]
+    assert [f.element_id for f in discs] == [
+        "SA PLACE 1: ST GEORGE HOSPITAL",
+        "SA PLACE 2: JUBILEE OVAL",
+    ], "institutions in legend order, then the open spaces, each name once"
+    assert discs[0].colour == "#c49a52" and discs[1].colour == "#5f9a58", "disc inks"
+    on_map = {t.text for t in drawing.texts if not t.layer.endswith(".Sheet")}
+    assert {"1", "2", "T", "TEST ST"} <= on_map
+    assert not {"ST GEORGE\nHOSPITAL", "JUBILEE OVAL", "KOGARAH"} & on_map, (
+        "the only words on the map are the street names"
+    )
+    legend = [t.text for t in drawing.texts if t.layer.endswith(".Sheet")]
+    assert "KEY" in legend
+    assert {"ST GEORGE HOSPITAL", "JUBILEE OVAL", "KOGARAH"} <= set(legend)
+    assert drawing.legend is not None
+    keyed = [row for row in drawing.legend[1] if row.key]
+    assert [(row.mark, row.label) for row in keyed] == [
+        ("1", "ST GEORGE HOSPITAL"),
+        ("2", "JUBILEE OVAL"),
+        ("T", "KOGARAH"),
+    ]
+
+
+def test_oatley_keeps_the_names_on_the_map() -> None:
+    drawing = context_drawing(context_bundle(), frame(), theme="oatley")
+    on_map = {t.text for t in drawing.texts if not t.layer.endswith(".Sheet")}
+    assert {"ST GEORGE\nHOSPITAL", "JUBILEE OVAL", "KOGARAH"} <= on_map
+    assert not any(f.element_id.startswith("SA PLACE ") for f in drawing.fills)
+
+
+def test_more_than_one_station_is_numbered_nearest_the_site_first() -> None:
+    from sun_study.site import nsw
+
+    bundle = context_bundle()
+    bundle.stations = (
+        nsw.NamedPoint("ALLAWAH", LON - 0.006, LAT),
+        nsw.NamedPoint("KOGARAH", LON + 0.002, LAT),
+        nsw.NamedPoint("KOGARAH LIGHT RAIL", LON, LAT - 0.002),
+    )
+    drawing = context_drawing(bundle, frame(), theme="heron")
+    assert drawing.legend is not None
+    keyed = {row.label: row.mark for row in drawing.legend[1] if row.key and row.mark}
+    assert keyed["KOGARAH"] == "T1" and keyed["ALLAWAH"] == "T2"
+    assert keyed["KOGARAH LIGHT RAIL"] == "L", "one light rail stop needs no number"
+    on_map = {t.text for t in drawing.texts if not t.layer.endswith(".Sheet")}
+    assert {"T1", "T2", "L"} <= on_map
+
+
+def test_a_key_too_long_for_the_column_keeps_the_places_nearest_the_site() -> None:
+    from sun_study.archicad.site_analysis import Place, Row, _within_the_column
+
+    places = [Place(i + 1, f"PLACE {i + 1}", "medical", (float(i) * 10.0, 0.0)) for i in range(80)]
+    legend = [Row("fill", "#ffffff", None, f"ROW {i}") for i in range(20)]
+    kept = _within_the_column(places, legend, [], (0.0, 0.0))
+    assert 20 < len(kept) < 80
+    assert [p.number for p in kept] == list(range(1, len(kept) + 1)), "numbered again"
+    assert kept[-1].name == f"PLACE {len(kept)}", "the nearest are the ones kept"
+    few = places[:5]
+    assert _within_the_column(few, legend, [], (0.0, 0.0)) == few
+
+
+def test_a_legend_drawn_on_paper_breaks_its_labels_to_the_column() -> None:
+    from sun_study.archicad.site_analysis import Row, _legend
+
+    rows = [
+        Row("fill", "#ffffff", None, "MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL AND MORE WORDS"),
+        Row("disc", "#000000", None, "A PLACE", mark="1", key=True),
+    ]
+    paper = Drawing(1.0, "Context Analysis")
+    _legend(paper, rows, (0.7, 0.5), title="CONTEXT ANALYSIS", width_mm=60.0)
+    labels = [t.text for t in paper.texts]
+    assert any("\n" in label for label in labels), "a long label goes onto a second line"
+    assert "KEY" in labels and "1" in labels
+    sheet = Drawing(3000.0, "Context Analysis")
+    _legend(sheet, rows, (0.0, 0.0), title="CONTEXT ANALYSIS")
+    assert not any("\n" in t.text for t in sheet.texts), "the worksheet's has room to spare"
+
+
+def test_the_legend_comes_off_a_drawing_and_keeps_its_rows() -> None:
+    drawing = context_drawing(context_bundle(), frame(), theme="kingfisher")
+    bare = drawing.without(frozenset({"Legend"}))
+    assert not any(t.part == "Legend" for t in bare.texts)
+    assert not any(f.part == "Legend" for f in bare.fills)
+    assert bare.legend == drawing.legend, "the rows go with it, for the layout to draw"
+    assert any(t.text == "TEST ST" for t in bare.texts), "the map stays"
+
+
+def test_the_map_field_is_centred_from_the_bottom_margin() -> None:
+    from sun_study.archicad.layout import LayoutSheet
+    from sun_study.archicad.site_analysis import _sheet_frame
+
+    sheet = LayoutSheet(
+        width_mm=841.0, height_mm=594.0, left_mm=10.0, top_mm=40.0, right_mm=10.0, bottom_mm=10.0
+    )
+    _x0, y0, _x1, y1 = _sheet_frame(sheet, width_mm=690.0, height_mm=500.0, title_block_mm=100.0)
+    assert (y0 + y1) / 2 * 1000 == pytest.approx(10.0 + (594.0 - 50.0) / 2), (
+        "midway between the bottom and top margins, layout y running upward"
+    )

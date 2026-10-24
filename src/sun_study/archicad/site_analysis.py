@@ -153,6 +153,17 @@ TEXTURE_MM = 2.0
 #: The road reserve a street is drawn as on paper, by the register's function
 #: hierarchy (1 a motorway, 6 a local street, 7 and beyond a lane), in metres.
 RESERVE_M = {1: 30.0, 2: 24.0, 3: 20.0, 4: 16.0, 5: 12.0, 6: 10.0}
+#: A numbered place's disc on the map, and the key's smaller one, radius on
+#: paper: the map's is the roundels' size, so every dot on the map is one size.
+PLACE_MM = 3.4
+KEY_MM = 2.9
+#: The foot of the legend column the master's title block takes, on paper;
+#: the key is cut to what is left above it.
+LEGEND_FOOT_MM = 90.0
+#: The legend column on a layout: its gap from the map field, on paper, and
+#: the width the key is measured against (the title block's, less the gap).
+LEGEND_GAP_MM = 8.0
+LEGEND_COLUMN_MM = 92.0
 #: How far inside the map field a hole is cut, in metres on the ground.
 HOLE_INSET_M = 0.3
 #: How far a loop split off a pinched ring is parted from the vertex it shared.
@@ -654,6 +665,8 @@ class Fill:
     """The contour's pen weight."""
     dashed: bool = False
     """The contour dashed: a size the sheet draws without having it recorded."""
+    part: str = ""
+    """Which part of the drawing it belongs to: the legend's can be taken off."""
 
 
 @dataclass
@@ -678,6 +691,7 @@ class Line:
     dashed: bool = False
     weight_mm: float | None = None
     dotted: bool = False
+    part: str = ""
 
 
 @dataclass
@@ -689,6 +703,7 @@ class Text:
     angle_rad: float = 0.0
     justification: str = "Center"
     colour: str = INK
+    part: str = ""
 
 
 @dataclass
@@ -713,6 +728,19 @@ class Drawing:
     """Multiplies every text height on the map: a theme can run its lettering
     larger. The sheet's own words -- the title, the legend, the credit -- keep
     their size, which is the sheet's and not the theme's."""
+    legend: tuple[str, list[Row]] | None = None
+    """The legend's title and rows, as ``_legend`` drew them: a layout draws
+    them again in its own column, at its own size (D138)."""
+
+    def without(self, parts: frozenset[str]) -> Drawing:
+        """The same drawing with the elements of these parts taken off."""
+        return replace(
+            self,
+            fills=[f for f in self.fills if f.part not in parts],
+            lines=[line for line in self.lines if line.part not in parts],
+            texts=[t for t in self.texts if t.part not in parts],
+            figures=list(self.figures),
+        )
 
     def mm(self, value: float) -> float:
         """Millimetres on paper at this drawing's scale, as ground metres."""
@@ -756,7 +784,14 @@ class Drawing:
                 # pattern scaled for 1:100 reads solid at 1:3000.
                 for segment in _hatch_segments([outer, *holes], self.mm(HATCH_MM)):
                     self.lines.append(
-                        Line(self.layer(part), list(segment), contour or colour, False, 0.18)
+                        Line(
+                            self.layer(part),
+                            list(segment),
+                            contour or colour,
+                            False,
+                            0.18,
+                            part=part,
+                        )
                     )
             if texture:
                 self._texture(part, [outer, *holes], texture, texture_colour or contour or colour)
@@ -771,6 +806,7 @@ class Drawing:
                     hatch,
                     weight_mm,
                     dashed,
+                    part,
                 )
             )
 
@@ -790,7 +826,13 @@ class Drawing:
             for segment in _hatch_segments(rings, spacing, angle):
                 self.lines.append(
                     Line(
-                        self.layer(part), list(segment), colour, False, 0.1 if dots else 0.13, dots
+                        self.layer(part),
+                        list(segment),
+                        colour,
+                        False,
+                        0.1 if dots else 0.13,
+                        dots,
+                        part,
                     )
                 )
 
@@ -840,7 +882,7 @@ class Drawing:
         if closed and pts and pts[0] != pts[-1]:
             pts.append(pts[0])
         if len(pts) >= 2:
-            self.lines.append(Line(self.layer(part), pts, colour, dashed, weight_mm, dotted))
+            self.lines.append(Line(self.layer(part), pts, colour, dashed, weight_mm, dotted, part))
 
     def text(
         self,
@@ -864,6 +906,7 @@ class Drawing:
                     angle_rad,
                     justification,
                     colour,
+                    part,
                 )
             )
 
@@ -1154,8 +1197,11 @@ class Row:
 
     ``kind`` is ``fill``, ``dashed fill``, ``wash``, ``dashed wash``, ``hatch``
     (an empty fill with the hatch lines in the contour's ink), ``line``,
-    ``dashed``, ``dotted`` or ``text``; a text swatch shows the label's own
-    lettering, the way ``SB 30.48`` is explained on the site sheet.
+    ``dashed``, ``dotted``, ``text`` (the label's own lettering, the way
+    ``SB 30.48`` is explained on the site sheet), ``disc`` (a solid disc in the
+    colour with ``mark`` knocked out in white) or ``ring`` (a white disc in a
+    ring of the colour, ``mark`` in it). ``key`` puts the row in the key under
+    the legend: a numbered place or a station, set tighter.
     """
 
     kind: str
@@ -1164,6 +1210,8 @@ class Row:
     label: str
     texture: str | None = None
     texture_colour: str | None = None
+    mark: str | None = None
+    key: bool = False
 
 
 def _legend(
@@ -1172,15 +1220,47 @@ def _legend(
     origin: Point,
     *,
     title: str,
+    width_mm: float | None = None,
 ) -> None:
-    """Swatches and labels down the right of the map field."""
+    """Swatches and labels in a column, hanging from ``origin``, the key's
+    numbered places under them.
+
+    ``width_mm`` is the column's width on paper; a label that would run past
+    it is broken onto a second line. Without it nothing is broken, which is
+    the worksheet's case: its legend has the whole of the paper beside the map.
+    """
+    drawing.legend = (title, list(rows))
+    mm = drawing.mm
     x, top = origin
-    swatch_w, swatch_h, step = drawing.mm(16), drawing.mm(6.5), drawing.mm(10)
-    drawing.text(
-        "Legend", title, (x, top + drawing.mm(6)), height_mm=LEGEND_MM * 1.4, justification="Left"
-    )
-    for row, item in enumerate(rows):
-        y = top - step * (row + 1)
+    swatch_w, swatch_h = mm(16), mm(6.5)
+    keys = sum(1 for row in rows if row.key)
+    # Past two dozen entries the key's rows tighten, as the generator's do.
+    many = keys > 24
+    key_size = LEGEND_MM * (0.9 if many else 1.0)
+    key_pitch = 5.4 if many else 6.6
+
+    def chars(indent_mm: float, size: float) -> int | None:
+        if width_mm is None:
+            return None
+        return max(12, int((width_mm - indent_mm) / (size * 0.6)))
+
+    drawing.text("Legend", title, (x, top + mm(6)), height_mm=LEGEND_MM * 1.4, justification="Left")
+    y = top
+    keyed = False
+    for item in rows:
+        size = key_size if item.key else LEGEND_MM
+        indent = 9.0 if item.key else 19.0
+        wrap = chars(indent, size)
+        label = "\n".join(textwrap.wrap(item.label, wrap)) if wrap else item.label
+        lines = label.count("\n") + 1
+        if item.key and not keyed:
+            keyed = True
+            y -= mm(12)
+            drawing.text(
+                "Legend", "KEY", (x, y + mm(3)), height_mm=LEGEND_MM * 1.2, justification="Left"
+            )
+        y -= mm(key_pitch if item.key else 10.0)
+        middle = y + swatch_h / 2
         if item.kind in ("fill", "dashed fill", "wash", "dashed wash", "hatch"):
             drawing.fill(
                 "Legend",
@@ -1196,27 +1276,45 @@ def _legend(
         elif item.kind in ("line", "dashed", "dotted"):
             drawing.line(
                 "Legend",
-                [(x, y + swatch_h / 2), (x + swatch_w, y + swatch_h / 2)],
+                [(x, middle), (x + swatch_w, middle)],
                 colour=item.colour,
                 dashed=item.kind == "dashed",
                 dotted=item.kind == "dotted",
                 weight_mm=0.5,
             )
+        elif item.kind in ("disc", "ring"):
+            radius = mm(KEY_MM if item.key else ROUNDEL_MM)
+            centre = (x + radius + mm(0.5), middle)
+            solid = item.kind == "disc"
+            drawing.circle(
+                "Legend",
+                centre,
+                radius,
+                colour=item.colour,
+                fill=item.colour if solid else "#ffffff",
+                weight_mm=0.2 if solid else 0.35,
+                element_id="SA LEGEND",
+            )
+            if item.mark:
+                drawing.text(
+                    "Legend",
+                    item.mark,
+                    centre,
+                    height_mm=size * (0.85 if len(item.mark) > 1 else 1.0),
+                    colour="#ffffff" if solid else item.colour,
+                )
         else:
             drawing.text(
-                "Legend",
-                item.colour,
-                (x, y + swatch_h * 0.2),
-                height_mm=LEGEND_MM,
-                justification="Left",
+                "Legend", item.colour, (x, middle), height_mm=LEGEND_MM, justification="Left"
             )
         drawing.text(
             "Legend",
-            item.label,
-            (x + swatch_w + drawing.mm(3), y + swatch_h * 0.2),
-            height_mm=LEGEND_MM,
+            label,
+            (x + mm(indent), middle - mm((lines - 1) * size * 1.3 / 2)),
+            height_mm=size,
             justification="Left",
         )
+        y -= mm((lines - 1) * size * 1.3)
 
 
 def _furniture_of_sheet(
@@ -1763,6 +1861,142 @@ def _category_row(cat: themes.Category, *, on_paper: bool, wash: bool) -> Row:
 # -- the context analysis ------------------------------------------------------
 
 
+@dataclass
+class Place:
+    """A numbered place on the context sheet: an institution or a park."""
+
+    number: int
+    name: str
+    category: str
+    at: Point
+
+
+def _station_name(name: str) -> str:
+    upper = name.upper().strip()
+    return (
+        upper.removesuffix("RAILWAY STATION").strip() + " TRAIN STATION"
+        if upper.endswith("RAILWAY STATION")
+        else upper
+    )
+
+
+def _stations(
+    bundle: ContextBundle, frame: Frame, field: Sequence[Point], centre: Point
+) -> list[tuple[Any, str, Point]]:
+    """The stations on the map with their roundel's letter: ``T``, or ``T1``,
+    ``T2``... nearest the site first where there is more than one, and the
+    light rail's ``L`` the same way, so the key says which is which."""
+    on_map = []
+    for station in bundle.stations:
+        at = frame.project(station.lon, station.lat)
+        if point_in_ring(at[0], at[1], list(field)):
+            on_map.append((station, at))
+    on_map.sort(key=lambda pair: math.dist(pair[1], centre))
+    out: list[tuple[Any, str, Point]] = []
+    for tram in (False, True):
+        group = [
+            (station, at)
+            for station, at in on_map
+            if ("LIGHT RAIL" in station.name.upper() or "TRAM" in station.name.upper()) == tram
+        ]
+        letter = "L" if tram else "T"
+        for i, (station, at) in enumerate(group, start=1):
+            out.append((station, f"{letter}{i}" if len(group) > 1 else letter, at))
+    return out
+
+
+def _places(
+    bundle: ContextBundle, frame: Frame, field: Sequence[Point], t: themes.Theme
+) -> list[Place]:
+    """Every institution and park inside the map field, numbered: the
+    institutions in the legend's category order, then the open spaces, each
+    name once, as the generator orders them."""
+    order = [cat.id for cat in t.categories]
+    candidates: list[tuple[int, int, str, str, Point]] = []
+    for institution in bundle.institutions:
+        rings = [frame.ring(r) for r in institution.rings]
+        if not rings:
+            continue
+        largest = max(rings, key=lambda r: abs(ring_area(r)))
+        rank = order.index(institution.category) if institution.category in order else len(order)
+        candidates.append((0, rank, institution.name, institution.category, ring_centroid(largest)))
+    for point in bundle.complexes:
+        if point.category:
+            rank = order.index(point.category) if point.category in order else len(order)
+            candidates.append(
+                (0, rank, point.name, point.category, frame.project(point.lon, point.lat))
+            )
+    for area in bundle.park_areas:
+        if area.area_m2 >= 2000:
+            candidates.append((1, 0, area.name, "openSpace", frame.project(area.lon, area.lat)))
+    for point in bundle.park_points:
+        candidates.append((1, 0, point.name, "openSpace", frame.project(point.lon, point.lat)))
+    candidates.sort(key=lambda c: (c[0], c[1], c[2].upper()))
+    places: list[Place] = []
+    seen: set[str] = set()
+    ring = list(field)
+    for _group, _rank, name, category, at in candidates:
+        key = name.upper().strip()
+        if not key or key in seen or not point_in_ring(at[0], at[1], ring):
+            continue
+        seen.add(key)
+        places.append(Place(len(places) + 1, key, category, at))
+    return places
+
+
+def _key_height_mm(rows: Sequence[Row], count: int) -> float:
+    """What the key's rows take of the column, on paper, as ``_legend`` sets them."""
+    many = count > 24
+    size = LEGEND_MM * (0.9 if many else 1.0)
+    pitch = 5.4 if many else 6.6
+    wrap = max(12, int((LEGEND_COLUMN_MM - 9.0) / (size * 0.6)))
+    return sum(pitch + (len(textwrap.wrap(row.label, wrap)) - 1) * size * 1.3 for row in rows)
+
+
+def _within_the_column(
+    places: list[Place], rows: Sequence[Row], stations: Sequence[Row], centre: Point
+) -> list[Place]:
+    """The places the legend column has room to key. Past that, the places
+    nearest the site are kept and the rest go, from the map as well as the
+    key -- a sheet about a site names what is around it -- and the kept ones
+    are numbered again in their order."""
+    budget = MAP_HEIGHT_MM - 30.0 - LEGEND_FOOT_MM - 12.0 - 10.0 * len(rows) - 12.0
+    count = len(places) + len(stations)
+
+    def row(place: Place) -> Row:
+        return Row("disc", "", None, place.name, mark=str(place.number), key=True)
+
+    if _key_height_mm([*map(row, places), *stations], count) <= budget:
+        return places
+    used = _key_height_mm(stations, count)
+    keep: set[int] = set()
+    for place in sorted(places, key=lambda p: math.dist(p.at, centre)):
+        height = _key_height_mm([row(place)], count)
+        if used + height > budget:
+            break
+        used += height
+        keep.add(id(place))
+    kept = [p for p in places if id(p) in keep]
+    return [replace(p, number=i) for i, p in enumerate(kept, start=1)]
+
+
+def _spread(places: list[Place], gap: float) -> None:
+    """Two places on one block -- a centre and its clinic -- put their discs
+    on top of each other; each such pair is pushed apart along the line
+    between them until the discs just clear, a few passes for a cluster."""
+    for _ in range(4):
+        for i, a in enumerate(places):
+            for b in places[i + 1 :]:
+                dx, dy = b.at[0] - a.at[0], b.at[1] - a.at[1]
+                d = math.hypot(dx, dy) or 0.01
+                short = gap - d
+                if short <= 0:
+                    continue
+                ux, uy = dx / d * short / 2, dy / d * short / 2
+                a.at = (a.at[0] - ux, a.at[1] - uy)
+                b.at = (b.at[0] + ux, b.at[1] + uy)
+
+
 def context_drawing(
     bundle: ContextBundle, frame: Frame, theme: str | themes.Theme | None = None
 ) -> Drawing:
@@ -1934,8 +2168,30 @@ def context_drawing(
 
     catchment_rows = _catchments(drawing, bundle, frame, t)
 
-    # Stops and stations: a letter in a circle, the office's own symbol.
+    # The legend's own rows, before the key: the key is cut to what they
+    # leave of the column, so they are counted first.
+    rows: list[Row] = [Row("dashed", t.site, None, "SITE")]
+    for code, label in sorted(lep_seen.items(), key=lambda pair: _lep_order(pair[0])):
+        rows.append(Row("wash" if wash else "fill", themes.zone_fill(code), None, label))
+    rows += [
+        _category_row(cat, on_paper=on_paper, wash=wash)
+        for cat in t.categories
+        if cat.id in present and cat.id != "site"
+    ]
+    numbered = t.places == "numbers"
     solid = t.roundel == "solid"
+    roundel_kind = "disc" if solid else "ring"
+    if bundle.stations:
+        rows.append(Row(roundel_kind, t.site, None, "TRAIN STATION", mark="T"))
+    if bundle.bus.stops:
+        rows.append(Row(roundel_kind, t.transit, None, "BUS STOP", mark="B"))
+    if bundle.bus.routes:
+        rows.append(
+            Row("dotted" if t.bus_line == "dotted" else "dashed", t.bus_route, None, "BUS ROUTE")
+        )
+    rows += catchment_rows
+
+    # Stops and stations: a letter in a circle, the office's own symbol.
     radius = drawing.mm(ROUNDEL_MM)
     for stop in bundle.bus.stops:
         at = frame.project(stop.lon, stop.lat)
@@ -1944,19 +2200,41 @@ def context_drawing(
     for stop in bundle.bus.tram_stops:
         at = frame.project(stop.lon, stop.lat)
         _roundel(drawing, "Stations", at, "L", t.tram, "TRAM STOP", solid=solid)
+    field = _map_rectangle(bundle, frame)
+    centre = frame.project(*bundle.centre_lonlat)
+    stations = _stations(bundle, frame, field, centre) if numbered else []
+    labels = {id(station): label for station, label, _at in stations}
+    station_keys: list[Row] = []
     for station in bundle.stations:
         at = frame.project(station.lon, station.lat)
         tram = "LIGHT RAIL" in station.name.upper() or "TRAM" in station.name.upper()
+        colour = t.tram if tram else t.site
+        letter = labels.get(id(station), "L" if tram else "T")
         _roundel(
             drawing,
             "Stations",
             at,
-            "L" if tram else "T",
-            t.tram if tram else t.site,
+            letter,
+            colour,
             "LIGHT RAIL STOP" if tram else "TRAIN STATION",
             solid=solid,
         )
         placer.reserve(at[0], at[1], radius * 2, radius * 2)
+        if numbered:
+            # The name is in the key, not on the map: the only words on the
+            # map are the street names.
+            if id(station) in labels:
+                station_keys.append(
+                    Row(
+                        roundel_kind,
+                        colour,
+                        None,
+                        _station_name(station.name),
+                        mark=letter,
+                        key=True,
+                    )
+                )
+            continue
         name = _wrapped(station.name.upper())
         spot = placer.place(
             at[0],
@@ -1969,32 +2247,63 @@ def context_drawing(
         if spot:
             drawing.text("Labels", name, spot, height_mm=LABEL_MM, colour=t.street_ink)
 
-    # Place names before street names: they belong to a parcel and cannot move.
-    seen: set[str] = set()
-    named: list[tuple[str, Point]] = [
-        (area.name.upper(), frame.project(area.lon, area.lat)) for area in bundle.park_areas
-    ]
-    named += [
-        (p.name.upper(), frame.project(p.lon, p.lat))
-        for p in bundle.park_points
-        if p.name.upper() not in {a.name.upper() for a in bundle.park_areas}
-    ]
-    named += [(p.name.upper(), frame.project(p.lon, p.lat)) for p in bundle.complexes if p.category]
-    for label, at in named:
-        if label in seen:
-            continue
-        seen.add(label)
-        text = _wrapped(label)
-        spot = placer.place(
-            at[0],
-            at[1],
-            _text_width_m(drawing, text, LABEL_MM),
-            _text_height_m(drawing, text, LABEL_MM),
-            step=drawing.mm(4),
-            max_radius=drawing.mm(16),
-        )
-        if spot:
-            drawing.text("Labels", text, spot, height_mm=LABEL_MM, colour=t.street_ink)
+    if numbered:
+        # Every institution and park a number in a disc, the names in the key:
+        # as site-analyst.com's sheets have them (D138).
+        places = _places(bundle, frame, field, t)
+        places = _within_the_column(places, rows, station_keys, centre)
+        _spread(places, drawing.mm(PLACE_MM) * 2 + drawing.mm(0.6))
+        for place in places:
+            ink = t.disc_park_ink if place.category == "openSpace" else t.disc_ink
+            drawing.circle(
+                "Labels",
+                place.at,
+                drawing.mm(PLACE_MM),
+                colour=ink,
+                fill=ink,
+                weight_mm=0.2,
+                element_id=f"SA PLACE {place.number}: {place.name}"[:255],
+            )
+            drawing.text(
+                "Labels",
+                str(place.number),
+                place.at,
+                height_mm=LABEL_MM * (0.85 if place.number > 9 else 1.0),
+                colour="#ffffff",
+            )
+            size = drawing.mm(PLACE_MM) * 2
+            placer.reserve(place.at[0], place.at[1], size, size)
+            rows.append(Row("disc", ink, None, place.name, mark=str(place.number), key=True))
+        rows += station_keys
+    else:
+        # Place names before street names: they belong to a parcel and cannot move.
+        seen: set[str] = set()
+        named: list[tuple[str, Point]] = [
+            (area.name.upper(), frame.project(area.lon, area.lat)) for area in bundle.park_areas
+        ]
+        named += [
+            (p.name.upper(), frame.project(p.lon, p.lat))
+            for p in bundle.park_points
+            if p.name.upper() not in {a.name.upper() for a in bundle.park_areas}
+        ]
+        named += [
+            (p.name.upper(), frame.project(p.lon, p.lat)) for p in bundle.complexes if p.category
+        ]
+        for label, at in named:
+            if label in seen:
+                continue
+            seen.add(label)
+            text = _wrapped(label)
+            spot = placer.place(
+                at[0],
+                at[1],
+                _text_width_m(drawing, text, LABEL_MM),
+                _text_height_m(drawing, text, LABEL_MM),
+                step=drawing.mm(4),
+                max_radius=drawing.mm(16),
+            )
+            if spot:
+                drawing.text("Labels", text, spot, height_mm=LABEL_MM, colour=t.street_ink)
 
     _street_labels(
         drawing,
@@ -2025,23 +2334,6 @@ def context_drawing(
             drawing.line("Site", points, colour=t.site, dashed=True, weight_mm=0.9, closed=True)
 
     legend_at = _furniture_of_sheet(drawing, bundle, frame, title="CONTEXT ANALYSIS")
-    rows: list[Row] = [Row("dashed", t.site, None, "SITE")]
-    for code, label in sorted(lep_seen.items(), key=lambda pair: _lep_order(pair[0])):
-        rows.append(Row("wash" if wash else "fill", themes.zone_fill(code), None, label))
-    rows += [
-        _category_row(cat, on_paper=on_paper, wash=wash)
-        for cat in t.categories
-        if cat.id in present and cat.id != "site"
-    ]
-    if bundle.stations:
-        rows.append(Row("text", "T", None, "TRAIN STATION"))
-    if bundle.bus.stops:
-        rows.append(Row("text", "B", None, "BUS STOP"))
-    if bundle.bus.routes:
-        rows.append(
-            Row("dotted" if t.bus_line == "dotted" else "dashed", t.bus_route, None, "BUS ROUTE")
-        )
-    rows += catchment_rows
     _legend(drawing, rows, legend_at, title="CONTEXT ANALYSIS")
     return drawing
 
@@ -3395,7 +3687,15 @@ def site_drawing(
     if bundle.furniture.hydrants:
         rows.append(Row("fill", HYDRANT_BLUE, None, "HYDRANT"))
     if bundle.bus_stops:
-        rows.append(Row("text", "B", None, "BUS STOPS"))
+        rows.append(
+            Row(
+                "disc" if base.roundel == "solid" else "ring",
+                base.transit,
+                None,
+                "BUS STOPS",
+                mark="B",
+            )
+        )
     if bundle.furniture.buildings:
         if look.buildings == "mass":
             rows.append(Row("fill", BUILDING_GREY, base.road, "BUILDING FOOTPRINTS (OSM)"))
@@ -4110,34 +4410,8 @@ def _flush(
 
     fills: list[dict[str, Any]] = []
     for fill in drawing.fills:
-        r, g, b = curate.rgb(fill.colour)
-        data: dict[str, Any] = {
-            "contours": [{"points": [{"x": x, "y": y} for x, y in ring]} for ring in fill.rings],
-            "layerIndex": indices[fill.layer],
-            "determination": "drafting",
-            "showArea": False,
-            "foregroundColour": {"red": r, "green": g, "blue": b},
-            "backgroundColour": {"red": r, "green": g, "blue": b},
-        }
-        if fill.hatch and attributes.empty_fill is not None:
-            data["fillIndex"] = attributes.empty_fill
-            data["backgroundPen"] = 0
-            del data["backgroundColour"]
-        elif fill.wash and attributes.wash_fill is not None:
-            data["fillIndex"] = attributes.wash_fill
-            data["backgroundPen"] = 0
-            del data["backgroundColour"]
-        elif attributes.solid_fill is not None:
-            data["fillIndex"] = attributes.solid_fill
-        contour_pen = attributes.pen(fill.contour or fill.colour)
-        if contour_pen is not None:
-            data["contourPen"] = contour_pen
-        if fill.dashed and attributes.dashed is not None:
-            data["lineTypeIndex"] = attributes.dashed
-        if fill.weight_mm is not None:
-            data["penWeight"] = fill.weight_mm
-        if fill.element_id:
-            data["elementId"] = fill.element_id[:255]
+        data = _fill_data(fill, attributes)
+        data["layerIndex"] = indices[fill.layer]
         fills.append(data)
     refused = 0
     for batch in _batched(fills, 300):
@@ -4284,11 +4558,14 @@ def _sheet_frame(
 ) -> tuple[float, float, float, float]:
     """The map field on the page, in metres: as big as the sheet allows up
     to the field's own size, centred in what is left beside the title block."""
-    left, top, width, height = sheet.usable
+    left, _top, width, height = sheet.usable
     room = max(width - title_block_mm, 1.0)
     fw, fh = min(width_mm, room), min(height_mm, height)
     x0 = left + (room - fw) / 2.0
-    y0 = top + (height - fh) / 2.0
+    # Layout coordinates run up from the sheet's bottom-left, so the field
+    # is centred from the bottom margin; from the top one it sat low by the
+    # difference on any master whose margins differ.
+    y0 = sheet.bottom_mm + (height - fh) / 2.0
     return (x0 / MM_PER_M, y0 / MM_PER_M, (x0 + fw) / MM_PER_M, (y0 + fh) / MM_PER_M)
 
 
@@ -4300,8 +4577,10 @@ def place_on_layout(
     site_centre: Point,
     master_layout: str | None = None,
     title_block_mm: float = TITLE_BLOCK_MM,
+    notes: list[str] | None = None,
 ) -> str:
-    """The view on a sheet of its own, the map field centred on the site.
+    """The view on a sheet of its own, the map field centred on the site,
+    and the drawing's legend in the column beside it, above the title block.
 
     Tapir places the drawing clipped to a placeholder and anchored by a
     corner (D51); the add-on's ``ArrangeDrawings`` then sets the frame to the
@@ -4354,7 +4633,37 @@ def place_on_layout(
     )
     if not isinstance(response, dict) or not response.get("success"):
         raise ArchicadError(f"ArrangeDrawings answered {response!r}")
+    if drawing.legend is not None:
+        try:
+            _legend_on_layout(connection, report.database_id, sheet, (x0, y0, x1, y1), drawing)
+        except ArchicadError as error:
+            if notes is not None:
+                notes.append(f"the sheet is made; its legend is not: {error}")
     return report.layout_name
+
+
+def _legend_on_layout(
+    connection: ArchicadConnection,
+    database_id: str,
+    sheet: LayoutSheet,
+    field: tuple[float, float, float, float],
+    drawing: Drawing,
+) -> None:
+    """The legend drawn straight onto the layout, in the column right of the
+    map field: the place the office's sheets keep it, with the title block
+    under it. Paper, at paper size: the column's width breaks the long labels
+    and the key is the size it was measured at (D138)."""
+    assert drawing.legend is not None
+    title, rows = drawing.legend
+    _x0, _y0, x1, y1 = field
+    left = x1 + LEGEND_GAP_MM / MM_PER_M
+    right = (sheet.width_mm - sheet.right_mm) / MM_PER_M
+    width_mm = max((right - left) * MM_PER_M - 2.0, 40.0)
+    if not _enter_layout(connection, database_id):
+        raise ArchicadError("the layout could not be entered to draw on")
+    paper = Drawing(1.0, drawing.word)
+    _legend(paper, rows, (left, y1 - 12.0 / MM_PER_M), title=title, width_mm=width_mm)
+    _flush_on_paper(connection, paper, _attributes(connection))
 
 
 def _draw(
@@ -4372,6 +4681,17 @@ def _draw(
     pictures_as: str = "figure",
 ) -> WorksheetReport:
     drawing.pictures_as = pictures_as
+    # The legend goes on the layout, beside the map, when there is a layout
+    # to put it on; the worksheet keeps it only when there is not, so it is
+    # never on neither. The master is settled now, so the person is asked
+    # once, and a run that cannot have one keeps its legend in the worksheet.
+    if view and layout and drawing.legend is not None:
+        try:
+            master_layout = choose_master(master_layouts(connection), master_layout).name
+        except ArchicadError:
+            pass
+        else:
+            drawing = drawing.without(frozenset({"Legend"}))
     attributes = _attributes(connection)
     notes: list[str] = []
     if attributes.solid_fill is None:
@@ -4444,6 +4764,7 @@ def _draw(
                     connection,
                     made_view,
                     drawing,
+                    notes=notes,
                     site_centre=site_centre,
                     master_layout=master_layout,
                     title_block_mm=title_block_mm,
@@ -4606,22 +4927,67 @@ def draw_summary(
     )
 
 
+def _fill_data(fill: Fill, attributes: _Attributes) -> dict[str, Any]:
+    """One fill as ``CreateFills`` takes it, without its layer."""
+    r, g, b = curate.rgb(fill.colour)
+    data: dict[str, Any] = {
+        "contours": [{"points": [{"x": x, "y": y} for x, y in ring]} for ring in fill.rings],
+        "determination": "drafting",
+        "showArea": False,
+        "foregroundColour": {"red": r, "green": g, "blue": b},
+        "backgroundColour": {"red": r, "green": g, "blue": b},
+    }
+    if fill.hatch and attributes.empty_fill is not None:
+        data["fillIndex"] = attributes.empty_fill
+        data["backgroundPen"] = 0
+        del data["backgroundColour"]
+    elif fill.wash and attributes.wash_fill is not None:
+        data["fillIndex"] = attributes.wash_fill
+        data["backgroundPen"] = 0
+        del data["backgroundColour"]
+    elif attributes.solid_fill is not None:
+        data["fillIndex"] = attributes.solid_fill
+    contour_pen = attributes.pen(fill.contour or fill.colour)
+    if contour_pen is not None:
+        data["contourPen"] = contour_pen
+    if fill.dashed and attributes.dashed is not None:
+        data["lineTypeIndex"] = attributes.dashed
+    if fill.weight_mm is not None:
+        data["penWeight"] = fill.weight_mm
+    if fill.element_id:
+        data["elementId"] = fill.element_id[:255]
+    return data
+
+
 def _flush_on_paper(
     connection: ArchicadConnection, drawing: Drawing, attributes: _Attributes
 ) -> tuple[int, int]:
-    """The drawing's rules and texts into the current layout, on no layer of
-    the tool's own: a layout element sits on the Archicad layer, and a layer
-    made for a table on paper is one more layer for nothing. Fills and
-    figures are not drawn on paper here. Returns ``(lines, texts)``."""
+    """The drawing's fills, rules and texts into the current layout, on no
+    layer of the tool's own: a layout element sits on the Fill, Line or Text
+    tool's own layer, and a layer made for a table on paper is one more layer
+    for nothing. Figures are not drawn on paper. Returns ``(lines, texts)``;
+    a refused fill is left out, as on a worksheet."""
+    for fill in drawing.fills:
+        data = _fill_data(fill, attributes)
+        # A layout element takes no element ID (draw_summary's note).
+        data.pop("elementId", None)
+        try:
+            _created(connection.run_loriini("CreateFills", {"fills": [data]}), "CreateFills")
+        except ArchicadError:
+            continue
     lines: list[dict[str, Any]] = []
     for line in drawing.lines:
-        data: dict[str, Any] = {"coordinates": [{"x": x, "y": y} for x, y in line.points]}
+        one_line: dict[str, Any] = {"coordinates": [{"x": x, "y": y} for x, y in line.points]}
         pen = attributes.pen(line.colour)
         if pen is not None:
-            data["linePenIndex"] = pen
+            one_line["linePenIndex"] = pen
+        if line.dashed and attributes.dashed is not None:
+            one_line["lineTypeIndex"] = attributes.dashed
+        elif line.dotted and attributes.dotted_or_dashed is not None:
+            one_line["lineTypeIndex"] = attributes.dotted_or_dashed
         if line.weight_mm is not None:
-            data["penWeightMm"] = line.weight_mm
-        lines.append(data)
+            one_line["penWeightMm"] = line.weight_mm
+        lines.append(one_line)
     for batch in _batched(lines, 500):
         _created(
             connection.run_tapir("CreatePolylines", {"polylinesData": batch}), "CreatePolylines"

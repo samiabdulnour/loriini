@@ -27,6 +27,7 @@ be found, switched off or purged as a group.
 | `14 \| Site Analysis` worksheet | the boundary with a circle at each survey corner, `SB` dimensions per edge and `RL` levels per corner, read across the slope between the contours; the fall arrow, `FALL` and `AREA`; contours with their levels -- the City of Sydney's 1 m ones where its area covers the sheet, the state's 2 m ones elsewhere, and the legend says which; neighbours as number, storeys and zone; trees the size of their canopy, dashed where nobody recorded one; poles, lamps, hydrants; driveways as access triangles; kerbside parking bands; one-way and lane arrows; noise zigzags along main roads and rail; utilities where OSM has them; OSM building footprints; the sun path with winter and summer discs; prevailing wind banners; a legend |
 | `14 \| Summary of Controls` **layout** | the planning-controls table, drawn straight onto a sheet of its own on the A1 master: address, lots, cadastral area; LEP zone, height, FSR and the GFA it allows, minimum lot size, heritage; council DCP rows ruled up empty; the ADG figures worked for this site area. No worksheet, no view, no layer of its own |
 | `14 \| Context Analysis.*`, `14 \| Site Analysis.*` layers | five per sheet (aerial, fills, lines, labels, sheet), every fill with an element ID naming its legend entry |
+| `14 \| Context Analysis`, `14 \| Site Analysis` **layouts** | each worksheet's view on a sheet of its own, the map field centred on the site beside the title block, and the sheet's **legend drawn on the layout** in the column to the right of the map, above the title block -- not in the worksheet. Without a layout (`--no-layout`, or no master to put one on) the legend stays in the worksheet beside the map, so it is never on neither |
 | `14 \| Site Analysis` view folder | a view of each worksheet at its sheet's scale -- 1:3000 for the context sheet, whichever of 1:200 to 1:750 fits the site for the site sheet -- with a layer combination showing that drawing's layers |
 | `<run folder>/data/*.json` | everything fetched, so the sheets can be redrawn without the internet, or into another project |
 
@@ -122,6 +123,22 @@ live run refused and why).
 Fonts are not themed: the add-on's `CreateTexts` takes no face, so a text
 is in the Text tool's default. The generator's Arial Narrow and DejaVu are
 a project-template matter.
+
+### Numbered places
+
+In the four site-analyst.com themes the only words on the context sheet's
+map are the street names. Every institution and park is a solid disc with
+its number knocked out in white -- in the theme's institution ink, the
+parks in its park ink -- and the legend carries the key under a `KEY`
+heading: the institutions in the legend's category order, then the open
+spaces, then the stations under their roundel letter. A sheet with more
+than one station numbers them `T1`, `T2`... nearest the site first, and the
+light rail `L1`, `L2`... the same way. Past two dozen entries the key's rows
+tighten; when even that would overrun the column the places nearest the
+site are kept and the rest go, from the map as well as the key, and the
+kept ones are numbered again. Two discs on one block are pushed apart until
+they clear. Oatley writes the names on the map, as the sheets first had it.
+Each disc's element ID is `SA PLACE <n>: <name>`, so a schedule can list them.
 
 ### The context sheet
 

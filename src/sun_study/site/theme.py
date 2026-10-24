@@ -150,6 +150,14 @@ class Theme:
     street_labels: Literal["plain", "band"] = "band"
     """A through street's name plain along the road, or in the white
     double-headed arrow band (lanes stay plain either way)."""
+    places: Literal["numbers", "names"] = "names"
+    """The institutions, parks and stations: a numbered disc on the map with
+    the names in the legend's key, as site-analyst.com draws them, or each
+    name written on the map, as the office's sheets first had it."""
+    disc_ink: str = "#1c1c1c"
+    """The institutions' number discs."""
+    disc_park_ink: str = "#1c1c1c"
+    """The parks' number discs, where they differ from the institutions'."""
     zoning: Literal["categories", "lep"] = "categories"
     """The zoning: the theme's land-use categories, or each zone in its own
     NSW ePlanning colour, keyed by zone code."""
@@ -432,6 +440,9 @@ THEMES: tuple[Theme, ...] = (
         lots="faint",
         streets="white",
         street_labels="plain",
+        places="numbers",
+        disc_ink=SAND_INK,
+        disc_park_ink="#5f9a58",
         categories=FLAMINGO_CATEGORIES,
     ),
     Theme(
@@ -464,6 +475,9 @@ THEMES: tuple[Theme, ...] = (
         lot_width_mm=0.45,
         streets="white",
         street_labels="plain",
+        places="numbers",
+        disc_ink="#e39a6f",
+        disc_park_ink="#8faf6a",
         categories=KINGFISHER_CATEGORIES,
     ),
     Theme(
@@ -498,6 +512,9 @@ THEMES: tuple[Theme, ...] = (
         lot_width_mm=0.45,
         streets="none",
         street_labels="plain",
+        places="numbers",
+        disc_ink="#9c4a36",
+        disc_park_ink="#1f7a4d",
         categories=HERON_CATEGORIES,
     ),
     Theme(
@@ -533,6 +550,9 @@ THEMES: tuple[Theme, ...] = (
         streets="none",
         street_labels="plain",
         zoning="lep",
+        places="numbers",
+        disc_ink="#1c1c1c",
+        disc_park_ink="#1c1c1c",
         categories=HERON_CATEGORIES,
     ),
     Theme(
