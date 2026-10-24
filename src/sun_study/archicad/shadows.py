@@ -692,41 +692,71 @@ def _create_legend_fills(
     return answers
 
 
+#: The fill an hour's outline is drawn in: empty, so the seven hours drawn
+#: over one another all show, each as its contour. First found first used.
+ALL_HOURS_FILLS: tuple[str, ...] = ("Empty Fill", "Empty", "Background")
+
+#: The line type of that contour: continuous. Named, because a fill takes the
+#: Fill tool's line type otherwise, and the polylines this replaced came out
+#: in the Polyline tool's -- dense dotted on the sample project (D145).
+ALL_HOURS_LINES: tuple[str, ...] = ("Solid Line", "Solid", "Continuous")
+
+
 def _all_hours_elements(
     hours: Sequence[tuple[str, Sequence[Ring]]],
     layer_index: int,
     storey: int | None,
     pen: int,
     height_mm: float,
+    *,
+    fill_index: int | None = None,
+    line_type_index: int | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """One day's outlines as closed polylines, and each hour's label.
+    """One day's outlines as fills, in the add-on's ``CreateFills`` shape, and
+    each hour's label.
+
+    A fill per ring, its contour in ``pen`` on the continuous line type, its
+    pattern ``fill_index`` -- the project's empty fill -- on a transparent
+    background, so every hour's shadow shows through the others as its
+    outline, and each is a fill a person can select, measure, or give a
+    pattern of their own (D145). The ring goes open: the add-on closes it.
 
     The label sits on the vertex of that hour's outline farthest from the
     middle of all of them -- the tip of the shadow, which is where the hours
-    fan apart and where a reader looks for which line is which.
+    fan apart and where a reader looks for which outline is which.
     """
     everything = [point for _label, rings in hours for ring in rings for point in ring]
     if not everything:
         return [], []
     middle = np.mean(np.asarray(everything, dtype=np.float64), axis=0)
 
-    lines: list[dict[str, Any]] = []
+    fills: list[dict[str, Any]] = []
     texts: list[dict[str, Any]] = []
     for label, rings in hours:
         tip: tuple[float, float] | None = None
         reach = -1.0
         for ring in rings:
-            if len(ring) < 3:
+            points = list(ring)
+            while len(points) > 1 and points[0] == points[-1]:
+                points.pop()
+            if len(points) < 3:
                 continue
-            line: dict[str, Any] = {
-                "coordinates": [{"x": x, "y": y} for x, y in (*ring, ring[0])],
+            fill: dict[str, Any] = {
+                "contours": [{"points": [{"x": x, "y": y} for x, y in points]}],
                 "layerIndex": layer_index,
-                "linePenIndex": pen,
+                "fillPen": pen,
+                "contourPen": pen,
+                "backgroundPen": 0,
+                "showArea": False,
             }
+            if fill_index is not None:
+                fill["fillIndex"] = fill_index
+            if line_type_index is not None:
+                fill["lineTypeIndex"] = line_type_index
             if storey is not None:
-                line["floorInd"] = storey
-            lines.append(line)
-            for x, y in ring:
+                fill["floorIndex"] = storey
+            fills.append(fill)
+            for x, y in points:
                 far = float(np.hypot(x - middle[0], y - middle[1]))
                 if far > reach:
                     reach, tip = far, (x, y)
@@ -741,7 +771,7 @@ def _all_hours_elements(
         if storey is not None:
             text["floorIndex"] = storey
         texts.append(text)
-    return lines, texts
+    return fills, texts
 
 
 def _visibility(
@@ -797,10 +827,11 @@ def draw_shadow_series(
 
     ``all_hours`` names a source whose own shadow was outlined (see
     ``cast_shadows``); each day then also gets one layer carrying that shadow
-    at every hour as lines, each labelled with its hour at the tip, and a
-    combination showing that layer alone. Lines rather than fills, because
-    fills laid over one another hide each other, and the point of the drawing
-    is to see every hour at once.
+    at every hour, each hour a fill with an empty pattern, a transparent
+    background and a continuous contour, labelled with its hour at the tip,
+    and a combination showing that layer alone. Empty, because fills laid
+    over one another hide each other, and the point of the drawing is to see
+    every hour at once (D145).
 
     ``storey_index`` is which storey the fills belong to; ``None`` omits the
     floor index entirely, which is what a worksheet needs and what a plan must
@@ -850,6 +881,17 @@ def draw_shadow_series(
     shared = ensure_layer(connection, shared_layer_name())
     wanted = [layer_name(instant.label) for instant in hourly]
     days = _by_date(series) if all_hours else {}
+    # Looked up before anything is drawn, so a project that cannot take the
+    # every-hour drawing stops here and not halfway through.
+    empty = attribute_index(connection, "Fill", ALL_HOURS_FILLS) if days else None
+    continuous = attribute_index(connection, "Line", ALL_HOURS_LINES) if days else None
+    if days and empty is None:
+        raise ArchicadError(
+            f"The every-hour drawing is drawn as fills with an empty pattern, so the hours "
+            f"show through one another, and the project has no fill called "
+            f"{' or '.join(repr(name) for name in ALL_HOURS_FILLS)}. Add one to the "
+            f"project's fill types and run again."
+        )
     # Hidden in every hour's combination too, so a single hour never shows
     # the every-hour lines over it.
     wanted += [all_hours_layer_name(day) for day in days]
@@ -956,15 +998,17 @@ def draw_shadow_series(
     for day, instants in days.items():
         layer = ensure_layer(connection, all_hours_layer_name(day))
         cleared += clear_layer(connection, layer.index)
-        lines, texts = _all_hours_elements(
+        outlines, texts = _all_hours_elements(
             [(i.label, [placed(r) for r in i.outlines.get(all_hours or "", ())]) for i in instants],
             layer.index,
             storey_index,
             all_hours_pen,
             label_height_mm,
+            fill_index=empty,
+            line_type_index=continuous,
         )
-        if lines:
-            create_elements(connection, "CreatePolylines", "polylinesData", lines)
+        if outlines:
+            connection.run_loriini("CreateFills", {"fills": outlines})
         if texts:
             place_texts(connection, texts, layer.index)
 
