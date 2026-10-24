@@ -61,6 +61,7 @@ from sun_study.archicad.connection import ArchicadConnection, ArchicadError, Com
 from sun_study.archicad.layout import (
     LayoutReport,
     layout_sheet,
+    one_title_per_pile,
     remove_stale_layouts,
     update_drawings,
 )
@@ -783,10 +784,12 @@ def stack_sheet_groups(
     ``(layout name, [[(navigator id, drawing name), ...] per cell])``, each
     cell's list bottom to top. The sheets are dealt as a labelled set's are,
     by the lowest set's hours, and named *15 | Shadow Plans Combined - JUNE
-    21*; each drawing is named for the hour and its set, ``JUNE 21 -9AM
-    EXISTING``, since a sheet finds its drawings by name and two of one name
-    would be one. A set that lacks an hour -- a rerun over a Project Map
-    somebody has pruned -- is left out of that hour's cell.
+    21*. The top drawing of a cell is named for the hour alone, ``JUNE 21
+    -9AM``, as the one title the cell shows (D148); each drawing under it for
+    the hour and its set, ``JUNE 21 -9AM TOD``, since a sheet finds its
+    drawings by name and two of one name would be one. A set that lacks an
+    hour -- a rerun over a Project Map somebody has pruned -- is left out of
+    that hour's cell.
     """
     if not stack.piles:
         return [], 0
@@ -802,6 +805,8 @@ def stack_sheet_groups(
                 for (label, _), hours in zip(stack.piles, by_hour, strict=True)
                 if (found := hours.get(one.plan.when)) is not None
             ]
+            if pile:
+                pile[-1] = (pile[-1][0], one.plan.caption)
             cells_here.append(pile)
         groups.append((name, cells_here))
     return groups, cells
@@ -828,7 +833,8 @@ def make_stack_sheets(
     ``window``, every drawing's origin is put where the window's centre lands
     in the middle of its cell at ``scale``; with ``pen_table_index``, every
     drawing prints in that pen table. The combined sheets an earlier run made
-    and this one is not remaking are removed, every drawing is redrawn, and
+    and this one is not remaking are removed, only the top drawing of each
+    cell keeps a title (D148), every drawing is redrawn, and
     with a ``legend`` the legend is drawn in the column left of the title
     block -- which the cells then keep clear of -- and the site's ``rings``
     over every drawing in ``outline_pen`` (D143). Returns the sheets, the
@@ -858,9 +864,12 @@ def make_stack_sheets(
     for report, (_, piles) in zip(reports, groups, strict=True):
         if not report.database_id:
             continue
-        note = update_drawings(connection, report.database_id)
-        if note and note not in said:
-            said.append(note)
+        for note in (
+            one_title_per_pile(connection, report.database_id, piles),
+            update_drawings(connection, report.database_id),
+        ):
+            if note and note not in said:
+                said.append(note)
         if not legend and not rings:
             continue
         sheet, _ = layout_sheet(connection, report.database_id)

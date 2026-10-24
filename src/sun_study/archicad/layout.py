@@ -1104,8 +1104,80 @@ def update_drawings(connection: ArchicadConnection, database_id: str) -> str | N
     return None
 
 
+def one_title_per_pile(
+    connection: ArchicadConnection,
+    database_id: str,
+    piles: Sequence[Sequence[tuple[str, str]]],
+) -> str | None:
+    """Only the top drawing of each pile keeps its title. ``None``, or why not.
+
+    ``piles`` is a sheet's cells as ``place_stacks_on_sheets`` takes them,
+    ``(navigator id, drawing name)`` bottom to top. Every drawing of a stacked
+    cell sits on the same frame, so each one's title landed on the same spot
+    and the names printed over each other (D148). The drawings under the top
+    one are given no title -- a title library part index of 0, which is how
+    Graphisoft's own example removes one -- and are left out of the sheet's
+    drawing numbering, so the titles that remain count 1, 2, 3 across the
+    sheet. A top drawing with no title, one that was under another on an
+    earlier run, is given the title the others wore. Best effort, like
+    ``update_drawings``: overlapping titles are untidy, not wrong.
+    """
+    placed = _drawings_with_details(connection, database_id)
+    stacked = [[placed[name] for _, name in pile if name in placed] for pile in piles]
+    titles = [
+        index
+        for pile in stacked
+        for _, details in pile
+        if isinstance(index := details.get("titleLibraryPartIndex"), int) and index > 0
+    ]
+    worn = titles[0] if titles else None
+    changes: list[dict[str, Any]] = []
+    for pile in stacked:
+        for position, (element, details) in enumerate(pile):
+            index = details.get("titleLibraryPartIndex")
+            has_title = isinstance(index, int) and index > 0
+            if position == len(pile) - 1:
+                if not has_title and worn is not None:
+                    wanted: dict[str, Any] = {"titleLibraryPartIndex": worn, "isInNumbering": True}
+                else:
+                    continue
+            elif has_title or details.get("isInNumbering"):
+                wanted = {"titleLibraryPartIndex": 0, "isInNumbering": False}
+            else:
+                continue
+            changes.append(
+                {"elementId": element["elementId"], "details": {"typeSpecificDetails": wanted}}
+            )
+    if not changes:
+        return None
+    try:
+        response = connection.run_tapir("SetDetailsOfElements", {"elementsWithDetails": changes})
+    except ArchicadError as error:
+        return f"the drawings' titles could not be set ({error}); each cell shows every title"
+    results = response.get("executionResults") if isinstance(response, dict) else None
+    refused = [
+        one for one in results or [] if isinstance(one, dict) and one.get("success") is False
+    ]
+    if refused:
+        return (
+            f"{len(refused)} of the drawings' titles could not be set; "
+            f"those cells show more than one"
+        )
+    return None
+
+
 def _drawings_by_name(connection: ArchicadConnection, database_id: str) -> dict[str, Any]:
     """The Drawings already on a sheet, keyed by the name they were given."""
+    return {
+        name: element
+        for name, (element, _) in _drawings_with_details(connection, database_id).items()
+    }
+
+
+def _drawings_with_details(
+    connection: ArchicadConnection, database_id: str
+) -> dict[str, tuple[Any, dict[str, Any]]]:
+    """The Drawings on a sheet with what Tapir reads of each, keyed by name."""
     activate(connection, database_id, "Layout")
     found = connection.run_tapir("GetElementsByType", {"elementType": "Drawing"})
     elements = found.get("elements") if isinstance(found, dict) else None
@@ -1118,11 +1190,12 @@ def _drawings_by_name(connection: ArchicadConnection, database_id: str) -> dict[
     rows = response.get("detailsOfElements") if isinstance(response, dict) else None
     if not isinstance(rows, list) or len(rows) != len(elements):
         return {}
-    return {
-        str(((row or {}).get("details") or {}).get("customName", "")): element
-        for element, row in zip(elements, rows, strict=True)
-        if ((row or {}).get("details") or {}).get("customName")
-    }
+    out: dict[str, tuple[Any, dict[str, Any]]] = {}
+    for element, row in zip(elements, rows, strict=True):
+        details = (row or {}).get("details") if isinstance(row, dict) else None
+        if isinstance(details, dict) and details.get("customName"):
+            out[str(details["customName"])] = (element, details)
+    return out
 
 
 def _check_each(response: Any, key: str, command: str) -> list[dict[str, Any]]:

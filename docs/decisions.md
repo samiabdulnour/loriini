@@ -5934,3 +5934,41 @@ back through Tapir, which does not report a fill's category.
 
 *What this does not change:* which shadow is drawn, the hours, the labels,
 the layer, its view and sheet (D144, D145), or the stack (D141 to D143).
+
+### D148 — A combined cell shows one title, the hour's
+
+Asked 25 October 2026, with a screenshot of the combined sheet (D142):
+*"when you overlay shadow 3D docs, the names are crashing. is it possible to
+tunr name of drawing only on one of the drawings?"*, then *"or name them all
+the same"*.
+
+**Why they crashed.** Every drawing of a cell is placed on the same frame,
+so Archicad put each one's title in the same spot: five titles, `JUNE 21
+-9AM TOD` to `JUNE 21 -9AM EXISTING`, printed over one another, each with
+its own drawing number.
+
+**Not the same name.** A sheet finds its drawings by name, on every rerun
+(`layout_from_views`, `place_stacks_on_sheets`); five of one name would be
+one drawing found and four made again on the next run.
+
+**Decided.** The top drawing of each cell is named for the hour alone,
+`JUNE 21 -9AM`, and is the cell's one title; the drawings under it keep the
+hour and the row in their names and are given no title -- the title's
+library part index set to 0 through Tapir's `SetDetailsOfElements`, which is
+how Graphisoft's Element_Test example removes one -- and are left out of the
+sheet's drawing numbering, so the titles that remain read 1, 2, 3. A top
+drawing without a title, one that lay under another on an earlier run, is
+given the title the others wore. Done after every placement, best effort: a
+refusal is said, the sheet stands. The bundled Tapir already reads and
+writes the index, so the add-on is unchanged and Archicad need not restart.
+
+**Run, sample project.** The five-row sheet, rerun: fifteen drawings, the
+three top ones titled with index 32 (Archicad's own drawing title), the
+twelve under them with index 0, no title element and out of the numbering;
+the 9 AM top drawing, its title removed by hand to try the index, was given
+it back. The three top drawings of the earlier run, named `... EXISTING`,
+were renamed by hand once, so the rerun reused them instead of placing new.
+
+*What this does not change:* the stack, its order, colours or transparency
+(D141 to D143), or the sheets of one row, whose drawings keep their titles.
+
