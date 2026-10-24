@@ -5514,5 +5514,11 @@ draws the traffic arrows white in every theme, which on the paper themes is
 white on the white road; they are white over the photograph here and stay
 the road grey on paper, where they can be seen.
 
+**Oatley is called FUSE.** Asked the same day: *"call oatley FUSE"*. The
+theme is the office's own legend, still read off its Oatley (2546) sheet,
+which is where the old name came from. `oatley` and `office` still resolve
+to it on the command line, and a preset saved with "Oatley" in a style row
+draws FUSE.
+
 *What this does not change:* what a sheet shows, or any fill's colour.
 
