@@ -5210,3 +5210,79 @@ default already. A window nobody can see (a test's, or one withdrawn)
 moves nothing either.
 
 *What this does not change:* which page opens, when, and what it says.
+
+### D136 — The sheets take the generator's themes, each realised as what Archicad has
+
+Asked 24 October 2026: *"introduce the themes for context analysis and site
+analysis. its basically visual upgrade of what we have now. you need to look
+on github au-site-analysis repo to get the themes so you can implement them
+for archicad use."*
+
+**The themes are the generator's, as data.** `au-site-analysis` draws its
+context sheet in four graphic templates and its site sheet in four themes of
+the same names -- Flamingo, Kingfisher, Heron, Canary -- each a record in
+`src/render/template.ts`: a land-use palette, the inks, which line styles,
+which marks. They are ported colour for colour into `sun_study.site.theme`
+as the same kind of record, so the two programs agree about what a house
+style is and a new one is a data change here as it is there. The office's
+own Oatley legend, which `curate.CATEGORIES` holds and these sheets were
+drawn in until now, stays as a fifth theme on both sheets, so a saved preset
+or a `--from` redraw still produces what it did, and so the refactor had a
+fixed point: the Oatley drawing is asserted unchanged by the tests that were
+already there. The defaults move to the generator's (Flamingo, Heron),
+because the ask was the upgrade.
+
+**Each theme is realised, not approximated.** The generator prints to a PDF
+and Archicad is not one, so every property a theme has was mapped to the one
+thing Archicad can do in its place, and the mapping is the port:
+
+- *Opacity.* A fill has none. On paper the tint is blended over white before
+  it is sent (`Category.on_paper`), which is what a reader sees of a 22%
+  peach; over the aerial it is the project's `50%` fill in the colour, as D82
+  already had it.
+- *Texture.* A fill pattern scaled for 1:100 reads solid at 1:3000 (the
+  heritage hatch found this), so a texture is a hatch of the drawing's own
+  polylines at 2 mm on paper in the texture's ink: 45° for lines, crossed for
+  cross, and dots as lines in the project's `Dotted` line type, `Dashed`
+  standing in where there is none.
+- *The aerial in grey, under a veil, with the site in colour.* No command
+  tones a Figure and none masks one. The tile is toned with Pillow -- which
+  D121 already brought into the bundle -- and written beside the original as
+  `aerial_r_c-grey36.jpg`, the site's lot composited back in its own colours
+  from the untouched tile; the original and its world file are never
+  touched, and the toned copy is reused while the original is no newer. A
+  theme that keeps the colours keeps the white `50%` wash instead.
+- *White streets.* The register has centre lines, not kerbs. A street is its
+  centre line widened to the reserve its function hierarchy suggests, 30 m
+  for a motorway to 6 m for a lane, mitred at each bend with the mitre
+  clamped, round-ended, as one fill per road feature rather than a rectangle
+  and a disc per segment -- 6,000 fills were already the sheet's measure.
+- *The office's drawn marks.* Its suns, winds and arrows are SVG paths taken
+  from its symbol sheet. `site.marks` flattens them: M, L, C and Z, a cubic
+  walked in six straight steps, the subpath inside another made its hole
+  (the eye's pupil), and the y axis turned over, since the office drew with
+  it pointing down. The crown sun, the crescents and the hand-drawn strands
+  are ported as the generator computes them, seed and all.
+- *Text scale.* It multiplies the map's words and not the sheet's: the
+  title, the legend and the credit keep their size, because they are the
+  sheet's and a credit has a size for a reason (D117).
+
+**What is not themed, and why.** Fonts: `CreateTexts` takes no face, and a
+face that is not installed falls back silently, which the generator's own
+header warns is worse than none. The potential views, the indicative kerbs
+and the neighbours' height limits: the Loriini bundle carries no sight
+lines, no kerbs and no `HOB` per neighbour, and a theme is a way of drawing
+what is there.
+
+**Where it is chosen.** `--theme` and `--site-theme` on `sun-study site`,
+`theme` and `site_theme` on the agent's site tool, and a *Context style* and
+a *Site style* row on the window's Site analysis page, saved with the
+preset. Two rows and not one, because the office's packages put a context
+sheet on paper beside a site sheet on the photograph; the site themes name
+the context theme they draw on, so the pairs still match when a person wants
+them to. The retired names resolve as the generator's do: `conure`,
+`flamingo-2`, `dove`, `cardinal`, `kookaburra`.
+
+*What this does not change:* what either sheet says, where the site lands,
+the layers, the element IDs, the credit, or anything about the context model.
+

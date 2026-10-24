@@ -220,6 +220,22 @@ class SiteArguments(StudyArguments):
         default=None,
         description="The number the context analysis is filed under, when not the site's.",
     )
+    theme: Literal["flamingo", "kingfisher", "heron", "canary", "oatley"] | None = Field(
+        default=None,
+        description=(
+            "The context sheet's house style: flamingo (paper and four tints, the default), "
+            "kingfisher (the masterplan palette), heron (the office sheet over a grey aerial), "
+            "canary (heron in the ePlanning zone colours) or oatley (the office's own legend)."
+        ),
+    )
+    site_theme: Literal["heron", "kingfisher", "flamingo", "canary", "oatley"] | None = Field(
+        default=None,
+        description=(
+            "The site sheet's house style: heron (grey aerial, crown suns, the default), "
+            "kingfisher (paper, crescent sun paths), flamingo (paper, the office's drawn "
+            "marks), canary (the classic sheet with one climate circle) or oatley."
+        ),
+    )
     out: str | None = Field(
         default=None, description="A folder to save the fetched data and the aerial photo into."
     )
@@ -559,6 +575,7 @@ def site_argv(arguments: SiteArguments) -> list[str]:
     argv += _option("--origin-at", a.origin_at)
     if a.square_to_site:
         argv += ["--square-to-site"]
+    argv += _option("--theme", a.theme) + _option("--site-theme", a.site_theme)
     argv += _option("--out", a.out) + _option("--master-layout", a.master_layout)
     return argv
 

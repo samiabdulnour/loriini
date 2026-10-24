@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import urllib.parse
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ from typing import Any
 from sun_study.site.geo import Extent, lonlat_to_mga, mercator_to_lonlat, mga_zone
 from sun_study.site.http import FetchError, fetch
 
-__all__ = ["Aerial", "Tile", "aerial"]
+__all__ = ["Aerial", "Tile", "aerial", "toned"]
 
 EXPORT = "https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/export"
 MAX_PX = 4000
@@ -159,3 +160,50 @@ def _world_file(
         f"{a:.6f}\n{d:.6f}\n{b:.6f}\n{e:.6f}\n{nw[0] + a / 2:.3f}\n{nw[1] + e / 2:.3f}\n",
         encoding="utf-8",
     )
+
+
+def toned(
+    source: Path,
+    *,
+    grey: bool,
+    veil: float,
+    keep: Sequence[Sequence[tuple[float, float]]] = (),
+) -> Path:
+    """The tile toned for a theme: in greyscale where ``grey``, washed back
+    toward white by ``veil`` (0 leaves it, 1 is white), with the polygons in
+    ``keep`` -- the site, in pixel coordinates of the tile -- left in their
+    own colours.
+
+    Written beside the source as ``<name>-<tone>.jpg`` and reused on the next
+    run while the source is no newer; the source itself is never touched, so
+    the world file beside it stays true. Pillow does the work, and a tile it
+    cannot read is returned as it is, which costs the sheet its tone and not
+    its photo.
+    """
+    tone = f"{'grey' if grey else 'colour'}{round(veil * 100):02d}"
+    if not grey and veil <= 0.0:
+        return source
+    target = source.with_name(f"{source.stem}-{tone}{source.suffix}")
+    try:
+        if target.is_file() and target.stat().st_mtime >= source.stat().st_mtime:
+            return target
+        from PIL import Image, ImageDraw
+
+        with Image.open(source) as opened:
+            image = opened.convert("RGB")
+        toned_image = image.convert("L").convert("RGB") if grey else image
+        if veil > 0.0:
+            white = Image.new("RGB", image.size, (255, 255, 255))
+            toned_image = Image.blend(toned_image, white, max(0.0, min(1.0, veil)))
+        if keep:
+            mask = Image.new("L", image.size, 0)
+            draw = ImageDraw.Draw(mask)
+            for ring in keep:
+                points = [(float(x), float(y)) for x, y in ring]
+                if len(points) >= 3:
+                    draw.polygon(points, fill=255)
+            toned_image = Image.composite(image, toned_image, mask)
+        toned_image.save(target, "JPEG", quality=88)
+    except Exception:  # any failure keeps the photo as it is
+        return source
+    return target

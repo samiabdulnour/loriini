@@ -211,7 +211,9 @@ def test_the_site_can_be_squared_to_its_long_boundary_and_set_on_a_corner() -> N
 def test_the_context_drawing_carries_the_legends_colours_and_the_site_on_top() -> None:
     bundle = context_bundle()
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    drawing = context_drawing(bundle, frame)
+    # The office's own legend, as the sheets were first drawn: the theme the
+    # colours below are read off. The others are checked in test_site_theme.
+    drawing = context_drawing(bundle, frame, theme="oatley")
 
     zoning = [f for f in drawing.fills if "(R3)" in f.element_id or "(DM)" in f.element_id]
     assert [f.colour for f in zoning] == ["#f7c1bd"], (
@@ -294,7 +296,7 @@ def site_bundle() -> SiteBundle:
 
 def test_the_site_drawing_fills_the_neighbouring_buildings() -> None:
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    drawing = site_drawing(site_bundle(), frame)
+    drawing = site_drawing(site_bundle(), frame, theme="oatley")
     masses = [
         f for f in drawing.fills if f.layer.endswith(".Context") and f.element_id == "SA BUILDINGS"
     ]
@@ -312,7 +314,7 @@ def test_the_site_drawing_fills_the_neighbouring_buildings() -> None:
 
 def test_the_site_drawing_dimensions_levels_and_orients_the_site() -> None:
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    drawing = site_drawing(site_bundle(), frame)
+    drawing = site_drawing(site_bundle(), frame, theme="oatley")
     texts = [t.text for t in drawing.texts]
 
     dimensions = [
@@ -500,6 +502,7 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
                             context_drawing(
                                 context_bundle(),
                                 frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site"),
+                                theme="oatley",
                             ).layers
                         )
                     ),
@@ -546,7 +549,7 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
         }
     )
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    report = draw_context(connection, context_bundle(), frame, view=False)
+    report = draw_context(connection, context_bundle(), frame, view=False, theme="oatley")
 
     commands = transport_.commands()
     assert (
