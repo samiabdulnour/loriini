@@ -666,6 +666,27 @@ class SiteLook:
     wind_pen: str = "#2f9fd6"
     climate_ink: str = "#111111"
     """The winds' and the suns' words."""
+    tree_fill: str = "#7dbb57"
+    """A tree's canopy, and its edge and trunk."""
+    tree_edge: str = "#4e8c33"
+    tree_trunk: str = "#2f5e20"
+    tree_opacity: float = 1.0
+    """How strong the canopy is: on paper the fill is blended over white at
+    it; over the photograph the canopy is a wash whatever it is."""
+    park_fill: str = "#9b5b6e"
+    """Kerbside parking, and its ink: the bays at ``park_opacity``, the
+    hatched zone at ``park_zone_opacity`` under hatch lines in the ink."""
+    park_ink: str = "#7a3c50"
+    park_opacity: float = 1.0
+    park_zone_opacity: float = 0.18
+    quiet: str = "#c2c2bc"
+    """A building whose zone has no colour, or that stands on the site."""
+    contour_weight_mm: float | None = None
+    traffic_ink: str | None = None
+    """The one-way and lane arrows; the base theme's road ink where unset."""
+    rail: bool = True
+    """The railway's own line on the sheet. The generator draws none on the
+    site sheet: the photograph shows the track and the noise band runs beside it."""
     noise: Literal["centre", "band", "zigzag"] = "centre"
     """Noise beside the busy roads and the railway: a zigzag on the road's
     own line, as the sheets were first drawn; or, as the generator draws it,
@@ -699,12 +720,31 @@ OATLEY_LOOK = SiteLook()
 
 CLIMATE_GREY = "#6f7377"
 
+#: What the generator's site sheet draws in the same colours whatever the
+#: theme (``siteSheet.ts``): the trees in Flamingo's park teal at 38%, the
+#: parking in its plum, the muted building, contours at 0.6 mm, no railway
+#: line. Oatley keeps the colours these sheets were first drawn in.
+GENERATOR_SITE = {
+    "tree_fill": TEAL,
+    "tree_edge": TEAL_INK,
+    "tree_trunk": TEAL_INK,
+    "tree_opacity": 0.38,
+    "park_fill": "#9b5b6e",
+    "park_ink": "#7a3c50",
+    "park_opacity": 0.35,
+    "park_zone_opacity": 0.18,
+    "quiet": "#d9d9d6",
+    "contour_weight_mm": 0.6,
+    "rail": False,
+}
+
 # Heron: the aerial in grey outside the site, the zones hatched and tinted in
 # Heron's palette, the site, its levels and boundary dimensions in Heron's
 # red, the fall in its slate; the climate drawn quietly -- the sun, its path
 # and the winds in one grey, the contours a lighter one; the neighbours
 # white in a fine outline. Every word a fifth larger.
 HERON_LOOK = SiteLook(
+    **GENERATOR_SITE,  # type: ignore[arg-type]
     ground="aerial",
     aerial="grey",
     veil=0.55,
@@ -727,7 +767,7 @@ HERON_LOOK = SiteLook(
     street_ink="#ffffff",
     street_labels="plain",
     lot_ink="#ffffff",
-    lot_width_mm=0.45,
+    lot_width_mm=0.7,
     sun="crown",
     sun_pen=CLIMATE_GREY,
     sun_fill="#ffffff",
@@ -737,6 +777,7 @@ HERON_LOOK = SiteLook(
     wind="strands",
     wind_pen=CLIMATE_GREY,
     climate_ink=CLIMATE_GREY,
+    traffic_ink="#ffffff",
     noise="band",
     noise_pen="#3f6fc2",
 )
@@ -748,6 +789,7 @@ HERON_LOOK = SiteLook(
 # in black straight on the map; the sun, the winds and the views one black
 # circle about the site.
 CANARY_LOOK = SiteLook(
+    **GENERATOR_SITE,  # type: ignore[arg-type]
     ground="aerial",
     aerial="grey",
     veil=0.36,
@@ -771,7 +813,7 @@ CANARY_LOOK = SiteLook(
     street_ink="#1c1c1c",
     street_labels="plain",
     lot_ink="#ffffff",
-    lot_width_mm=0.45,
+    lot_width_mm=0.7,
     sun="circle",
     sun_pen="#1c1c1c",
     sun_fill="#ffffff",
@@ -780,6 +822,7 @@ CANARY_LOOK = SiteLook(
     wind="circle",
     wind_pen="#1c1c1c",
     climate_ink="#1c1c1c",
+    traffic_ink="#ffffff",
     noise="zigzag",
     noise_pen=NAVY,
     parking="hatch",
@@ -792,6 +835,7 @@ CANARY_LOOK = SiteLook(
 # crescent in warm yellow with the small rayed sun at each rise and set, each
 # wind a blue crescent over the quarter it blows from with white arrows on it.
 KINGFISHER_LOOK = SiteLook(
+    **GENERATOR_SITE,  # type: ignore[arg-type]
     ground="paper",
     aerial="colour",
     veil=0.0,
@@ -813,7 +857,7 @@ KINGFISHER_LOOK = SiteLook(
     street_ink="#e39a6f",
     street_labels="plain",
     lot_ink="#ffffff",
-    lot_width_mm=0.45,
+    lot_width_mm=0.7,
     sun="band",
     sun_pen="#f2c200",
     sun_fill="#f5a800",
@@ -843,9 +887,10 @@ FLAMINGO_LOOK = replace(
     level_ink=CORAL,
     street_ink="#5f9a58",
     buildings="white",
-    building_edge_mm=0.8,
-    lot_ink=GREY_INK,
-    lot_width_mm=0.13,
+    building_edge_mm=1.5,
+    # The road grey at 60%, 0.3 mm: the generator's lot ink and opacity.
+    lot_ink=blend(GREY_INK, PAPER, 0.6),
+    lot_width_mm=0.3,
     neighbour_ink="#5f9a58",
     sun="drawn",
     sun_pen="#f5b400",
@@ -857,6 +902,7 @@ FLAMINGO_LOOK = replace(
     climate_ink="#3d8fd1",
     marks_fill="#fcddd4",
     marks_edge="#5ba8e1",
+    wind_band="#5ba8e1",
 )
 
 SITE_THEMES: tuple[SiteTheme, ...] = (
@@ -889,7 +935,7 @@ SITE_THEMES: tuple[SiteTheme, ...] = (
         "Canary",
         "the office classic in the context Canary's colours: a grey aerial with the zones "
         "in the ePlanning colours, one black circle for the sun and the winds",
-        "canary",
+        "flamingo",
         CANARY_LOOK,
     ),
     SiteTheme(

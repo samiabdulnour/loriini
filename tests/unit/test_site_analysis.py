@@ -539,6 +539,7 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
                 },
             ),
             "CreateLayers": {"success": True},
+            "CreatePenTables": {"attributeIds": [{"attributeId": {"guid": "PENS"}}]},
             "CreateFills": {"success": True, "elements": [{"guid": "H"}]},
             "CreatePolylines": {"elements": [{"elementId": {"guid": "P"}}]},
             "CreateTexts": {"success": True, "elements": [{"guid": "T"}]},
@@ -580,7 +581,16 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
     ]
     assert any(line.get("lineTypeIndex") == 2 for line in lines), "the site outline is dashed"
     site_line = next(line for line in lines if line.get("penWeightMm") == 0.9)
-    assert site_line["linePenIndex"] == 5, "the site's red takes the nearest pen"
+    # The sheet's own pen table carries the site's red exactly, in a pen of
+    # its own: not the nearest pen of the office's table (D139).
+    (table,) = transport_.parameters_for("CreatePenTables")["penTableDataArray"]
+    assert table["name"] == f"{SS} {CONTEXT_WORD}" and table["sourceAttributeId"]
+    pens = {pen["index"]: pen for pen in table["pens"]}
+    assert site_line["linePenIndex"] in pens and site_line["linePenIndex"] >= 136
+    assert pens[site_line["linePenIndex"]]["color"] == pytest.approx(
+        {"red": 0xE3 / 255, "green": 0x06 / 255, "blue": 0x13 / 255}
+    )
+    assert "isActiveForModel" not in table, "never made the model's table"
     texts = [t for call in transport_.all_parameters_for("CreateTexts") for t in call["texts"]]
     site_text = next(t for t in texts if t["text"] == "KOGARAH")
     assert site_text["justification"] == "Center" and site_text["anchor"] == "MiddleMiddle"

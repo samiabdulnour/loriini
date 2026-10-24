@@ -124,6 +124,27 @@ Fonts are not themed: the add-on's `CreateTexts` takes no face, so a text
 is in the Text tool's default. The generator's Arial Narrow and DejaVu are
 a project-template matter.
 
+### Colours, and the sheets' own pens
+
+A fill carries its colour as an RGB, but a line, a fill's contour and a text
+take a *pen*, and the nearest pen of an office's table is rarely the colour
+meant: measured on the first run, every theme's pens were off, by up to 54
+colour-difference units (Heron's slate fall arrow came out a light blue). So
+each sheet makes a **pen table of its own**, named for the sheet
+(`17 | Context Analysis`, `17 | Site Analysis`): the model's active table with
+every colour that sheet draws a pen in written exactly into its top pens,
+255 downward, the most used first. The sheet's view is set to it, so the
+view and the layout show the colours meant; the worksheet opened on its own
+shows the project's active table, as any worksheet does. A sheet's view shows
+only the tool's layers, so the pens it overwrites mean nothing else there,
+and the table is never made active for the model or for layouts.
+
+The legend on the layout takes no pens at all: a layout element draws in the
+layouts' pen table, which is every title block's, so the legend's lines are
+drawn as thin fills of their exact colour, a contour with a colour of its own
+as its line, and every fill's own contour as a white hairline the paper hides.
+Its texts are black and white, which every pen table has.
+
 ### Numbered places
 
 In the four site-analyst.com themes the only words on the context sheet's
