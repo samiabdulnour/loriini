@@ -1074,9 +1074,9 @@ def test_a_sheet_says_only_what_the_panel_does_not_say_beside_it(hidden_window: 
     paper = tk.Canvas(hidden_window.root)
     window.draw_sheet(paper, WHOLE_DAY_SHEET, 300, 212)
     texts = _texts(paper)
-    assert "COMMUNAL OPEN SPACE" in texts
+    assert "Communal open space" in texts
     assert not any("21 Jun" in text or "whole day" in text for text in texts), texts
-    assert "Communal open space" not in texts, "the block does not say the title again"
+    assert texts.count("Communal open space") == 1, "the block does not say the title again"
 
     paper = tk.Canvas(hidden_window.root)
     window.draw_sheet(paper, FOUR_HOUR_SHEET, 300, 212)
@@ -1100,11 +1100,12 @@ def test_the_blue_edge_rims_the_whole_sheet(hidden_window: Any) -> None:
 
 
 def test_a_sheet_is_lettered_in_one_style_on_shared_lines(hidden_window: Any) -> None:
-    """One size, one weight, one ink for every word on a miniature: at 300
-    px, three sizes in three greys read as clutter. The scale and the number
-    sit in the block level with the two lines of the sheet's name beside
-    them, and north is at the top of the block, on the block's left edge with
-    the words -- clear of every drawing."""
+    """One size and one weight for every word on a miniature: at 300 px,
+    three sizes read as clutter. Two inks, the way a card is set: the name
+    and the number in ink, the hour and the scale in the hint grey (D136).
+    The scale and the number sit in the block level with the two lines of
+    the sheet's name beside them, the number in the sidebar's chip, and
+    there is no north mark: the master carries one."""
     paper: Any = tk.Canvas(hidden_window.root)
     window.draw_sheet(paper, replace(FOUR_HOUR_SHEET, scale="1:50"), 300, 212)
     block_left = 300 * (1 - 53.0 / window.SHEET_MM_W)
@@ -1112,19 +1113,27 @@ def test_a_sheet_is_lettered_in_one_style_on_shared_lines(hidden_window: Any) ->
     texts = [i for i in items if str(paper.type(i)) == "text"]
 
     assert len({paper.itemcget(i, "font") for i in texts}) == 1, "one size and weight"
-    assert {paper.itemcget(i, "fill") for i in texts} == {theme.INK}, "one ink"
+    assert {paper.itemcget(i, "fill") for i in texts} == {theme.INK, theme.HINT}, "two inks"
 
     def at(text: str) -> Any:
         (found,) = [i for i in texts if paper.itemcget(i, "text") == text]
         return paper.coords(found)
 
+    def ink(text: str) -> str:
+        (found,) = [i for i in texts if paper.itemcget(i, "text") == text]
+        return str(paper.itemcget(found, "fill"))
+
     assert at("1:50")[0] >= block_left and at("SD.01")[0] >= block_left
-    assert at("1:50")[1] == at("SHADOW DIAGRAM")[1], "the scale beside the name"
+    assert at("1:50")[1] == at("Shadow diagram")[1], "the scale beside the name"
     assert at("SD.01")[1] == at("09:00-12:00   (1 of 2)")[1], "the number beside the hours"
+    assert ink("Shadow diagram") == ink("SD.01") == theme.INK
+    assert ink("1:50") == ink("09:00-12:00   (1 of 2)") == theme.HINT, "what is second, in grey"
 
     ring = [i for i in items if str(paper.type(i)) == "oval" and paper.bbox(i)[0] >= block_left]
-    assert len(ring) == 1, "north, in the block"
-    assert paper.bbox(ring[0])[1] < 300 * 20 / window.SHEET_MM_W, "at its top"
+    assert not ring, "no north: the master carries one"
+    (chip,) = paper.find_withtag("chip")
+    assert paper.itemcget(chip, "fill") == theme.ACCENT_TINT, "the number in the sidebar's chip"
+    assert paper.bbox(chip)[0] >= block_left and paper.bbox(chip)[1] < at("SD.01")[1]
     assert not [i for i in texts if paper.itemcget(i, "text") in {"N", "LORIINI"}]
 
 
