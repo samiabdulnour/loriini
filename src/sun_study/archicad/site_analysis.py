@@ -51,10 +51,12 @@ from sun_study.archicad.connection import ArchicadConnection, ArchicadError
 from sun_study.archicad.draw import (
     Pen,
     _looks_like,
+    active_pen_table_id,
     create_texts,
     ensure_layer,
     pen_table,
     place_texts,
+    write_pen_table,
 )
 from sun_study.archicad.layout import (
     MM_PER_M,
@@ -2511,6 +2513,16 @@ def _arrow(
         )
 
 
+def _tint(colour: str, opacity: float, on_paper: bool) -> tuple[str, bool]:
+    """A colour at an opacity as Archicad can draw it: on paper blended over
+    white and solid; over the photograph the colour itself, as a wash."""
+    if opacity >= 1.0:
+        return colour, False
+    if on_paper:
+        return themes.blend(colour, "#ffffff", opacity), False
+    return colour, True
+
+
 def _noise(
     drawing: Drawing,
     bundle: SiteBundle,
@@ -3460,7 +3472,7 @@ def site_drawing(
         contours.append((contour.elevation, points))
         if not look.contours:
             continue
-        drawing.line("Contours", points, colour=look.contour_ink)
+        drawing.line("Contours", points, colour=look.contour_ink, weight_mm=look.contour_weight_mm)
         if len(points) < 3:
             continue
         at = _midpoint(points)
@@ -3479,13 +3491,14 @@ def site_drawing(
     if look.streets == "lines" or (not on_paper and not photo):
         for road in bundle.roads:
             drawing.line("Roads", frame.ring(road.coords), colour=base.road)
-    _rail(
-        drawing,
-        "Roads",
-        [frame.ring(line) for line in (*bundle.rail_lines.train, *bundle.rail_lines.tram)],
-        base,
-        0.5,
-    )
+    if look.rail:
+        _rail(
+            drawing,
+            "Roads",
+            [frame.ring(line) for line in (*bundle.rail_lines.train, *bundle.rail_lines.tram)],
+            base,
+            0.5,
+        )
 
     _noise(drawing, bundle, frame, look, site, centroid)
 
@@ -3503,7 +3516,7 @@ def site_drawing(
             "Traffic",
             (cx - math.cos(angle) * half, cy - math.sin(angle) * half),
             (cx + math.cos(angle) * half, cy + math.sin(angle) * half),
-            colour=base.road,
+            colour=look.traffic_ink or base.road,
             size_m=mm(2.2),
         )
 
@@ -3531,7 +3544,9 @@ def site_drawing(
             at = (spot[0] + across[0] * offset, spot[1] + across[1] * offset)
             tail = (at[0] - math.cos(angle) * mm(4) * up, at[1] - math.sin(angle) * mm(4) * up)
             head = (at[0] + math.cos(angle) * mm(4) * up, at[1] + math.sin(angle) * mm(4) * up)
-            _arrow(drawing, "Traffic", tail, head, colour=base.road, size_m=mm(1.8))
+            _arrow(
+                drawing, "Traffic", tail, head, colour=look.traffic_ink or base.road, size_m=mm(1.8)
+            )
 
     for utility in bundle.furniture.utilities:
         drawing.line(
@@ -3556,11 +3571,23 @@ def site_drawing(
                     (ax + nx * (off + width), ay + ny * (off + width)),
                 ]
                 if look.parking == "hatch":
+                    # The generator's zone: the plum faint under lines of its ink.
+                    colour, wash = _tint(look.park_fill, look.park_zone_opacity, on_paper)
                     drawing.fill(
-                        "Parking", [bay], base.ink, contour=base.ink, hatch=True, weight_mm=0.2
+                        "Parking",
+                        [bay],
+                        colour,
+                        contour=look.park_ink,
+                        wash=wash,
+                        weight_mm=0.35,
+                        texture="lines",
+                        texture_colour=look.park_ink,
                     )
                 else:
-                    drawing.fill("Parking", [bay], PARKING_PLUM, contour="#7a3c50")
+                    colour, wash = _tint(look.park_fill, look.park_opacity, on_paper)
+                    drawing.fill(
+                        "Parking", [bay], colour, contour=look.park_ink, wash=wash, weight_mm=0.3
+                    )
 
     for coords in bundle.furniture.driveways:
         points = frame.ring(coords)
@@ -3597,7 +3624,7 @@ def site_drawing(
     # own roofs; filled in the zone family's strong colour with a white edge;
     # or white in a heavy outline of the family's ink, finely hatched in it,
     # so it stands clear of its tinted ground and of the white roads alike.
-    quiet = "#c2c2bc"
+    quiet = look.quiet
     for building in bundle.furniture.buildings:
         if len(building.ring) < 3:
             continue
@@ -3642,23 +3669,24 @@ def site_drawing(
     # find, and never so big that a register's typing error covers the sheet.
     for tree in bundle.furniture.trees:
         at = frame.project(tree.lon, tree.lat)
+        canopy, wash = _tint(look.tree_fill, look.tree_opacity, on_paper)
         drawing.circle(
             "Trees",
             at,
             min(mm(45), max(mm(1.6), tree.canopy_m / 2.0)),
-            colour=TREE_EDGE,
-            fill=TREE_GREEN,
-            wash=True,
+            colour=look.tree_edge,
+            fill=canopy,
+            wash=wash or look.tree_opacity >= 1.0,
             dashed=tree.canopy_from == NOMINAL,
-            weight_mm=0.25,
+            weight_mm=0.35 if look.tree_opacity < 1.0 else 0.25,
             element_id=_tree_id(tree),
         )
         drawing.circle(
             "Trees",
             at,
             mm(0.55),
-            colour=TRUNK_GREEN,
-            fill=TRUNK_GREEN,
+            colour=look.tree_trunk,
+            fill=look.tree_trunk,
             segments=12,
             element_id="SA TREE TRUNK",
         )
@@ -3707,17 +3735,14 @@ def site_drawing(
             drawing.text(
                 "Future", "\n".join(lines), spot, height_mm=NEIGHBOUR_MM, colour=FUTURE_MAGENTA
             )
-    solid = base.roundel == "solid"
+    # A white disc in a blue ring with a blue B, whatever the theme: the
+    # generator's site sheet and the sheets as first drawn agree on this one.
     for stop in bundle.bus_stops:
         at = frame.project(stop.lon, stop.lat)
-        if solid:
-            drawing.circle("Bus stops", at, mm(4), colour=base.transit, fill=base.transit)
-            drawing.text(
-                "Bus stops", "B", (at[0], at[1] - mm(1.6)), height_mm=LABEL_MM, colour="#ffffff"
-            )
-        else:
-            drawing.circle("Bus stops", at, mm(4), colour=base.transit, fill="#ffffff")
-            drawing.text("Bus stops", "B", (at[0], at[1] - mm(1.6)), height_mm=LABEL_MM)
+        drawing.circle("Bus stops", at, mm(4), colour=BUS_BLUE, fill="#ffffff", weight_mm=0.9)
+        drawing.text(
+            "Bus stops", "B", (at[0], at[1] - mm(1.6)), height_mm=LABEL_MM, colour=BUS_BLUE
+        )
         placer.reserve(at[0], at[1], mm(8), mm(8))
 
     # Neighbours: number, storeys where known, zone -- within 70 m of the boundary.
@@ -3922,23 +3947,39 @@ def site_drawing(
     )
     rows += zone_rows
     if bundle.furniture.parking_lanes:
+        zone_colour, _ = _tint(look.park_fill, look.park_zone_opacity, True)
+        bay_colour, _ = _tint(look.park_fill, look.park_opacity, True)
         rows.append(
-            Row("hatch", base.ink, base.ink, "STREET PARKING ZONE")
+            Row("fill", zone_colour, look.park_ink, "STREET PARKING ZONE", "lines", look.park_ink)
             if look.parking == "hatch"
-            else Row("fill", PARKING_PLUM, "#7a3c50", "STREET PARKING ZONE")
+            else Row("fill", bay_colour, look.park_ink, "STREET PARKING ZONE")
         )
     if bundle.furniture.driveways:
         rows.append(Row("fill", DRIVEWAY_YELLOW, "#c9bb00", "VEHICULAR ACCESS"))
     if any(r.lanes for r in bundle.roads) or bundle.furniture.oneway_roads:
-        rows.append(Row("line", base.road, None, "TRAFFIC DIRECTION AND LANES"))
+        rows.append(
+            Row(
+                "line",
+                "#555555" if (look.traffic_ink or "").lower() == "#ffffff" else base.road,
+                None,
+                "TRAFFIC DIRECTION AND LANES",
+            )
+        )
     if any(tree.canopy_from != NOMINAL for tree in bundle.furniture.trees):
-        rows.append(Row("wash", TREE_GREEN, TREE_EDGE, "TREE, CANOPY TO SCALE"))
+        rows.append(
+            Row(
+                "fill",
+                _tint(look.tree_fill, 0.45, True)[0],
+                look.tree_edge,
+                "TREE, CANOPY TO SCALE",
+            )
+        )
     if any(tree.canopy_from == NOMINAL for tree in bundle.furniture.trees):
         rows.append(
             Row(
-                "dashed wash",
-                TREE_GREEN,
-                TREE_EDGE,
+                "dashed fill",
+                _tint(look.tree_fill, 0.45, True)[0],
+                look.tree_edge,
                 f"TREE, SIZE NOT RECORDED ({NOMINAL_CANOPY_M:g} m SHOWN)",
             )
         )
@@ -3949,15 +3990,7 @@ def site_drawing(
     if bundle.furniture.hydrants:
         rows.append(Row("fill", HYDRANT_BLUE, None, "HYDRANT"))
     if bundle.bus_stops:
-        rows.append(
-            Row(
-                "disc" if base.roundel == "solid" else "ring",
-                base.transit,
-                None,
-                "BUS STOPS",
-                mark="B",
-            )
-        )
+        rows.append(Row("ring", BUS_BLUE, None, "BUS STOPS", mark="B"))
     if bundle.furniture.buildings:
         if look.buildings == "mass":
             rows.append(Row("fill", BUILDING_GREY, base.road, "BUILDING FOOTPRINTS (OSM)"))
@@ -4320,12 +4353,16 @@ class _Attributes:
     """An empty fill with a contour: what a drawn hatch sits in."""
     dotted: int | None = None
     """A dotted line type; the dashed one stands in where a project has none."""
+    custom: dict[str, int] = field(default_factory=dict)
+    """The sheet's own pens, by colour: the pen table made for it (D139)."""
 
     @property
     def dotted_or_dashed(self) -> int | None:
         return self.dotted if self.dotted is not None else self.dashed
 
     def pen(self, colour: str) -> int | None:
+        if colour.lower() in self.custom:
+            return self.custom[colour.lower()]
         if not self.pens:
             return None
         r, g, b = curate.rgb(colour)
@@ -4357,9 +4394,9 @@ def attribute_index(connection: ArchicadConnection, kind: str, wanted: Sequence[
     return None
 
 
-def _attributes(connection: ArchicadConnection) -> _Attributes:
+def _attributes(connection: ArchicadConnection, *, layout: bool = False) -> _Attributes:
     try:
-        pens = pen_table(connection)
+        pens = pen_table(connection, layout=layout)
     except ArchicadError:
         pens = ()
     return _Attributes(
@@ -4372,6 +4409,66 @@ def _attributes(connection: ArchicadConnection) -> _Attributes:
         dotted=attribute_index(connection, "Line", ("Dotted", "Dotted Line", "Dot")),
         pens=pens,
     )
+
+
+#: The pens a sheet's own pen table writes its colours into, from the top
+#: down: a sheet's views show only the tool's layers, so these pens mean
+#: nothing else there, and the low ones an office leans on are left alone.
+CUSTOM_PENS = tuple(range(255, 135, -1))
+
+
+def _pen_colours(drawing: Drawing) -> list[str]:
+    """Every colour the drawing asks a pen for -- its lines, its texts, its
+    fills' contours -- the most used first."""
+    count: dict[str, int] = {}
+    for line in drawing.lines:
+        count[line.colour.lower()] = count.get(line.colour.lower(), 0) + len(line.points)
+    for text in drawing.texts:
+        count[text.colour.lower()] = count.get(text.colour.lower(), 0) + 1
+    for fill in drawing.fills:
+        key = (fill.contour or fill.colour).lower()
+        count[key] = count.get(key, 0) + 1
+    return sorted(count, key=lambda colour: (-count[colour], colour))
+
+
+def _sheet_pens(
+    connection: ArchicadConnection, drawing: Drawing, name: str
+) -> tuple[dict[str, int], str | None, str | None]:
+    """The sheet's own pen table: the model's active one with every colour
+    the drawing draws a pen in written over its top pens, exactly, under the
+    sheet's own name. Returns the colours' pens, the table's name and a note.
+
+    Lines, contours and texts take a pen, not a colour, and the nearest pen
+    of an office's table was 15 to 54 colour-difference units off the colour
+    meant -- Heron's slate fall arrow came out a light blue (D139). A fill's
+    own colour is an RGB and needs none of this.
+    """
+    colours = _pen_colours(drawing)
+    chosen = colours[: len(CUSTOM_PENS)]
+    pens = [
+        (index, tuple(round(v * 255) for v in curate.rgb(colour)), f"Loriini {colour}")
+        for index, colour in zip(CUSTOM_PENS, chosen, strict=False)
+    ]
+    try:
+        write_pen_table(
+            connection,
+            name,
+            [(index, (rgb[0], rgb[1], rgb[2]), text) for index, rgb, text in pens],
+            source_id=active_pen_table_id(connection),
+        )
+    except ArchicadError as error:
+        return (
+            {},
+            None,
+            f"the sheet's own pen table was not made, so its lines take the nearest pens: {error}",
+        )
+    note = None
+    if len(colours) > len(chosen):
+        note = (
+            f"{len(colours) - len(chosen)} of the sheet's {len(colours)} pen colours did not "
+            f"fit its pen table and take the nearest pen."
+        )
+    return {colour: index for index, colour in zip(CUSTOM_PENS, chosen, strict=False)}, name, note
 
 
 class WorksheetNotEnteredError(ArchicadError):
@@ -4733,7 +4830,12 @@ def _flush(
 
 
 def _view_of(
-    connection: ArchicadConnection, navigator_id: str, name: str, drawing: Drawing
+    connection: ArchicadConnection,
+    navigator_id: str,
+    name: str,
+    drawing: Drawing,
+    *,
+    pen_set: str | None = None,
 ) -> StoreyView | None:
     """A view of the worksheet at the sheet's scale, showing the drawing's layers."""
     if not navigator_id:
@@ -4755,7 +4857,9 @@ def _view_of(
     # how the first live site sheet came out in one grey. And the office's
     # pen table for these sheets, when it has one.
     settings: dict[str, Any] = {"graphicOverrideCombination": NO_OVERRIDES}
-    pen_set = _site_pen_set(connection)
+    # The sheet's own pens, which carry its colours exactly; failing those,
+    # the office's table for these sheets, when it has one.
+    pen_set = pen_set or _site_pen_set(connection)
     if pen_set:
         settings["penSetName"] = pen_set
     for attempt in (
@@ -4921,6 +5025,75 @@ def place_on_layout(
     return report.layout_name
 
 
+def _line_fills(line: Line, mm: Callable[[float], float]) -> list[list[Point]]:
+    """A line as the rectangles that draw it, ``weight_mm`` wide: dashes of
+    2.5 mm with 1.2 mm between, dots of 0.5 mm every 1.2 mm, or one per
+    segment, each run on half its width at both ends so the joins close."""
+    half = mm(max(line.weight_mm or 0.18, 0.13)) / 2.0
+    pieces: list[list[Point]] = []
+    on, off = (
+        (mm(2.5), mm(1.2)) if line.dashed else (mm(0.5), mm(0.7)) if line.dotted else (0.0, 0.0)
+    )
+    for (ax, ay), (bx, by) in pairwise(line.points):
+        length = math.hypot(bx - ax, by - ay)
+        if length <= 0:
+            continue
+        ux, uy = (bx - ax) / length, (by - ay) / length
+        nx, ny = -uy, ux
+        spans = [(0.0, length)] if on <= 0 else []
+        start = 0.0
+        while on > 0 and start < length:
+            spans.append((start, min(length, start + on)))
+            start += on + off
+        for a, b in spans:
+            a0, b0 = a - (half if on <= 0 else 0.0), b + (half if on <= 0 else 0.0)
+            p0 = (ax + ux * a0, ay + uy * a0)
+            p1 = (ax + ux * b0, ay + uy * b0)
+            pieces.append(
+                [
+                    (p0[0] + nx * half, p0[1] + ny * half),
+                    (p1[0] + nx * half, p1[1] + ny * half),
+                    (p1[0] - nx * half, p1[1] - ny * half),
+                    (p0[0] - nx * half, p0[1] - ny * half),
+                ]
+            )
+    return pieces
+
+
+def _in_fills(paper: Drawing) -> Drawing:
+    """A drawing on paper with every colour in a fill's RGB, none in a pen.
+
+    A layout's own elements take the pen table active for layouts, which is
+    every title block's, so the tool writes no pens of its own into it:
+    each line becomes the thin fills that draw it, a contour that is a colour
+    of its own becomes its line, and every fill's own contour is a hairline
+    of the layout's white, which the white paper hides (D139)."""
+    out = replace(paper, fills=[], lines=[], texts=list(paper.texts), figures=[])
+    for fill in paper.fills:
+        own = fill.contour and fill.contour.lower() != fill.colour.lower()
+        out.fills.append(replace(fill, contour="#ffffff", weight_mm=0.01, dashed=False))
+        if own:
+            for ring in fill.rings:
+                edge = Line(
+                    fill.layer,
+                    [*ring, ring[0]],
+                    fill.contour or fill.colour,
+                    fill.dashed,
+                    fill.weight_mm or 0.18,
+                    part=fill.part,
+                )
+                out.lines.append(edge)
+    for line in [*paper.lines, *out.lines]:
+        for piece in _line_fills(line, paper.mm):
+            out.fills.append(
+                Fill(
+                    line.layer, [piece], line.colour, "#ffffff", "", weight_mm=0.01, part=line.part
+                )
+            )
+    out.lines = []
+    return out
+
+
 def _legend_on_layout(
     connection: ArchicadConnection,
     database_id: str,
@@ -4942,7 +5115,8 @@ def _legend_on_layout(
         raise ArchicadError("the layout could not be entered to draw on")
     paper = Drawing(1.0, drawing.word)
     _legend(paper, rows, (left, y1 - 12.0 / MM_PER_M), title=title, width_mm=width_mm)
-    _flush_on_paper(connection, paper, _attributes(connection))
+    attributes = _attributes(connection, layout=True)
+    _flush_on_paper(connection, _in_fills(paper), attributes)
 
 
 def _draw(
@@ -4972,6 +5146,8 @@ def _draw(
         else:
             drawing = drawing.without(frozenset({"Legend"}))
     attributes = _attributes(connection)
+    custom, pen_set, pen_note = _sheet_pens(connection, drawing, name)
+    attributes = replace(attributes, custom=custom)
     notes: list[str] = []
     if attributes.solid_fill is None:
         notes.append(
@@ -4979,8 +5155,10 @@ def _draw(
         )
     if attributes.dashed is None:
         notes.append("no line type named 'Dashed'; dashed lines are drawn solid.")
-    if not attributes.pens:
+    if not attributes.pens and not custom:
         notes.append("the pen table could not be read; lines take the tool's current pen.")
+    if pen_note:
+        notes.append(pen_note)
 
     database_id, navigator_id, reused = ensure_worksheet(connection, name, wait_s=wait_s, say=say)
     cleared = 0
@@ -5032,7 +5210,7 @@ def _draw(
     layout_name = ""
     if view:
         try:
-            made_view = _view_of(connection, navigator_id, name, drawing)
+            made_view = _view_of(connection, navigator_id, name, drawing, pen_set=pen_set)
             view_name = made_view.name if made_view else ""
         except ArchicadError as error:
             notes.append(f"the worksheet is drawn; its view is not: {error}")

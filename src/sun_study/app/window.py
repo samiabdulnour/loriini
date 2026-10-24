@@ -145,7 +145,7 @@ FIT_WORDS: dict[str, str] = {
 
 #: The house styles the sheets are drawn in, named as the site-analysis
 #: site's STYLE row names them -- Flamingo, Kingfisher, Heron, Canary, a bird
-#: each, the site sheet's in the context sheet's order -- and Oatley, the
+#: each, the site sheet's in the context sheet's order -- and FUSE, the
 #: office's own legend, after them; and the ``--theme`` / ``--site-theme``
 #: each sends. What each one looks like is the row's tooltip.
 CONTEXT_STYLES: dict[str, str] = {t.label: t.id for t in site_theme.THEMES}
@@ -154,6 +154,19 @@ SITE_STYLES: dict[str, str] = {
     for t in site_theme.THEMES
     if site_theme.is_site_theme(t.id)
 }
+
+
+def _style_id(label: str, *, site: bool) -> str:
+    """The theme a style row names, by its label or by a name it had before:
+    a preset saved when FUSE was Oatley still says "Oatley"."""
+    styles = SITE_STYLES if site else CONTEXT_STYLES
+    if label in styles:
+        return styles[label]
+    known = site_theme.is_site_theme(label) if site else site_theme.is_theme(label)
+    if not known:
+        return ""
+    return site_theme.site_theme(label).id if site else site_theme.theme(label).id
+
 
 #: What RL project zero stands for when the 3D context is placed, and the
 #: ``--datum`` each sends; the first is the default. Anything else typed in
@@ -5517,7 +5530,7 @@ class Window:
             "palette, pale zone grounds and a white cadastre. Heron is the "
             "office sheet over a grey aerial, white lots and lettering. Canary "
             "is Heron with the zoning in the NSW ePlanning colours, keyed by "
-            "zone code. Oatley is the office's own legend over the aerial, as "
+            "zone code. FUSE is the office's own legend over the aerial, as "
             "these sheets were first drawn.",
         )
         self.site_theme.configure(values=list(CONTEXT_STYLES), state="readonly")
@@ -5533,7 +5546,7 @@ class Window:
             "zone's colour, the sun paths as yellow crescents, the winds as "
             "blue ones. Flamingo is on paper with the office's drawn suns and "
             "winds. Canary is the office's classic sheet: one black circle for "
-            "the sun and the winds, the zones in the ePlanning colours. Oatley "
+            "the sun and the winds, the zones in the ePlanning colours. FUSE "
             "is the sheet as it was first drawn.",
         )
         self.site_site_theme.configure(values=list(SITE_STYLES), state="readonly")
@@ -9019,13 +9032,12 @@ class Window:
                 args += ["--keep-location"]
             if self.site_scale.get().strip():
                 args += ["--scale", self.site_scale.get().strip()]
-            if CONTEXT_STYLES.get(self.site_theme.get(), "") not in ("", site_theme.DEFAULT_THEME):
-                args += ["--theme", CONTEXT_STYLES[self.site_theme.get()]]
-            if SITE_STYLES.get(self.site_site_theme.get(), "") not in (
-                "",
-                site_theme.DEFAULT_SITE_THEME,
-            ):
-                args += ["--site-theme", SITE_STYLES[self.site_site_theme.get()]]
+            context_style = _style_id(self.site_theme.get(), site=False)
+            if context_style not in ("", site_theme.DEFAULT_THEME):
+                args += ["--theme", context_style]
+            site_style = _style_id(self.site_site_theme.get(), site=True)
+            if site_style not in ("", site_theme.DEFAULT_SITE_THEME):
+                args += ["--site-theme", site_style]
             # The combobox says it in words; the command takes a keyword.
             at_origin = "origin" in self.site_anchor.get().lower()
             args += ["--anchor", "site" if at_origin else "location"]
