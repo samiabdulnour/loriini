@@ -152,6 +152,7 @@ def test_the_legend_and_the_outline_go_on_the_sheet_where_the_drawings_are(
     texts: list[dict[str, Any]] = []
     monkeypatch.setattr(plan_sheet, "enter_layout", lambda *_a: None)
     monkeypatch.setattr(plan_sheet, "_clear", lambda *_a: None)
+    monkeypatch.setattr(plan_sheet, "_to_the_top", lambda *_a: None)
     monkeypatch.setattr(
         plan_sheet, "layout_sheet", lambda *_a: (LayoutSheet(841.0, 594.0, 10, 10, 10, 10), False)
     )
@@ -181,7 +182,7 @@ def test_the_legend_and_the_outline_go_on_the_sheet_where_the_drawings_are(
         cells=cells,
         window=PlanWindow(-100.0, -100.0, 100.0, 100.0),
         scale=2000.0,
-        rings=[[(0.0, 0.0), (20.0, 0.0), (20.0, 10.0)]],
+        rings=[[(0.0, 0.0), (20.0, 0.0), (20.0, 0.0), (20.0, 10.0), (0.0, 0.0)]],
         outline_pen=20,
         title_block_mm=100.0,
     )
@@ -195,7 +196,8 @@ def test_the_legend_and_the_outline_go_on_the_sheet_where_the_drawings_are(
     first = outlines[0]["contours"][0]["points"]
     assert first[0] == {"x": 0.20, "y": 0.30}, "the model origin at the window centre"
     assert first[1]["x"] == pytest.approx(0.21), "20 m at 1:2000 is 10 mm"
-    assert first[-1] == first[0], "closed"
+    assert len(first) == 3 and first[-1] != first[0], "left open; the add-on closes it"
+    assert all(len(s["contours"][0]["points"]) == 4 for s in swatches), "four corners, open"
     assert outlines[1]["contours"][0]["points"][0]["x"] == pytest.approx(0.42)
     assert all(o["fillIndex"] == 9 and o["contourPen"] == 20 for o in outlines)
     assert all(o["backgroundPen"] == 0 for o in outlines)
@@ -209,6 +211,7 @@ def test_without_a_window_or_a_ring_the_legend_is_drawn_alone(
     project = Project({"CreateFills": lambda given: {"elements": given["fills"]}})
     monkeypatch.setattr(plan_sheet, "enter_layout", lambda *_a: None)
     monkeypatch.setattr(plan_sheet, "_clear", lambda *_a: None)
+    monkeypatch.setattr(plan_sheet, "_to_the_top", lambda *_a: None)
     monkeypatch.setattr(plan_sheet, "layout_sheet", lambda *_a: (LayoutSheet(841.0, 594.0), False))
     monkeypatch.setattr(plan_sheet, "attribute_index", lambda *_a: None)
     monkeypatch.setattr(plan_sheet, "create_texts", lambda *_a, **_k: ([], True))
@@ -242,3 +245,22 @@ def test_the_grid_follows_the_shape_of_what_it_holds() -> None:
     side = min(square[0][2] - square[0][0], square[0][3] - square[0][1])
     narrow = min(strips[0][2] - strips[0][0], strips[0][3] - strips[0][1])
     assert side > narrow * 1.4
+
+
+def test_the_sheets_fills_and_texts_go_to_the_top_level() -> None:
+    """D138: drawn after the drawings, a fill still lands at its tool's level
+    and the outline was under the plan; every fill and text is moved to 14."""
+    project = Project(
+        {
+            "GetElementsByType": lambda given: {
+                "elements": [{"elementId": {"guid": f"{given['elementType']}-1"}}]
+            },
+            "SetDetailsOfElements": {"executionResults": [{"success": True}] * 2},
+        }
+    )
+    plan_sheet._to_the_top(ArchicadConnection(project))
+    (asked,) = project.asked("SetDetailsOfElements")
+    assert asked["elementsWithDetails"] == [
+        {"elementId": {"guid": "Hatch-1"}, "details": {"drawIndex": 14}},
+        {"elementId": {"guid": "Text-1"}, "details": {"drawIndex": 14}},
+    ]

@@ -123,7 +123,31 @@ A run then makes, from the base combination:
   add-on brings them to the front in that order, gives every drawing above
   the lowest a transparent background (`ArrangeDrawings`), and every drawing
   is then redrawn (Tapir's `UpdateDrawings`), since a drawing of a 3D
-  Document keeps showing what its document was until it is.
+  Document keeps showing what its document was until it is;
+- **the whole site in every cell** ([D138](decisions.md)): the run measures
+  the plan extent of the model elements the rows' combinations show and puts
+  each drawing's origin where that window's centre lands in the middle of
+  its cell. With no `--scale`, the plans are drawn at the largest standard
+  scale at which the window fits a cell of the master, and the cells are
+  dealt by the window's shape -- three hours of a square site are two by two,
+  not three tall strips. On the sample project, 421 m square on an A1: 1:2000;
+- **the legend's colours, exactly**: the run makes its own pen set, `15 |
+  Shadow Plans`, a copy of the one the drawings print in (the model's active
+  table, or `--pen-set`) with each row's pen -- the nearest it has -- set to
+  the legend's colour, and every drawing on the sheet prints in it. A drawing
+  of a 3D Document prints in the model's active pen table, not in the pen set
+  its view pins, so it is the drawing that is told. A pen given with
+  `--existing-pen` or `--proposed-pen` keeps its own colour. Archicad before
+  27 cannot make a pen set, and the rows keep the nearest pens, as the run
+  says;
+- **the legend and the site on the sheet**: in the column left of the title
+  block, which the cells keep clear of, *SHADOW LEGEND* and a swatch per row
+  in the colour the drawings print it in, with the legend's words; and the
+  boundary layer's outlines (a layer whose name mentions a boundary: its
+  slabs, fills or polylines) drawn in red over every plan. They go on
+  Archicad's own layer, which nothing hides, are raised to the top display
+  level so the outline lies over the plans, and are cleared and redrawn on
+  every run -- the combined sheet's texts and fills are the run's own.
 
 Why that order makes the split: a document draws the whole shadow of what it
 shows, and on the sheet a drawing is seen only where everything above it
@@ -247,15 +271,8 @@ and 5 are still to be read. In order:
 
 ## What is not here yet
 
-- **The legend and the site outline on the sheets.** The drawings carry
-  their captions; a legend of the rows in their colours, and the site
-  boundary drawn over each drawing, are the next step.
-- **A page the size of the site.** The cells are dealt across the sheet and
-  each drawing is clipped to its cell around the model's origin, so a site
-  wider than a cell at the scale asked for is cut at the cell's edge: on the
-  sample project, three hours across an A1 at 1:1000. A smaller scale
-  (`--scale 2000`) or fewer hours a sheet (`--sheets two`, `each`) is the
-  answer for now.
+- **A legend on the plain set's sheets.** The combined sheets carry one; a
+  plain set, one colour, does not, though its sheets are fitted the same way.
 - **Shadows on a single level.** The 3D window's style can cast vectorial
   shadows onto one level instead of onto every surface; a document's settings
   expose no such choice through the kit, so the plans need the ground in the

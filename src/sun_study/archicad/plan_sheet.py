@@ -365,6 +365,23 @@ def _clear(connection: ArchicadConnection) -> None:
             connection.run_tapir("DeleteElements", {"elements": elements})
 
 
+def _open(ring: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
+    """A ring without its closing point, and without a point repeated in a row.
+
+    The add-on closes every contour itself, and Archicad refuses a fill with a
+    zero-length edge -- which is what a ring that already ends where it began
+    becomes: a slab's ``polygonOutline`` does, and so did the first legend
+    swatch drawn on the sample project, refused with -2130313102 (D138).
+    """
+    points: list[tuple[float, float]] = []
+    for point in ring:
+        if not points or math.dist(point, points[-1]) > 1e-9:
+            points.append(point)
+    while len(points) > 1 and math.dist(points[0], points[-1]) <= 1e-9:
+        points.pop()
+    return points
+
+
 def _rgb(colour: tuple[int, int, int]) -> dict[str, float]:
     return {"red": colour[0] / 255.0, "green": colour[1] / 255.0, "blue": colour[2] / 255.0}
 
@@ -416,12 +433,13 @@ def draw_legend_and_outline(
     ]
     for number, (words, colour) in enumerate(rows, start=1):
         y = top - number * ROW_STEP_MM * MM
+        # Open: the add-on closes every contour itself, and a repeated first
+        # point is a zero-length edge Archicad refuses the fill for.
         box = [
             {"x": left, "y": y - swatch_h},
             {"x": left + swatch_w, "y": y - swatch_h},
             {"x": left + swatch_w, "y": y},
             {"x": left, "y": y},
-            {"x": left, "y": y - swatch_h},
         ]
         fill: dict[str, Any] = {
             "contours": [{"points": box}],
@@ -435,9 +453,16 @@ def draw_legend_and_outline(
         if solid is not None:
             fill["fillIndex"] = solid
         fills.append(fill)
+        # A text is placed by its top-left corner (measured on the sample
+        # project's sheet), so it is set down by half the gap between the
+        # swatch's height and its own to sit level with the swatch.
         texts.append(
             {
-                "coordinate": {"x": left + swatch_w + 4 * MM, "y": y - swatch_h * 0.8, "z": 0.0},
+                "coordinate": {
+                    "x": left + swatch_w + 4 * MM,
+                    "y": y - (swatch_h - TEXT_MM * MM) / 2.0,
+                    "z": 0.0,
+                },
                 "text": words,
                 "height": TEXT_MM * MM,
                 "justification": "Left",
@@ -452,10 +477,11 @@ def draw_legend_and_outline(
             mid_x, mid_y = (x0 + x1) / 2.0, (y0 + y1) / 2.0
             for ring in rings:
                 points = [
-                    {"x": mid_x + (x - cx) / scale, "y": mid_y + (y - cy) / scale} for x, y in ring
+                    {"x": mid_x + (x - cx) / scale, "y": mid_y + (y - cy) / scale}
+                    for x, y in _open(ring)
                 ]
-                if points[0] != points[-1]:
-                    points.append(points[0])
+                if len(points) < 3:
+                    continue
                 fills.append(
                     {
                         "contours": [{"points": points}],
@@ -471,7 +497,33 @@ def draw_legend_and_outline(
     if fills:
         connection.run_loriini("CreateFills", {"fills": fills})
     create_texts(connection, texts, layer_index=ARCHICAD_LAYER_INDEX, heights_in_metres=True)
+    _to_the_top(connection)
     return len(rows), outlines
+
+
+#: The highest display level. The drawings are brought to the front as they
+#: are stacked, which puts them at this level; a fill drawn on the sheet after
+#: them still lands at its tool's own level, 6, and the site outline drawn
+#: over a plan was under the plan's opaque lowest drawing, invisible (D138).
+TOP_LEVEL = 14
+
+
+def _to_the_top(connection: ArchicadConnection) -> None:
+    """Every fill and text on the current layout to the top display level,
+    after the drawings, so the outline lies over the plans. Tapir moves an
+    element a level at a time to the one asked for; moved last, these sit
+    above the drawings already there."""
+    asked: list[dict[str, Any]] = []
+    for kind in ("Hatch", "Text"):
+        found = connection.run_tapir("GetElementsByType", {"elementType": kind})
+        elements = found.get("elements") if isinstance(found, dict) else None
+        asked += [
+            {"elementId": element["elementId"], "details": {"drawIndex": TOP_LEVEL}}
+            for element in elements or []
+            if isinstance(element, dict) and "elementId" in element
+        ]
+    if asked:
+        connection.run_tapir("SetDetailsOfElements", {"elementsWithDetails": asked})
 
 
 def nearest_pen(pens: Sequence[Pen], rgb: tuple[int, int, int]) -> int | None:

@@ -135,7 +135,10 @@ takes the legend's rows -- sources that accumulate, scenarios that are
 compared -- every row of an hour in one drawing on a combined sheet, each in
 its colour where it adds ([D137](decisions.md)). Run live the same evening on
 the sample project: the neighbours and the tower, three hours on one A1, in
-18 s. Next: the legend and the site outline on the combined sheet.
+18 s. Then the rest of the sheet, the same evening ([D138](decisions.md)):
+the whole site fitted to every cell at a scale worked out from the model,
+the drawings printed in a pen set of the run's own carrying the legend's
+exact colours, and the legend and the site outline drawn on the sheet.
 
 ## R2 — An agent that operates Loriini
 

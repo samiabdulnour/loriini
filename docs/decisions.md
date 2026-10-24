@@ -5309,3 +5309,64 @@ additional shadow showed south-west at 9, south at noon and south-east at
 size or scale that fits a wide site, since each drawing is clipped to its
 cell; and the colours, which are the nearest pens in the project's table --
 on the sample project the legend's pale grey matched a pale green.
+
+### D138 — The combined sheet: the site fitted, the legend's colours, the legend and the site on it
+
+Asked 24 October 2026, after D137's first combined sheet, which left three
+things the D137 entry named: *"well continue, to correct the rest"*.
+
+**The site fitted.** Each drawing is placed by its own origin at its cell's
+centre and clipped to the cell; a 420 m site at 1:1000 in a 230 mm cell was
+cut at both edges. The run now measures the plan extent of everything the
+rows show -- read-only, from the 2D bounding boxes of the model elements on
+the layers the rows' combinations show; Archicad's element list includes the
+elements of hidden layers (6,115 of them on the sample project, measured),
+so the filter is by layer, not by what is on screen -- and puts each
+drawing's origin where that window's centre lands in the middle of the cell.
+With no `--scale`, the scale is the largest standard one at which the window
+fits a cell of the chosen master, which is now settled before anything is
+made, since its page is what a cell is cut from. And the grid follows the
+window's shape: three cells dealt to waste none were three strips 166 mm
+wide, 1:5000 for the sample's square site; dealt to draw it largest, two by
+two at 269 x 243 mm, 1:2000.
+
+**The legend's colours.** A 3D Document's shadow is a pen, and the sample
+project's table had no pale grey: `EXISTING` matched pen 236, a pale green.
+Pinning a pen set on the views changed nothing, and nor did placing the
+drawings fresh after pinning it: a drawing of a 3D Document prints in the
+model's active pen table. So the run makes `15 | Shadow Plans` with Tapir's
+`CreatePenTables` -- a copy of the table the drawings print in, each matched
+row's pen set to the legend's exact colour; matched first, so a pen moves
+only a little and whatever else is drawn in it hardly changes -- and the
+add-on's `ArrangeDrawings` gives every drawing that pen table by index
+(`penTableIndex`). Live: pen 236 printed at (235, 235, 235) and pen 156 at
+(156, 172, 191), the legend's own. A pen given by hand keeps its colour;
+Archicad 26 has no `CreatePenTables` and keeps the nearest pens, as the run
+says.
+
+**The legend and the site.** On the sheet, in the column left of the title
+block that every study's legend takes, the cells keeping clear of it: the
+title, a swatch per row in the exact colour the drawings print it in, drawn
+with the add-on's `CreateFills` in that colour, and the legend's words. The
+site is the boundary layer's outlines -- a layer whose name mentions a
+boundary, its slabs' `polygonOutline` on the sample project -- drawn in the
+red nearest the layout's pen table with the project's empty fill, so only
+the contour shows, over every plan where the drawing puts it. Three things
+the first live attempt found: the add-on closes a contour itself, and a ring
+that already ended where it began is a zero-length edge Archicad refused the
+fill for (-2130313102); Tapir's per-type element list answers for the
+current database, which after the sheets is a layout, so the boundary is
+read from the whole model's list as the window is; and a fill drawn after
+the drawings still lands at its tool's display level, 6, under the drawings
+at 14 -- the outline was there and could not be seen until it was moved to
+14 with Tapir's `SetDetailsOfElements` `drawIndex`. All of it goes on
+Archicad's own layer, which no combination hides, and is cleared and redrawn
+every run.
+
+**Run, sample project.** `EXISTING` and `PROPOSED`, three hours on one A1:
+the plans drawn at 1:2000 two by two with the whole 421 m site in each, the
+drawings in the stack's own pen set, the legend and three boundary outlines
+on the sheet, 17 s; the outlines read back at the top level over the plans.
+
+*What this does not change:* the stack itself (D137), the hours and their
+sun (D135), or the plain set's sheets beyond the same fit.

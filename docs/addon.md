@@ -243,6 +243,13 @@ draws only background. The stacked shadow plans set it on every drawing above
 the lowest of a cell, beside filling each document's surfaces in the
 transparent pen (D137). Left out, a drawing keeps what it has.
 
+`penTableIndex` (24 October 2026), per drawing, prints the drawing in that
+pen table: `penTableUsageMode` set to use a pen table by index, and
+`penTableIndex`. A drawing of a 3D Document otherwise prints in the model's
+active pen table -- measured: not in the pen set its view pins, even placed
+fresh after the view was pinned (D138). The stacked shadow plans give every
+drawing their own pen set, which carries the legend's exact colours.
+
 `GetDrawings` beside it reads every Drawing on a layout back -- position,
 anchor, frame, bounds and the content box from
 `APIDb_GetFullDrawingContentBoxID` -- because a frame written in the wrong
