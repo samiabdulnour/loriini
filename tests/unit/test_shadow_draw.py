@@ -624,6 +624,62 @@ def test_every_hour_of_the_design_is_outlined_on_one_layer_of_its_own() -> None:
     assert by_name[combination_name("9AM")]["all-hours"] is True, "an hour alone hides it"
 
 
+def test_only_the_every_hour_drawing_draws_no_hour_of_its_own() -> None:
+    """D144: the fills are now for the design's every-hour drawing alone. No
+    fill and no combination per hour; the every-hour lines, labels and
+    combination as before."""
+    from sun_study.archicad.shadows import (
+        all_hours_combination_name,
+        all_hours_layer_name,
+        designed_source,
+    )
+
+    labels = ["9AM", "12PM"]
+    grid = ground_plane_grid(
+        (np.array([-40.0, -5.0, 0.0]), np.array([10.0, 5.0, 20.0])),
+        datum_m=0.0,
+        spacing_m=2.0,
+        margin_m=40.0,
+    )
+    sources = default_sources(
+        box((-40.0, -5.0, 0.0), (-30.0, 5.0, 10.0)),
+        box((0.0, -5.0, 0.0), (10.0, 5.0, 20.0)),
+        None,
+    )
+    key = designed_source([source.spec for source in sources])
+    drawn_series = cast_shadows(
+        grid,
+        sources=sources,
+        sun_vectors=np.repeat(WEST_45, len(labels), axis=0),
+        moments=[dt.datetime(2024, 6, 21, 9 + i, tzinfo=dt.UTC) for i in range(len(labels))],
+        labels=labels,
+        spacing_m=2.0,
+        outline=key,
+    )
+    connection, transport = connect(labels)
+    day = "JUNE 21"
+    transport.layers.append(("all-hours", all_hours_layer_name(day), 300, False))
+
+    report = draw_shadow_series(connection, drawn_series, all_hours=key, only_all_hours=True)
+
+    assert not hatches(transport), "no fill for any hour"
+    assert report.fills == 0 and report.combinations == ()
+    assert report.all_hours == (all_hours_combination_name(day),)
+    assert transport.all_parameters_for("CreatePolylines"), "the every-hour lines"
+    written = {
+        entry["name"]
+        for call in transport.all_parameters_for("CreateLayerCombinations")
+        for entry in call["layerCombinationDataArray"]
+    }
+    assert written == {all_hours_combination_name(day)}
+
+
+def test_only_the_every_hour_drawing_needs_a_designed_building() -> None:
+    connection, _ = connect(["9AM"])
+    with pytest.raises(ArchicadError, match="no designed building"):
+        draw_shadow_series(connection, series(["9AM"]), only_all_hours=True)
+
+
 def test_the_designed_building_is_proposed_or_else_the_last_scenario() -> None:
     from sun_study.archicad.shadows import designed_source
     from sun_study.core.shadow import BASELINE, SCENARIO, SourceSpec

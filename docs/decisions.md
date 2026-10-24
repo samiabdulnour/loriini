@@ -5211,6 +5211,70 @@ moves nothing either.
 
 *What this does not change:* which page opens, when, and what it says.
 
+### D135 — A sun date is read in Archicad's own clock, and the add-on says what that is
+
+Asked 24 October 2026: *"i want you to check current project which is
+opened. sample project. I want to work on shadows diagram via 3d doc"*. The
+Graphisoft sample project -- the Sheung Wan tower, 7,785 elements, 23
+storeys, in a diamond of site context -- open in Archicad 30 on the Mac,
+with the add-on answering. The second live run of the shadow plans after
+Redfern (8 October, R1), the first on a Mac, and the first on a project
+whose time zone was not the hours' own.
+
+**What held.** Three documents for 21 June in 3.4 s; the shadows on and
+drawn in the `50 %` fill, `effects3D` 128 read back from each; the plan
+north up and matching the floor plan exactly (a first look read a quarter
+turn into it; the *site* is a diamond, and the walls in model coordinates
+are at 0 and 90). A re-aim takes: tilted to 45 degrees from the south and
+set back, the document redrew each time. A second run found the three by
+name, re-set them, and made the sheets once a master was named. The stacked
+run made its two combinations -- the named one with the context on and the
+tower's nine layers off, and with them on -- four documents and two sheets
+in 17 s, the pens matched from the legend's colours.
+
+**What did not: the hour.** Loriini's sun at 09:00 Dubai stands at 43.6
+degrees; Archicad's documents carried the sun of 10:00. Measured where the
+sun can be read back, the 3D window: `SetProjection` with the date 21 June
+09:00 and `GetProjection` after it gave azimuth 5.8 and altitude 57.1, and
+this tool's own sun for 10:00 Dubai is altitude 57.14 at bearing 84.2 --
+90 minus 84.2 is 5.8, so Archicad's `sunAzimuth` runs anticlockwise from +X
+toward the sun, like its camera azimuth. The same date with `summerTime` on
+gave 9.8 and 43.6: this tool's 09:00. So Archicad reads a sun date in the
+project location's own time zone, `API_PlaceInfo::timeZoneInMinutes`, +180
+on this file against Asia/Dubai's +240, with the daylight flag taking an
+hour off. Loriini sent the wall-clock of `--timezone` with that zone's
+daylight flag, which agrees with Archicad exactly where the project's zone
+is that zone's standard offset -- an AEST project with Sydney hours, which
+is why Redfern showed nothing -- and is an hour out anywhere else.
+
+**Decided.** The sun stays a date, not a pair of angles: the point of a
+date was that a disagreement would show on the drawing, and it did. What
+changes is whose clock the date is in. The add-on reports the project
+location whole, zone included (`Loriini.GetPlace`); `archicad.clock` turns
+the instant into that zone with the flag off, so 09:00 Dubai goes over as
+08:00 and Archicad draws 09:00 Dubai under a document still named for
+09:00; and the run prints whose clock the hours are in, with one worked
+example. An add-on built before `GetPlace` cannot say, gets the old
+behaviour, and the run says the clock is unknown rather than guessing --
+a quiet guess here is the hour's error that was found.
+
+**Also found and fixed.** The run's advice for a subset the Layout Book
+does not have named `--layout-subset`, which `shadow-plans` does not have;
+the filing now names the flag the command took the name from. Not changed:
+at 1:1000 an A3 cell shows about 150 m around the model origin, which is
+right for the office's sheets and small for this site's 420 m diamond.
+
+**Verified the same afternoon,** with the new bundle installed and Archicad
+restarted on the sample project: `GetPlace` answered `timeZoneInMinutes`
+180; the rerun printed *Archicad's clock is UTC+03:00 ... 09:00 as 08:00*
+and re-set the three documents; and the 3D window, handed the same date the
+documents now get -- hour 8, flag off -- read back altitude 43.6 and
+azimuth 9.8, this tool's sun for 09:00 Dubai, where hour 9 reads 57.1.
+
+*What this does not change:* which hours are drawn, their names and
+captions, the fills' route, or the sun views' own sun -- they take the same
+clock, through the same function.
+
 ### D136 — The sheets drawn as what the run makes, the info box as a page of the window, and the lorikeet as the mark
 
 Asked 24 October 2026, with the rounded sheets (D133) on screen and the
@@ -5562,3 +5626,221 @@ read as *Layer per option*, use layers as *Layer per use*, massing layers as
 *What this does not change:* the command line's flags, which still combine
 as before, and the arithmetic.
 
+### D141 — A 3D Document draws its shadows on its surfaces, so two documents cannot stack into one split
+
+Asked 24 October 2026, after the clock was put right (D135): *"I need to
+see 2 shadows in one drawings in different colours"*. The stacked shadow
+plans (`shadow-plans --existing --proposed`, shadow-plans.md) were made for exactly that
+-- the existing set's document over each proposal's, the upper one's uncut
+surfaces unfilled so the proposal's pen shows wherever only the proposal
+casts -- and on the sample project the stacked sheet showed outlines and no
+shadow.
+
+**Measured.** The Existing 09:00 document, read back: shadows on
+(`effects3D` 128), a solid fill in its pen, uncut surfaces unfilled. In its
+own window: outlines only. `SetDocumentFrom3D` with `fillUncutSurfaces`
+true and a rebuild: the whole shadow picture, at once. Back to false: gone
+again. The plain documents, whose surfaces are filled, had shown their
+shadows from the first run. So Archicad draws a 3D Document's vectorial sun
+shadows as fills *on its surfaces*: no surface drawn, nothing to draw a
+shadow on. A document that draws its surfaces is opaque, so two documents
+cannot stack into one drawing with the split between them. The stack as
+designed cannot work in Archicad 30, and the dev kit's uncut-surface
+options -- `uncutSurfaceFillType`, `uncutSurfaceBkgPen` -- choose how the
+surfaces are filled, not whether a filled surface hides what lies under it.
+
+**Decided, and overtaken the same evening by D142.** The stacked mode stays, since its documents and sheets are
+made correctly and may be wanted, but the run says plainly that the split
+does not show and where it does: the fills route. `sun-study shadows` with
+`--shadow-source` and `--shadow-scenario` draws existing and additional
+shadow in two colours on one plan by construction, and ran on this model
+the same afternoon -- the full tower, 534,000 triangles, exported in 58 s
+and cast in 80 s, 95 fills on three layers and two sheets. The 3D
+Documents' comparison is the two sets side by side, as before the stack.
+
+**Also found.** The project location had been set to Sydney between the
+restart and this run, so the fills asked for in Dubai time came back as
+night at noon and 3pm; `--timezone` has to be the location's. The fills'
+sheets at 1:1000 on an A3 overflow the page for a 420 m site; the run
+neither says so nor scales down. An A1 was asked for instead; whether the
+reused layouts took the new master is for the next look at the sheets.
+
+*What this does not change:* the plain shadow plans, their sun (D135), or
+the fills route's drawing.
+
+### D142 — The stack draws on surfaces filled in the transparent pen, and takes the fills' legend
+
+Asked 24 October 2026, after D141 and after the fills route was run in its
+place without asking: *"why you produced fills? this should go only by 3d doc
+route"*, and then *"the combinig 3d docs with multiple colours for shadow is
+the main way. please stick to it and try to make it work. kind of same
+categories as in previous version - you select layers of different object.
+neighbour building, neighbor future building, proposed TOD etc. and want one
+sheet with all"*. The fills, their views, sheets, layers and combinations
+were taken out of the sample project first; the shadow diagrams are the 3D
+Documents' from here, and the fills route is not run in their place.
+
+**The lever.** D141 found that a document draws its shadows on filled
+surfaces only, and a filled document is opaque. The Archicad 30 kit's
+`API_UniformAttributeOptions` has two more fields than the add-on wrote:
+`uncutSurfaceFillType` -- the Model Display's *Pen color*, *Material color,
+shaded* and *not shaded* -- and `uncutSurfaceBkgPen`, the pen a *Pen color*
+fill is drawn in; and pen 0 is `APIPen_Transparent`. The same fields are in
+the Archicad 26 kit, so every build takes them. `CreateDocumentFrom3D` and
+`SetDocumentFrom3D` now take `uncutSurfaces {fill, fillType, pen}` and read
+it back, and `ArrangeDrawings` takes a drawing's own `transparentBackground`.
+
+**Measured, sample project, Archicad 30 on the Mac.** The Existing 09:00
+document set to filled, *Pen color*, pen 0: its shadows drew in their pen
+(236, a pale green in this project's table) and the surfaces drew nothing,
+white with their outlines. A stack of two rows, neighbours over the tower,
+made in that mode with every upper drawing's background transparent: in each
+cell the neighbours' shadow in its pen and, where only the tower casts, the
+tower's -- except that the lowest document, left on the materials' colours,
+drew its shadows as the material shaded darker, dark grey, ignoring its pen.
+Put in the same *Pen color*, pen 0 mode, it drew them in its pen, 156, a
+pale blue. So every document of a stack takes the mode, the lowest too.
+
+Two more things the same evening. A drawing of a 3D Document is **not
+redrawn** when its document's settings change, and opening the layout does
+not do it: the sheet kept the dark grey until Tapir's `UpdateDrawings` was
+asked for. The combined sheet now asks for it after every run, best effort,
+since it needs Archicad 27. And reopening a project does not reload an
+add-on: the new build took only after Archicad itself was quit and started,
+three tries in.
+
+**Decided: the legend.** The stack takes the fills' own rows, from the same
+words and the same parser: `--shadow-source` rows accumulate, `--shadow-scenario`
+rows are compared, `LABEL=layer,layer`, coloured by the legend's name or by
+role and position. `--existing` and `--proposed` remain as the short way for
+one row that stands and the proposals, and the two do not mix. A layer
+combination per row (a source shows itself and every earlier source, a
+scenario every source and itself), a document per row and hour, and one
+**combined** sheet set, `15 | Shadow Plans Combined - JUNE 21`, with every
+row's drawing of an hour in one cell. The order, bottom to top, is the
+scenarios in the order named and then the sources from the last to the
+first: a document draws its whole shadow and a drawing is seen only where
+everything above it casts nothing, so the first source shows whole, each
+later source what it adds, and each scenario what it adds over every source,
+the last named over the earlier where two overlap -- the fills' legend, with
+the subtraction done by the order on the sheet. The window's Shadow plans
+box takes the Shadow diagram page's legend rows, so one legend is chosen
+once for both routes; the agent's tool takes `sources` and `scenarios`.
+
+**Run.** The neighbours as `EXISTING`, the tower's structure layers as
+`PROPOSED`, 21 June at 9, 12 and 3, one A1 sheet: six documents and the
+sheet in 18 s, a rerun in 12 s with the drawings redrawn. The tower's
+additional shadow showed south-west at 9, south at noon and south-east at
+3, and nowhere the neighbours already shade.
+
+*Still to do:* the legend and the site outline on the combined sheet; a page
+size or scale that fits a wide site, since each drawing is clipped to its
+cell; and the colours, which are the nearest pens in the project's table --
+on the sample project the legend's pale grey matched a pale green.
+
+### D143 — The combined sheet: the site fitted, the legend's colours, the legend and the site on it
+
+Asked 24 October 2026, after D142's first combined sheet, which left three
+things the D142 entry named: *"well continue, to correct the rest"*.
+
+**The site fitted.** Each drawing is placed by its own origin at its cell's
+centre and clipped to the cell; a 420 m site at 1:1000 in a 230 mm cell was
+cut at both edges. The run now measures the plan extent of everything the
+rows show -- read-only, from the 2D bounding boxes of the model elements on
+the layers the rows' combinations show; Archicad's element list includes the
+elements of hidden layers (6,115 of them on the sample project, measured),
+so the filter is by layer, not by what is on screen -- and puts each
+drawing's origin where that window's centre lands in the middle of the cell.
+With no `--scale`, the scale is the largest standard one at which the window
+fits a cell of the chosen master, which is now settled before anything is
+made, since its page is what a cell is cut from. And the grid follows the
+window's shape: three cells dealt to waste none were three strips 166 mm
+wide, 1:5000 for the sample's square site; dealt to draw it largest, two by
+two at 269 x 243 mm, 1:2000.
+
+**The legend's colours.** A 3D Document's shadow is a pen, and the sample
+project's table had no pale grey: `EXISTING` matched pen 236, a pale green.
+Pinning a pen set on the views changed nothing, and nor did placing the
+drawings fresh after pinning it: a drawing of a 3D Document prints in the
+model's active pen table. So the run makes `15 | Shadow Plans` with Tapir's
+`CreatePenTables` -- a copy of the table the drawings print in, each matched
+row's pen set to the legend's exact colour; matched first, so a pen moves
+only a little and whatever else is drawn in it hardly changes -- and the
+add-on's `ArrangeDrawings` gives every drawing that pen table by index
+(`penTableIndex`). Live: pen 236 printed at (235, 235, 235) and pen 156 at
+(156, 172, 191), the legend's own. A pen given by hand keeps its colour;
+Archicad 26 has no `CreatePenTables` and keeps the nearest pens, as the run
+says.
+
+**The legend and the site.** On the sheet, in the column left of the title
+block that every study's legend takes, the cells keeping clear of it: the
+title, a swatch per row in the exact colour the drawings print it in, drawn
+with the add-on's `CreateFills` in that colour, and the legend's words. The
+site is the boundary layer's outlines -- a layer whose name mentions a
+boundary, its slabs' `polygonOutline` on the sample project -- drawn in the
+red nearest the layout's pen table with the project's empty fill, so only
+the contour shows, over every plan where the drawing puts it. Three things
+the first live attempt found: the add-on closes a contour itself, and a ring
+that already ended where it began is a zero-length edge Archicad refused the
+fill for (-2130313102); Tapir's per-type element list answers for the
+current database, which after the sheets is a layout, so the boundary is
+read from the whole model's list as the window is; and a fill drawn after
+the drawings still lands at its tool's display level, 6, under the drawings
+at 14 -- the outline was there and could not be seen until it was moved to
+14 with Tapir's `SetDetailsOfElements` `drawIndex`. All of it goes on
+Archicad's own layer, which no combination hides, and is cleared and redrawn
+every run.
+
+**Run, sample project.** `EXISTING` and `PROPOSED`, three hours on one A1:
+the plans drawn at 1:2000 two by two with the whole 421 m site in each, the
+drawings in the stack's own pen set, the legend and three boundary outlines
+on the sheet, 17 s; the outlines read back at the top level over the plans.
+
+*What this does not change:* the stack itself (D142), the hours and their
+sun (D135), or the plain set's sheets beyond the same fit.
+
+### D144 — The 3D Documents are the shadow diagram; the fills draw the design's every hour
+
+Asked 25 October 2026: *"the 3d doc is the main route there. try to make 3 -
+4 - 5 3d doc shadows. the original route with computation of shadow now will
+be only used for actual design mass, in case when we need to see shadows
+made by our design in every hour in one drawing. basicaly 7 shadows of one
+building in one drawing, besides that, when it involves neighbour building
+we use 3D doc"*, with three layers of slabs added to the sample project --
+`SHADOW 2` for the future context, `SHADOW 3` for TOD, `SHADOW 4` for SEARs
+-- *"please update the diagram so every layer has different colour shadow
+... after that please build the shadow of every hour of proposed building
+seen. use floorplan for fills"*.
+
+**Decided.** Two routes, one job each. A diagram that involves the
+neighbours is the stacked 3D Documents (D141 to D143), as many legend rows
+as the project has. The fills -- Loriini's own caster, the route the shadow
+diagram began on -- are kept for one drawing: the designed building's own
+shadow at every hour on one plan, which the documents cannot draw, since a
+document is one hour. `sun-study shadows --shadow-all-hours-only` draws that
+and nothing else: the every-hour outlines labelled by hour on the floor
+plan, its combination, its view and its sheet; no fill, layer, combination,
+view or sheet per hour. It implies `--shadow-all-hours`, and refuses without
+a designed building (the `PROPOSED` row, or the last scenario).
+
+**Five rows, run.** `EXISTING` (the neighbours) and `FUTURE` (`SHADOW 2`) as
+sources, `TOD` (`SHADOW 3`), `SEARS` (`SHADOW 4`) and `PROPOSED` (the
+tower's structure layers) as scenarios, 21 June at 9, 12 and 3: fifteen
+documents and one A1 at 1:2000 in 49 s, stacked TOD < SEARS < PROPOSED <
+FUTURE < EXISTING, each row's pen -- 236, 216, 196, 116 and 156, the nearest
+in the office's `00 ENZ PRINT` -- printed at the legend's own colour through
+the run's pen set. One thing the run said wrongly and now does not: a row
+an earlier run had made, stacked over a row made in this one, was re-set
+without the new documents' shadow switch, and the run said every document
+had been there before. The switch is now carried from set to set.
+
+**The every-hour drawing, run.** The tower over the neighbours and the
+ground, 21 June at every hour from 9 to 3: one layer, `15 | Shadow
+Diagram.JUNE 21 ALL HOURS`, carrying nineteen outlines and seven hour
+labels and no fill, its combination, one view and one sheet, `15 | Shadow
+Diagrams - JUNE 21 ALL HOURS`, in 5 min 43 s, most of it the export and the
+cast of seven hours over half a million samples.
+
+*What this does not change:* the stack, its fit, its pen set and its legend
+(D141 to D143), and the fills route's own per-hour diagram, which a run
+without the new flag still draws.

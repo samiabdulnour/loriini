@@ -320,22 +320,41 @@ class ShadowPlanArguments(SheetedArguments):
             "which name their sets themselves."
         ),
     )
+    sources: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "The stacked mode, named as for shadow_diagrams: the shadow that already "
+            "stands, one legend row each, the row's short name to its layers, e.g. "
+            "{'EXISTING': ['03 | Site Context.Buildings'], 'FUTURE': ['03 | Site "
+            "Context.Future']}. Rows accumulate. Every row of an hour is stacked in one "
+            "drawing on a combined sheet, each in its legend colour. Not with existing or "
+            "proposals."
+        ),
+    )
+    scenarios: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "With sources: each proposal, cast against every source and no other "
+            "scenario, the row's short name to its layers, e.g. {'TOD': ['20 | Massing.TOD'], "
+            "'PROPOSED': ['20 | Massing']}. The last named lies over the earlier ones."
+        ),
+    )
     existing: list[str] | None = Field(
         default=None,
         description=(
-            "The layers that hold what already stands -- the neighbouring buildings, e.g. "
-            "['03 | Site Context.Buildings']. Shown in every set of a stack; the ground "
+            "The short way to a two-row stack: the layers that hold what already stands -- "
+            "the neighbouring buildings, e.g. ['03 | Site Context.Buildings']. The ground "
             "and the rest come from the layer combination. project_options lists the layers."
         ),
     )
     proposals: list[list[str]] | None = Field(
         default=None,
         description=(
-            "The stacked mode: one list of layers per proposal, e.g. [['20 | Massing.SEARs'], "
-            "['20 | Massing.Envelope']]. Named Proposed 1, Proposed 2 and on in this order, "
-            "or Proposed alone. For each, a sheet per day with the existing set's document "
-            "laid over the proposal's in every cell: the existing shadow in one pen, and "
-            "what the proposal adds in another, both cast by Archicad, on one plan."
+            "With existing, the short way to a stack: one list of layers per proposal, e.g. "
+            "[['20 | Massing.SEARs'], ['20 | Massing.Envelope']]. Named Proposed 1, Proposed "
+            "2 and on in this order, or Proposed alone. Every row of an hour is stacked in "
+            "one drawing on a combined sheet: the existing shadow in one pen, what each "
+            "proposal adds in another, all cast by Archicad, on one plan."
         ),
     )
     existing_pen: int | None = Field(
@@ -619,6 +638,7 @@ def shadow_plans_argv(arguments: ShadowPlanArguments) -> list[str]:
     if a.hours:
         argv += ["--shadow-hour", ",".join(str(hour) for hour in a.hours)]
     argv += _option("--layer-combination", a.layer_combination) + _option("--label", a.label)
+    argv += _rows("--shadow-source", a.sources) + _rows("--shadow-scenario", a.scenarios)
     for layer in a.existing or []:
         argv += ["--existing", layer]
     for layers in a.proposals or []:
@@ -884,11 +904,12 @@ TOOLS: tuple[Tool, ...] = (
         "The same days and hours as 3D Documents looking straight down, each with "
         "Archicad's own sun and vectorial shadows for that hour, placed on layouts by day. "
         "Archicad casts the shadows, so it suits a model too large for shadow_diagrams. One "
-        "document shows the whole shadow of what the layer combination shows; given "
-        "existing and proposals, the stacked mode lays the existing set's document over "
-        "each proposal's on one sheet, so the existing shadow and what each proposal adds "
-        "are in two pens on one plan, both cast by Archicad. Without proposals, run it once "
-        "per combination with a label each.",
+        "document shows the whole shadow of what the layer combination shows; given a "
+        "legend -- sources and scenarios as for shadow_diagrams, or existing and proposals "
+        "-- the stacked mode makes a document per row and stacks every row of an hour in "
+        "one drawing on a combined sheet, so each row's shadow is in its legend colour on "
+        "one plan, all cast by Archicad. Without a legend, run it once per combination "
+        "with a label each.",
         ShadowPlanArguments.model_json_schema(),
         shadow_plans,
         title="Shadow plans",

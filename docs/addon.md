@@ -126,6 +126,7 @@ will say what Archicad did (`docs/shadow-plans.md`).
 | `shadowContours` | with `sunShadows`, outline each shadow; off by default |
 | `shadowFill` | `fillIndex`, `fillPen`, `backgroundPen`, `contourPen`, each optional |
 | `fillUncutSurfaces` | whether the document fills its uncut surfaces -- `shouldUseUncutSurfaceFill`, the *Uncut Surfaces* switch of its Model Display. False leaves roofs and ground as outlines, so a drawing of the document on a layout shows what lies under it wherever no shadow falls: how the stacked shadow plans put the existing set's document over a proposal's (`docs/shadow-plans.md`). Written onto the defaults for the creation and onto the document, like the fill; left out, the project's default stands |
+| `uncutSurfaces` | `{fill, fillType, pen}`: the switch, which of the Model Display's three uncut-surface fills (`penColor`, `materialShaded`, `materialNotShaded`), and `uncutSurfaceBkgPen`, the pen a `penColor` fill is drawn in -- 0 is Archicad's transparent pen. Archicad draws a document's shadows on filled surfaces only (D141), and draws them as darker material, not in the shadow's pen, when the surfaces take the materials' colours; filled in pen 0, the surfaces draw nothing and the shadows draw in their pen, which is how the stacked shadow plans lay documents over each other (D142). Read back on every answer |
 
 Neither write is undoable, and the first build's attempt to make them so is
 why it failed. The kit documents both `APIDb_NewDatabaseID` and
@@ -153,8 +154,8 @@ with `sunShadows` -- because which of its bits is the shadow is not written
 down, and copying Archicad's own value is safer than guessing one.
 
 Takes `databaseId` (required), `viewAzimuth` and `viewAltitude`, `sun`,
-`shadowFill`, `fillUncutSurfaces` and `effects3D`; answers `effects3D`,
-`shadowFill` and `fillUncutSurfaces` read back.
+`shadowFill`, `fillUncutSurfaces`, `uncutSurfaces` and `effects3D`; answers
+`effects3D`, `shadowFill`, `fillUncutSurfaces` and `uncutSurfaces` read back.
 
 ### `Loriini.CreateFills`
 
@@ -236,6 +237,19 @@ document over the proposal's. A drawing the order could not be set on is
 reported in `failures` with `"step": "bringToFront"`, and the rest are left
 arranged.
 
+`transparentBackground` (24 October 2026), per drawing, writes the drawing's
+own `isTransparentBk`: what lies under it on the layout shows wherever it
+draws only background. The stacked shadow plans set it on every drawing above
+the lowest of a cell, beside filling each document's surfaces in the
+transparent pen (D142). Left out, a drawing keeps what it has.
+
+`penTableIndex` (24 October 2026), per drawing, prints the drawing in that
+pen table: `penTableUsageMode` set to use a pen table by index, and
+`penTableIndex`. A drawing of a 3D Document otherwise prints in the model's
+active pen table -- measured: not in the pen set its view pins, even placed
+fresh after the view was pinned (D143). The stacked shadow plans give every
+drawing their own pen set, which carries the legend's exact colours.
+
 `GetDrawings` beside it reads every Drawing on a layout back -- position,
 anchor, frame, bounds and the content box from
 `APIDb_GetFullDrawingContentBoxID` -- because a frame written in the wrong
@@ -289,6 +303,29 @@ the site tools try the plain move, then this, and only then wait for the
 person. The answer carries `opened`. Measured on the Redfern project the same
 evening: Archicad opens a fresh worksheet's window this way, the move then
 takes, and the sheet draws with nobody touching the Project Map.
+
+### `Loriini.GetPlace`
+
+The project location whole, as `API_PlaceInfo` holds it: `longitude`,
+`latitude`, `altitude`, `north` (radians, exactly as `GetGeoLocation` reports
+it), and the part Tapir's `GetGeoLocation` leaves out -- `timeZoneInMinutes`,
+the location's time zone east of Greenwich, with `timeZoneOffset`,
+`summerTime` and the `date` the dialog keeps. Nothing is written.
+
+It exists because of what the first live shadow plans on a project whose zone
+was not the hours' zone showed ([D135](decisions.md)). Archicad works a sun
+given by date out in the *project location's* time zone, with the date's
+daylight-saving flag taking an hour off; Loriini had handed the hour over as
+the wall-clock of `--timezone`, and on the sample project -- zone +3, hours
+asked for in Asia/Dubai, +4 -- every document carried the sun of an hour
+later. Measured through the 3D window, where the sun can be read back:
+`SetProjection` with 21 June 09:00 came back from `GetProjection` as azimuth
+5.8, altitude 57.1, which is this tool's sun for 10:00 Dubai (altitude 57.14,
+bearing 84.2, and 90 - 84.2 is 5.8: Archicad's `sunAzimuth` runs anticlockwise
+from +X toward the sun, as its camera azimuth does); the same date with
+`summerTime` on came back as 9.8 and 43.6, this tool's 09:00. With the zone
+reported, `archicad.clock` hands the hour over in Archicad's own clock, and
+the run says whose clock the hours are in.
 
 ### `Loriini.CreateWorksheet`
 

@@ -280,6 +280,8 @@ GS::Optional<GS::UniString> ArrangeDrawingsCommand::GetInputParametersSchema () 
 						"guid": { "type": "string" },
 						"x": { "type": "number" },
 						"y": { "type": "number" },
+						"transparentBackground": { "type": "boolean", "description": "The drawing's own Transparent Background switch, `isTransparentBk`: what lies under it on the layout shows wherever it draws only background. Left out, the drawing keeps what it has." },
+						"penTableIndex": { "type": "integer", "description": "Print the drawing in this pen table, by attribute index: `penTableUsageMode` set to use a pen table by index. A drawing of a 3D Document otherwise prints in the model's active pen table, whatever its view pins (D143). Left out, the drawing keeps what it has." },
 						"frame": {
 							"type": "object",
 							"description": "A rectangular clip frame. In layout coordinates, or relative to the drawing's origin when frameRelativeToOrigin is set.",
@@ -404,6 +406,28 @@ GS::ObjectState ArrangeDrawingsCommand::Execute (const GS::ObjectState& paramete
 				if (autoUpdate) {
 					element.drawing.manualUpdate = false;
 					ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, manualUpdate);
+				}
+
+				// A drawing laid over another in one cell is no use opaque: the
+				// stacked shadow plans set this on every drawing above the
+				// lowest (D142).
+				bool transparent = false;
+				if (wanted.Get ("transparentBackground", transparent)) {
+					element.drawing.isTransparentBk = transparent;
+					ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, isTransparentBk);
+				}
+
+				// The pen table it prints in. A drawing of a 3D Document prints
+				// in the model's active pen table and not in the pen set its
+				// view pins, measured on the sample project; the stacked shadow
+				// plans give their own pen set, with the legend's colours, to
+				// every drawing this way (D143).
+				Int32 penTable = 0;
+				if (ReadInt (wanted, "penTableIndex", penTable)) {
+					element.drawing.penTableUsageMode = APIPenTableUsageMode_UsePenTableIndex;
+					element.drawing.penTableIndex = Api::AttributeIndexFromInt (penTable);
+					ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, penTableUsageMode);
+					ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, penTableIndex);
 				}
 
 				API_ElementMemo memo = {};

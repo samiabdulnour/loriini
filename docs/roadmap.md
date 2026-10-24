@@ -115,6 +115,37 @@ context layers on, and take the `50 %` fill when the project has it
 the two routes side by side, the documents where the fills' edges on a
 building are too coarse, and the fills for the areas and the split.
 
+**Run live again (24 October),** this time on a Mac, in Archicad 30, on the
+Graphisoft sample project -- a 23-storey tower in a diamond of context,
+7,785 elements, located at 24.5 N 54.4 E with the project clock at UTC+3.
+Three documents in 3.4 s, shadows on in the `50 %` fill, the plan north up
+and matching the floor plan; a second run found and re-set them; the stacked
+run made its two combinations, four documents and two sheets in 17 s. The
+sun was the finding: every document carried the sun of an hour later than
+asked, because Archicad reads a sun date in the project location's time
+zone and Loriini had sent the wall-clock of `--timezone`. The add-on now
+reports the zone (`GetPlace`) and the hour goes over in Archicad's own clock
+([D135](decisions.md)). The stack was then read and showed no shadow: a 3D
+Document draws its shadows on filled surfaces only, so the upper document,
+unfilled to let the proposal show through, drew none ([D141](decisions.md)).
+The office's answer was that the stacked documents are the main way, with
+the fills' legend: so the add-on now fills a document's surfaces in the
+transparent pen, which draws the shadows and nothing else, and the stack
+takes the legend's rows -- sources that accumulate, scenarios that are
+compared -- every row of an hour in one drawing on a combined sheet, each in
+its colour where it adds ([D142](decisions.md)). Run live the same evening on
+the sample project: the neighbours and the tower, three hours on one A1, in
+18 s. Then the rest of the sheet, the same evening ([D143](decisions.md)):
+the whole site fitted to every cell at a scale worked out from the model,
+the drawings printed in a pen set of the run's own carrying the legend's
+exact colours, and the legend and the site outline drawn on the sheet.
+
+**The routes settled (25 October)** ([D144](decisions.md)): the stacked 3D
+Documents are the shadow diagram, any number of legend rows, run on the
+sample project with five -- existing, future, TOD, SEARs and the proposal.
+The fills route is kept for the design's own shadow at every hour on one
+plan, `--shadow-all-hours-only`, and nothing else.
+
 ## R2 — An agent that operates Loriini
 
 **Asked.** Could an AI agent run Loriini natively, for more users? It saves

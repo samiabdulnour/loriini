@@ -57,6 +57,85 @@ GS::ObjectState DatabaseState (const API_DatabaseInfo& database)
 }		// namespace
 
 
+// -- GetPlace -----------------------------------------------------------------
+//
+// The project location whole, as `API_PlaceInfo` holds it: where the project
+// is, which way north lies, and -- the half Tapir's `GetGeoLocation` leaves
+// out -- the clock Archicad keeps for a sun given by date. `timeZoneInMinutes`
+// is that clock, east of Greenwich; `summerTime` is the daylight-saving flag
+// the dialog's own date carries. Measured on the sample project (D135): with
+// the zone at +180 minutes, a document asked for at 09:00 was drawn with the
+// sun of 09:00 UTC+3, and the same request with `summerTime` on was drawn an
+// hour earlier. Nothing here is written; the location is the project's own.
+
+GS::String GetPlaceCommand::GetName () const		{ return "GetPlace"; }
+
+GS::Optional<GS::UniString> GetPlaceCommand::GetInputParametersSchema () const
+{
+	return GS::NoValue;
+}
+
+GS::Optional<GS::UniString> GetPlaceCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"longitude": { "type": "number", "description": "Degrees east of Greenwich." },
+			"latitude": { "type": "number", "description": "Degrees north of the equator." },
+			"altitude": { "type": "number", "description": "Metres above sea level." },
+			"north": { "type": "number", "description": "Archicad's north angle in radians, exactly as GetGeoLocation reports it." },
+			"timeZoneInMinutes": { "type": "integer", "description": "The project location's time zone, in minutes east of Greenwich: the clock Archicad reads a sun date in." },
+			"timeZoneOffset": { "type": "integer", "description": "Archicad's tie-breaker between zones with the same minutes; reported whole." },
+			"summerTime": { "type": "boolean", "description": "Whether the location's own date has daylight saving in effect." },
+			"date": {
+				"type": "object",
+				"description": "The date and time the project location keeps, as its dialog shows them.",
+				"properties": {
+					"year": { "type": "integer" },
+					"month": { "type": "integer" },
+					"day": { "type": "integer" },
+					"hour": { "type": "integer" },
+					"minute": { "type": "integer" },
+					"second": { "type": "integer" }
+				}
+			},
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState GetPlaceCommand::Execute (const GS::ObjectState& /*parameters*/,
+										  GS::ProcessControl& /*processControl*/) const
+{
+	API_PlaceInfo place = {};
+	const GSErrCode err = Api::GetPlaceSets (&place);
+	if (err != NoError) {
+		return Failed ("Failed to read the project location.", err);
+	}
+
+	GS::ObjectState date;
+	date.Add ("year", static_cast<Int32> (place.year));
+	date.Add ("month", static_cast<Int32> (place.month));
+	date.Add ("day", static_cast<Int32> (place.day));
+	date.Add ("hour", static_cast<Int32> (place.hour));
+	date.Add ("minute", static_cast<Int32> (place.minute));
+	date.Add ("second", static_cast<Int32> (place.second));
+
+	GS::ObjectState result;
+	result.Add ("success", true);
+	result.Add ("longitude", place.longitude);
+	result.Add ("latitude", place.latitude);
+	result.Add ("altitude", place.altitude);
+	result.Add ("north", place.north);
+	result.Add ("timeZoneInMinutes", static_cast<Int32> (place.timeZoneInMinutes));
+	result.Add ("timeZoneOffset", static_cast<Int32> (place.timeZoneOffset));
+	result.Add ("summerTime", place.sumTime);
+	result.Add ("date", date);
+	return result;
+}
+
+
 // -- GetCurrentDatabase -----------------------------------------------------
 
 GS::String GetCurrentDatabaseCommand::GetName () const		{ return "GetCurrentDatabase"; }

@@ -275,6 +275,15 @@ stale, and a stale number looks exactly like a current one.
 
 ## Shadow diagrams
 
+**Which route, since 25 October 2026 ([D144](decisions.md)).** A diagram
+that involves the neighbours -- existing, future, the TOD and SEARs
+envelopes, the proposal, each in its colour -- is the stacked 3D Documents
+of `sun-study shadow-plans`, Archicad casting every shadow
+([shadow-plans.md](shadow-plans.md)). The fills described below, Loriini's
+own caster, are kept for one drawing: the designed building's own shadow at
+every hour on one plan, `--shadow-all-hours-only`, drawn on the floor plan
+with a view and a sheet and nothing per hour.
+
 A different study from the one above, sharing the export machinery and almost
 nothing else. Settled against a real SSDA set on Crows Nest; see
 [D78](decisions.md) for why each step is there.

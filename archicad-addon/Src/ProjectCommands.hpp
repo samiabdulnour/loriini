@@ -39,6 +39,15 @@
 //                             Tapir can pin a view to an override combination
 //                             by name and has no way to list them, so the
 //                             window could only offer a text box to type one.
+//
+//   GetPlace                  D135. Archicad works a sun given by date out in
+//                             the project location's own time zone, which
+//                             Tapir's `GetGeoLocation` leaves out, so a 3D
+//                             Document asked for at 09:00 was drawn at the
+//                             09:00 of whatever zone the project kept. This
+//                             reports the whole `API_PlaceInfo`, the zone
+//                             included, so the Python side can hand Archicad
+//                             the hour in Archicad's own clock.
 
 #if !defined (LORIINI_PROJECTCOMMANDS_HPP)
 #define LORIINI_PROJECTCOMMANDS_HPP
@@ -67,6 +76,7 @@ LORIINI_COMMAND (CreateWorksheetCommand)
 LORIINI_COMMAND (ActivateLayerCombinationCommand)
 LORIINI_COMMAND (ModifyLayersCommand)
 LORIINI_COMMAND (GetGraphicOverrideCombinationsCommand)
+LORIINI_COMMAND (GetPlaceCommand)
 
 #undef LORIINI_COMMAND
 

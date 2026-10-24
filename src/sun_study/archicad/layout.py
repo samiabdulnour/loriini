@@ -97,6 +97,7 @@ __all__ = [
     "sheet_positions",
     "storey_items",
     "tile_positions",
+    "update_drawings",
     "view_extents",
 ]
 
@@ -855,12 +856,16 @@ class Filing:
 
     no_such_subset: bool = False
 
+    flag: str = "--layout-subset"
+    """The option the caller took the subset's name from, so the advice
+    names the flag that command has: ``shadow-plans`` says ``--subset``."""
+
     def describe(self) -> str:
         if self.no_such_subset:
             return (
                 f"  no subset called {self.subset!r} in the Layout Book, so the "
                 f"sheets were left at the book root. Make the subset, or name an "
-                f"existing one with --layout-subset."
+                f"existing one with {self.flag}."
             )
         done = len(self.moved) + len(self.already)
         if not done:
@@ -929,7 +934,13 @@ def remove_stale_layouts(
     return [item.name for item in stale]
 
 
-def file_under_subset(connection: ArchicadConnection, names: Sequence[str], subset: str) -> Filing:
+def file_under_subset(
+    connection: ArchicadConnection,
+    names: Sequence[str],
+    subset: str,
+    *,
+    flag: str = "--layout-subset",
+) -> Filing:
     """Move these Layouts into a named subset of the Layout Book.
 
     Two commands, because the obvious one does not work. ``CreateLayout``
@@ -950,7 +961,7 @@ def file_under_subset(connection: ArchicadConnection, names: Sequence[str], subs
     """
     wanted = list(dict.fromkeys(names))
     if not wanted:
-        return Filing(subset=subset, moved=(), already=(), missing=())
+        return Filing(subset=subset, moved=(), already=(), missing=(), flag=flag)
 
     root = _book(connection)
     if root is None:
@@ -963,7 +974,12 @@ def file_under_subset(connection: ArchicadConnection, names: Sequence[str], subs
     )
     if target is None:
         return Filing(
-            subset=subset, moved=(), already=(), missing=tuple(wanted), no_such_subset=True
+            subset=subset,
+            moved=(),
+            already=(),
+            missing=tuple(wanted),
+            no_such_subset=True,
+            flag=flag,
         )
 
     by_name = {name: guid for guid, (name, _) in before.items() if name in set(wanted)}
@@ -1002,6 +1018,7 @@ def file_under_subset(connection: ArchicadConnection, names: Sequence[str], subs
         moved=tuple(n for n in wanted if n in by_name and n not in already),
         already=already,
         missing=missing,
+        flag=flag,
     )
 
 
@@ -1058,6 +1075,33 @@ def _create_drawings(connection: ArchicadConnection, drawings: list[dict[str, An
         if "angle" not in str(error):
             raise
     return connection.run_tapir("CreateDrawings", {"drawingsData": drawings})
+
+
+def update_drawings(connection: ArchicadConnection, database_id: str) -> str | None:
+    """Have Archicad redraw every Drawing on a sheet now. ``None``, or why not.
+
+    A Drawing of a 3D Document is not redrawn when the document's settings
+    change, and opening the layout does not do it either: measured on the
+    sample project (D142), a stacked sheet kept showing its documents as the
+    run before had set them until ``UpdateDrawings`` was asked for. Best
+    effort, since Tapir's command needs Archicad 27: a sheet that cannot be
+    refreshed is still the right sheet the first time it is made, and a rerun
+    says so instead of failing.
+    """
+    placed = _drawings_by_name(connection, database_id)
+    if not placed:
+        return None
+    try:
+        connection.run_tapir(
+            "UpdateDrawings",
+            {"elements": [{"elementId": drawing["elementId"]} for drawing in placed.values()]},
+        )
+    except ArchicadError as error:
+        return (
+            f"the drawings could not be redrawn ({error}); a sheet an earlier run made "
+            f"shows that run's documents until each drawing is updated by hand"
+        )
+    return None
 
 
 def _drawings_by_name(connection: ArchicadConnection, database_id: str) -> dict[str, Any]:

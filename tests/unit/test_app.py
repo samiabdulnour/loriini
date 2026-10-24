@@ -4066,6 +4066,33 @@ def test_the_shadow_plans_draw_the_diagrams_days_and_hours_as_documents(
     assert saved["shadow_plan_label"] == "Proposed"
 
 
+def test_the_shadow_plans_take_the_diagrams_legend_rows_and_stack_them(
+    hidden_window: Any,
+) -> None:
+    """One legend for both routes (D142): the rows filled on the Shadow
+    diagram page go to the plans as sources and scenarios, which turns on the
+    stacked mode, and the set name and shadow pen, which are for a plain set,
+    are not sent with them."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadow_plans.set(True)
+    hidden_window.shadow_plan_label.insert(0, "Proposed")
+    hidden_window.shadow_plan_pen.insert(0, "3")
+    rows = {short: (role, box) for short, role, box in hidden_window.shadow_rows}
+    baseline = next(short for short, (role, _) in rows.items() if role == "baseline")
+    scenario = next(short for short, (role, _) in rows.items() if role == "scenario")
+    rows[baseline][1].insert(0, "03 | Site Context.Buildings")
+    rows[scenario][1].insert(0, "20 | Massing.Envelope, 20 | Massing.Podium")
+
+    (job,) = hidden_window.jobs()
+
+    assert flag(job.args, "--shadow-source") == [f"{baseline}=03 | Site Context.Buildings"]
+    assert flag(job.args, "--shadow-scenario") == [
+        f"{scenario}=20 | Massing.Envelope,20 | Massing.Podium"
+    ]
+    assert "--label" not in job.args and "--shadow-pen" not in job.args
+
+
 # -- the run bar, the project bar and the sheets strip, after the design review
 
 

@@ -44,6 +44,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from sun_study.archicad import naming
+from sun_study.archicad.clock import sun_date
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError
 from sun_study.archicad.layout import (
     MM_PER_M,
@@ -139,6 +140,10 @@ class SunEye:
 
     altitude_deg: float
 
+    clock_minutes: int | None = None
+    """Archicad's clock -- the project location's time zone, in minutes east
+    of Greenwich -- or ``None`` for an add-on that cannot report it (D135)."""
+
     @property
     def label(self) -> str:
         """``21 Jun 09:00`` -- the instant, as a human names it."""
@@ -155,17 +160,10 @@ class SunEye:
         A date rather than angles, on purpose: Archicad then works the sun out
         from the project's own georeferencing, and a disagreement with this
         tool's astronomy becomes visible on the drawing instead of being
-        hidden by writing our answer into both sides.
+        hidden by writing our answer into both sides. The hour is in
+        Archicad's own clock where the add-on can say what that is (D135).
         """
-        return {
-            "year": self.when.year,
-            "month": self.when.month,
-            "day": self.when.day,
-            "hour": self.when.hour,
-            "minute": self.when.minute,
-            "second": 0,
-            "summerTime": bool(self.when.dst()),
-        }
+        return sun_date(self.when, self.clock_minutes)
 
 
 def sun_eyes(
@@ -174,11 +172,14 @@ def sun_eyes(
     date: dt.date,
     hours: Sequence[int],
     timezone: str,
+    clock_minutes: int | None = None,
 ) -> list[SunEye]:
     """The sun at each whole hour, in the project's frame as well as true.
 
     Hours when the sun is below the horizon are left out rather than drawn:
     a sun eye view from under the ground is not a diagram of anything.
+    ``clock_minutes`` is Archicad's clock, carried onto every eye for the
+    date it hands over (``clock.read_archicad_clock``, D135).
     """
     zone = ZoneInfo(timezone)
     times = [dt.datetime.combine(date, dt.time(hour), tzinfo=zone) for hour in hours]
@@ -203,6 +204,7 @@ def sun_eyes(
                 true_bearing_deg=float(bearing) % 360.0,
                 project_bearing_deg=(float(bearing) - project_plus_y) % 360.0,
                 altitude_deg=float(altitude),
+                clock_minutes=clock_minutes,
             )
         )
     return found
@@ -616,12 +618,17 @@ def sheet_cells_for(
     *,
     title_block_mm: float = TITLE_BLOCK_MM,
     gap_mm: float = CELL_GAP_MM,
+    aspect: float | None = None,
 ) -> list[tuple[float, float, float, float]]:
     """Equal cells on the page, as ``(xMin, yMin, xMax, yMax)`` in metres.
 
     The page less the title block strip is cut into equal cells, as many
     across as wastes the fewest cells and then keeps them nearest square:
-    four drawings are two by two, not three and one. Layout coordinates run
+    four drawings are two by two, not three and one. Given the ``aspect`` --
+    width over height -- of what the cells will hold, as many across as lets
+    it be drawn largest instead, fewest wasted cells after that: three plans
+    of a square site are two by two with one cell empty, not three tall
+    strips that hold it at half the size (D143). Layout coordinates run
     upward from the bottom-left corner, so the first cell is put at the top
     by counting down from the page height rather than up from zero. Each cell
     is shrunk by ``gap_mm`` on every side, which is where the drawing's title
@@ -636,7 +643,13 @@ def sheet_cells_for(
         rows = -(-count // columns)
         return (columns * rows - count, abs(math.log((width / columns) / (height / rows))))
 
-    columns = min(range(1, count + 1), key=cost)
+    def fit(columns: int) -> tuple[float, int]:
+        rows = -(-count // columns)
+        held = min((width / columns) / (aspect or 1.0), height / rows)
+        return (-round(held, 1), columns * rows - count)
+
+    choose = fit if aspect else cost
+    columns = min(range(1, count + 1), key=choose)
     rows = -(-count // columns)
     cell_w, cell_h = width / columns, height / rows
     cells: list[tuple[float, float, float, float]] = []
@@ -668,6 +681,9 @@ def arrange_drawings(
     placements: Sequence[tuple[str, tuple[float, float, float, float]]],
     *,
     stack: bool = False,
+    transparent: Sequence[bool] | None = None,
+    offset: tuple[float, float] = (0.0, 0.0),
+    pen_table_index: int | None = None,
 ) -> int:
     """Put each drawing's origin at the centre of a cell and clip it to the cell.
 
@@ -675,7 +691,15 @@ def arrange_drawings(
     metres on the layout. Returns how many the add-on arranged. ``stack``
     has the add-on bring them to the front in the order given as well, so a
     cell that holds two reads bottom to top; sent only when asked, since an
-    add-on built before it refuses a field it does not know.
+    add-on built before it refuses a field it does not know. ``transparent``
+    is a flag per placement for the drawing's own transparent background --
+    every drawing above the lowest of a stacked cell (D142) -- sent only when
+    given, for the same reason. ``offset`` moves every drawing's origin off
+    its cell's centre, in layout metres, so a window of the plan that is not
+    around the model origin is what sits in the middle of the cell (D143);
+    the clip stays the cell. ``pen_table_index`` prints every drawing in that
+    pen table, since a drawing of a 3D Document otherwise prints in the
+    model's active one whatever its view pins (D143); sent only when given.
 
     The origin rather than the centre of the content, and a clip rather than a
     free frame, because of what a drawing of a 3D Document is: the whole site
@@ -686,17 +710,27 @@ def arrange_drawings(
     """
     if not placements:
         return 0
+    if transparent is not None and len(transparent) != len(placements):
+        raise ValueError(f"{len(transparent)} transparency flags for {len(placements)} drawings")
+    dx, dy = offset
+    drawings: list[dict[str, Any]] = [
+        {
+            "guid": guid,
+            "x": (x0 + x1) / 2.0 + dx,
+            "y": (y0 + y1) / 2.0 + dy,
+            "frame": {"xMin": x0, "yMin": y0, "xMax": x1, "yMax": y1},
+        }
+        for guid, (x0, y0, x1, y1) in placements
+    ]
+    if transparent is not None:
+        for drawing, clear in zip(drawings, transparent, strict=True):
+            drawing["transparentBackground"] = bool(clear)
+    if pen_table_index is not None:
+        for drawing in drawings:
+            drawing["penTableIndex"] = int(pen_table_index)
     asked: dict[str, Any] = {
         "layoutDatabaseId": {"guid": layout_database_id},
-        "drawings": [
-            {
-                "guid": guid,
-                "x": (x0 + x1) / 2.0,
-                "y": (y0 + y1) / 2.0,
-                "frame": {"xMin": x0, "yMin": y0, "xMax": x1, "yMax": y1},
-            }
-            for guid, (x0, y0, x1, y1) in placements
-        ],
+        "drawings": drawings,
         "anchor": "origin",
         "frameRelativeToOrigin": False,
         "autoUpdate": True,
@@ -763,6 +797,8 @@ def place_on_sheets(
     scale: float,
     master_layout: str | None = None,
     title_block_mm: float = TITLE_BLOCK_MM,
+    offset: tuple[float, float] = (0.0, 0.0),
+    aspect: float | None = None,
 ) -> list[LayoutReport]:
     """Each group of document views onto its layout, one to a cell.
 
@@ -784,13 +820,15 @@ def place_on_sheets(
         # The grid of the fullest sheet, whatever this one holds: an afternoon
         # of three drawings sits in the morning's two-by-two with one cell
         # empty, not in a row of three at a different size.
-        grid = sheet_cells_for(sheet, cells, title_block_mm=title_block_mm)[: len(views)]
+        grid = sheet_cells_for(sheet, cells, title_block_mm=title_block_mm, aspect=aspect)[
+            : len(views)
+        ]
         placements = [
             (str(placed[drawing_name]["elementId"]["guid"]), cell)
             for (_, drawing_name), cell in zip(views, grid, strict=True)
             if drawing_name in placed
         ]
-        arrange_drawings(connection, report.database_id, placements)
+        arrange_drawings(connection, report.database_id, placements, offset=offset)
     return reports
 
 
@@ -802,15 +840,22 @@ def place_stacks_on_sheets(
     scale: float,
     master_layout: str | None = None,
     title_block_mm: float = TITLE_BLOCK_MM,
+    transparent_above_lowest: bool = False,
+    offset: tuple[float, float] = (0.0, 0.0),
+    pen_table_index: int | None = None,
+    aspect: float | None = None,
 ) -> list[LayoutReport]:
     """Each group of piled views onto its layout, a pile to a cell.
 
     ``groups`` is ``(layout name, [[(navigator id, drawing name), ...] per
     cell])``, each cell's list bottom to top, as the stacked shadow plans deal
-    them: the proposal's document under the existing set's. Every drawing of
-    a cell has its origin at the cell's centre and its frame clipped to the
-    cell, as ``place_on_sheets`` does with one, and the add-on then brings
-    them to the front in order, so the last of a pile lies over the rest.
+    them. Every drawing of a cell has its origin at the cell's centre and its
+    frame clipped to the cell, as ``place_on_sheets`` does with one, and the
+    add-on then brings them to the front in order, so the last of a pile lies
+    over the rest. ``transparent_above_lowest`` gives every drawing but the
+    lowest of each pile a transparent background; ``offset`` and
+    ``pen_table_index`` are ``arrange_drawings``'s, ``aspect``
+    ``sheet_cells_for``'s.
     """
     reports: list[LayoutReport] = []
     for name, piles in groups:
@@ -828,14 +873,25 @@ def place_stacks_on_sheets(
             continue
         sheet, _ = layout_sheet(connection, report.database_id)
         placed = _drawings_by_name(connection, report.database_id)
-        grid = sheet_cells_for(sheet, cells, title_block_mm=title_block_mm)[: len(piles)]
-        placements = [
-            (str(placed[drawing_name]["elementId"]["guid"]), cell)
-            for pile, cell in zip(piles, grid, strict=True)
-            for _, drawing_name in pile
-            if drawing_name in placed
+        grid = sheet_cells_for(sheet, cells, title_block_mm=title_block_mm, aspect=aspect)[
+            : len(piles)
         ]
-        arrange_drawings(connection, report.database_id, placements, stack=True)
+        placements: list[tuple[str, tuple[float, float, float, float]]] = []
+        clear: list[bool] = []
+        for pile, cell in zip(piles, grid, strict=True):
+            for position, (_, drawing_name) in enumerate(pile):
+                if drawing_name in placed:
+                    placements.append((str(placed[drawing_name]["elementId"]["guid"]), cell))
+                    clear.append(position > 0)
+        arrange_drawings(
+            connection,
+            report.database_id,
+            placements,
+            stack=True,
+            transparent=clear if transparent_above_lowest else None,
+            offset=offset,
+            pen_table_index=pen_table_index,
+        )
     return reports
 
 

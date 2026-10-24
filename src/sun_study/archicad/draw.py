@@ -236,8 +236,14 @@ class Pen:
     description: str = ""
 
 
-def pen_table(connection: ArchicadConnection, *, layout: bool = False) -> tuple[Pen, ...]:
+def pen_table(
+    connection: ArchicadConnection, *, layout: bool = False, table: str | None = None
+) -> tuple[Pen, ...]:
     """The pens of the pen table Archicad is using for the model.
+
+    ``table`` names another by its attribute guid -- the pen set a run pins,
+    when it pins one -- and ``layout`` asks for the one in effect for the
+    layouts, which is what a fill drawn on a sheet is printed in.
 
     Three calls, for the same reason ``_find_layer`` takes two.
     ``GetAttributesByType`` enumerates but reports only id, index and name;
@@ -266,19 +272,23 @@ def pen_table(connection: ArchicadConnection, *, layout: bool = False) -> tuple[
     if not identifiers:
         raise ArchicadError(f"The project lists no pen tables: {attributes!r}")
 
-    identifier = _active_pen_table(
-        connection, identifiers, "isActiveForLayout" if layout else "isActiveForModel"
+    identifier = (
+        table
+        if table in identifiers
+        else _active_pen_table(
+            connection, identifiers, "isActiveForLayout" if layout else "isActiveForModel"
+        )
     )
     response = connection.run_tapir(
         "GetPenTables",
         {"attributeIds": [{"attributeId": {"guid": identifier}}], "fields": ["pens"]},
     )
-    table = _first_pen_table(response)
-    if table is None:
+    found = _first_pen_table(response)
+    if found is None:
         raise ArchicadError(f"GetPenTables returned no usable pen table: {response!r}")
 
     pens: list[Pen] = []
-    for pen in table.get("pens") or []:
+    for pen in found.get("pens") or []:
         colour = (pen or {}).get("color") if isinstance(pen, dict) else None
         index = (pen or {}).get("index") if isinstance(pen, dict) else None
         if not isinstance(colour, dict) or not isinstance(index, (int, float)):
