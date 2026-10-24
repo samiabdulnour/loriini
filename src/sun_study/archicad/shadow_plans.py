@@ -330,6 +330,7 @@ def make_shadow_plans(
     *,
     settings: ShadowPlanSettings,
     set_label: str = "",
+    fresh: int | None = None,
 ) -> tuple[list[MadePlan], list[str]]:
     """One 3D Document per hour, overhead with its sun and shadows, and a view
     of each pinned to ``settings``. Returns them and anything worth saying.
@@ -344,8 +345,8 @@ def make_shadow_plans(
     existing = {s.name: s for s in three_d_sources(connection) if s.kind == "DocumentFrom3DItem"}
 
     made: list[tuple[ShadowPlan, str, bool, int | None]] = []
-    #: The effects flags of a document this run made with the shadows on.
-    fresh: int | None = None
+    #: The effects flags of a document this run made with the shadows on --
+    #: given, from a set made earlier in the same run, or found below.
     for plan in plans:
         name = plan.name(set_label)
         if name in existing:
@@ -745,6 +746,10 @@ def make_shadow_plan_stack(
     """
     said: list[str] = []
     piles: list[tuple[str, tuple[MadePlan, ...]]] = []
+    #: A document made by any set of this run carries the shadow switch the
+    #: sets already there are re-set with; without it, a stack whose new row
+    #: was made below an old one said every document had been there before.
+    fresh: int | None = None
     for member in members:
         fill = dict(settings.shadow_fill)
         fill["fillPen"] = member.shadow_pen
@@ -756,10 +761,15 @@ def make_shadow_plan_stack(
             fill_uncut_surfaces=None,
             uncut_surfaces=dict(STACK_SURFACES),
         )
-        made, notes = make_shadow_plans(connection, plans, settings=own, set_label=member.label)
+        made, notes = make_shadow_plans(
+            connection, plans, settings=own, set_label=member.label, fresh=fresh
+        )
         for note in notes:
             if note not in said:
                 said.append(note)
+        fresh = next(
+            (one.effects for one in made if not one.reused and one.effects is not None), fresh
+        )
         piles.append((member.label, tuple(made)))
     return Stack(piles=tuple(piles)), said
 

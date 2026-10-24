@@ -6931,6 +6931,18 @@ def shadows(
             ),
         ),
     ] = False,
+    shadow_all_hours_only: Annotated[
+        bool,
+        typer.Option(
+            "--shadow-all-hours-only/--no-shadow-all-hours-only",
+            help=(
+                "Draw the designed building's every-hour drawing and nothing else: no "
+                "fill, view or sheet per hour. What the fills are for beside the stacked "
+                "3D Documents of shadow-plans, which draw the comparison with the "
+                "neighbours. Implies --shadow-all-hours."
+            ),
+        ),
+    ] = False,
     drawing_scale: Annotated[float, typer.Option("--drawing-scale")] = 1000.0,
     master_layout: Annotated[str | None, typer.Option("--master-layout")] = None,
     shadow_subset: Annotated[str | None, typer.Option("--shadow-subset")] = None,
@@ -7030,7 +7042,8 @@ def shadows(
             draw=draw,
             sheet=sheet,
             shadow_storey=shadow_storey,
-            shadow_all_hours=shadow_all_hours,
+            shadow_all_hours=shadow_all_hours or shadow_all_hours_only,
+            only_all_hours=shadow_all_hours_only,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -7064,7 +7077,8 @@ def shadows(
             draw=draw,
             sheet=sheet,
             shadow_storey=shadow_storey,
-            shadow_all_hours=shadow_all_hours,
+            shadow_all_hours=shadow_all_hours or shadow_all_hours_only,
+            only_all_hours=shadow_all_hours_only,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -7150,7 +7164,8 @@ def shadows(
             draw=draw,
             sheet=sheet,
             shadow_storey=shadow_storey,
-            shadow_all_hours=shadow_all_hours,
+            shadow_all_hours=shadow_all_hours or shadow_all_hours_only,
+            only_all_hours=shadow_all_hours_only,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -7179,6 +7194,7 @@ def _shadow_report(
     shadow_storey: int,
     shadow_favourite: str | None,
     shadow_all_hours: bool = False,
+    only_all_hours: bool = False,
     terrain_floor: float | None,
     edge_tolerance: float,
     drawing_scale: float,
@@ -7419,6 +7435,7 @@ def _shadow_report(
             storey_index=shadow_storey,
             transform=frame,
             all_hours=outlined,
+            only_all_hours=only_all_hours and outlined is not None,
         )
         typer.echo("")
         typer.echo(drawn.describe())
@@ -7433,6 +7450,7 @@ def _shadow_report(
                 subset=shadow_subset,
                 sheets=sheets,
                 all_hours=outlined is not None,
+                only_all_hours=only_all_hours and outlined is not None,
             )
             typer.echo("")
             typer.echo(built.describe())

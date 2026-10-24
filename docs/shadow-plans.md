@@ -158,6 +158,15 @@ seen of each is the ground it shades that no source does, the last named
 over the earlier where two overlap. That is the fills' legend, with the
 subtraction done by the order on the sheet.
 
+**Five rows, 25 October 2026** ([D144](decisions.md)), the same project:
+`EXISTING` the neighbours and `FUTURE` the layer `SHADOW 2` as sources,
+`TOD` (`SHADOW 3`), `SEARS` (`SHADOW 4`) and `PROPOSED` the tower as
+scenarios -- fifteen documents and one A1 at 1:2000 in 49 s, each row in
+the legend's own colour through the run's pen set, stacked TOD < SEARS <
+PROPOSED < FUTURE < EXISTING. This is the main route for any diagram that
+involves the neighbours; the fills route is kept for the design's own
+every-hour drawing (`sun-study shadows --shadow-all-hours-only`).
+
 **Run live on 24 October 2026** on the Graphisoft sample project in
 Archicad 30 ([D142](decisions.md)): the existing neighbours as a source, the
 tower as the proposal, 21 June at 9, 12 and 3 on one A1 sheet. Six documents

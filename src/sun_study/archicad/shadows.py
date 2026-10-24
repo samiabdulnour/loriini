@@ -423,10 +423,13 @@ class ShadowDrawReport:
     Left out of the drawing and of every total; see ``_create_legend_fills``."""
 
     def describe(self) -> str:
-        lines = [
-            f"drew {self.fills} shadow fills across {len(self.layers)} layers, "
-            f"{len(self.combinations)} layer combinations"
-        ]
+        if not self.fills and not self.combinations and self.all_hours:
+            lines = [f"drew the every-hour drawing only, on {len(self.layers)} layer(s)"]
+        else:
+            lines = [
+                f"drew {self.fills} shadow fills across {len(self.layers)} layers, "
+                f"{len(self.combinations)} layer combinations"
+            ]
         if self.refused:
             lines.append(
                 f"  Archicad refused {len(self.refused)} fill(s), left out of the drawing -- "
@@ -459,7 +462,8 @@ class ShadowDrawReport:
             )
         if self.note:
             lines.append(f"  {self.note}")
-        lines.append(self.stamped.describe())
+        if self.fills:
+            lines.append(self.stamped.describe())
         if self.grouped.describe():
             lines.append(self.grouped.describe())
         for label, areas in self.areas_m2.items():
@@ -782,8 +786,14 @@ def draw_shadow_series(
     all_hours: str | None = None,
     all_hours_pen: int = 1,
     label_height_mm: float = 2.5,
+    only_all_hours: bool = False,
 ) -> ShadowDrawReport:
     """Draw every instant onto its own layer, and record a combination for each.
+
+    ``only_all_hours`` draws the every-hour drawing and nothing else: no
+    layer, fill or combination per hour. It is what the fills are for now
+    that the stacked 3D Documents draw the comparison with the neighbours
+    (D144): the designed building's own shadow, every hour, on one plan.
 
     ``all_hours`` names a source whose own shadow was outlined (see
     ``cast_shadows``); each day then also gets one layer carrying that shadow
@@ -831,8 +841,14 @@ def draw_shadow_series(
     palette.update(styles or {})
     order = drawing_order(series.sources)
 
+    if only_all_hours and not all_hours:
+        raise ArchicadError(
+            "Only the every-hour drawing was asked for, and no designed building names "
+            "whose shadow it shows: name a PROPOSED row or a --shadow-scenario."
+        )
+    hourly = [] if only_all_hours else list(series.instants)
     shared = ensure_layer(connection, shared_layer_name())
-    wanted = [layer_name(instant.label) for instant in series.instants]
+    wanted = [layer_name(instant.label) for instant in hourly]
     days = _by_date(series) if all_hours else {}
     # Hidden in every hour's combination too, so a single hour never shows
     # the every-hour lines over it.
@@ -850,7 +866,7 @@ def draw_shadow_series(
     colours: list[tuple[int, int, int] | None] = []
     cleared = 0
     made_layers: list[str] = []
-    for instant in series.instants:
+    for instant in hourly:
         name = layer_name(instant.label)
         layer = ensure_layer(connection, name)
         made_layers.append(name)
@@ -917,7 +933,7 @@ def draw_shadow_series(
                 if answer is not None
             ]
             made = [answer for answer in answered if answer is not None]
-    if not made and not refused:
+    if fills and not made and not refused:
         for start in range(0, len(fills), 500):
             made.extend(
                 create_elements(
@@ -927,13 +943,13 @@ def draw_shadow_series(
 
     # Positional pairing, and the boundary's ``None`` drops out there: see
     # ``ids.stamp_in_order`` for why a mismatch is refused rather than trimmed.
-    stamped = stamp_in_order(connection, made, element_ids)
+    stamped = stamp_in_order(connection, made, element_ids) if made else StampReport(0, 0)
     # One group per hour *and* category, so a colleague can pick up all of
     # 9am's additional shadow in one click without disturbing the existing
     # shadow underneath it.
     grouped = (
         group_by_value(connection, list(zip(made, element_ids, strict=True)))
-        if len(made) == len(element_ids)
+        if made and len(made) == len(element_ids)
         else NOT_GROUPED
     )
 
@@ -956,7 +972,7 @@ def draw_shadow_series(
     # certainly exist and carry the right visibility.
     project = read_layers(connection)
     combinations: list[str] = []
-    for instant in series.instants:
+    for instant in hourly:
         name = combination_name(instant.label)
         ensure_combination(
             connection,
@@ -977,7 +993,7 @@ def draw_shadow_series(
     return ShadowDrawReport(
         fills=len(made),
         sources=series.sources,
-        layers=tuple(made_layers),
+        layers=tuple(made_layers) + tuple(all_hours_layer_name(day) for day in days),
         combinations=tuple(combinations),
         cleared=cleared,
         below_horizon=tuple(i.label for i in series.instants if i.below_horizon),
@@ -1063,11 +1079,13 @@ def build_shadow_sheets(
     sheets: str = DEFAULT_SHEETS,
     zoom: tuple[float, float, float, float] | None = None,
     all_hours: bool = False,
+    only_all_hours: bool = False,
 ) -> ShadowSheetReport:
     """One View per hour, then the day's Layouts as ``sheets`` says, filed.
 
     ``all_hours`` adds, per day, a View of that day's every-hour drawing (see
-    ``draw_shadow_series``) and a sheet of its own carrying it.
+    ``draw_shadow_series``) and a sheet of its own carrying it;
+    ``only_all_hours`` makes that and no view or sheet per hour.
 
     The View is the piece that makes this work: it is a view of the *site
     plan*, pinned to that hour's Layer Combination, so the drawing carries the
@@ -1092,8 +1110,9 @@ def build_shadow_sheets(
         )
     storey = found[storey_index]
 
+    hourly = [] if only_all_hours else list(series.instants)
     made: list[tuple[str, str]] = []
-    for instant in series.instants:
+    for instant in hourly:
         views = views_for_storeys(
             connection,
             [storey],
@@ -1107,7 +1126,7 @@ def build_shadow_sheets(
     names: list[str] = []
     placed = 0
     position = 0
-    for date_label, instants in _by_date(series).items():
+    for date_label, instants in (_by_date(series) if hourly else {}).items():
         chunks = sheet_chunks(len(instants), sheets)
         cells = cells_for(chunks)
         for part, (start, stop) in enumerate(chunks, start=1):
@@ -1127,7 +1146,7 @@ def build_shadow_sheets(
             names.append(name)
             placed += report.drawings_placed
 
-    for date_label in _by_date(series) if all_hours else {}:
+    for date_label in _by_date(series) if (all_hours or only_all_hours) else {}:
         caption = f"{date_label} {ALL_HOURS_WORD}"
         views = views_for_storeys(
             connection,

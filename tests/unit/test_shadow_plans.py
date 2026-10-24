@@ -580,6 +580,22 @@ def test_a_rerun_of_a_stack_re_sets_the_surfaces_too() -> None:
     assert upper["shadowFill"] == {"fillPen": 93, "backgroundPen": 93}
 
 
+def test_a_row_already_there_takes_the_shadow_switch_from_a_row_made_this_run() -> None:
+    """A new row (TOD) made below a row an earlier run made (EXISTING): the
+    existing row's documents are re-set with the switch the new documents
+    were made with, and the run does not say every document was there."""
+    transport = PlanTransport(existing=(f"{SS} Shadow Plan EXISTING 21 Jun 09:00",))
+    _, said = make_shadow_plan_stack(
+        ArchicadConnection(transport),
+        _plans([9]),
+        settings=ShadowPlanSettings(),
+        members=[PlanSet("TOD", "T", 95), PlanSet("EXISTING", "X", 93)],
+    )
+    (reset,) = transport.asked("SetDocumentFrom3D")
+    assert reset["effects3D"] == 7, "the switch of the TOD document just made"
+    assert not any("already there" in line for line in said)
+
+
 def _stack(day: dt.date, hours: list[int], *labels: str) -> Stack:
     """A stack of the labels, bottom to top, every set with every hour."""
     return Stack(piles=tuple((label, tuple(_made(day, hours, label))) for label in labels))

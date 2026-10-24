@@ -5798,3 +5798,49 @@ on the sheet, 17 s; the outlines read back at the top level over the plans.
 
 *What this does not change:* the stack itself (D142), the hours and their
 sun (D135), or the plain set's sheets beyond the same fit.
+
+### D144 — The 3D Documents are the shadow diagram; the fills draw the design's every hour
+
+Asked 25 October 2026: *"the 3d doc is the main route there. try to make 3 -
+4 - 5 3d doc shadows. the original route with computation of shadow now will
+be only used for actual design mass, in case when we need to see shadows
+made by our design in every hour in one drawing. basicaly 7 shadows of one
+building in one drawing, besides that, when it involves neighbour building
+we use 3D doc"*, with three layers of slabs added to the sample project --
+`SHADOW 2` for the future context, `SHADOW 3` for TOD, `SHADOW 4` for SEARs
+-- *"please update the diagram so every layer has different colour shadow
+... after that please build the shadow of every hour of proposed building
+seen. use floorplan for fills"*.
+
+**Decided.** Two routes, one job each. A diagram that involves the
+neighbours is the stacked 3D Documents (D141 to D143), as many legend rows
+as the project has. The fills -- Loriini's own caster, the route the shadow
+diagram began on -- are kept for one drawing: the designed building's own
+shadow at every hour on one plan, which the documents cannot draw, since a
+document is one hour. `sun-study shadows --shadow-all-hours-only` draws that
+and nothing else: the every-hour outlines labelled by hour on the floor
+plan, its combination, its view and its sheet; no fill, layer, combination,
+view or sheet per hour. It implies `--shadow-all-hours`, and refuses without
+a designed building (the `PROPOSED` row, or the last scenario).
+
+**Five rows, run.** `EXISTING` (the neighbours) and `FUTURE` (`SHADOW 2`) as
+sources, `TOD` (`SHADOW 3`), `SEARS` (`SHADOW 4`) and `PROPOSED` (the
+tower's structure layers) as scenarios, 21 June at 9, 12 and 3: fifteen
+documents and one A1 at 1:2000 in 49 s, stacked TOD < SEARS < PROPOSED <
+FUTURE < EXISTING, each row's pen -- 236, 216, 196, 116 and 156, the nearest
+in the office's `00 ENZ PRINT` -- printed at the legend's own colour through
+the run's pen set. One thing the run said wrongly and now does not: a row
+an earlier run had made, stacked over a row made in this one, was re-set
+without the new documents' shadow switch, and the run said every document
+had been there before. The switch is now carried from set to set.
+
+**The every-hour drawing, run.** The tower over the neighbours and the
+ground, 21 June at every hour from 9 to 3: one layer, `15 | Shadow
+Diagram.JUNE 21 ALL HOURS`, carrying nineteen outlines and seven hour
+labels and no fill, its combination, one view and one sheet, `15 | Shadow
+Diagrams - JUNE 21 ALL HOURS`, in 5 min 43 s, most of it the export and the
+cast of seven hours over half a million samples.
+
+*What this does not change:* the stack, its fit, its pen set and its legend
+(D141 to D143), and the fills route's own per-hour diagram, which a run
+without the new flag still draws.

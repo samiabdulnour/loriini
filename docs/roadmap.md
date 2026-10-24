@@ -140,6 +140,12 @@ the whole site fitted to every cell at a scale worked out from the model,
 the drawings printed in a pen set of the run's own carrying the legend's
 exact colours, and the legend and the site outline drawn on the sheet.
 
+**The routes settled (25 October)** ([D144](decisions.md)): the stacked 3D
+Documents are the shadow diagram, any number of legend rows, run on the
+sample project with five -- existing, future, TOD, SEARs and the proposal.
+The fills route is kept for the design's own shadow at every hour on one
+plan, `--shadow-all-hours-only`, and nothing else.
+
 ## R2 — An agent that operates Loriini
 
 **Asked.** Could an AI agent run Loriini natively, for more users? It saves
