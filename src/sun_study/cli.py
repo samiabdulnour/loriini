@@ -8269,6 +8269,14 @@ def _stacked_shadow_plans(
     surfaces unfilled, so its shadow covers in its pen and the proposal's pen
     shows wherever only the proposal casts.
     """
+    typer.secho(
+        "  the stack does not show its split in Archicad 30 (D136): a 3D Document draws "
+        "its shadows as fills on its surfaces, so the upper document, its surfaces "
+        "unfilled to let the proposal's pen through, draws no shadow at all. The sheets "
+        "are made as asked; for existing and additional shadow in two colours on one "
+        "plan, run 'sun-study shadows' with --shadow-source and --shadow-scenario.",
+        fg=typer.colors.YELLOW,
+    )
     typer.echo("  shadow pens for the stack:")
     first, rest = _stack_pens(connection, existing_pen, proposed_pens, len(proposals))
     members: list[PlanSet] = []

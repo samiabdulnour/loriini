@@ -125,9 +125,12 @@ sun was the finding: every document carried the sun of an hour later than
 asked, because Archicad reads a sun date in the project location's time
 zone and Loriini had sent the wall-clock of `--timezone`. The add-on now
 reports the zone (`GetPlace`) and the hour goes over in Archicad's own clock
-([D135](decisions.md)). The sheets themselves -- the fill pen, the stack's
-uncut surfaces and order -- are still to be read; the display slept before
-they could be.
+([D135](decisions.md)). The stack was then read, and does not work: a 3D
+Document draws its shadows as fills on its surfaces, so the upper document,
+unfilled to let the proposal show through, draws no shadow ([D136]
+(decisions.md)). The split in two colours stays the fills route's, which
+ran on the same model the same afternoon: the full tower exported in 58 s,
+534,000 triangles cast in 80 s, 95 fills and two sheets.
 
 ## R2 — An agent that operates Loriini
 

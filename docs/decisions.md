@@ -5197,3 +5197,45 @@ azimuth 9.8, this tool's sun for 09:00 Dubai, where hour 9 reads 57.1.
 *What this does not change:* which hours are drawn, their names and
 captions, the fills' route, or the sun views' own sun -- they take the same
 clock, through the same function.
+
+### D136 — A 3D Document draws its shadows on its surfaces, so two documents cannot stack into one split
+
+Asked 24 October 2026, after the clock was put right (D135): *"I need to
+see 2 shadows in one drawings in different colours"*. The stacked shadow
+plans (`shadow-plans --existing --proposed`, shadow-plans.md) were made for exactly that
+-- the existing set's document over each proposal's, the upper one's uncut
+surfaces unfilled so the proposal's pen shows wherever only the proposal
+casts -- and on the sample project the stacked sheet showed outlines and no
+shadow.
+
+**Measured.** The Existing 09:00 document, read back: shadows on
+(`effects3D` 128), a solid fill in its pen, uncut surfaces unfilled. In its
+own window: outlines only. `SetDocumentFrom3D` with `fillUncutSurfaces`
+true and a rebuild: the whole shadow picture, at once. Back to false: gone
+again. The plain documents, whose surfaces are filled, had shown their
+shadows from the first run. So Archicad draws a 3D Document's vectorial sun
+shadows as fills *on its surfaces*: no surface drawn, nothing to draw a
+shadow on. A document that draws its surfaces is opaque, so two documents
+cannot stack into one drawing with the split between them. The stack as
+designed cannot work in Archicad 30, and the dev kit's uncut-surface
+options -- `uncutSurfaceFillType`, `uncutSurfaceBkgPen` -- choose how the
+surfaces are filled, not whether a filled surface hides what lies under it.
+
+**Decided.** The stacked mode stays, since its documents and sheets are
+made correctly and may be wanted, but the run says plainly that the split
+does not show and where it does: the fills route. `sun-study shadows` with
+`--shadow-source` and `--shadow-scenario` draws existing and additional
+shadow in two colours on one plan by construction, and ran on this model
+the same afternoon -- the full tower, 534,000 triangles, exported in 58 s
+and cast in 80 s, 95 fills on three layers and two sheets. The 3D
+Documents' comparison is the two sets side by side, as before the stack.
+
+**Also found.** The project location had been set to Sydney between the
+restart and this run, so the fills asked for in Dubai time came back as
+night at noon and 3pm; `--timezone` has to be the location's. The fills'
+sheets at 1:1000 on an A3 overflow the page for a 420 m site; the run
+neither says so nor scales down. An A1 was asked for instead; whether the
+reused layouts took the new master is for the next look at the sheets.
+
+*What this does not change:* the plain shadow plans, their sun (D135), or
+the fills route's drawing.

@@ -72,6 +72,19 @@ only the proposal casts, the proposal's pen through the gaps. Archicad casts
 both; nothing is measured or traced, which is what the fills route does and
 what the office found not precise enough on the model it tried it on.
 
+**Measured 24 October 2026, and it does not work ([D136](decisions.md)).**
+On the sample project in Archicad 30, a document with its uncut surfaces
+unfilled draws no shadow at all; switch the fill on and the whole shadow
+picture appears. Archicad draws a document's vectorial shadows as fills on
+its surfaces, so there is nothing to draw them on where the surfaces are
+not drawn, and a document whose surfaces are drawn is opaque. The upper
+document of the stack is therefore outlines only, and the sheet shows the
+proposal's document beneath it, shadowed in one pen. The run says so when
+`--proposed` is given and makes the sheets anyway. The split in two colours
+on one plan is the fills route's, `sun-study shadows` with
+`--shadow-source` and `--shadow-scenario`; the two sets side by side below
+remain the documents' own comparison.
+
 ```
 sun-study shadow-plans --layer-combination "04 | Shadow Diagrams" ^
   --existing "03 | Site Context.Buildings" ^
