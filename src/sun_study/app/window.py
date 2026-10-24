@@ -143,12 +143,16 @@ FIT_WORDS: dict[str, str] = {
     "Ignore it: use the project's north": "none",
 }
 
-#: The house styles the sheets are drawn in, as the Site analysis page names
-#: them, and the ``--theme`` / ``--site-theme`` each sends; the first of each
-#: is the default. The names are the generator's: a bird each.
-CONTEXT_STYLES: dict[str, str] = {f"{t.label} -- {t.note}": t.id for t in site_theme.THEMES}
+#: The house styles the sheets are drawn in, named as the site-analysis
+#: site's STYLE row names them -- Flamingo, Kingfisher, Heron, Canary, a bird
+#: each, the site sheet's in the context sheet's order -- and Oatley, the
+#: office's own legend, after them; and the ``--theme`` / ``--site-theme``
+#: each sends. What each one looks like is the row's tooltip.
+CONTEXT_STYLES: dict[str, str] = {t.label: t.id for t in site_theme.THEMES}
 SITE_STYLES: dict[str, str] = {
-    f"{t.label} -- {t.note.split(';')[0].split(':')[0]}": t.id for t in site_theme.SITE_THEMES
+    site_theme.site_theme(t.id).label: t.id
+    for t in site_theme.THEMES
+    if site_theme.is_site_theme(t.id)
 }
 
 #: What RL project zero stands for when the 3D context is placed, and the
@@ -4905,7 +4909,7 @@ class Window:
             frame,
             row,
             "Context style",
-            "The context sheet's house style. Flamingo: paper and four tints.",
+            "The context sheet's style, named as on the site-analysis site. Flamingo by default.",
             "Flamingo sits on plain paper: four tints with textures, every "
             "street white, green street names. Kingfisher is the masterplan "
             "palette, pale zone grounds and a white cadastre. Heron is the "
@@ -4915,12 +4919,12 @@ class Window:
             "these sheets were first drawn.",
         )
         self.site_theme.configure(values=list(CONTEXT_STYLES), state="readonly")
-        self.site_theme.set(next(iter(CONTEXT_STYLES)))
+        self.site_theme.set(site_theme.theme(site_theme.DEFAULT_THEME).label)
         self.site_site_theme, row = self._combo(
             frame,
             row,
             "Site style",
-            "The site sheet's house style. Heron: the grey aerial, crown suns.",
+            "The site sheet's style, named as on the site-analysis site. Heron by default.",
             "Heron is the grey aerial with the zones hatched in its palette, the "
             "site in its red, the sun as an open crown and the winds as "
             "hand-drawn strands. Kingfisher is on paper: the buildings in their "
@@ -4931,7 +4935,7 @@ class Window:
             "is the sheet as it was first drawn.",
         )
         self.site_site_theme.configure(values=list(SITE_STYLES), state="readonly")
-        self.site_site_theme.set(next(iter(SITE_STYLES)))
+        self.site_site_theme.set(site_theme.site_theme(site_theme.DEFAULT_SITE_THEME).label)
         self.site_anchor, row = self._tiles(
             frame,
             row,
