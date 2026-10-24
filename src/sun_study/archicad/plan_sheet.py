@@ -1,5 +1,5 @@
 """The combined shadow-plan sheet: the scale it is drawn at, the pens it is
-printed in, and the legend and site outline drawn on it (D138).
+printed in, and the legend and site outline drawn on it (D143).
 
 Three things the first combined sheet got wrong on the sample project, each
 answered here.
@@ -371,7 +371,7 @@ def _open(ring: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
     The add-on closes every contour itself, and Archicad refuses a fill with a
     zero-length edge -- which is what a ring that already ends where it began
     becomes: a slab's ``polygonOutline`` does, and so did the first legend
-    swatch drawn on the sample project, refused with -2130313102 (D138).
+    swatch drawn on the sample project, refused with -2130313102 (D143).
     """
     points: list[tuple[float, float]] = []
     for point in ring:
@@ -504,7 +504,7 @@ def draw_legend_and_outline(
 #: The highest display level. The drawings are brought to the front as they
 #: are stacked, which puts them at this level; a fill drawn on the sheet after
 #: them still lands at its tool's own level, 6, and the site outline drawn
-#: over a plan was under the plan's opaque lowest drawing, invisible (D138).
+#: over a plan was under the plan's opaque lowest drawing, invisible (D143).
 TOP_LEVEL = 14
 
 

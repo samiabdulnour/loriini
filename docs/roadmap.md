@@ -127,15 +127,15 @@ zone and Loriini had sent the wall-clock of `--timezone`. The add-on now
 reports the zone (`GetPlace`) and the hour goes over in Archicad's own clock
 ([D135](decisions.md)). The stack was then read and showed no shadow: a 3D
 Document draws its shadows on filled surfaces only, so the upper document,
-unfilled to let the proposal show through, drew none ([D136](decisions.md)).
+unfilled to let the proposal show through, drew none ([D141](decisions.md)).
 The office's answer was that the stacked documents are the main way, with
 the fills' legend: so the add-on now fills a document's surfaces in the
 transparent pen, which draws the shadows and nothing else, and the stack
 takes the legend's rows -- sources that accumulate, scenarios that are
 compared -- every row of an hour in one drawing on a combined sheet, each in
-its colour where it adds ([D137](decisions.md)). Run live the same evening on
+its colour where it adds ([D142](decisions.md)). Run live the same evening on
 the sample project: the neighbours and the tower, three hours on one A1, in
-18 s. Then the rest of the sheet, the same evening ([D138](decisions.md)):
+18 s. Then the rest of the sheet, the same evening ([D143](decisions.md)):
 the whole site fitted to every cell at a scale worked out from the model,
 the drawings printed in a pen set of the run's own carrying the legend's
 exact colours, and the legend and the site outline drawn on the sheet.

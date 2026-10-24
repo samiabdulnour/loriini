@@ -126,7 +126,7 @@ will say what Archicad did (`docs/shadow-plans.md`).
 | `shadowContours` | with `sunShadows`, outline each shadow; off by default |
 | `shadowFill` | `fillIndex`, `fillPen`, `backgroundPen`, `contourPen`, each optional |
 | `fillUncutSurfaces` | whether the document fills its uncut surfaces -- `shouldUseUncutSurfaceFill`, the *Uncut Surfaces* switch of its Model Display. False leaves roofs and ground as outlines, so a drawing of the document on a layout shows what lies under it wherever no shadow falls: how the stacked shadow plans put the existing set's document over a proposal's (`docs/shadow-plans.md`). Written onto the defaults for the creation and onto the document, like the fill; left out, the project's default stands |
-| `uncutSurfaces` | `{fill, fillType, pen}`: the switch, which of the Model Display's three uncut-surface fills (`penColor`, `materialShaded`, `materialNotShaded`), and `uncutSurfaceBkgPen`, the pen a `penColor` fill is drawn in -- 0 is Archicad's transparent pen. Archicad draws a document's shadows on filled surfaces only (D136), and draws them as darker material, not in the shadow's pen, when the surfaces take the materials' colours; filled in pen 0, the surfaces draw nothing and the shadows draw in their pen, which is how the stacked shadow plans lay documents over each other (D137). Read back on every answer |
+| `uncutSurfaces` | `{fill, fillType, pen}`: the switch, which of the Model Display's three uncut-surface fills (`penColor`, `materialShaded`, `materialNotShaded`), and `uncutSurfaceBkgPen`, the pen a `penColor` fill is drawn in -- 0 is Archicad's transparent pen. Archicad draws a document's shadows on filled surfaces only (D141), and draws them as darker material, not in the shadow's pen, when the surfaces take the materials' colours; filled in pen 0, the surfaces draw nothing and the shadows draw in their pen, which is how the stacked shadow plans lay documents over each other (D142). Read back on every answer |
 
 Neither write is undoable, and the first build's attempt to make them so is
 why it failed. The kit documents both `APIDb_NewDatabaseID` and
@@ -241,13 +241,13 @@ arranged.
 own `isTransparentBk`: what lies under it on the layout shows wherever it
 draws only background. The stacked shadow plans set it on every drawing above
 the lowest of a cell, beside filling each document's surfaces in the
-transparent pen (D137). Left out, a drawing keeps what it has.
+transparent pen (D142). Left out, a drawing keeps what it has.
 
 `penTableIndex` (24 October 2026), per drawing, prints the drawing in that
 pen table: `penTableUsageMode` set to use a pen table by index, and
 `penTableIndex`. A drawing of a 3D Document otherwise prints in the model's
 active pen table -- measured: not in the pen set its view pins, even placed
-fresh after the view was pinned (D138). The stacked shadow plans give every
+fresh after the view was pinned (D143). The stacked shadow plans give every
 drawing their own pen set, which carries the legend's exact colours.
 
 `GetDrawings` beside it reads every Drawing on a layout back -- position,

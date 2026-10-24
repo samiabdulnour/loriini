@@ -994,6 +994,37 @@ def test_the_three_site_sheets_are_three_different_pictures(hidden_window: Any) 
     assert len({tuple(items) for items in drawn.values()}) == 3
 
 
+def test_the_context_sheet_is_centred_on_the_site_and_its_walk(hidden_window: Any) -> None:
+    """The run centres the context sheet on the site, and the five-minute
+    walk is the site's: the miniature had the site off to one side and the
+    ring round the station. The station sits inside the walk, and nothing
+    is drawn outside the frame, since a canvas clips nothing."""
+    frame = (10.0, 20.0, 239.0, 176.0)
+    paper: Any = tk.Canvas(hidden_window.root)
+    window._draw_context(paper, frame)
+    items = paper.find_all()
+
+    def middle(item: int) -> tuple[float, float]:
+        x0, y0, x1, y1 = paper.bbox(item)
+        return (x0 + x1) / 2, (y0 + y1) / 2
+
+    (site,) = [i for i in items if paper.itemcget(i, "fill") == window.CONTEXT_SITE]
+    ovals = [i for i in items if paper.type(i) == "oval"]
+    (walk,) = [i for i in ovals if paper.itemcget(i, "outline") == window.RING]
+    (station,) = [i for i in ovals if paper.itemcget(i, "fill") == theme.BLUE]
+    centre = ((frame[0] + frame[2]) / 2, (frame[1] + frame[3]) / 2)
+    for item in (site, walk):
+        assert middle(item) == pytest.approx(centre, abs=2)
+    reach = (paper.bbox(walk)[2] - paper.bbox(walk)[0]) / 2
+    sx, sy = middle(station)
+    assert (sx - centre[0]) ** 2 + (sy - centre[1]) ** 2 < reach**2, "the station within the walk"
+    for item in items:
+        x0, y0, x1, y1 = paper.bbox(item)
+        if item != walk:
+            assert x0 >= frame[0] - 3 and y0 >= frame[1] - 3, paper.type(item)
+            assert x1 <= frame[2] + 3 and y1 <= frame[3] + 3, paper.type(item)
+
+
 def test_a_model_is_shown_as_geometry_and_not_counted_as_a_sheet(hidden_window: Any) -> None:
     """The site study's context model and future model are geometry on their
     own layers, not layouts. The panel shows them as what they are -- no
@@ -1074,9 +1105,9 @@ def test_a_sheet_says_only_what_the_panel_does_not_say_beside_it(hidden_window: 
     paper = tk.Canvas(hidden_window.root)
     window.draw_sheet(paper, WHOLE_DAY_SHEET, 300, 212)
     texts = _texts(paper)
-    assert "COMMUNAL OPEN SPACE" in texts
+    assert "Communal open space" in texts
     assert not any("21 Jun" in text or "whole day" in text for text in texts), texts
-    assert "Communal open space" not in texts, "the block does not say the title again"
+    assert texts.count("Communal open space") == 1, "the block does not say the title again"
 
     paper = tk.Canvas(hidden_window.root)
     window.draw_sheet(paper, FOUR_HOUR_SHEET, 300, 212)
@@ -1100,11 +1131,12 @@ def test_the_blue_edge_rims_the_whole_sheet(hidden_window: Any) -> None:
 
 
 def test_a_sheet_is_lettered_in_one_style_on_shared_lines(hidden_window: Any) -> None:
-    """One size, one weight, one ink for every word on a miniature: at 300
-    px, three sizes in three greys read as clutter. The scale and the number
-    sit in the block level with the two lines of the sheet's name beside
-    them, and north is at the top of the block, on the block's left edge with
-    the words -- clear of every drawing."""
+    """One size and one weight for every word on a miniature: at 300 px,
+    three sizes read as clutter. Two inks, the way a card is set: the name
+    and the number in ink, the hour and the scale in the hint grey (D136).
+    The scale and the number sit in the block level with the two lines of
+    the sheet's name beside them, the number in the sidebar's chip, and
+    there is no north mark: the master carries one."""
     paper: Any = tk.Canvas(hidden_window.root)
     window.draw_sheet(paper, replace(FOUR_HOUR_SHEET, scale="1:50"), 300, 212)
     block_left = 300 * (1 - 53.0 / window.SHEET_MM_W)
@@ -1112,19 +1144,27 @@ def test_a_sheet_is_lettered_in_one_style_on_shared_lines(hidden_window: Any) ->
     texts = [i for i in items if str(paper.type(i)) == "text"]
 
     assert len({paper.itemcget(i, "font") for i in texts}) == 1, "one size and weight"
-    assert {paper.itemcget(i, "fill") for i in texts} == {theme.INK}, "one ink"
+    assert {paper.itemcget(i, "fill") for i in texts} == {theme.INK, theme.HINT}, "two inks"
 
     def at(text: str) -> Any:
         (found,) = [i for i in texts if paper.itemcget(i, "text") == text]
         return paper.coords(found)
 
+    def ink(text: str) -> str:
+        (found,) = [i for i in texts if paper.itemcget(i, "text") == text]
+        return str(paper.itemcget(found, "fill"))
+
     assert at("1:50")[0] >= block_left and at("SD.01")[0] >= block_left
-    assert at("1:50")[1] == at("SHADOW DIAGRAM")[1], "the scale beside the name"
+    assert at("1:50")[1] == at("Shadow diagram")[1], "the scale beside the name"
     assert at("SD.01")[1] == at("09:00-12:00   (1 of 2)")[1], "the number beside the hours"
+    assert ink("Shadow diagram") == ink("SD.01") == theme.INK
+    assert ink("1:50") == ink("09:00-12:00   (1 of 2)") == theme.HINT, "what is second, in grey"
 
     ring = [i for i in items if str(paper.type(i)) == "oval" and paper.bbox(i)[0] >= block_left]
-    assert len(ring) == 1, "north, in the block"
-    assert paper.bbox(ring[0])[1] < 300 * 20 / window.SHEET_MM_W, "at its top"
+    assert not ring, "no north: the master carries one"
+    (chip,) = paper.find_withtag("chip")
+    assert paper.itemcget(chip, "fill") == theme.ACCENT_TINT, "the number in the sidebar's chip"
+    assert paper.bbox(chip)[0] >= block_left and paper.bbox(chip)[1] < at("SD.01")[1]
     assert not [i for i in texts if paper.itemcget(i, "text") in {"N", "LORIINI"}]
 
 
@@ -1214,12 +1254,14 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     only_yield(hidden_window)
     hidden_window.yield_option.delete(0, "end")
     hidden_window.yield_option.insert(0, "Option 02")
-    hidden_window.yield_residential.insert(0, "01 | Wall.External")
-    hidden_window.yield_retail.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_slabs.set("Slabs on chosen layers")
     hidden_window.yield_massing.insert(0, "01 | Massing - Main Building.3D OPT2")
     hidden_window.yield_retail_levels.insert(0, "Ground")
     hidden_window.yield_commercial_levels.insert(0, "Level 01, Level 02")
-    hidden_window.yield_renovation.set(True)
+    # Filled, but in rows this answer does not show: they must not count.
+    hidden_window.yield_residential.insert(0, "01 | Wall.External")
+    hidden_window.yield_retail.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_renovation_status.set("As the floor plan's filter")
     hidden_window.yield_site_area.insert(0, "1386.78")
     hidden_window.yield_fsr_residential.insert(0, "2.8")
     hidden_window.yield_fsr_retail.insert(0, "0.4")
@@ -1234,8 +1276,9 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     assert job.label == window.YIELD_JOB
     assert args[0] == "yield"
     assert flag(args, "--option") == ["Option 02"]
-    assert flag(args, "--residential-layer") == ["01 | Wall.External"]
-    assert flag(args, "--retail-layer") == ["01 | Floor.Structural"]
+    assert "--residential-layer" not in args and "--retail-layer" not in args, (
+        "a layer left in a hidden row changes nothing"
+    )
     assert flag(args, "--massing-layer") == ["01 | Massing - Main Building.3D OPT2"]
     assert flag(args, "--retail-level") == ["Ground"]
     assert flag(args, "--commercial-level") == ["Level 01", "Level 02"]
@@ -1297,12 +1340,14 @@ def test_the_workbook_is_chosen_with_a_save_dialog(
 
 def test_option_layers_and_a_workbook_of_their_own(hidden_window: Any, tmp_path: Path) -> None:
     only_yield(hidden_window)
+    hidden_window.yield_slabs.set("A layer per option")
     hidden_window.yield_option_layers.insert(0, "01 | Massing.3D OPT1, 01 | Massing.3D OPT2")
     hidden_window.yield_workbook.insert(0, r"P:³3\Yield.xlsx")
     hidden_window.tables.delete(0, "end")
     hidden_window.tables.insert(0, str(tmp_path))
     (job,) = hidden_window.jobs()
     assert flag(job.args, "--option-layer") == ["01 | Massing.3D OPT1", "01 | Massing.3D OPT2"]
+    assert "--option" not in job.args, "each option is named after its layer"
     assert flag(job.args, "--xlsx") == [r"P:³3\Yield.xlsx"], "the typed path over the folder"
     hidden_window.yield_xlsx.set(False)
     (job,) = hidden_window.jobs()
@@ -3404,6 +3449,39 @@ def test_the_strip_always_has_exactly_one_tab_open(hidden_window: Any) -> None:
     assert hidden_window._open_section() == window.Window.SHADOWS
 
 
+def test_a_page_settles_in_from_the_side_you_came_from(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Down the sidebar, the page rises into place; up it, the page drops.
+    Only on a screen, and only where the system has not asked for less
+    movement; the page is in place from the moment it is opened either way,
+    so nothing in the window waits on the movement."""
+    from sun_study.app import motion
+
+    made = hidden_window
+    asked: list[bool] = []
+
+    def arrive(self: Any, from_below: bool) -> None:
+        asked.append(from_below)
+
+    monkeypatch.setattr(window.Scroller, "arrive", arrive)
+    made._show_section(window.Window.GENERAL)
+    made._show_section(window.Window.SHADOWS)
+    assert asked == [], "a window nobody can see has nothing to show arriving"
+
+    monkeypatch.setattr(made, "_on_screen", lambda: True)
+    monkeypatch.setattr(motion, "reduced", lambda: True)
+    made._show_section(window.Window.GENERAL)
+    assert asked == [], "and none where the system was asked for none"
+
+    monkeypatch.setattr(motion, "reduced", lambda: False)
+    made._show_section(window.Window.SHADOWS)
+    made._show_section(window.Window.GENERAL)
+    made._show_section(window.Window.GENERAL)
+    assert asked == [True, False], "down, then up, and not at all for the same page"
+    assert made._open_section() == window.Window.GENERAL
+
+
 def test_open_and_queued_are_two_marks_and_never_the_same_one(hidden_window: Any) -> None:
     """The fault the launcher had: one blue tint that had to mean both "this
     is the page you are on" and "this will run", and so meant neither.
@@ -3991,7 +4069,7 @@ def test_the_shadow_plans_draw_the_diagrams_days_and_hours_as_documents(
 def test_the_shadow_plans_take_the_diagrams_legend_rows_and_stack_them(
     hidden_window: Any,
 ) -> None:
-    """One legend for both routes (D137): the rows filled on the Shadow
+    """One legend for both routes (D142): the rows filled on the Shadow
     diagram page go to the plans as sources and scenarios, which turns on the
     stacked mode, and the set name and shadow pen, which are for a plain set,
     are not sent with them."""
@@ -4268,3 +4346,49 @@ def test_the_offices_cos_schedule_is_offered_first_and_nothing_else_is_guessed(
     hidden_window.do_communal.set(True)
     communal = hidden_window.jobs()[-1]
     assert "--zone-hourly" in communal.args and "--zone-schedule" not in communal.args
+
+
+def test_the_yield_page_shows_only_the_rows_its_slabs_answer_needs(hidden_window: Any) -> None:
+    """One question, four answers, and the rows each one reads (D140)."""
+    made = hidden_window
+    only_yield(made)
+
+    def showing(widget: Any) -> bool:
+        return bool(widget.winfo_manager())
+
+    made.yield_slabs.set("Every slab showing")
+    made._sync()
+    assert showing(made.yield_retail_levels) and not showing(made.yield_massing)
+    assert not showing(made.yield_residential) and not showing(made.yield_option_layers)
+    made.yield_slabs.set("A layer per use")
+    made._sync()
+    assert showing(made.yield_residential) and showing(made.yield_retail)
+    assert not showing(made.yield_retail_levels), "a layer per use tells the use itself"
+    made.yield_slabs.set("A layer per option")
+    made._sync()
+    assert showing(made.yield_option_layers) and not showing(made.yield_option)
+    assert made._label_wide < 400, "no hint line dropped into the label column"
+
+
+def test_renovation_is_read_off_each_slab_or_the_floor_plans_filter(hidden_window: Any) -> None:
+    made = hidden_window
+    only_yield(made)
+    (job,) = made.jobs()
+    assert "--renovation-status" not in job.args and "--renovation-filter" not in job.args
+    made.yield_renovation_status.set("New only")
+    (job,) = made.jobs()
+    assert flag(job.args, "--renovation-status") == ["new"]
+    made.yield_renovation_status.set("Existing and new")
+    (job,) = made.jobs()
+    assert flag(job.args, "--renovation-status") == ["existing-and-new"]
+
+
+def test_a_preset_saved_before_the_slabs_row_opens_as_what_it_meant(hidden_window: Any) -> None:
+    made = hidden_window
+    made.apply({"yield_massing_layers": "01 | Massing.3D", "yield_renovation": True})
+    assert made.yield_slabs.get() == "Slabs on chosen layers"
+    assert made.yield_renovation_status.get() == "As the floor plan's filter"
+    made.apply({"yield_residential_layers": "05 | Mass.Residential"})
+    assert made.yield_slabs.get() == "A layer per use"
+    made.apply({"yield_slabs": "Every slab showing", "yield_massing_layers": "x"})
+    assert made.yield_slabs.get() == "Every slab showing", "a saved answer is kept as it is"

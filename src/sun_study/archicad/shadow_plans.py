@@ -29,9 +29,9 @@ the documents of an hour are laid in one cell of one sheet: the scenarios at
 the bottom in the order named, the sources above them from the last to the
 first. A drawing is seen only where everything above it casts nothing, so
 what shows of each row is what it adds. Archicad draws a document's shadows
-only on filled surfaces (D136), so every document fills its surfaces in
+only on filled surfaces (D141), so every document fills its surfaces in
 the transparent pen, and every drawing above the lowest has a transparent
-background (D137); filled with the materials' colours instead, a document
+background (D142); filled with the materials' colours instead, a document
 draws its shadows as darker material and not in its row's pen.
 ``LegendRow`` is a row, ``legend_combinations`` works the layer
 combinations out from the layers, ``make_shadow_plan_stack`` makes the sets
@@ -281,13 +281,13 @@ class ShadowPlanSettings:
     shadow_contours: bool = False
     fill_uncut_surfaces: bool | None = None
     """Whether the document fills its uncut surfaces -- roofs, the ground.
-    ``False`` leaves them as outlines and draws no shadow either (D136);
+    ``False`` leaves them as outlines and draws no shadow either (D141);
     ``None`` keeps the project's own default, and sends nothing, so an add-on
     built before the switch is not handed a field it refuses."""
     uncut_surfaces: dict[str, Any] | None = None
     """``{fill, fillType, pen}`` for the add-on's ``uncutSurfaces``: how the
     uncut surfaces are filled, as ``UPPER_SURFACES`` and ``LOWEST_SURFACES``
-    ask for them in a stack (D137). ``None`` sends nothing."""
+    ask for them in a stack (D142). ``None`` sends nothing."""
 
     def for_view(self) -> dict[str, Any]:
         """Tapir's ``viewSettings`` for the view of one document.
@@ -565,7 +565,7 @@ def make_shadow_plan_sheets(
     """The documents on sheets, and this set's earlier sheets that are not
     being remade removed. Each drawing is clipped to its cell, as for the sun
     views, with its origin at the cell's centre -- or, given a ``window``,
-    placed so the window's centre is there (D138)."""
+    placed so the window's centre is there (D143)."""
     groups, cells = plan_sheet_groups(made, sheets=sheets, set_label=set_label)
     removed = remove_stale_layouts(connection, _sheet_stem(set_label), {name for name, _ in groups})
     offset = (0.0, 0.0)
@@ -645,8 +645,8 @@ LEGEND_TITLE = "SHADOW LEGEND"
 
 #: How every document of a stack fills its uncut surfaces: filled, so
 #: Archicad draws its shadows -- it draws them on filled surfaces and on
-#: nothing else (D136) -- in one pen colour, the transparent pen, so the
-#: surfaces themselves draw nothing and the documents beneath show (D137).
+#: nothing else (D141) -- in one pen colour, the transparent pen, so the
+#: surfaces themselves draw nothing and the documents beneath show (D142).
 #: The lowest document too: filled with the materials' own colours, Archicad
 #: draws a shadow as the material shaded darker and ignores the shadow's pen,
 #: and the lowest row came out a dark grey on the sample project instead of
@@ -821,7 +821,7 @@ def make_stack_sheets(
     and this one is not remaking are removed, every drawing is redrawn, and
     with a ``legend`` the legend is drawn in the column left of the title
     block -- which the cells then keep clear of -- and the site's ``rings``
-    over every drawing in ``outline_pen`` (D138). Returns the sheets, the
+    over every drawing in ``outline_pen`` (D143). Returns the sheets, the
     names removed, and anything worth saying.
     """
     groups, cells = stack_sheet_groups(stack, sheets=sheets)

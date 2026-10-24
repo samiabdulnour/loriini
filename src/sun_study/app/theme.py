@@ -133,6 +133,10 @@ HINT = "#6B6A63"
 #: control's boundary owes the eye that much.
 LINE = "#E3E2D8"
 EDGE = "#8A8980"
+#: A button face's edge, and since D133 a sheet's in the panel: lighter than
+#: a field's, because a button is pressed and not typed in. The same figure
+#: ``scripts/make_icons.py`` draws the faces with.
+FACE_EDGE = "#CFCEC3"
 
 #: The accent: what is chosen, switched on, or the action a page leads to.
 #: Pale lemon, after the web site's lemon board (D132), and pale on purpose:
@@ -1205,6 +1209,14 @@ def _rounded(style: ttk.Style) -> None:
             # the chrome here would be a bar nobody can see filling.
             continue
         style.configure(name, background=ground)
+        # And it stands on the same colour under the pointer. clam maps every
+        # style's background to its own greys on ``active`` and ``pressed``,
+        # at the root and again on ``TButton``, and a map outranks a configure:
+        # the first lemon build showed a grey block round every hovered
+        # button, the face's clear corners and its shadow row filled with
+        # clam's hover colour. The face says what state it is in; the ground
+        # does not change.
+        style.map(name, background=[(state, ground) for state in ("disabled", "pressed", "active")])
 
 
 #: The chevrons made, one per interpreter, kept because Tk forgets an image

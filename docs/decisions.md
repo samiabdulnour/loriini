@@ -5134,6 +5134,83 @@ lemon one.
 principles of D109 except where its text named the grey, the blue and Segoe
 UI; those lines in `theme.py`'s docstring now read as D132 has them.
 
+### D133 — The sheets in the panel rounded, on the button's edge and lift, in the window's greys
+
+Asked 23 October 2026, with D132 on screen: *"open claude visual artefact for
+sheets. they are not right. make them fresh too. maybe with rounded corners.
+not know. do multiple designs. look at colours used there. maybe even
+illustation there should be little rounded."* Five were drawn on a page at
+the panel's own width -- the sheet rounded with its title block kept; a card
+with the block turned under it as a footer; the drawing alone on a tile with
+its words under it on the chrome; a card with a lemon cap, after the study
+boxes; the number worn as a chip -- and the first chosen: *"please, make it
+Rounded sheet."*
+
+**The paper is a face.** Eight pixels of radius, the button's edge
+(`theme.FACE_EDGE`, `#CFCEC3`, the figure the faces are drawn with) and one
+pixel of lift under it, ink at a tenth over the chrome. It was square since
+D-dock, on the grounds that paper has corners and that was the line between
+the interface and the thing it makes; beside D132's rounded window the
+square sheets read as holes cut in it. The ink frame a printed sheet
+carries goes with the corners: the paper's own edge is the frame now, and a
+second line a few pixels inside a curve reads as a misregistration. The
+title block stays where General sets it, with its rule and the rule over its
+two figures in the divider grey the cards use, not ink. Under the pointer
+the rim turns the lemon edge every button turns, at a pixel and a half,
+where it was ink at two. The models, which have no paper, keep their rim
+hollow and take the same lemon.
+
+**The drawing is rounded too, by two pixels, and warmed.** Every block,
+boundary and table on a miniature is a `smooth` polygon with its corners
+cut, which is the one way Tk's canvas rounds anything, through `_rounded`;
+a boundary gets a pixel more than a block it rings. Bands that meet edge to
+edge -- the facade's, a plate's cells -- stay square, or a notch opens at
+each join. The streets on the context sheet end round. The greys were
+Archicad's cool ones, `#E4E4E4` and `#EDEDED` under `#8D8D8D`, and beside
+the lemon chrome they read blue; they are the window's warm greys now
+(`MASSING`, `NEIGHBOUR`, `NEIGHBOUR_EDGE`, `ROAD`, `RING`). The boundary's
+red and the pin's blue stay: they are a drawing set's conventions, not the
+interface's colours, and D132 said as much of the thumbnails' blue.
+
+*What this does not change:* what a sheet says, where its words sit, the
+block's width, and the panel round it.
+
+### D134 — A page settles into place as it opens, and that is the only movement
+
+Asked 23 October 2026, with the rounded sheets (D133) on screen: *"can you
+introduce good profesional ux? smooth effects when you click between tabs"*.
+
+**One movement, and small.** When a page opens, it settles into place from
+twelve pixels off, over 180 ms, easing out -- fast away from where it
+started and slowing to a stop. Which side it comes from says which way the
+person went: down the sidebar and the page rises into place, up it and the
+page drops. Nothing else moves: no fade (Tk cannot blend a widget, and a
+fade faked with a cover would cost more than it says), no bounce, nothing
+the person waits for. Opening the same page again moves nothing, and a
+page opened before the last has settled finds that one put in its place at
+once.
+
+**How, in Tk.** Tk has no animation; it has `after` and a canvas item that
+can be moved. Every page is one item in its `Scroller`'s canvas, so
+sliding a page is moving one item, which Tk does without laying anything
+out again; the scroll region is re-measured once it has stopped. The frames
+are paced by the clock and not counted, so a page slow to paint arrives in
+the same time as a quick one with fewer steps. The page is in place in
+the window from the moment it is opened -- `_show_section` packs it and
+returns -- and the movement is the item in its canvas, so nothing in the
+window, and no test, waits on it. All of it is `app/motion.py`.
+
+**And none of it where none was asked for.** macOS's Reduce Motion
+(`defaults read com.apple.universalaccess reduceMotion`) and Windows'
+client-area animation setting are read once, when the first page opens,
+and a page then opens where it belongs with no movement at all. Any doubt
+about what the system said -- no such tool, a key never set, a hang -- is
+taken as *move*: the setting is a request for less, and less is the
+default already. A window nobody can see (a test's, or one withdrawn)
+moves nothing either.
+
+*What this does not change:* which page opens, when, and what it says.
+
 ### D135 — A sun date is read in Archicad's own clock, and the add-on says what that is
 
 Asked 24 October 2026: *"i want you to check current project which is
@@ -5198,7 +5275,358 @@ azimuth 9.8, this tool's sun for 09:00 Dubai, where hour 9 reads 57.1.
 captions, the fills' route, or the sun views' own sun -- they take the same
 clock, through the same function.
 
-### D136 — A 3D Document draws its shadows on its surfaces, so two documents cannot stack into one split
+### D136 — The sheets drawn as what the run makes, the info box as a page of the window, and the lorikeet as the mark
+
+Asked 24 October 2026, with the rounded sheets (D133) on screen and the
+manual's own output sheets open beside them: *"redesign the sheets so they
+look better, more united with an app"*, then, over seven rounds on a
+mock-up of the panel, *keep the right strip instead of a down strip, as is
+typical for sheets*; *remove the north mark*; *the communal heat map should
+look like the apartment heat map, pixelated*; *the facade bands should
+respect the colour bands of the heat maps*; *the site and context pictures
+full wide, with no margin*; *the sun could be more fun*; *not sure with the
+blue*; *the building we do should be red*; *not a U but an O, with the COS
+courtyard*; *the sun on the site, where there is more space*. Then: *"apply
+the lemon theme also on About Loriini"*, and a pixel lorikeet, *"add this
+logo to the app top left corner instead of the current one"*.
+
+**The paper and the block stay; what is on them changes.** A sheet is still
+D133's rounded paper with its lift, the field 10 mm in, and the title block
+down the right at the width General sets -- a strip on the right is what a
+sheet has, and a caption rail along the foot, tried first, read as a card
+and not as a sheet. The block is drawn as a title block is printed: four
+lines of text at its head and two lower down, as bars in the divider grey
+too small to read, which is what they are at this size; a rule at the foot
+boxes the scale, in the hint grey, over the sheet number in the chip the
+sidebar wears (lemon-tinted, hairline edge, ink on it, fully lemon under
+the pointer with the sheet's edge). The north ring goes: the master carries
+one, and a ring that was the only mark in the block read as the block's
+subject. Under the field, level with the block's two fields, the name at
+the body weight and under it the hour and which of a pair it is, in the
+hint grey -- one size still, two inks now, which is how every card header
+in the window is set. The hour under a cell is centred and in the same
+grey.
+
+**Each study in its own colours, taken from the sheets it makes.** The
+panel's drawings were one grey box under every study, and a reader could
+not tell a shadow sheet from an apartment sheet without the words. Now the
+context sheet is a grid of streets with the lots washed lilac where the
+LEP zones them, a park, the rail line with its station and the five-minute
+walk round it in the interface's blue, and the site red on its block; the
+site sheet is the aerial's terraces running back from two streets, the
+street trees' canopies, three contours across the slope in ochre, the lot
+with a circle at each survey corner and its frontage dimensioned, the pin,
+and the sun. Both run to the edges of the field, as the map and the aerial
+run to the sheet's margin on paper -- laid out inside the frame by
+construction, because a Tk canvas clips nothing. On an apartment sheet the
+sun stands where it stands at the hour, with eight rays and no dot in it,
+its light reaching the window wall of every flat it is in as a pale amber
+beam (pre-blended: no alpha on a canvas) and inside each lit flat the amber
+wedge the plans show falling across the floor; the hatching goes. The
+whole-day sheet grids each floor and bands it cell by cell on the communal
+legend's seven steps, and the ADG total shows each flat in the two
+answers: the sun's amber for one that reaches the two hours, the warm grey
+of no sun for one that falls short -- not blue, because on these sheets
+blue is the pin and the rail line and never an answer. The communal space
+is a courtyard building, a ring of flats round the open space, which is the
+shape a reader knows a communal open space by -- a U, tried first, read as
+a plan of something else -- with the courtyard gridded the way the study
+samples it and banded on the same seven steps, three trees over it and the
+sun on the site's north side where the boundary leaves it room; the hourly
+sheet is the same ring with the wings' shadow swinging across the courtyard
+and the sun crossing above it. The shadow diagram draws the town's own
+shadows in grey and the proposal's extra shadow in the blue the diagram
+tells it apart with, the lots over them and the boundary over those. A sun
+view is the white town the 3D Documents draw, the proposal a storey taller
+in the heavier line with its glazing lit yellow on the face the sun
+reaches, and the sun over it. A schedule has a tinted heading row and its
+labels and figures held inside their columns; the yield sheet is the
+section beside the office workbook's green-headed table. The two models
+gain the terrain's contours, the streets, the verge trees and a heritage
+block in the run's ochre; our building is the red block among the grey
+neighbours, the fetch radius a grey ring, and the facade model's skin is
+banded by storey on the heat maps' ramp, the top floors in the most sun.
+`HOURS_RAMP` grows from four steps to the legend's seven and is the one
+way the panel says hours of sun; the colours added are each the colour of
+a thing the run draws (`ZONING`, `CANOPY`, `CONTOUR`, `SHADOW_CAST`,
+`SHADOW_EXTRA`, `GLAZING`...), and the window's greys, blue and red stay.
+
+**The info box is a page of the window.** It was a white sheet of prose
+with separators between headings, themed but of no place. It is now the
+window's own anatomy: a chrome band at the top with the mark, the name,
+the version in the window's chip and the author and copyright lines under
+them; the page under it, with a white card per section headed the way a
+settings panel is headed; and a chrome band at the foot with the buttons,
+the one action -- the full terms -- in the Run button's lemon. `look_at`
+scrolls to a card rather than a heading, and the licence text window
+stands on the page grey.
+
+**The mark is the lorikeet.** The pixel bird, on no tile, standing on the
+chrome at the top left: `assets/loriini-mark-32.png`, reduced from the
+1024-pixel artwork with a proper filter (Tk can only drop pixels), with a
+64 for later and the artwork beside it. The application icon and the Dock's
+picture are not touched: a tile is right for a Dock and wrong for a tool
+bar.
+
+*What this does not change:* what a sheet says, how many sheets a tick is
+worth, the grid a sheet is dealt on, the block's width, the hover and the
+figures in the band below, the panel's heads and day lines, what the info
+box says, and anything the run itself draws in Archicad.
+
+### D137 — The sheets take the generator's themes, each realised as what Archicad has
+
+Asked 24 October 2026: *"introduce the themes for context analysis and site
+analysis. its basically visual upgrade of what we have now. you need to look
+on github au-site-analysis repo to get the themes so you can implement them
+for archicad use."*
+
+**The themes are the generator's, as data.** `au-site-analysis` draws its
+context sheet in four graphic templates and its site sheet in four themes of
+the same names -- Flamingo, Kingfisher, Heron, Canary -- each a record in
+`src/render/template.ts`: a land-use palette, the inks, which line styles,
+which marks. They are ported colour for colour into `sun_study.site.theme`
+as the same kind of record, so the two programs agree about what a house
+style is and a new one is a data change here as it is there. The office's
+own Oatley legend, which `curate.CATEGORIES` holds and these sheets were
+drawn in until now, stays as a fifth theme on both sheets, so a saved preset
+or a `--from` redraw still produces what it did, and so the refactor had a
+fixed point: the Oatley drawing is asserted unchanged by the tests that were
+already there. The defaults move to the generator's (Flamingo, Heron),
+because the ask was the upgrade.
+
+**Each theme is realised, not approximated.** The generator prints to a PDF
+and Archicad is not one, so every property a theme has was mapped to the one
+thing Archicad can do in its place, and the mapping is the port:
+
+- *Opacity.* A fill has none. On paper the tint is blended over white before
+  it is sent (`Category.on_paper`), which is what a reader sees of a 22%
+  peach; over the aerial it is the project's `50%` fill in the colour, as D82
+  already had it.
+- *Texture.* A fill pattern scaled for 1:100 reads solid at 1:3000 (the
+  heritage hatch found this), so a texture is a hatch of the drawing's own
+  polylines at 2 mm on paper in the texture's ink: 45° for lines, crossed for
+  cross, and dots as lines in the project's `Dotted` line type, `Dashed`
+  standing in where there is none.
+- *The aerial in grey, under a veil, with the site in colour.* No command
+  tones a Figure and none masks one. The tile is toned with Pillow -- which
+  D121 already brought into the bundle -- and written beside the original as
+  `aerial_r_c-grey36.jpg`, the site's lot composited back in its own colours
+  from the untouched tile; the original and its world file are never
+  touched, and the toned copy is reused while the original is no newer. A
+  theme that keeps the colours keeps the white `50%` wash instead.
+- *White streets.* The register has centre lines, not kerbs. A street is its
+  centre line widened to the reserve its function hierarchy suggests, 30 m
+  for a motorway to 6 m for a lane, mitred at each bend with the mitre
+  clamped, round-ended, as one fill per road feature rather than a rectangle
+  and a disc per segment -- 6,000 fills were already the sheet's measure.
+- *The office's drawn marks.* Its suns, winds and arrows are SVG paths taken
+  from its symbol sheet. `site.marks` flattens them: M, L, C and Z, a cubic
+  walked in six straight steps, the subpath inside another made its hole
+  (the eye's pupil), and the y axis turned over, since the office drew with
+  it pointing down. The crown sun, the crescents and the hand-drawn strands
+  are ported as the generator computes them, seed and all.
+- *Text scale.* It multiplies the map's words and not the sheet's: the
+  title, the legend and the credit keep their size, because they are the
+  sheet's and a credit has a size for a reason (D117).
+
+**What is not themed, and why.** Fonts: `CreateTexts` takes no face, and a
+face that is not installed falls back silently, which the generator's own
+header warns is worse than none. The potential views, the indicative kerbs
+and the neighbours' height limits: the Loriini bundle carries no sight
+lines, no kerbs and no `HOB` per neighbour, and a theme is a way of drawing
+what is there.
+
+**Where it is chosen.** `--theme` and `--site-theme` on `sun-study site`,
+`theme` and `site_theme` on the agent's site tool, and a *Context style* and
+a *Site style* row on the window's Site analysis page, saved with the
+preset. Two rows and not one, because the office's packages put a context
+sheet on paper beside a site sheet on the photograph; the site themes name
+the context theme they draw on, so the pairs still match when a person wants
+them to. The retired names resolve as the generator's do: `conure`,
+`flamingo-2`, `dove`, `cardinal`, `kookaburra`.
+
+**What the first live run found** (Parramatta, 24 October 2026, all four
+themes on both sheets). The dotted line type was there, the toned tiles
+placed like the originals, and the crescents, arrows and lot fills went in
+whole. What Archicad refused was geometry, eight fills in all, and each
+refusal was a rule of its own:
+
+- *A zone a kilometre past the sheet.* Fit in Window showed a 3 km extent
+  for a 276 m sheet. Zone, institution and heritage fills are now cut to
+  the map field (`_clipped`, Sutherland-Hodgman against the field's four
+  edges, which may be turned). A hole is cut to a window 30 cm inside the
+  field, so that where both it and its outer ran past the sheet the hole
+  still sits strictly inside the outer's cut edge.
+- *The site under the zone wash.* Canary's site is meant to keep the
+  photograph's colours; the site's lot is now a hole in the zone it lies in.
+- *A street strip that crossed itself* at a tight bend: the mitred strip is
+  kept where it holds and a rectangle per segment with a disc per joint
+  drawn where it does not.
+- *A cut zone that pinched* -- came back through a point it had passed, or
+  within two centimetres of an edge: Archicad refuses both. The ring is
+  split into its loops at the pinch (`_loops`), a near miss first snapped
+  into an exact one (`_pinched`), and the smaller loop parted from the
+  shared vertex by five centimetres (`_parted`), so a loop that becomes a
+  hole no longer touches its outer.
+
+And one bug of the run's own: with `--no-site` the fit step read
+`site_rings` off the context bundle, which has only `site_lots`.
+
+*What this does not change:* what either sheet says, where the site lands,
+the layers, the element IDs, the credit, or anything about the context model.
+
+### D138 — The legend goes on the layout, the places are numbered, and the map is centred from the bottom margin
+
+Asked 24 October 2026, with the Untitled project's layouts on screen: *"the
+layouts are slightly shifted. also the legend should be in layout in the
+right as it normaly is. you dont need legend in worksheet it self but mainly
+on the layout"*, and while that was being done, *"can you put numbers instead
+of names of institutions in analysis, as it is in site-analyst.com outputs?"*
+
+**The shift was two things.** The one on screen was stale: the layouts had
+been made by an earlier run with the site centred, and the two runs after
+were `--no-layout`, so when the site moved onto its corner nobody moved the
+drawings -- 12 mm on the context sheet, about 100 mm on the site sheet. A run
+with layouts remakes them, and read back with `GetDrawings` both drawings'
+origins sat within 0.05 mm of where the site's centre puts them. The other
+was a real bug that this master's equal margins hid: `_sheet_frame` centred
+the field vertically from the *top* margin, and layout coordinates run up
+from the bottom-left (`docs/addon.md`), so on a master with a deeper top
+margin the map sat low by the difference. It is centred from the bottom
+margin now.
+
+**The legend is the layout's.** The office's sheets keep the legend in the
+column to the right of the map, over the title block, and a worksheet is the
+drawing, not the sheet. So `_legend` records its rows on the drawing, the
+elements carry the part they belong to, and when the run will make a layout
+the legend is taken off the worksheet (`Drawing.without`) and drawn straight
+onto the layout at paper size: from the frame's top, 8 mm right of it, as
+wide as the column, the long labels broken onto a second line. The legend's
+swatches are fills, so drawing on paper now takes fills as well as rules and
+texts; `CreateFills` leaves a missing layer at the Fill tool's, which is what
+a layout element wants. The master is settled before anything is drawn, so a
+person is asked once, and a run that cannot have one -- `--no-layout`, or no
+master given and nobody to ask -- keeps its legend in the worksheet. The
+legend is never on neither.
+
+**The places are numbered, as site-analyst.com draws them.** Ported from
+the generator's `sheet.ts`: every institution and park a solid disc with its
+number in white, ordered institutions by legend category then open spaces,
+each name once; the key under the legend; stations `T1`, `T2`... nearest the
+site first; the key's rows tightening past two dozen and, past what the
+column holds above the title block (`LEGEND_FOOT_MM`, 90 mm), the nearest
+places kept and numbered again; discs on one block pushed apart. A theme
+field, `places`: the four site-analyst themes number, Oatley names, because
+Oatley is the sheet as it was first drawn. The legend's station and bus rows
+show the roundel itself now, not the letter alone.
+
+**Heron's sun path and the noise, as the generator draws them.** Asked the
+same day, with Heron's site sheet open: *"the sun path is not actual and
+noise line is not right."* Each solstice's path is now Heron's white band,
+2 mm wide in a 0.7 mm grey pen, summer's whole and winter's in 6 mm dashes
+5 mm apart, the hour dots and the crowns and strands in the same pen; it had
+been a bare grey line. And the noise had been the office's zigzag drawn on
+every theme along the road's own centre line, which the generator never
+does: it runs beside the source on the site's side and breaks where it would
+cross the site or leave the sheet -- Heron and the two paper themes as a
+white band swelling gently in the noise pen 11 mm out, Canary as the zigzag
+10 mm out. Oatley keeps the zigzag on the road, as first drawn.
+
+*What this does not change:* the worksheet's map, its title, north point and
+credit, where the site lands, and the site sheet's content.
+
+### D139 — Each sheet has a pen table of its own, and the colours are the generator's
+
+Asked 24 October 2026: *"control the colour if they are accurate. compare
+the site-analyst output with created analysis by colour. if there are
+differences. create custom pens"*, and *"also go through all themes to check
+correct colours"*.
+
+**Measured three ways.** The palette, field by field against the generator's
+`template.ts` (loaded with Node and dumped as JSON): three differences --
+Flamingo's site buildings are edged 1.5 mm, not 0.8; its wind band is
+`#5ba8e1`, not Kingfisher's `#4aa3e8` it had inherited; and the generator's
+Canary site sheet draws on Flamingo for what it does not set, not on Canary.
+The colours the generator's site sheet sets outside any theme
+(`siteSheet.ts`): its trees in Flamingo's park teal at 38%, its parking in
+the plum at 35% (a hatched zone at 18% under lines of the plum's ink), bus
+stops a white disc in a `#2f7fd6` ring, the muted building `#d9d9d6`, white
+lots at 0.7 mm, contours at 0.6 mm, and no railway line on the site sheet;
+all now so in its four themes, Oatley keeping what it was first drawn in.
+And what Archicad paints: every colour a theme draws a pen in, against the
+nearest pen of the Untitled project's active table -- every theme off, most
+by 15 to 30 colour-difference units and some by over 50.
+
+**The pens are the sheet's.** A pen table per sheet, named for it, copied
+from the model's active one with the sheet's colours written exactly into
+pens 255 downward (a sheet uses 15 to 25; there is room for 120), its view
+set to it. Never made active for the model or for layouts, and a sheet's
+view shows only the tool's layers, so the overwritten pens mean nothing else
+there. One table per sheet and not one for both, so that rerunning one sheet
+in another theme cannot recolour the other. The office's `Site Analysis` pen
+table is the fallback when the table cannot be made.
+
+**The layout legend takes none.** A layout's own elements draw in the
+layouts' pen table, which is the title blocks', and that is not the tool's to
+rewrite. So on paper every colour is a fill's RGB: lines become the thin
+fills that draw them (dashes as dashes), a contour of a colour of its own
+becomes its line, and every fill's own contour is a white 0.01 mm hairline.
+
+**Two choices of hand.** Archicad lines have no opacity, so Flamingo's lots
+(the road grey at 60%) are drawn in the blend, `#bababa`. And the generator
+draws the traffic arrows white in every theme, which on the paper themes is
+white on the white road; they are white over the photograph here and stay
+the road grey on paper, where they can be seen.
+
+**Oatley is called FUSE.** Asked the same day: *"call oatley FUSE"*. The
+theme is the office's own legend, still read off its Oatley (2546) sheet,
+which is where the old name came from. `oatley` and `office` still resolve
+to it on the command line, and a preset saved with "Oatley" in a style row
+draws FUSE.
+
+*What this does not change:* what a sheet shows, or any fill's colour.
+
+### D140 — The Yield page asks which slabs and which renovation status, and shows only the rows the answer needs
+
+Asked 24 October 2026, with the Yield page on screen: *"the yield is a
+little too much to set up. is there posibility to simplify this? usualy you
+just have different slabs. maybe you should have possibility to select
+renovation filter. the options are confusing. think of easier way of doing
+this."*
+
+**Seven rows were four ways of saying one thing, all asked at once.**
+Option layers, three use layers, massing layers and two level rows sat one
+under another, and which of them a run would read depended on which were
+filled -- a rule the page never said. They are the answers to one question,
+so the page now asks it: *Slabs*, four tiles -- *Everything showing* (the
+usual answer, use told by level), *Chosen layers* (the same, on the layers
+chosen), *Layer per use*, *Layer per option* -- and shows only the rows that
+answer reads, usually just the two level rows. A hidden row sends nothing,
+so a layer left in it from another day cannot change the count. Nothing went
+to an Advanced panel: the window's rule (its own docstring) is that a section
+does not hide its inputs somewhere else, and none is hidden here -- the
+answer decides what is asked.
+
+**The renovation filter is chosen, not set beforehand.** Tapir can carry a
+renovation filter's GUID onto a view but cannot list the project's filters
+by name or set one on the floor plan, so choosing a filter by name would
+need a new add-on command and a rebuild. What a filter decides is each
+element's *Renovation Status*, which is a built-in property Tapir does read.
+So *Renovation* is four tiles -- *Any*, *New only*, *Existing and new*,
+*Floor plan's filter* -- the first three read off each slab
+(`--renovation-status`), the last the old checkbox's behaviour. Measured on
+the sample project: 453 slabs, all Existing, of which *New only* counts none
+and says so. The status is read in the project's language; English, German
+and French are known, and any other word is reported rather than guessed.
+
+**A preset saved the old way opens as what it meant**: option layers filled
+read as *Layer per option*, use layers as *Layer per use*, massing layers as
+*Chosen layers*, and the renovation checkbox ticked as *Floor plan's filter*.
+
+*What this does not change:* the command line's flags, which still combine
+as before, and the arithmetic.
+
+### D141 — A 3D Document draws its shadows on its surfaces, so two documents cannot stack into one split
 
 Asked 24 October 2026, after the clock was put right (D135): *"I need to
 see 2 shadows in one drawings in different colours"*. The stacked shadow
@@ -5221,7 +5649,7 @@ designed cannot work in Archicad 30, and the dev kit's uncut-surface
 options -- `uncutSurfaceFillType`, `uncutSurfaceBkgPen` -- choose how the
 surfaces are filled, not whether a filled surface hides what lies under it.
 
-**Decided, and overtaken the same evening by D137.** The stacked mode stays, since its documents and sheets are
+**Decided, and overtaken the same evening by D142.** The stacked mode stays, since its documents and sheets are
 made correctly and may be wanted, but the run says plainly that the split
 does not show and where it does: the fills route. `sun-study shadows` with
 `--shadow-source` and `--shadow-scenario` draws existing and additional
@@ -5240,9 +5668,9 @@ reused layouts took the new master is for the next look at the sheets.
 *What this does not change:* the plain shadow plans, their sun (D135), or
 the fills route's drawing.
 
-### D137 — The stack draws on surfaces filled in the transparent pen, and takes the fills' legend
+### D142 — The stack draws on surfaces filled in the transparent pen, and takes the fills' legend
 
-Asked 24 October 2026, after D136 and after the fills route was run in its
+Asked 24 October 2026, after D141 and after the fills route was run in its
 place without asking: *"why you produced fills? this should go only by 3d doc
 route"*, and then *"the combinig 3d docs with multiple colours for shadow is
 the main way. please stick to it and try to make it work. kind of same
@@ -5252,7 +5680,7 @@ sheet with all"*. The fills, their views, sheets, layers and combinations
 were taken out of the sample project first; the shadow diagrams are the 3D
 Documents' from here, and the fills route is not run in their place.
 
-**The lever.** D136 found that a document draws its shadows on filled
+**The lever.** D141 found that a document draws its shadows on filled
 surfaces only, and a filled document is opaque. The Archicad 30 kit's
 `API_UniformAttributeOptions` has two more fields than the add-on wrote:
 `uncutSurfaceFillType` -- the Model Display's *Pen color*, *Material color,
@@ -5310,10 +5738,10 @@ size or scale that fits a wide site, since each drawing is clipped to its
 cell; and the colours, which are the nearest pens in the project's table --
 on the sample project the legend's pale grey matched a pale green.
 
-### D138 — The combined sheet: the site fitted, the legend's colours, the legend and the site on it
+### D143 — The combined sheet: the site fitted, the legend's colours, the legend and the site on it
 
-Asked 24 October 2026, after D137's first combined sheet, which left three
-things the D137 entry named: *"well continue, to correct the rest"*.
+Asked 24 October 2026, after D142's first combined sheet, which left three
+things the D142 entry named: *"well continue, to correct the rest"*.
 
 **The site fitted.** Each drawing is placed by its own origin at its cell's
 centre and clipped to the cell; a 420 m site at 1:1000 in a 230 mm cell was
@@ -5368,5 +5796,5 @@ the plans drawn at 1:2000 two by two with the whole 421 m site in each, the
 drawings in the stack's own pen set, the legend and three boundary outlines
 on the sheet, 17 s; the outlines read back at the top level over the plans.
 
-*What this does not change:* the stack itself (D137), the hours and their
+*What this does not change:* the stack itself (D142), the hours and their
 sun (D135), or the plain set's sheets beyond the same fit.

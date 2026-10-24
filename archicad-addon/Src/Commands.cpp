@@ -179,7 +179,7 @@ GS::UniString UncutFillTypeName (API_3DUncutSurfaceFillType type)
 //                      fills, and `uncutSurfaceBkgPen`, the pen a "penColor"
 //                      fill is drawn in. Pen 0 is Archicad's transparent pen.
 //
-// Why both matter (D136, D137): Archicad draws a document's sun shadows as
+// Why both matter (D141, D142): Archicad draws a document's sun shadows as
 // fills on its surfaces, so a document with the switch off draws no shadow at
 // all, and one with it on is opaque. The stacked shadow plans need the third
 // thing -- surfaces filled, so the shadows are drawn, in a pen that draws
@@ -440,7 +440,7 @@ GS::Optional<GS::UniString> CreateDocumentFrom3DCommand::GetInputParametersSchem
 				},
 				"additionalProperties": false
 			},
-			"fillUncutSurfaces": { "type": "boolean", "description": "Whether the document fills its uncut surfaces. False leaves roofs and ground as outlines -- and draws no sun shadow either, since Archicad draws a shadow on a filled surface (D136). Left out, the project's own default stands." },
+			"fillUncutSurfaces": { "type": "boolean", "description": "Whether the document fills its uncut surfaces. False leaves roofs and ground as outlines -- and draws no sun shadow either, since Archicad draws a shadow on a filled surface (D141). Left out, the project's own default stands." },
 			"uncutSurfaces": {
 				"type": "object",
 				"description": "How the uncut surfaces are filled: the switch, which of the dialog's three fills, and the pen a penColor fill is drawn in (0 is Archicad's transparent pen). Any field left out keeps what the document had.",

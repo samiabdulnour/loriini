@@ -517,7 +517,7 @@ def test_the_stack_reads_scenarios_first_then_sources_last_to_first() -> None:
 def test_a_stack_makes_a_set_per_row_and_lets_the_lower_ones_show_through() -> None:
     """Each set under its own combination and label, each solid in its own
     pen, every set's surfaces filled in the transparent pen: the shadows are
-    drawn, in the row's pen, and nothing else is (D137)."""
+    drawn, in the row's pen, and nothing else is (D142)."""
     transport = PlanTransport()
     settings = ShadowPlanSettings(shadow_fill={"fillIndex": 1})
 
@@ -851,7 +851,7 @@ def test_the_stacked_command_takes_the_shadow_diagrams_legend(
     assert [label for label, _ in stack.piles] == ["TOD", "PROPOSED", "FUTURE", "EXISTING"]
     assert kwargs["sheets"] == "two"
     assert "TOD < PROPOSED < FUTURE < EXISTING" in result.output
-    # D138: a 200 m window in a 230 mm cell is 1:1000; the drawings print in
+    # D143: a 200 m window in a 230 mm cell is 1:1000; the drawings print in
     # the stack's own pen set; the legend is in the legend's words and colours.
     assert kwargs["scale"] == 1000.0
     assert kwargs["window"].centre == (0.0, 40.0)
@@ -994,7 +994,7 @@ class RedrawTransport:
 def test_a_sheet_is_redrawn_through_tapir_and_a_refusal_is_said_not_raised(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """D137: a drawing of a 3D Document is not redrawn when the document is
+    """D142: a drawing of a 3D Document is not redrawn when the document is
     re-set, so the combined sheet asks for it; an Archicad that cannot is
     told about, and the sheet stands."""
     from sun_study.archicad import layout as module

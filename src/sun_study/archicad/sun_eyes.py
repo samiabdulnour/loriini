@@ -628,7 +628,7 @@ def sheet_cells_for(
     width over height -- of what the cells will hold, as many across as lets
     it be drawn largest instead, fewest wasted cells after that: three plans
     of a square site are two by two with one cell empty, not three tall
-    strips that hold it at half the size (D138). Layout coordinates run
+    strips that hold it at half the size (D143). Layout coordinates run
     upward from the bottom-left corner, so the first cell is put at the top
     by counting down from the page height rather than up from zero. Each cell
     is shrunk by ``gap_mm`` on every side, which is where the drawing's title
@@ -693,13 +693,13 @@ def arrange_drawings(
     cell that holds two reads bottom to top; sent only when asked, since an
     add-on built before it refuses a field it does not know. ``transparent``
     is a flag per placement for the drawing's own transparent background --
-    every drawing above the lowest of a stacked cell (D137) -- sent only when
+    every drawing above the lowest of a stacked cell (D142) -- sent only when
     given, for the same reason. ``offset`` moves every drawing's origin off
     its cell's centre, in layout metres, so a window of the plan that is not
-    around the model origin is what sits in the middle of the cell (D138);
+    around the model origin is what sits in the middle of the cell (D143);
     the clip stays the cell. ``pen_table_index`` prints every drawing in that
     pen table, since a drawing of a 3D Document otherwise prints in the
-    model's active one whatever its view pins (D138); sent only when given.
+    model's active one whatever its view pins (D143); sent only when given.
 
     The origin rather than the centre of the content, and a clip rather than a
     free frame, because of what a drawing of a 3D Document is: the whole site

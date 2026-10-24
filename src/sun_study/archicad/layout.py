@@ -1082,7 +1082,7 @@ def update_drawings(connection: ArchicadConnection, database_id: str) -> str | N
 
     A Drawing of a 3D Document is not redrawn when the document's settings
     change, and opening the layout does not do it either: measured on the
-    sample project (D137), a stacked sheet kept showing its documents as the
+    sample project (D142), a stacked sheet kept showing its documents as the
     run before had set them until ``UpdateDrawings`` was asked for. Best
     effort, since Tapir's command needs Archicad 27: a sheet that cannot be
     refreshed is still the right sheet the first time it is made, and a rerun

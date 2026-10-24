@@ -211,7 +211,9 @@ def test_the_site_can_be_squared_to_its_long_boundary_and_set_on_a_corner() -> N
 def test_the_context_drawing_carries_the_legends_colours_and_the_site_on_top() -> None:
     bundle = context_bundle()
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    drawing = context_drawing(bundle, frame)
+    # The office's own legend, as the sheets were first drawn: the theme the
+    # colours below are read off. The others are checked in test_site_theme.
+    drawing = context_drawing(bundle, frame, theme="fuse")
 
     zoning = [f for f in drawing.fills if "(R3)" in f.element_id or "(DM)" in f.element_id]
     assert [f.colour for f in zoning] == ["#f7c1bd"], (
@@ -294,7 +296,7 @@ def site_bundle() -> SiteBundle:
 
 def test_the_site_drawing_fills_the_neighbouring_buildings() -> None:
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    drawing = site_drawing(site_bundle(), frame)
+    drawing = site_drawing(site_bundle(), frame, theme="fuse")
     masses = [
         f for f in drawing.fills if f.layer.endswith(".Context") and f.element_id == "SA BUILDINGS"
     ]
@@ -312,7 +314,7 @@ def test_the_site_drawing_fills_the_neighbouring_buildings() -> None:
 
 def test_the_site_drawing_dimensions_levels_and_orients_the_site() -> None:
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    drawing = site_drawing(site_bundle(), frame)
+    drawing = site_drawing(site_bundle(), frame, theme="fuse")
     texts = [t.text for t in drawing.texts]
 
     dimensions = [
@@ -500,6 +502,7 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
                             context_drawing(
                                 context_bundle(),
                                 frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site"),
+                                theme="fuse",
                             ).layers
                         )
                     ),
@@ -536,6 +539,7 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
                 },
             ),
             "CreateLayers": {"success": True},
+            "CreatePenTables": {"attributeIds": [{"attributeId": {"guid": "PENS"}}]},
             "CreateFills": {"success": True, "elements": [{"guid": "H"}]},
             "CreatePolylines": {"elements": [{"elementId": {"guid": "P"}}]},
             "CreateTexts": {"success": True, "elements": [{"guid": "T"}]},
@@ -546,7 +550,7 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
         }
     )
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    report = draw_context(connection, context_bundle(), frame, view=False)
+    report = draw_context(connection, context_bundle(), frame, view=False, theme="fuse")
 
     commands = transport_.commands()
     assert (
@@ -577,7 +581,16 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
     ]
     assert any(line.get("lineTypeIndex") == 2 for line in lines), "the site outline is dashed"
     site_line = next(line for line in lines if line.get("penWeightMm") == 0.9)
-    assert site_line["linePenIndex"] == 5, "the site's red takes the nearest pen"
+    # The sheet's own pen table carries the site's red exactly, in a pen of
+    # its own: not the nearest pen of the office's table (D139).
+    (table,) = transport_.parameters_for("CreatePenTables")["penTableDataArray"]
+    assert table["name"] == f"{SS} {CONTEXT_WORD}" and table["sourceAttributeId"]
+    pens = {pen["index"]: pen for pen in table["pens"]}
+    assert site_line["linePenIndex"] in pens and site_line["linePenIndex"] >= 136
+    assert pens[site_line["linePenIndex"]]["color"] == pytest.approx(
+        {"red": 0xE3 / 255, "green": 0x06 / 255, "blue": 0x13 / 255}
+    )
+    assert "isActiveForModel" not in table, "never made the model's table"
     texts = [t for call in transport_.all_parameters_for("CreateTexts") for t in call["texts"]]
     site_text = next(t for t in texts if t["text"] == "KOGARAH")
     assert site_text["justification"] == "Center" and site_text["anchor"] == "MiddleMiddle"

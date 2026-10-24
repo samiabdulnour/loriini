@@ -1,4 +1,4 @@
-"""The combined shadow-plan sheet (D138): the fitted scale, the window of the
+"""The combined shadow-plan sheet (D143): the fitted scale, the window of the
 plan, the stack's own pen set, and the legend and site outline on the sheet."""
 
 from __future__ import annotations
@@ -248,7 +248,7 @@ def test_the_grid_follows_the_shape_of_what_it_holds() -> None:
 
 
 def test_the_sheets_fills_and_texts_go_to_the_top_level() -> None:
-    """D138: drawn after the drawings, a fill still lands at its tool's level
+    """D143: drawn after the drawings, a fill still lands at its tool's level
     and the outline was under the plan; every fill and text is moved to 14."""
     project = Project(
         {

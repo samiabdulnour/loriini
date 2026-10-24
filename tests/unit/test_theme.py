@@ -147,24 +147,20 @@ def test_nothing_wearing_a_face_still_leans_on_its_background(styled: object) ->
     and draws the picture anyway. Four styles were still carrying one when
     this test was written, which is exactly why it exists.
 
-    Compared against stock clam rather than against nothing, because clam sets
-    a background map on ``TButton`` itself. That one is not ours and cannot be
-    removed; what matters is that this module has not added any.
+    One map is not a lean: every state sent to the ground the style stands
+    on. That is the opposite of a hover -- it is what stops clam's own hover
+    greys (mapped at the root, and again on ``TButton``) filling the corners
+    the face leaves clear. A map that sends any state anywhere else is the
+    dead code this test is for.
     """
-    stock = _root()
-    stock.withdraw()
-    try:
-        bare = ttk.Style(stock)
-        bare.theme_use("clam")
-        leaning = []
-        for name, worn in theme.WEARS.items():
-            if worn == "flat":
-                continue
-            ours = styled.map(name, "background")  # type: ignore[attr-defined]
-            if ours and ours != bare.map(name, "background"):
-                leaning.append(name)
-    finally:
-        stock.destroy()
+    leaning = []
+    for name, worn in theme.WEARS.items():
+        if worn == "flat":
+            continue
+        ground = theme.STANDS_ON[name].upper()
+        ours = styled.map(name, "background")  # type: ignore[attr-defined]
+        if any(str(colour).upper() != ground for _state, colour in ours):
+            leaning.append(name)
 
     assert not leaning, (
         f"these wear an image and map a background for a state the picture "
@@ -215,6 +211,21 @@ def test_everything_that_wears_a_face_says_what_it_stands_on(styled: object) -> 
         f"{name}: declared {ground}, is {styled.lookup(name, 'background')}"  # type: ignore[attr-defined]
         for name, ground in theme.STANDS_ON.items()
         if str(styled.lookup(name, "background")).upper() != ground.upper()  # type: ignore[attr-defined]
+    ]
+    assert not wrong, wrong
+
+
+def test_a_faced_style_stands_on_the_same_ground_under_the_pointer(styled: object) -> None:
+    """clam maps every background to its own greys on ``active`` and
+    ``pressed``, at the root and again on ``TButton``, and a map outranks a
+    configure. The first lemon build showed it: a grey block round every
+    hovered button, where the face's clear corners and its shadow row let
+    clam's hover colour through. The ground is the same in every state."""
+    wrong = [
+        f"{name} {state}: declared {ground}, is {styled.lookup(name, 'background', [state])}"  # type: ignore[attr-defined]
+        for name, ground in theme.STANDS_ON.items()
+        for state in ("active", "pressed", "disabled")
+        if str(styled.lookup(name, "background", [state])).upper() != ground.upper()  # type: ignore[attr-defined]
     ]
     assert not wrong, wrong
 

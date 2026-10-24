@@ -109,9 +109,9 @@ A run then makes, from the base combination:
   its shadows solid in the row's pen (`Solid Fill` when the project has it,
   `--shadow-fill` otherwise), and its **uncut surfaces filled in the
   transparent pen**: filled, because Archicad draws a document's shadows on
-  filled surfaces and on nothing else ([D136](decisions.md)), and in pen 0,
+  filled surfaces and on nothing else ([D141](decisions.md)), and in pen 0,
   so the surfaces themselves draw nothing and the documents beneath show
-  ([D137](decisions.md)). Every document, the lowest too: filled with the
+  ([D142](decisions.md)). Every document, the lowest too: filled with the
   materials' own colours, Archicad draws a shadow as the material shaded
   darker and ignores the shadow's pen. The pens are matched by colour
   against the project's pen table, as the fills' rows are;
@@ -124,7 +124,7 @@ A run then makes, from the base combination:
   the lowest a transparent background (`ArrangeDrawings`), and every drawing
   is then redrawn (Tapir's `UpdateDrawings`), since a drawing of a 3D
   Document keeps showing what its document was until it is;
-- **the whole site in every cell** ([D138](decisions.md)): the run measures
+- **the whole site in every cell** ([D143](decisions.md)): the run measures
   the plan extent of the model elements the rows' combinations show and puts
   each drawing's origin where that window's centre lands in the middle of
   its cell. With no `--scale`, the plans are drawn at the largest standard
@@ -159,7 +159,7 @@ over the earlier where two overlap. That is the fills' legend, with the
 subtraction done by the order on the sheet.
 
 **Run live on 24 October 2026** on the Graphisoft sample project in
-Archicad 30 ([D137](decisions.md)): the existing neighbours as a source, the
+Archicad 30 ([D142](decisions.md)): the existing neighbours as a source, the
 tower as the proposal, 21 June at 9, 12 and 3 on one A1 sheet. Six documents
 and the sheet in 18 s, a rerun in 12 s; the neighbours' shadow in its pen
 everywhere, and only the ground the tower adds in the proposal's -- to the
@@ -231,7 +231,7 @@ is removed.
 
 Built against the Archicad 26 kit, run live on the Redfern project (8
 October, Windows) and on the Graphisoft sample project in Archicad 30 on a
-Mac (24 October, [D135](decisions.md), [D137](decisions.md)). Of the list
+Mac (24 October, [D135](decisions.md), [D142](decisions.md)). Of the list
 below, 1 and 2 hold on both; 3 found the hour out by the project's time zone
 on the sample project, which `GetPlace` and the clock line in the run's
 output now answer; 6 and 7 hold on the sample project's combined sheet; 4

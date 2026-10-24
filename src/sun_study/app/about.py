@@ -110,44 +110,26 @@ class About(tk.Toplevel):
         # behind it -- which address, which sheet -- and a box that will not
         # let a person look at that while reading is a box they close first
         # and reopen after.
-        self.configure(background=theme.SURFACE)
+        # The window's own anatomy, since D136: a chrome band at the top with
+        # the mark and the name, the page under it with a white card per
+        # section, and a chrome band at the foot with the buttons -- so the
+        # box reads as a page of the window it was opened from, in the
+        # window's greys and with its lemon on the one thing that is an
+        # action.
+        self.configure(background=theme.CHROME)
 
-        outer = ttk.Frame(self, padding=(PAD, PAD, PAD, PAD))
-        outer.pack(fill="both", expand=True)
-        outer.columnconfigure(0, weight=1)
-        outer.rowconfigure(1, weight=1)
+        self._heading(self)
+        ttk.Frame(self, style="Rule.TFrame", height=1).pack(side="top", fill="x")
 
-        self._heading(outer)
-
-        # Imported here and not at the top of the module: the window is what
-        # opens this box, so a module-level import back into it would be a
-        # cycle. By the time a button can be pressed, ``window`` is long since
-        # imported and this costs a dictionary lookup.
-        from sun_study.app.window import Scroller
-
-        scroller = Scroller(outer)
-        scroller.grid(row=1, column=0, sticky="nsew", pady=(PAD, 0))
-        self._scroller = scroller
-        page = scroller.content
-        page.columnconfigure(0, weight=1)
-
-        #: Every section's heading, by its own words, so ``look_at`` can put
-        #: one at the top of the pane without counting rows -- a count would
-        #: be wrong the first time a clause is added to the licence summary.
-        self._headings: dict[str, ttk.Label] = {}
-        row = 0
-        row = self._status(page, row)
-        row = self._licence(page, row)
-        row = self._sources(page, row)
-        row = self._credit(page, row)
-
-        buttons = ttk.Frame(outer)
-        buttons.grid(row=2, column=0, sticky="ew", pady=(PAD, 0))
+        buttons = ttk.Frame(self, style="Chrome.TFrame", padding=(PAD * 2, PAD, PAD * 2, PAD))
+        buttons.pack(side="bottom", fill="x")
         buttons.columnconfigure(0, weight=1)
+        ttk.Frame(self, style="Rule.TFrame", height=1).pack(side="bottom", fill="x")
         self._full = ttk.Button(
             buttons,
             text="Read the full terms" if licence.keys_required() else "Read the full licence",
             command=self._show_the_licence,
+            style="Run.TButton",
             width=22,
         )
         self._full.grid(row=0, column=0, sticky="w")
@@ -156,7 +138,32 @@ class About(tk.Toplevel):
             # is in the executable and stands on its own, so the button goes
             # rather than the box.
             self._full.grid_remove()
-        ttk.Button(buttons, text="Close", command=self._close, width=11).grid(row=0, column=1)
+        ttk.Button(
+            buttons, text="Close", command=self._close, style="Chrome.TButton", width=11
+        ).grid(row=0, column=1)
+
+        # Imported here and not at the top of the module: the window is what
+        # opens this box, so a module-level import back into it would be a
+        # cycle. By the time a button can be pressed, ``window`` is long since
+        # imported and this costs a dictionary lookup.
+        from sun_study.app.window import Scroller
+
+        scroller = Scroller(self, ground=theme.PAGE)
+        scroller.pack(side="top", fill="both", expand=True)
+        self._scroller = scroller
+        page = scroller.content
+        page.columnconfigure(0, weight=1)
+
+        #: Every section's card, by its heading's own words, so ``look_at``
+        #: can put one at the top of the pane without counting rows -- a
+        #: count would be wrong the first time a clause is added to the
+        #: licence summary.
+        self._headings: dict[str, ttk.Frame] = {}
+        row = 0
+        row = self._status(page, row)
+        row = self._licence(page, row)
+        row = self._sources(page, row)
+        row = self._credit(page, row)
 
         self.bind("<Escape>", lambda _event: self._close())
         self.protocol("WM_DELETE_WINDOW", self._close)
@@ -164,32 +171,44 @@ class About(tk.Toplevel):
 
     # -- the parts, top to bottom -----------------------------------------
 
-    def _heading(self, parent: ttk.Frame) -> None:
-        """Whose program this is. The one part that is not scrolled away."""
-        head = ttk.Frame(parent)
-        head.grid(row=0, column=0, sticky="ew")
-        head.columnconfigure(0, weight=1)
-        ttk.Label(head, text=PRODUCT, style="Heading.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(
-            head,
-            text=f"Version {__version__} — {AUTHOR}",
-            style="Hint.TLabel",
-        ).grid(row=1, column=0, sticky="w")
+    def _heading(self, parent: tk.Misc) -> None:
+        """Whose program this is. The one part that is not scrolled away: the
+        window's own top band, with the mark, the name, the version as the
+        chip the window uses for a figure, and the two lines under them."""
+        from sun_study.app.window import brand_mark
+
+        head = ttk.Frame(
+            parent, style="Chrome.TFrame", padding=(PAD * 2, PAD + 4, PAD * 2, PAD + 2)
+        )
+        head.pack(side="top", fill="x")
+        head.columnconfigure(1, weight=1)
+        mark = brand_mark(self)
+        if mark is not None:
+            self._mark = mark  # Tk forgets a picture nothing in Python holds
+            ttk.Label(head, image=mark, style="Brand.TLabel").grid(
+                row=0, column=0, rowspan=3, sticky="nw", padx=(0, 10)
+            )
+        name = ttk.Frame(head, style="Chrome.TFrame")
+        name.grid(row=0, column=1, sticky="w")
+        ttk.Label(name, text=PRODUCT, style="Brand.TLabel").pack(side="left")
+        ttk.Label(name, text=__version__, style="Chip.TLabel").pack(side="left", padx=(8, 0))
+        ttk.Label(head, text=AUTHOR, style="ChromeHint.TLabel").grid(row=1, column=1, sticky="w")
         # Clause 2(e): this line may not be removed from the software or from
         # what it draws. It is here for the same reason it is on every sheet.
-        ttk.Label(head, text=COPYRIGHT, style="Hint.TLabel").grid(row=2, column=0, sticky="w")
+        ttk.Label(head, text=COPYRIGHT, style="ChromeHint.TLabel").grid(row=2, column=1, sticky="w")
 
     def _status(self, page: ttk.Frame, row: int) -> int:
         """What the numbers are worth. The same words as everywhere else."""
-        row = self._title(page, row, "What this is")
-        ttk.Label(page, text=STATUS, foreground=theme.RED).grid(
-            row=row, column=0, sticky="w", pady=(0, 2)
+        card = self._title(page, row, "What this is")
+        ttk.Label(card, text=STATUS, style="Refused.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, 2)
         )
-        row += 1
-        return self._paragraph(page, row, DISCLAIMER)
+        self._paragraph(card, 1, DISCLAIMER)
+        return row + 1
 
     def _licence(self, page: ttk.Frame, row: int) -> int:
-        row = self._title(page, row, "Licence")
+        card = self._title(page, row, "Licence")
+        page, row = card, 0
         if licence.keys_required():
             # Whose licence this is, and the way to change the key -- only in
             # a build that takes keys, so a build that does not says nothing
@@ -227,11 +246,13 @@ class About(tk.Toplevel):
             else "This is the short form. The LICENSE file that came with this "
             "build is the licence, and where the two differ the file wins."
         )
-        return self._paragraph(page, row, closing, style="Hint.TLabel")
+        self._paragraph(page, row, closing, style="Hint.TLabel")
+        return int(card.grid_info()["row"]) + 1
 
     def _sources(self, page: ttk.Frame, row: int) -> int:
         """One block per publisher, and every block ends in its own terms."""
-        row = self._title(page, row, SOURCES_TITLE)
+        card = self._title(page, row, SOURCES_TITLE)
+        page, row = card, 0
         row = self._paragraph(
             page,
             row,
@@ -271,7 +292,7 @@ class About(tk.Toplevel):
                 ).grid(row=inner, column=0, sticky="w", pady=(3, 0))
                 inner += 1
             self._link(block, inner, source.terms)
-        return row
+        return int(card.grid_info()["row"]) + 1
 
     def _credit(self, page: ttk.Frame, row: int) -> int:
         """The line for a drawing, in a field somebody can take away.
@@ -285,7 +306,8 @@ class About(tk.Toplevel):
         person checking what they are about to paste would be reading it
         through a slot.
         """
-        row = self._title(page, row, "The credit for a drawing")
+        card = self._title(page, row, "The credit for a drawing")
+        page, row = card, 0
         row = self._paragraph(
             page,
             row,
@@ -322,20 +344,27 @@ class About(tk.Toplevel):
         self.credit.grid(row=0, column=0, sticky="ew")
         self._copy_button = ttk.Button(line, text="Copy", command=self._copy, width=9)
         self._copy_button.grid(row=0, column=1, padx=(6, 0), sticky="n")
-        return row
+        return int(card.grid_info()["row"]) + 1
 
     # -- the small pieces --------------------------------------------------
 
-    def _title(self, page: ttk.Frame, row: int, text: str) -> int:
-        if row:
-            ttk.Separator(page, orient="horizontal").grid(
-                row=row, column=0, sticky="ew", pady=(14, 10)
-            )
-            row += 1
-        heading = ttk.Label(page, text=text, style="Heading.TLabel")
-        heading.grid(row=row, column=0, sticky="w", pady=(0, 4))
-        self._headings[text] = heading
-        return row + 1
+    def _title(self, page: ttk.Frame, row: int, text: str) -> ttk.Frame:
+        """A section's card, headed by its title the way a settings panel on
+        a page is: the same rounded white card, sixteen pixels in from the
+        page and ten apart, the title on its header band. Answers with the
+        card; the section lays its rows inside it from nought."""
+        head = theme.PANEL_HEAD
+        card = ttk.Frame(page, style="BoxOff.TFrame", padding=(14, head + 10, 14, 12))
+        card.grid(row=row, column=0, sticky="ew", padx=16, pady=(10 if row == 0 else 0, 10))
+        card.columnconfigure(0, weight=1)
+        # Placed in the padding, as the window places a panel's title: a ttk
+        # frame tells Tk its padding is a border, and ``place`` otherwise
+        # starts inside it.
+        ttk.Label(card, text=text, style="BoxTitle.TLabel").place(
+            bordermode="outside", x=14, y=2, height=head - 3, relwidth=1.0, width=-28
+        )
+        self._headings[text] = card
+        return card
 
     def _paragraph(self, page: ttk.Frame, row: int, text: str, style: str = "TLabel") -> int:
         ttk.Label(page, text=text, wraplength=WRAP, justify="left", style=style).grid(
@@ -407,9 +436,9 @@ class About(tk.Toplevel):
         tall = self._scroller.content.winfo_height()
         if heading is None or tall <= 1:  # pragma: no cover - nothing drawn yet
             return
-        # A little above the heading, so the rule over it comes with it and
-        # the section does not read as having begun off the top of the pane.
-        top = max(0.0, heading.winfo_y() - 12.0)
+        # A little above the card, so its edge comes with it and the section
+        # does not read as having begun off the top of the pane.
+        top = max(0.0, heading.winfo_y() - 10.0)
         self._scroller.canvas.yview_moveto(max(0.0, min(1.0, top / tall)))
 
     def _enter_key(self) -> None:
@@ -476,12 +505,23 @@ class About(tk.Toplevel):
         window.title(f"{PRODUCT} — {what}")
         window.transient(self)
         window.geometry("720x620")
-        frame = ttk.Frame(window, padding=PAD)
+        window.configure(background=theme.PAGE)
+        frame = ttk.Frame(window, style="Page.TFrame", padding=PAD)
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
         face, size = theme.log_font()
-        body = tk.Text(frame, wrap="word", font=(face, size), borderwidth=0, padx=8, pady=8)
+        body = tk.Text(
+            frame,
+            wrap="word",
+            font=(face, size),
+            borderwidth=0,
+            highlightthickness=0,
+            background=theme.SURFACE,
+            foreground=theme.BODY,
+            padx=12,
+            pady=10,
+        )
         body.grid(row=0, column=0, sticky="nsew")
         bar = ttk.Scrollbar(frame, orient="vertical", command=body.yview)
         bar.grid(row=0, column=1, sticky="ns")
