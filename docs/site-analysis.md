@@ -101,6 +101,10 @@ Archicad does have, and that is the whole of the port (D137):
   in the texture's ink at 2 mm on paper -- lines at 45°, crossed at 135°,
   and dots as lines in the project's `Dotted` line type (`Dashed` where it
   has none);
+- every **other line and fill contour** is drawn in the project's continuous
+  line type, `Solid Line`, sent by name: an element given no line type takes
+  its tool's own, and the Polyline tool on the sample project was on `Dense
+  Dotted` ([D146](decisions.md));
 - a **grey or veiled aerial** is the tile toned with Pillow -- greyscale,
   blended toward white by the veil -- and saved beside the original as
   `aerial_r_c-grey36.jpg`, the site's own lot left in colour; Archicad can

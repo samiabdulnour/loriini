@@ -5844,3 +5844,28 @@ cast of seven hours over half a million samples.
 *What this does not change:* the stack, its fit, its pen set and its legend
 (D141 to D143), and the fills route's own per-hour diagram, which a run
 without the new flag still draws.
+
+### D146 — The continuous line is the main line of the context and site sheets
+
+Asked 25 October 2026, after the design's every-hour drawing came out in a
+dense dotted line nobody had chosen (D145): *"the solid line needs needs to
+be the main line in your context and site analysis"*.
+
+**Why it could have been anything.** The context and site sheets name a line
+type only where a line is meant to be dashed or dotted -- the site's outline,
+the uncanopied trees, the bus routes, the catchments. Every other line and
+every fill's contour was sent with none, and an element given no line type
+takes its tool's own: the Polyline tool's or the Fill tool's, whatever a
+person last left it on. On the sample project the Polyline tool was on
+`Dense Dotted`, which is how the every-hour drawing came out dotted.
+
+**Decided.** The sheets look the continuous line type up by name -- `Solid
+Line`, `Solid` or `Continuous`, first found -- with their other attributes,
+and send it on every line and every fill contour that is neither dashed nor
+dotted, on the worksheets and on the layouts alike. Dashed and dotted keep
+their own. A project with no continuous line type by any of those names
+keeps the old behaviour, the tool's own. The combined shadow sheet's site
+outline (D143) is sent it too.
+
+*What this does not change:* any colour, weight or pen, any line that is
+meant to be dashed or dotted, or which elements a sheet draws.

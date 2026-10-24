@@ -4353,6 +4353,11 @@ class _Attributes:
     """An empty fill with a contour: what a drawn hatch sits in."""
     dotted: int | None = None
     """A dotted line type; the dashed one stands in where a project has none."""
+    solid: int | None = None
+    """The continuous line type, which every line and every fill's contour is
+    drawn in unless it is dashed or dotted. Named, because an element given no
+    line type takes its tool's own, and the Polyline tool on the sample
+    project was on Dense Dotted (D146)."""
     custom: dict[str, int] = field(default_factory=dict)
     """The sheet's own pens, by colour: the pen table made for it (D139)."""
 
@@ -4407,8 +4412,14 @@ def _attributes(connection: ArchicadConnection, *, layout: bool = False) -> _Att
         ),
         empty_fill=attribute_index(connection, "Fill", ("Empty Fill", "Empty")),
         dotted=attribute_index(connection, "Line", ("Dotted", "Dotted Line", "Dot")),
+        solid=attribute_index(connection, "Line", SOLID_LINES),
         pens=pens,
     )
+
+
+#: The continuous line type, by the names projects give it, first found
+#: first used: Archicad's own is "Solid Line" (D146).
+SOLID_LINES: tuple[str, ...] = ("Solid Line", "Solid", "Continuous")
 
 
 #: The pens a sheet's own pen table writes its colours into, from the top
@@ -4816,6 +4827,8 @@ def _flush(
             data["lineTypeIndex"] = attributes.dashed
         elif line.dotted and attributes.dotted_or_dashed is not None:
             data["lineTypeIndex"] = attributes.dotted_or_dashed
+        elif attributes.solid is not None:
+            data["lineTypeIndex"] = attributes.solid
         if line.weight_mm is not None:
             data["penWeightMm"] = line.weight_mm
         lines.append(data)
@@ -5409,6 +5422,8 @@ def _fill_data(fill: Fill, attributes: _Attributes) -> dict[str, Any]:
         data["contourPen"] = contour_pen
     if fill.dashed and attributes.dashed is not None:
         data["lineTypeIndex"] = attributes.dashed
+    elif attributes.solid is not None:
+        data["lineTypeIndex"] = attributes.solid
     if fill.weight_mm is not None:
         data["penWeight"] = fill.weight_mm
     if fill.element_id:
@@ -5442,6 +5457,8 @@ def _flush_on_paper(
             one_line["lineTypeIndex"] = attributes.dashed
         elif line.dotted and attributes.dotted_or_dashed is not None:
             one_line["lineTypeIndex"] = attributes.dotted_or_dashed
+        elif attributes.solid is not None:
+            one_line["lineTypeIndex"] = attributes.solid
         if line.weight_mm is not None:
             one_line["penWeightMm"] = line.weight_mm
         lines.append(one_line)
