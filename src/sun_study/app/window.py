@@ -2149,7 +2149,7 @@ def draw_sheet(
     saying = [sheet.time] if sheet.time else []
     if sheet.parts > 1:
         saying.append(f"({sheet.part} of {sheet.parts})")
-    first, second = 183.0, 198.0
+    first, second = 183.0, 200.0
     words(12, first, sheet.kind, room=left - 18)
     if saying:
         words(12, second, "   ".join(saying), room=left - 18, fill=theme.HINT)
@@ -2160,7 +2160,10 @@ def draw_sheet(
     # scale in the hint grey and the sheet number in the chip, level with the
     # two lines beside them. The chip is the sidebar's -- lemon-tinted, a
     # hairline edge, ink on it -- and turns lemon under the pointer with the
-    # sheet's edge, which is why it carries a tag.
+    # sheet's edge, which is why it carries a tag. The chip is centred on
+    # the number's capitals, not on the line Tk gives it: that line keeps
+    # room under the baseline the figures never use, and the number sat at
+    # the top of its chip.
     middle = (left + SHEET_MM_W - inset) / 2
     for row in range(4):
         bar(left + 7, 14 + row * 5, 34 - (row % 2) * 10)
@@ -2169,12 +2172,13 @@ def draw_sheet(
     paper.create_line(x(left), x(166), x(SHEET_MM_W - inset), x(166), fill=theme.LINE)
     # "NTS", as a drawing set says it, for a sheet that has no scale.
     words(middle, first, sheet.scale or "NTS", anchor="s", fill=theme.HINT)
+    caps = x(second) - _cap_drop(face)
     _rounded(
         paper,
         x(middle - 17),
-        x(187),
+        caps - x(7.5),
         x(middle + 17),
-        x(203),
+        caps + x(7.5),
         x(5),
         fill=theme.ACCENT_TINT,
         outline=theme.ACCENT_EDGE,
@@ -2456,6 +2460,13 @@ COURT_GROUND = "#EEF0E8"
 YIELD_HEAD = "#CFE3C4"
 HERITAGE = ("#F3E3C4", "#D9B97E", "#E8D0A0")
 SITE_BLOCK = ("#F6DAD5", "#C9776C", "#E2A69D")
+#: A schedule's words, as the design review drew them: the heading in ink
+#: at four fifths over its tint, the labels in the caption grey at a bit
+#: over half, the figures in the hint grey at under half -- pre-blended,
+#: since a Tk canvas has no alpha.
+TABLE_HEAD_WORDS = site_theme.blend(theme.INK, theme.ACCENT_TINT, 0.8)
+TABLE_LABEL = site_theme.blend(theme.CAPTION, theme.SURFACE, 0.55)
+TABLE_FIGURE = site_theme.blend(theme.HINT, theme.SURFACE, 0.45)
 #: A sheet's corner, and a drawn block's: the button's radius on the paper,
 #: and two pixels on every block and boundary in the drawing, so the drawing
 #: is as rounded as the paper it is on and no more.
@@ -2477,33 +2488,41 @@ def _rounded(
 ) -> int:
     """A rectangle with rounded corners -- canvas pixels -- as one item.
 
-    Tk's canvas rounds nothing by itself. A polygon drawn ``smooth`` is a
-    run of quadratic splines, one per pair of adjoining sides with their
-    shared point as its control, from the middle of one side to the middle
-    of the next; a point given twice is a side of no length, so the spline
-    passes through it and runs straight to it. So each corner is cut a
-    radius in on both sides, those two cuts are doubled, and the corner
-    itself is left single between them: the sides are straight to the
-    cuts, and the corner is one curve bent towards the corner point --
-    within a pixel of a circle of that radius. Hollow if ``fill`` is empty,
-    dashed if asked, like a rectangle.
+    Tk's canvas rounds nothing by itself, so each corner is walked as a
+    quarter circle in straight steps, a step to every pixel and a half of
+    the arc, and the whole is one plain polygon. It was a ``smooth``
+    polygon with each corner's cuts given twice until the panel's chips
+    showed what that costs: the doubled points are sides of no length, and
+    the outline's joins at them leave a notch where a curve meets its side.
+    Hollow if ``fill`` is empty, dashed if asked, like a rectangle.
     """
-    radius = min(radius, (x1 - x0) / 2, (y1 - y0) / 2)
-    # Clockwise from the top left: into each corner along one side, the
-    # corner, and out along the next.
-    corners = (
-        ((x0 + radius, y0), (x1 - radius, y0), (x1, y0), (x1, y0 + radius)),
-        ((x1, y1 - radius), (x1, y1), (x1 - radius, y1)),
-        ((x0 + radius, y1), (x0, y1), (x0, y1 - radius)),
-        ((x0, y0 + radius), (x0, y0)),
-    )
+    radius = max(0.0, min(radius, (x1 - x0) / 2, (y1 - y0) / 2))
+    steps = max(1, math.ceil(radius * math.pi / 2 / 1.5))
     flat: list[float] = []
-    for run in corners:
-        for point_x, point_y in run:
-            flat += [point_x, point_y]
-            if (point_x, point_y) not in ((x1, y0), (x1, y1), (x0, y1), (x0, y0)):
-                flat += [point_x, point_y]
-    return int(paper.create_polygon(flat, smooth=True, **how))
+    # Clockwise from the top right, each corner from the side before it
+    # to the side after.
+    for centre_x, centre_y, start in (
+        (x1 - radius, y0 + radius, -90.0),
+        (x1 - radius, y1 - radius, 0.0),
+        (x0 + radius, y1 - radius, 90.0),
+        (x0 + radius, y0 + radius, 180.0),
+    ):
+        for step in range(steps + 1 if radius else 1):
+            angle = math.radians(start + 90.0 * step / steps)
+            flat += [centre_x + radius * math.cos(angle), centre_y + radius * math.sin(angle)]
+    return int(paper.create_polygon(flat, **how))
+
+
+def _cap_drop(font: tkfont.Font) -> float:
+    """How far the foot of a line of text -- its ``s`` anchor -- lies below
+    the middle of its capitals and figures, in pixels.
+
+    Tk centres a line by its whole height, which counts the room under the
+    baseline that a descender would take: a sheet number or a station's
+    letter has none, so centred that way it rides high in its chip or its
+    roundel. Inter's capitals are three quarters of its ascent.
+    """
+    return float(font.metrics("ascent")) * 0.75 / 2 + font.metrics("descent")
 
 
 def _hatch(
@@ -2808,15 +2827,35 @@ def _draw_drawing(
                     radius=0.4,
                 )
 
+    def words_bar(x0: float, y: float, x1: float, fill: str, thick: float = 3.0) -> None:
+        """A word too small to read, as the rounded bar it is at this size:
+        a line with round ends, which Tk draws cleaner than a polygon three
+        pixels high."""
+        paper.create_line(
+            px(x0 + thick / 2),
+            py(y),
+            px(x1 - thick / 2),
+            py(y),
+            fill=fill,
+            width=thick * k,
+            capstyle="round",
+        )
+
     def table(cols: int, rows: int, head: str) -> None:
         """A schedule: a tinted heading row, then a row per space or per
-        control, each label and figure held inside its own column."""
+        control, each label and figure held inside its own column.
+
+        Rounded at twice a block's radius, as a card is, and its words in
+        the lighter greys the design review drew them in: in the heavier
+        ones, seven rows of dark bars read as a barcode. The edge is drawn
+        last, so the heading's tint does not cover it."""
         t = (78.0, 54.0, 184.0, 154.0)
-        box(t, fill=theme.SURFACE, outline=theme.FACE_EDGE)
-        box((t[0], t[1], t[2], t[1] + 13), fill=head)
+        corner = BLOCK_RADIUS * 2
+        box(t, fill=theme.SURFACE, radius=corner)
+        box((t[0], t[1], t[2], t[1] + 13), fill=head, radius=corner)
         box((t[0], t[1] + 8, t[2], t[1] + 13), fill=head, radius=0)
         line(t[0], t[1] + 13, t[2], t[1] + 13, theme.LINE)
-        box((t[0] + 6, t[1] + 4.5, t[0] + 46, t[1] + 8.5), fill=theme.BODY, radius=1)
+        words_bar(t[0] + 6, t[1] + 6.5, t[0] + 46, TABLE_HEAD_WORDS, 4.0)
         step = (t[3] - t[1] - 13) / rows
         col_w = (t[2] - t[0]) / cols
         for row in range(1, rows + 1):
@@ -2824,21 +2863,14 @@ def _draw_drawing(
             if row < rows:
                 line(t[0] + 4, y, t[2] - 4, y, theme.LINE)
             label = min(col_w - 10, 22 + (row % 3) * 5)
-            box(
-                (t[0] + 5, y - step / 2 - 1.5, t[0] + 5 + label, y - step / 2 + 1.5),
-                fill=theme.HINT,
-                radius=1,
-            )
+            words_bar(t[0] + 5, y - step / 2, t[0] + 5 + label, TABLE_LABEL)
             figure = min(12.0, col_w - 10)
             for col in range(1, cols):
                 right = t[0] + (col + 1) * col_w - 5
-                box(
-                    (right - figure, y - step / 2 - 1.5, right, y - step / 2 + 1.5),
-                    fill=theme.FACE_EDGE,
-                    radius=1,
-                )
+                words_bar(right - figure, y - step / 2, right, TABLE_FIGURE)
         for col in range(1, cols):
             line(t[0] + col * col_w, t[1] + 13, t[0] + col * col_w, t[3], theme.LINE)
+        box(t, outline=theme.FACE_EDGE, radius=corner)
 
     if kind.startswith("Apartments") and "total" in kind.lower():
         # Each flat against the two hours: the share that meets it in the
@@ -3142,196 +3174,196 @@ def _pin(paper: tk.Canvas, x: float, y: float, k: float) -> None:
     )
 
 
+def _footprint(
+    paper: tk.Canvas, x0: float, y0: float, x1: float, y1: float, ink: str, *, width: float = 0.8
+) -> None:
+    """A neighbour's building in plan: white, in a fine line of its zone's
+    ink, as Flamingo draws every building."""
+    _rounded(paper, x0, y0, x1, y1, 1.0, fill=theme.SURFACE, outline=ink, width=width)
+
+
+def _roundel(paper: tk.Canvas, x: float, y: float, radius: float, letter: str) -> None:
+    """A station's roundel as Flamingo draws it: a solid disc in the rail's
+    blue, its letter white and centred on its capital, not on its line."""
+    paper.create_oval(
+        x - radius, y - radius, x + radius, y + radius, fill=theme.BLUE, outline=theme.SURFACE
+    )
+    font = tkfont.Font(root=paper, font=_face(7, True))
+    paper.create_text(
+        x, y + _cap_drop(font), text=letter, anchor="s", fill=theme.SURFACE, font=font
+    )
+
+
 def _draw_context(paper: tk.Canvas, frame: tuple[float, float, float, float]) -> None:
-    """The context sheet, drawn to the edges of its frame: a grid of streets,
-    the lots along them washed where the LEP zones them, a park, the rail
-    line with its station and the five-minute walk round it in the
-    interface's blue, and the site red on its block. Everything is laid out
-    inside the frame by construction, because a Tk canvas clips nothing."""
+    """The context sheet, drawn to the edges of its frame as Flamingo draws
+    it: white streets between the blocks; each block washed in its zone and
+    built round its edge, the buildings white in a fine line of the zone's
+    ink with the yards open behind them; a park; the railway along one
+    street, its station's roundel on it and the five-minute walk round it;
+    and the site, two lots of one block, in the site's red. Everything is
+    laid out inside the frame by construction, because a Tk canvas clips
+    nothing.
+
+    Until 24 October the rail ran corner to corner across every block, the
+    site was a box set down across the lots of its block rather than lots
+    of it, and a building was a lot with a line through it. "The icon is a
+    bit chaotic; the site sits shifted in the city blocks; the city blocks
+    do not look like buildings."
+    """
     fx0, fy0, fx1, fy1 = frame
     w, h = fx1 - fx0, fy1 - fy0
     u = w / 229.0  # the field's width on a full sheet, in millimetres
-
-    def rect(
-        x0: float,
-        y0: float,
-        x1: float,
-        y1: float,
-        *,
-        fill: str = "",
-        outline: str = "",
-        width: float = 1.0,
-        radius: float = 0.0,
-        dash: tuple[int, ...] = (),
-    ) -> None:
-        _rounded(paper, x0, y0, x1, y1, radius, fill=fill, outline=outline, width=width, dash=dash)
-
-    rect(fx0, fy0, fx1, fy1, fill=LOT, radius=3)
-    street = 4 * u
-    cols = 4
-    rows = 3
+    street = 5 * u
+    cols, rows = 4, 3
     block_w = (w - (cols - 1) * street) / cols
     block_h = (h - (rows - 1) * street) / rows
+    inset, gap = 1.5 * u, 1.6 * u
+    site_block = (2, 1)
+    site_lots = 2
+
+    def block_at(col: int, row: int) -> tuple[float, float]:
+        return fx0 + col * (block_w + street), fy0 + row * (block_h + street)
+
     for col in range(cols):
         for row in range(rows):
-            bx = fx0 + col * (block_w + street)
-            by = fy0 + row * (block_h + street)
-            if col == 3 and row == 2:
-                # A park on one block.
-                rect(
-                    bx + 2 * u,
-                    by + 2 * u,
-                    bx + block_w - 2 * u,
-                    by + block_h - 2 * u,
-                    fill=PARK,
-                    outline=CANOPY,
-                    width=0.7,
-                    radius=1.5,
-                )
-                for tx, ty, tr in ((16, 14, 5), (34, 28, 6)):
-                    paper.create_oval(
-                        bx + (tx - tr) * u,
-                        by + (ty - tr) * u,
-                        bx + (tx + tr) * u,
-                        by + (ty + tr) * u,
-                        fill=CANOPY,
-                        outline="",
-                    )
+            bx, by = block_at(col, row)
+            if (col, row) == (3, 2):
+                # A park on one block, its trees in canopy.
+                _rounded(paper, bx, by, bx + block_w, by + block_h, 2, fill=PARK, outline="")
+                for tx, ty, tr in ((0.3, 0.35, 6), (0.68, 0.62, 7.5), (0.32, 0.78, 4.5)):
+                    cx, cy, r = bx + block_w * tx, by + block_h * ty, tr * u
+                    paper.create_oval(cx - r, cy - r, cx + r, cy + r, fill=CANOPY, outline="")
                 continue
             zoned = ((col * 7 + row * 3 + 1) % 3) != 0
-            parts = 2 + ((col + row) % 2)
-            lot_w = (block_w - 4 * u - (parts - 1) * 2 * u) / parts
-            for part in range(parts):
-                lx = bx + 2 * u + part * (lot_w + 2 * u)
-                rect(
-                    lx,
-                    by + 2 * u,
-                    lx + lot_w,
-                    by + block_h - 2 * u,
-                    fill=ZONING if zoned else NEIGHBOUR,
-                    outline=ZONING_EDGE if zoned else NEIGHBOUR_EDGE,
-                    width=0.7,
-                    radius=1.5,
-                )
-                mid = by + block_h / 2
-                paper.create_line(
-                    lx + 3 * u,
-                    mid,
-                    lx + lot_w - 3 * u,
-                    mid,
-                    fill=ZONING_EDGE if zoned else NEIGHBOUR_EDGE,
-                    width=0.5,
-                )
-    # The rail, corner to corner, its station and the five-minute walk.
-    paper.create_line(fx0, fy1 - 18 * u, fx1, fy0 + 22 * u, fill=theme.BLUE, width=1.6, dash=(7, 2))
-    sx, sy = fx0 + 62 * u, fy0 + 104 * u
-    r = 48 * u
-    paper.create_oval(sx - r, sy - r, sx + r, sy + r, outline=RING, dash=(4, 3))
-    paper.create_oval(
-        sx - 5.5 * u,
-        sy - 5.5 * u,
-        sx + 5.5 * u,
-        sy + 5.5 * u,
-        fill=theme.SURFACE,
-        outline=theme.BLUE,
-        width=1.6,
-    )
-    paper.create_text(sx, sy, text="T", fill=theme.BLUE, font=_face(7, True))
-    # The site, among the lots on its block.
-    bx = fx0 + 2 * (block_w + street)
-    by = fy0 + 1 * (block_h + street)
-    rect(
-        bx + 10 * u,
-        by + 8 * u,
-        bx + 40 * u,
-        by + 28 * u,
-        fill=MASSING,
-        outline=theme.INK,
-        width=1.4,
-        radius=1.5,
-    )
-    rect(
-        bx + 6 * u,
-        by + 4 * u,
-        bx + 44 * u,
-        by + 32 * u,
+            ground, ink = (ZONING, ZONING_EDGE) if zoned else (LOT, NEIGHBOUR_EDGE)
+            _rounded(paper, bx, by, bx + block_w, by + block_h, 2, fill=ground, outline="")
+            # A row of buildings along each of the block's two streets,
+            # each its own depth, the yards between them open.
+            parts = 2 + (col + row) % 2
+            lot_w = (block_w - 2 * inset - (parts - 1) * gap) / parts
+            for front in (0, 1):
+                for part in range(parts):
+                    if (col, row) == site_block and front == 0 and part < site_lots:
+                        continue
+                    lx = bx + inset + part * (lot_w + gap)
+                    deep = block_h * (0.3 + 0.05 * ((part * 5 + col * 3 + row + front) % 3))
+                    if front == 0:
+                        _footprint(paper, lx, by + inset, lx + lot_w, by + inset + deep, ink)
+                    else:
+                        _footprint(
+                            paper,
+                            lx,
+                            by + block_h - inset - deep,
+                            lx + lot_w,
+                            by + block_h - inset,
+                            ink,
+                        )
+    # The railway along the street between the first two rows, the station
+    # on it, and the five-minute walk round the station.
+    rail_y = fy0 + block_h + street / 2
+    paper.create_line(fx0, rail_y, fx1, rail_y, fill=theme.BLUE, width=1.5, dash=(6, 2))
+    sx = fx0 + block_w * 1.5 + street
+    r = 60 * u
+    paper.create_oval(sx - r, rail_y - r, sx + r, rail_y + r, outline=RING, dash=(4, 3))
+    # The site: the first two lots of its block, front to the rail street
+    # and back to the middle of the block, as the cadastre has them.
+    bx, by = block_at(*site_block)
+    parts = 2 + sum(site_block) % 2
+    lot_w = (block_w - 2 * inset - (parts - 1) * gap) / parts
+    _rounded(
+        paper,
+        bx + inset,
+        by + inset,
+        bx + inset + site_lots * lot_w + (site_lots - 1) * gap,
+        by + block_h / 2,
+        1.5,
+        fill=SITE_BLOCK[2],
         outline=BOUNDARY,
-        dash=BOUNDARY_DASH,
-        radius=3,
+        width=1.4,
     )
+    _roundel(paper, sx, rail_y, 6.5 * u, "T")
 
 
 def _draw_site(paper: tk.Canvas, frame: tuple[float, float, float, float]) -> None:
-    """The site sheet, drawn to the edges of its frame: the aerial's terraces
-    running back from two streets in the warm lot grey, the street trees'
-    canopies, the contours across the slope in ochre, the lot with a circle
-    at each survey corner and its frontage dimensioned, the pin, and the
-    sun in the corner. Laid out inside the frame by construction."""
+    """The site sheet, drawn to the edges of its frame: the street the site
+    fronts, its street trees, and the lots along both sides of it as the
+    cadastre has them -- a fine grey line between them -- each neighbour's
+    building on its lot as a footprint, set back from the street, its yard
+    behind; the contours across the slope in ochre; the site in red, a
+    circle at each survey corner, its frontage dimensioned in the street,
+    the pin on it; and the sun in the corner. Laid out inside the frame by
+    construction.
+
+    Until 24 October the neighbours were terraces drawn as ruled lines with
+    a stub of a house at each, and a dashed box stood in the site for the
+    building -- which the site sheet does not draw: it is the site as it is.
+    """
     fx0, fy0, fx1, fy1 = frame
-    w = fx1 - fx0
+    w, h = fx1 - fx0, fy1 - fy0
     u = w / 229.0
 
+    def at(x_mm: float) -> float:
+        return fx0 + x_mm * u
+
     _rounded(paper, fx0, fy0, fx1, fy1, 3, fill=LOT, outline="")
-    streets = (fx0 + 52 * u, fx0 + 150 * u)
-    strips = (
-        (fx0, streets[0] - 2.5 * u, True),
-        (streets[0] + 2.5 * u, streets[1] - 2.5 * u, False),
-        (streets[1] + 2.5 * u, fx1, True),
-    )
-    # The terraces: narrow lots running back from the street, a house at
-    # the street end of each.
-    for left, right, flip in strips:
-        y = fy0 + 4 * u
-        while y < fy1 - 2 * u:
-            paper.create_line(left + u, y, right - u, y, fill=NEIGHBOUR_EDGE, width=0.45)
-            house_x = right - 14 * u if flip else left + 2 * u
-            if y + 7.5 * u < fy1:
-                _rounded(
-                    paper,
-                    house_x,
-                    y + 1.5 * u,
-                    house_x + 12 * u,
-                    y + 7.5 * u,
-                    0.8,
-                    fill=TERRACE,
-                    outline="",
-                )
-            y += 9 * u
-    for street in streets:
-        paper.create_line(street, fy0, street, fy1, fill=ROAD, width=5 * u, capstyle="butt")
-    # Contours, read across the slope, held inside the frame.
-    for start, end in ((128, 70), (90, 26), (168, 116)):
+    # Contours under everything built, read across the slope.
+    for start, end in ((0.82, 0.42), (0.5, 0.12)):
         points: list[float] = []
         for step in range(0, 9):
             share = step / 8
-            x = fx0 + w * share
-            y = fy0 + (start + (end - start) * (share * share * (3 - 2 * share))) * u
-            points += [x, min(max(y, fy0 + u), fy1 - u)]
+            y = fy0 + h * (start + (end - start) * (share * share * (3 - 2 * share)))
+            points += [fx0 + w * share, min(max(y, fy0 + u), fy1 - u)]
         paper.create_line(points, fill=CONTOUR, smooth=True)
+    # The street, across the foot of the sheet.
+    kerb, far_kerb = fy0 + 0.7 * h, fy0 + 0.7 * h + 15 * u
+    paper.create_rectangle(fx0, kerb, fx1, far_kerb, fill=ROAD, outline="")
+    rear = fy0 + 0.33 * h
+    paper.create_line(fx0, rear, fx1, rear, fill=NEIGHBOUR_EDGE, width=0.6)
+    # The lots in their three rows, behind, beside and over the road from
+    # the site; the site is the front row's third, 78 to 150.
+    site = (at(78), rear, at(150), kerb)
+    rows = (
+        ((0, 40, 92, 130, 176, 229), fy0, rear),
+        ((0, 26, 78, 150, 196, 229), rear, kerb),
+        ((0, 54, 110, 168, 229), far_kerb, fy1),
+    )
+    for row_index, (cuts, top, bottom) in enumerate(rows):
+        for cut in cuts[1:-1]:
+            paper.create_line(at(cut), top, at(cut), bottom, fill=NEIGHBOUR_EDGE, width=0.6)
+        for left, right in pairwise(cuts):
+            if row_index == 1 and (left, right) == (78, 150):
+                continue
+            # Each house a little different, set in from its side lines.
+            side = 3 + (left % 3)
+            x0, x1 = at(left + side), at(right - side - 1)
+            if row_index == 0 and right == 229:
+                x1 = min(x1, at(198))  # the sun's corner kept clear
+            if row_index == 0:
+                y0, y1 = top + 6 * u, bottom - (12 + left % 5) * u
+            elif row_index == 1:
+                y1 = bottom - (7 + left % 3) * u
+                y0 = y1 - (28 + left % 7) * u
+            else:
+                y0, y1 = top + 7 * u, min(bottom - 3 * u, top + 30 * u)
+            if x1 - x0 > 4 * u and y1 - y0 > 4 * u:
+                _footprint(paper, x0, y0, x1, y1, NEIGHBOUR_EDGE)
+    # The street trees, on the kerbs and clear of the site's frontage.
     for tx, ty, tr in (
-        (48, 14, 8),
-        (58, 60, 6),
-        (46, 104, 9),
-        (56, 142, 6),
-        (146, 28, 7),
-        (156, 80, 9),
-        (146, 126, 6),
-        (154, 148, 7),
+        (30, kerb, 6),
+        (172, kerb, 5.5),
+        (214, kerb, 6),
+        (62, far_kerb, 5.5),
+        (138, far_kerb, 6.5),
+        (200, far_kerb, 5),
     ):
         paper.create_oval(
-            fx0 + (tx - tr) * u,
-            fy0 + (ty - tr) * u,
-            fx0 + (tx + tr) * u,
-            fy0 + (ty + tr) * u,
-            fill=CANOPY,
-            outline="",
+            at(tx) - tr * u, ty - tr * u, at(tx) + tr * u, ty + tr * u, fill=CANOPY, outline=""
         )
-    # The lot: the boundary, a circle at each survey corner, the frontage
-    # dimensioned, the massing dashed inside it.
-    lot = (streets[0] + 10 * u, fy0 + 54 * u, streets[1] - 10 * u, fy0 + 110 * u)
-    paper.create_rectangle(*lot, fill=theme.SURFACE, outline=BOUNDARY, width=1.5)
-    for cx in (lot[0], lot[2]):
-        for cy in (lot[1], lot[3]):
+    # The site: its lot in colour, the boundary, a circle at each survey
+    # corner, the frontage dimensioned in the street, the pin.
+    paper.create_rectangle(*site, fill=SITE_BLOCK[0], outline=BOUNDARY, width=1.5)
+    for cx in (site[0], site[2]):
+        for cy in (site[1], site[3]):
             paper.create_oval(
                 cx - 2.4 * u,
                 cy - 2.4 * u,
@@ -3340,21 +3372,13 @@ def _draw_site(paper: tk.Canvas, frame: tuple[float, float, float, float]) -> No
                 fill=theme.SURFACE,
                 outline=BOUNDARY,
             )
-    paper.create_rectangle(
-        lot[0] + 10 * u,
-        lot[1] + 10 * u,
-        lot[2] - 10 * u,
-        lot[3] - 10 * u,
-        outline=NEIGHBOUR_EDGE,
-        dash=(3, 2),
-    )
-    dim = lot[1] - 8 * u
-    paper.create_line(lot[0], dim, lot[2], dim, fill=theme.INK, width=0.8)
-    for tick_x in (lot[0], lot[2]):
+    dim = (kerb + far_kerb) / 2
+    paper.create_line(site[0], dim, site[2], dim, fill=theme.INK, width=0.8)
+    for tick_x in (site[0], site[2]):
         paper.create_line(tick_x, dim - 3 * u, tick_x, dim + 3 * u, fill=theme.INK, width=0.8)
-    _pin(paper, (lot[0] + lot[2]) / 2, (lot[1] + lot[3]) / 2 + 2 * u, u)
+    _pin(paper, (site[0] + site[2]) / 2, (site[1] + site[3]) / 2 + 5 * u, u)
     # The sun, in the corner the north side leaves free.
-    sx, sy, sr = fx1 - 22 * u, fy0 + 20 * u, 5 * u
+    sx, sy, sr = fx1 - 16 * u, fy0 + 14 * u, 4.5 * u
     for ray in range(8):
         angle = ray * math.pi / 4
         paper.create_line(
