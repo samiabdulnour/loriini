@@ -27,6 +27,7 @@ be found, switched off or purged as a group.
 | `14 \| Site Analysis` worksheet | the boundary with a circle at each survey corner, `SB` dimensions per edge and `RL` levels per corner, read across the slope between the contours; the fall arrow, `FALL` and `AREA`; contours with their levels -- the City of Sydney's 1 m ones where its area covers the sheet, the state's 2 m ones elsewhere, and the legend says which; neighbours as number, storeys and zone; trees the size of their canopy, dashed where nobody recorded one; poles, lamps, hydrants; driveways as access triangles; kerbside parking bands; one-way and lane arrows; noise zigzags along main roads and rail; utilities where OSM has them; OSM building footprints; the sun path with winter and summer discs; prevailing wind banners; a legend |
 | `14 \| Summary of Controls` **layout** | the planning-controls table, drawn straight onto a sheet of its own on the A1 master: address, lots, cadastral area; LEP zone, height, FSR and the GFA it allows, minimum lot size, heritage; council DCP rows ruled up empty; the ADG figures worked for this site area. No worksheet, no view, no layer of its own |
 | `14 \| Context Analysis.*`, `14 \| Site Analysis.*` layers | five per sheet (aerial, fills, lines, labels, sheet), every fill with an element ID naming its legend entry |
+| `14 \| Context Analysis`, `14 \| Site Analysis` **layouts** | each worksheet's view on a sheet of its own, the map field centred on the site beside the title block, and the sheet's **legend drawn on the layout** in the column to the right of the map, above the title block -- not in the worksheet. Without a layout (`--no-layout`, or no master to put one on) the legend stays in the worksheet beside the map, so it is never on neither |
 | `14 \| Site Analysis` view folder | a view of each worksheet at its sheet's scale -- 1:3000 for the context sheet, whichever of 1:200 to 1:750 fits the site for the site sheet -- with a layer combination showing that drawing's layers |
 | `<run folder>/data/*.json` | everything fetched, so the sheets can be redrawn without the internet, or into another project |
 
@@ -123,6 +124,22 @@ Fonts are not themed: the add-on's `CreateTexts` takes no face, so a text
 is in the Text tool's default. The generator's Arial Narrow and DejaVu are
 a project-template matter.
 
+### Numbered places
+
+In the four site-analyst.com themes the only words on the context sheet's
+map are the street names. Every institution and park is a solid disc with
+its number knocked out in white -- in the theme's institution ink, the
+parks in its park ink -- and the legend carries the key under a `KEY`
+heading: the institutions in the legend's category order, then the open
+spaces, then the stations under their roundel letter. A sheet with more
+than one station numbers them `T1`, `T2`... nearest the site first, and the
+light rail `L1`, `L2`... the same way. Past two dozen entries the key's rows
+tighten; when even that would overrun the column the places nearest the
+site are kept and the rest go, from the map as well as the key, and the
+kept ones are numbered again. Two discs on one block are pushed apart until
+they clear. Oatley writes the names on the map, as the sheets first had it.
+Each disc's element ID is `SA PLACE <n>: <name>`, so a schedule can list them.
+
 ### The context sheet
 
 | theme | |
@@ -137,10 +154,10 @@ a project-template matter.
 
 | theme | |
 |---|---|
-| **Heron** (default) | the aerial grey outside the site, which keeps its colours; the zones hatched in Heron's palette and tinted under the hatch, since its tints are too pale to read as a hatch alone; the site, its levels, its boundary dimensions and the FALL/AREA words in Heron's red, the fall arrow in its slate; the neighbours as a fine white outline with number and storeys in white; the contours light grey; every word on the map a fifth larger; the sun an open jagged crown of twelve uneven teeth, the four on the diagonals drawn out as flames, each sun from its own seed, on arcs with the solar hours marked; the winds three hand-drawn strands abreast, white in the climate grey, coming in from their compass quarter |
+| **Heron** (default) | the aerial grey outside the site, which keeps its colours; the zones hatched in Heron's palette and tinted under the hatch, since its tints are too pale to read as a hatch alone; the site, its levels, its boundary dimensions and the FALL/AREA words in Heron's red, the fall arrow in its slate; the neighbours as a fine white outline with number and storeys in white; the contours light grey; every word on the map a fifth larger; the sun an open jagged crown of twelve uneven teeth, the four on the diagonals drawn out as flames, each sun from its own seed, on its path, each path a white band 2 mm wide in the grey pen -- summer's whole, winter's in 6 mm dashes -- with a white dot and the time at each solar hour; the noise a white band swelling gently in blue, 11 mm beside each busy road and the railway on the site's side, broken where it would cross the site or leave the sheet; the winds three hand-drawn strands abreast, white in the climate grey, coming in from their compass quarter |
 | **Kingfisher** | Kingfisher on paper, no photograph: each lot filled in its zone's pale ground so the roads stay white, water drawn whole; every building in its family's strong colour with a white edge; the white cadastre; the site in magenta on its pink; each solstice's sun path a yellow crescent, deepest at noon, with the office's small rayed sun at each rise and set; each wind a blue crescent over the quarter it blows from with three white broken-shaft arrows on it pointing in |
 | **Flamingo** | the same paper and plan in Flamingo's palette, as its context sheet draws them: the lots in its tints and textures, every building white in a heavy outline of its family's ink and finely hatched in it, the cadastre fine grey, the site coral, the names green; the office's drawn marks -- an eight-rayed sun at each rise and set on dashed arcs (winter dotted), the ring carried on round the side the sun never reaches dashed in the wind's blue, the two-curl wind on it -- each solid in the ink of its name |
-| **Canary** | the office's classic site sheet in the context Canary's colours: the aerial greyed under its veil, the zones washed in the ePlanning colours and keyed by code; the LEP's heritage items hatched in the ePlanning tan and its conservation areas in red; the site a dash in Canary's red with its levels, the dimensions and the fall in its slate; no contours; each neighbour's number and storeys in black; kerbside parking a hatched zone; the sun and the winds one black dashed circle about the site -- the winds named around it outside over hatched quarters, the two solstice paths inside it (summer solid, winter dashed, a step further in) with four plain suns named toward the centre, and north an arrowhead standing out of the ring |
+| **Canary** | the office's classic site sheet in the context Canary's colours: the aerial greyed under its veil, the zones washed in the ePlanning colours and keyed by code; the LEP's heritage items hatched in the ePlanning tan and its conservation areas in red; the site a dash in Canary's red with its levels, the dimensions and the fall in its slate; no contours; each neighbour's number and storeys in black; kerbside parking a hatched zone; the noise the office's zigzag, 10 mm beside each busy road on the site's side; the sun and the winds one black dashed circle about the site -- the winds named around it outside over hatched quarters, the two solstice paths inside it (summer solid, winter dashed, a step further in) with four plain suns named toward the centre, and north an arrowhead standing out of the ring |
 | **Oatley** | the sheet as it was first drawn: the colour aerial, the office's red site, blue dimensions and fall, grey building masses with number, storeys and zone, yellow suns with rays, white wind banners at the corners |
 
 Each site theme draws on a context theme for what it does not set itself --

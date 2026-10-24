@@ -5410,3 +5410,64 @@ And one bug of the run's own: with `--no-site` the fit step read
 
 *What this does not change:* what either sheet says, where the site lands,
 the layers, the element IDs, the credit, or anything about the context model.
+
+### D138 — The legend goes on the layout, the places are numbered, and the map is centred from the bottom margin
+
+Asked 24 October 2026, with the Untitled project's layouts on screen: *"the
+layouts are slightly shifted. also the legend should be in layout in the
+right as it normaly is. you dont need legend in worksheet it self but mainly
+on the layout"*, and while that was being done, *"can you put numbers instead
+of names of institutions in analysis, as it is in site-analyst.com outputs?"*
+
+**The shift was two things.** The one on screen was stale: the layouts had
+been made by an earlier run with the site centred, and the two runs after
+were `--no-layout`, so when the site moved onto its corner nobody moved the
+drawings -- 12 mm on the context sheet, about 100 mm on the site sheet. A run
+with layouts remakes them, and read back with `GetDrawings` both drawings'
+origins sat within 0.05 mm of where the site's centre puts them. The other
+was a real bug that this master's equal margins hid: `_sheet_frame` centred
+the field vertically from the *top* margin, and layout coordinates run up
+from the bottom-left (`docs/addon.md`), so on a master with a deeper top
+margin the map sat low by the difference. It is centred from the bottom
+margin now.
+
+**The legend is the layout's.** The office's sheets keep the legend in the
+column to the right of the map, over the title block, and a worksheet is the
+drawing, not the sheet. So `_legend` records its rows on the drawing, the
+elements carry the part they belong to, and when the run will make a layout
+the legend is taken off the worksheet (`Drawing.without`) and drawn straight
+onto the layout at paper size: from the frame's top, 8 mm right of it, as
+wide as the column, the long labels broken onto a second line. The legend's
+swatches are fills, so drawing on paper now takes fills as well as rules and
+texts; `CreateFills` leaves a missing layer at the Fill tool's, which is what
+a layout element wants. The master is settled before anything is drawn, so a
+person is asked once, and a run that cannot have one -- `--no-layout`, or no
+master given and nobody to ask -- keeps its legend in the worksheet. The
+legend is never on neither.
+
+**The places are numbered, as site-analyst.com draws them.** Ported from
+the generator's `sheet.ts`: every institution and park a solid disc with its
+number in white, ordered institutions by legend category then open spaces,
+each name once; the key under the legend; stations `T1`, `T2`... nearest the
+site first; the key's rows tightening past two dozen and, past what the
+column holds above the title block (`LEGEND_FOOT_MM`, 90 mm), the nearest
+places kept and numbered again; discs on one block pushed apart. A theme
+field, `places`: the four site-analyst themes number, Oatley names, because
+Oatley is the sheet as it was first drawn. The legend's station and bus rows
+show the roundel itself now, not the letter alone.
+
+**Heron's sun path and the noise, as the generator draws them.** Asked the
+same day, with Heron's site sheet open: *"the sun path is not actual and
+noise line is not right."* Each solstice's path is now Heron's white band,
+2 mm wide in a 0.7 mm grey pen, summer's whole and winter's in 6 mm dashes
+5 mm apart, the hour dots and the crowns and strands in the same pen; it had
+been a bare grey line. And the noise had been the office's zigzag drawn on
+every theme along the road's own centre line, which the generator never
+does: it runs beside the source on the site's side and breaks where it would
+cross the site or leave the sheet -- Heron and the two paper themes as a
+white band swelling gently in the noise pen 11 mm out, Canary as the zigzag
+10 mm out. Oatley keeps the zigzag on the road, as first drawn.
+
+*What this does not change:* the worksheet's map, its title, north point and
+credit, where the site lands, and the site sheet's content.
+

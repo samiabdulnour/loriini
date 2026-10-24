@@ -9,6 +9,7 @@ tests use, so the content is known to be the same and only the hand differs.
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 from pathlib import Path
 from typing import cast
 
@@ -483,3 +484,207 @@ def test_a_ring_that_nearly_touches_itself_is_split_as_if_it_did() -> None:
     ]
     loops = _loops(ring)
     assert len(loops) == 2, [len(loop) for loop in loops]
+
+
+# -- numbered places and the legend on the layout (D138) ---------------------------
+
+
+def test_the_site_analyst_themes_number_the_places_and_key_them() -> None:
+    drawing = context_drawing(context_bundle(), frame(), theme="flamingo")
+    discs = [f for f in drawing.fills if f.element_id.startswith("SA PLACE ")]
+    assert [f.element_id for f in discs] == [
+        "SA PLACE 1: ST GEORGE HOSPITAL",
+        "SA PLACE 2: JUBILEE OVAL",
+    ], "institutions in legend order, then the open spaces, each name once"
+    assert discs[0].colour == "#c49a52" and discs[1].colour == "#5f9a58", "disc inks"
+    on_map = {t.text for t in drawing.texts if not t.layer.endswith(".Sheet")}
+    assert {"1", "2", "T", "TEST ST"} <= on_map
+    assert not {"ST GEORGE\nHOSPITAL", "JUBILEE OVAL", "KOGARAH"} & on_map, (
+        "the only words on the map are the street names"
+    )
+    legend = [t.text for t in drawing.texts if t.layer.endswith(".Sheet")]
+    assert "KEY" in legend
+    assert {"ST GEORGE HOSPITAL", "JUBILEE OVAL", "KOGARAH"} <= set(legend)
+    assert drawing.legend is not None
+    keyed = [row for row in drawing.legend[1] if row.key]
+    assert [(row.mark, row.label) for row in keyed] == [
+        ("1", "ST GEORGE HOSPITAL"),
+        ("2", "JUBILEE OVAL"),
+        ("T", "KOGARAH"),
+    ]
+
+
+def test_oatley_keeps_the_names_on_the_map() -> None:
+    drawing = context_drawing(context_bundle(), frame(), theme="oatley")
+    on_map = {t.text for t in drawing.texts if not t.layer.endswith(".Sheet")}
+    assert {"ST GEORGE\nHOSPITAL", "JUBILEE OVAL", "KOGARAH"} <= on_map
+    assert not any(f.element_id.startswith("SA PLACE ") for f in drawing.fills)
+
+
+def test_more_than_one_station_is_numbered_nearest_the_site_first() -> None:
+    from sun_study.site import nsw
+
+    bundle = context_bundle()
+    bundle.stations = (
+        nsw.NamedPoint("ALLAWAH", LON - 0.006, LAT),
+        nsw.NamedPoint("KOGARAH", LON + 0.002, LAT),
+        nsw.NamedPoint("KOGARAH LIGHT RAIL", LON, LAT - 0.002),
+    )
+    drawing = context_drawing(bundle, frame(), theme="heron")
+    assert drawing.legend is not None
+    keyed = {row.label: row.mark for row in drawing.legend[1] if row.key and row.mark}
+    assert keyed["KOGARAH"] == "T1" and keyed["ALLAWAH"] == "T2"
+    assert keyed["KOGARAH LIGHT RAIL"] == "L", "one light rail stop needs no number"
+    on_map = {t.text for t in drawing.texts if not t.layer.endswith(".Sheet")}
+    assert {"T1", "T2", "L"} <= on_map
+
+
+def test_a_key_too_long_for_the_column_keeps_the_places_nearest_the_site() -> None:
+    from sun_study.archicad.site_analysis import Place, Row, _within_the_column
+
+    places = [Place(i + 1, f"PLACE {i + 1}", "medical", (float(i) * 10.0, 0.0)) for i in range(80)]
+    legend = [Row("fill", "#ffffff", None, f"ROW {i}") for i in range(20)]
+    kept = _within_the_column(places, legend, [], (0.0, 0.0))
+    assert 20 < len(kept) < 80
+    assert [p.number for p in kept] == list(range(1, len(kept) + 1)), "numbered again"
+    assert kept[-1].name == f"PLACE {len(kept)}", "the nearest are the ones kept"
+    few = places[:5]
+    assert _within_the_column(few, legend, [], (0.0, 0.0)) == few
+
+
+def test_a_legend_drawn_on_paper_breaks_its_labels_to_the_column() -> None:
+    from sun_study.archicad.site_analysis import Row, _legend
+
+    rows = [
+        Row("fill", "#ffffff", None, "MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL AND MORE WORDS"),
+        Row("disc", "#000000", None, "A PLACE", mark="1", key=True),
+    ]
+    paper = Drawing(1.0, "Context Analysis")
+    _legend(paper, rows, (0.7, 0.5), title="CONTEXT ANALYSIS", width_mm=60.0)
+    labels = [t.text for t in paper.texts]
+    assert any("\n" in label for label in labels), "a long label goes onto a second line"
+    assert "KEY" in labels and "1" in labels
+    sheet = Drawing(3000.0, "Context Analysis")
+    _legend(sheet, rows, (0.0, 0.0), title="CONTEXT ANALYSIS")
+    assert not any("\n" in t.text for t in sheet.texts), "the worksheet's has room to spare"
+
+
+def test_the_legend_comes_off_a_drawing_and_keeps_its_rows() -> None:
+    drawing = context_drawing(context_bundle(), frame(), theme="kingfisher")
+    bare = drawing.without(frozenset({"Legend"}))
+    assert not any(t.part == "Legend" for t in bare.texts)
+    assert not any(f.part == "Legend" for f in bare.fills)
+    assert bare.legend == drawing.legend, "the rows go with it, for the layout to draw"
+    assert any(t.text == "TEST ST" for t in bare.texts), "the map stays"
+
+
+def test_the_map_field_is_centred_from_the_bottom_margin() -> None:
+    from sun_study.archicad.layout import LayoutSheet
+    from sun_study.archicad.site_analysis import _sheet_frame
+
+    sheet = LayoutSheet(
+        width_mm=841.0, height_mm=594.0, left_mm=10.0, top_mm=40.0, right_mm=10.0, bottom_mm=10.0
+    )
+    _x0, y0, _x1, y1 = _sheet_frame(sheet, width_mm=690.0, height_mm=500.0, title_block_mm=100.0)
+    assert (y0 + y1) / 2 * 1000 == pytest.approx(10.0 + (594.0 - 50.0) / 2), (
+        "midway between the bottom and top margins, layout y running upward"
+    )
+
+
+def test_a_legend_on_paper_keeps_its_small_marks() -> None:
+    from sun_study.archicad.site_analysis import Row, _legend
+
+    rows = [
+        Row("disc", "#3b4f8a", None, "BUS STOP", mark="B"),
+        Row("disc", "#c49a52", None, "A PLACE", mark="1", key=True),
+        Row("arrow", "#ffffff", "#6f7377", "PREVAILING BREEZES"),
+        Row("sun", "#ffffff", "#6f7377", "WINTER / SUMMER SUN"),
+        Row("symbol", "#d48f00", "#d48f00", "SUNRISE AND SUNSET", mark="SUN"),
+        Row("outline", "#ffffff", "#a8a8a8", "BUILDING FOOTPRINTS (OSM)"),
+    ]
+    paper = Drawing(1.0, "Site Analysis")
+    _legend(paper, rows, (0.731, 0.567), title="LEGEND", width_mm=93.0)
+    colours = [f.colour for f in paper.fills]
+    assert colours.count("#3b4f8a") == 1 and colours.count("#c49a52") == 1, "the 3 mm discs"
+    assert "#d48f00" in colours, "the office's sun, flattened"
+    assert colours.count("#ffffff") >= 2, "the arrow and the sun's disc"
+    assert "#a8a8a8" in colours, "the grey under the white outline"
+
+
+def test_every_label_on_a_layout_legend_stays_in_its_column() -> None:
+    from sun_study.archicad.site_analysis import CAPS_WIDTH
+
+    for drawing in (
+        context_drawing(context_bundle(), frame(), theme="flamingo"),
+        site_drawing(site_bundle(), frame(), theme="heron"),
+    ):
+        from sun_study.archicad.site_analysis import _legend
+
+        assert drawing.legend is not None
+        title, rows = drawing.legend
+        paper = Drawing(1.0, drawing.word)
+        _legend(paper, rows, (0.0, 0.5), title=title, width_mm=93.0)
+        for text in paper.texts:
+            longest = max(len(line) for line in text.text.split("\n"))
+            right = text.at[0] * 1000 + longest * text.height_mm * CAPS_WIDTH
+            assert right <= 93.0 + 0.5, (text.text, right)
+
+
+def _distance_to_line(pt: tuple[float, float], line: list[tuple[float, float]]) -> float:
+    best = math.inf
+    for (ax, ay), (bx, by) in pairwise(line):
+        dx, dy = bx - ax, by - ay
+        l2 = dx * dx + dy * dy or 1e-12
+        t = max(0.0, min(1.0, ((pt[0] - ax) * dx + (pt[1] - ay) * dy) / l2))
+        best = min(best, math.hypot(pt[0] - ax - t * dx, pt[1] - ay - t * dy))
+    return best
+
+
+def test_heron_draws_noise_as_a_white_band_beside_the_road_on_the_sites_side() -> None:
+    from sun_study.site.geo import point_in_ring
+
+    bundle = site_bundle()
+    drawing = site_drawing(bundle, frame(), theme="heron")
+    bands = [f for f in drawing.fills if f.element_id == "SA NOISE"]
+    assert bands and all(f.colour == "#ffffff" and f.contour == "#3f6fc2" for f in bands)
+    road = frame().ring(bundle.roads[0].coords)
+    site = frame().ring(bundle.site_rings[0])
+    for band in bands:
+        for pt in band.rings[0]:
+            assert not point_in_ring(pt[0], pt[1], site), "never across the site"
+            # 11 mm out at 1:200 is 2.2 m, give or take its sway and width.
+            assert 0.9 <= _distance_to_line(pt, road) <= 3.6
+    centre = sum(x for x, _ in site) / len(site), sum(y for _, y in site) / len(site)
+    probe = bands[0].rings[0][0]
+    assert _distance_to_line(centre, road) > _distance_to_line(probe, road) - 4.0, "site's side"
+
+
+def test_canary_draws_the_offices_zigzag_beside_the_road() -> None:
+    bundle = site_bundle()
+    drawing = site_drawing(bundle, frame(), theme="canary")
+    road = frame().ring(bundle.roads[0].coords)
+    zigzags = [line for line in drawing.lines if line.part == "Noise"]
+    assert zigzags
+    for line in zigzags:
+        for pt in line.points:
+            assert 1.5 <= _distance_to_line(pt, road) <= 2.5, "10 mm out, teeth 2 mm either way"
+
+
+def test_oatley_keeps_the_zigzag_on_the_road() -> None:
+    bundle = site_bundle()
+    drawing = site_drawing(bundle, frame(), theme="oatley")
+    road = frame().ring(bundle.roads[0].coords)
+    zigzags = [line for line in drawing.lines if line.part == "Noise"]
+    assert zigzags and all(_distance_to_line(pt, road) < 0.5 for pt in zigzags[0].points)
+
+
+def test_herons_sun_paths_are_white_bands_winters_broken_into_dashes() -> None:
+    drawing = site_drawing(site_bundle(), frame(), theme="heron")
+    paths = [f for f in drawing.fills if f.element_id == "SA SUN PATH"]
+    assert len(paths) > 5, "summer's band whole, winter's in dashes"
+    assert all(
+        f.colour == "#ffffff" and f.contour == "#6f7377" and f.weight_mm == 0.7 for f in paths
+    )
+    largest = max(paths, key=lambda f: abs(ring_area(f.rings[0])))
+    smallest = min(paths, key=lambda f: abs(ring_area(f.rings[0])))
+    assert abs(ring_area(largest.rings[0])) > 10 * abs(ring_area(smallest.rings[0]))

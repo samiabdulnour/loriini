@@ -150,6 +150,14 @@ class Theme:
     street_labels: Literal["plain", "band"] = "band"
     """A through street's name plain along the road, or in the white
     double-headed arrow band (lanes stay plain either way)."""
+    places: Literal["numbers", "names"] = "names"
+    """The institutions, parks and stations: a numbered disc on the map with
+    the names in the legend's key, as site-analyst.com draws them, or each
+    name written on the map, as the office's sheets first had it."""
+    disc_ink: str = "#1c1c1c"
+    """The institutions' number discs."""
+    disc_park_ink: str = "#1c1c1c"
+    """The parks' number discs, where they differ from the institutions'."""
     zoning: Literal["categories", "lep"] = "categories"
     """The zoning: the theme's land-use categories, or each zone in its own
     NSW ePlanning colour, keyed by zone code."""
@@ -432,6 +440,9 @@ THEMES: tuple[Theme, ...] = (
         lots="faint",
         streets="white",
         street_labels="plain",
+        places="numbers",
+        disc_ink=SAND_INK,
+        disc_park_ink="#5f9a58",
         categories=FLAMINGO_CATEGORIES,
     ),
     Theme(
@@ -464,6 +475,9 @@ THEMES: tuple[Theme, ...] = (
         lot_width_mm=0.45,
         streets="white",
         street_labels="plain",
+        places="numbers",
+        disc_ink="#e39a6f",
+        disc_park_ink="#8faf6a",
         categories=KINGFISHER_CATEGORIES,
     ),
     Theme(
@@ -498,6 +512,9 @@ THEMES: tuple[Theme, ...] = (
         lot_width_mm=0.45,
         streets="none",
         street_labels="plain",
+        places="numbers",
+        disc_ink="#9c4a36",
+        disc_park_ink="#1f7a4d",
         categories=HERON_CATEGORIES,
     ),
     Theme(
@@ -533,6 +550,9 @@ THEMES: tuple[Theme, ...] = (
         streets="none",
         street_labels="plain",
         zoning="lep",
+        places="numbers",
+        disc_ink="#1c1c1c",
+        disc_park_ink="#1c1c1c",
         categories=HERON_CATEGORIES,
     ),
     Theme(
@@ -646,6 +666,12 @@ class SiteLook:
     wind_pen: str = "#2f9fd6"
     climate_ink: str = "#111111"
     """The winds' and the suns' words."""
+    noise: Literal["centre", "band", "zigzag"] = "centre"
+    """Noise beside the busy roads and the railway: a zigzag on the road's
+    own line, as the sheets were first drawn; or, as the generator draws it,
+    beside the source on the site's side -- a white band swelling gently in
+    the noise pen, or the office's zigzag -- broken where it would cross the
+    site or leave the sheet."""
     noise_pen: str = "#3b4fd8"
     parking: Literal["bays", "hatch"] = "bays"
     marks_fill: str = "#ffffff"
@@ -711,6 +737,7 @@ HERON_LOOK = SiteLook(
     wind="strands",
     wind_pen=CLIMATE_GREY,
     climate_ink=CLIMATE_GREY,
+    noise="band",
     noise_pen="#3f6fc2",
 )
 
@@ -753,6 +780,7 @@ CANARY_LOOK = SiteLook(
     wind="circle",
     wind_pen="#1c1c1c",
     climate_ink="#1c1c1c",
+    noise="zigzag",
     noise_pen=NAVY,
     parking="hatch",
 )
@@ -794,6 +822,7 @@ KINGFISHER_LOOK = SiteLook(
     wind="band",
     wind_pen="#4aa3e8",
     climate_ink="#2f86c9",
+    noise="band",
     noise_pen="#3f6fc2",
     marks_fill="#ffffff",
     marks_edge="#ffffff",
