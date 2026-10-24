@@ -444,6 +444,7 @@ def draw_legend_and_outline(
         fill: dict[str, Any] = {
             "contours": [{"points": box}],
             "layerIndex": ARCHICAD_LAYER_INDEX,
+            "determination": "drafting",
             "fillPen": 1,
             "contourPen": 0,
             "foregroundColour": _rgb(colour),
@@ -488,6 +489,7 @@ def draw_legend_and_outline(
                     {
                         "contours": [{"points": points}],
                         "layerIndex": ARCHICAD_LAYER_INDEX,
+                        "determination": "drafting",
                         "fillIndex": empty,
                         "fillPen": outline_pen,
                         "backgroundPen": 0,
