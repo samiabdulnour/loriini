@@ -784,6 +784,9 @@ def test_flamingo_and_canary_take_the_generators_settings() -> None:
 
 
 def test_a_preset_saved_under_a_former_style_name_still_draws_that_style() -> None:
+    # The window imports tkinter, which the Linux runners do not have; the
+    # window's own tests skip there the same way (test_app.py).
+    pytest.importorskip("tkinter", reason="this machine has no tkinter")
     from sun_study.app.window import CONTEXT_STYLES, SITE_STYLES, _style_id
 
     assert "FUSE" in CONTEXT_STYLES and "FUSE" in SITE_STYLES and "Oatley" not in CONTEXT_STYLES
