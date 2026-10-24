@@ -280,6 +280,7 @@ GS::Optional<GS::UniString> ArrangeDrawingsCommand::GetInputParametersSchema () 
 						"guid": { "type": "string" },
 						"x": { "type": "number" },
 						"y": { "type": "number" },
+						"transparentBackground": { "type": "boolean", "description": "The drawing's own Transparent Background switch, `isTransparentBk`: what lies under it on the layout shows wherever it draws only background. Left out, the drawing keeps what it has." },
 						"frame": {
 							"type": "object",
 							"description": "A rectangular clip frame. In layout coordinates, or relative to the drawing's origin when frameRelativeToOrigin is set.",
@@ -404,6 +405,15 @@ GS::ObjectState ArrangeDrawingsCommand::Execute (const GS::ObjectState& paramete
 				if (autoUpdate) {
 					element.drawing.manualUpdate = false;
 					ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, manualUpdate);
+				}
+
+				// A drawing laid over another in one cell is no use opaque: the
+				// stacked shadow plans set this on every drawing above the
+				// lowest (D137).
+				bool transparent = false;
+				if (wanted.Get ("transparentBackground", transparent)) {
+					element.drawing.isTransparentBk = transparent;
+					ACAPI_ELEMENT_MASK_SET (mask, API_DrawingType, isTransparentBk);
 				}
 
 				API_ElementMemo memo = {};

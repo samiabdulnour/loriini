@@ -148,21 +148,74 @@ GS::ObjectState ShadowFillState (const API_UniformAttributeOptions& options)
 }
 
 
-// Whether the document fills its uncut surfaces at all: the "Uncut Surfaces"
-// switch of its Model Display, `shouldUseUncutSurfaceFill`. Off, a roof or a
-// terrain is its outline and nothing else, and a drawing of the document
-// placed on a layout shows whatever lies under it wherever no shadow falls.
-// That is what lets two documents stack on one sheet -- the existing shadow
-// in one pen over the proposal's in another -- which is the stacked shadow
-// plans (docs/shadow-plans.md). Left out, the document keeps what it has.
+// The three ways the dialog fills a document's uncut surfaces, by name. The
+// kit's own comments on the last two read swapped against their names; the
+// names are taken as meant.
+bool ReadUncutFillType (const GS::UniString& name, API_3DUncutSurfaceFillType& into)
+{
+	if (name == "penColor")				{ into = API_3DDocumentPenColor; return true; }
+	if (name == "materialShaded")		{ into = API_3DDocumentMaterialColorShaded; return true; }
+	if (name == "materialNotShaded")	{ into = API_3DDocumentMaterialColorNonShaded; return true; }
+	return false;
+}
+
+
+GS::UniString UncutFillTypeName (API_3DUncutSurfaceFillType type)
+{
+	switch (type) {
+		case API_3DDocumentPenColor:				return "penColor";
+		case API_3DDocumentMaterialColorShaded:		return "materialShaded";
+		case API_3DDocumentMaterialColorNonShaded:	return "materialNotShaded";
+		default:									return "other";
+	}
+}
+
+
+// How the document fills its uncut surfaces: the "Uncut Surfaces" group of its
+// Model Display. Two ways in, both optional:
+//
+//   fillUncutSurfaces  the switch alone, `shouldUseUncutSurfaceFill`.
+//   uncutSurfaces      {fill, fillType, pen}: the switch, which of the three
+//                      fills, and `uncutSurfaceBkgPen`, the pen a "penColor"
+//                      fill is drawn in. Pen 0 is Archicad's transparent pen.
+//
+// Why both matter (D136, D137): Archicad draws a document's sun shadows as
+// fills on its surfaces, so a document with the switch off draws no shadow at
+// all, and one with it on is opaque. The stacked shadow plans need the third
+// thing -- surfaces filled, so the shadows are drawn, in a pen that draws
+// nothing -- and this is how it is asked for. Left out, the document keeps
+// what it has.
 bool ApplyUncutSurfaces (const GS::ObjectState& parameters, API_UniformAttributeOptions& options)
 {
+	bool touched = false;
 	bool fill = true;
-	if (!parameters.Get ("fillUncutSurfaces", fill)) {
-		return false;
+	if (parameters.Get ("fillUncutSurfaces", fill)) {
+		options.shouldUseUncutSurfaceFill = fill;
+		touched = true;
 	}
-	options.shouldUseUncutSurfaceFill = fill;
-	return true;
+	GS::ObjectState surfaces;
+	if (parameters.Get ("uncutSurfaces", surfaces)) {
+		if (surfaces.Get ("fill", fill)) {
+			options.shouldUseUncutSurfaceFill = fill;
+		}
+		GS::UniString type;
+		if (surfaces.Get ("fillType", type)) {
+			ReadUncutFillType (type, options.uncutSurfaceFillType);
+		}
+		ReadShort (surfaces, "pen", options.uncutSurfaceBkgPen);
+		touched = true;
+	}
+	return touched;
+}
+
+
+GS::ObjectState UncutSurfacesState (const API_UniformAttributeOptions& options)
+{
+	GS::ObjectState state;
+	state.Add ("fill", options.shouldUseUncutSurfaceFill);
+	state.Add ("fillType", UncutFillTypeName (options.uncutSurfaceFillType));
+	state.Add ("pen", static_cast<Int32> (options.uncutSurfaceBkgPen));
+	return state;
 }
 
 
@@ -184,6 +237,7 @@ GS::ObjectState DocumentState (API_DatabaseUnId document)
 	result.Add ("effects3D", static_cast<Int32> (now.effects3D));
 	result.Add ("shadowFill", ShadowFillState (now.attributeOptions));
 	result.Add ("fillUncutSurfaces", now.attributeOptions.shouldUseUncutSurfaceFill);
+	result.Add ("uncutSurfaces", UncutSurfacesState (now.attributeOptions));
 	result.Add ("isPerspective", now.projectionSetting.isPersp);
 	// The settings read back carry a handle the kit's own example frees
 	// after use; nothing here owns it.
@@ -386,7 +440,17 @@ GS::Optional<GS::UniString> CreateDocumentFrom3DCommand::GetInputParametersSchem
 				},
 				"additionalProperties": false
 			},
-			"fillUncutSurfaces": { "type": "boolean", "description": "Whether the document fills its uncut surfaces. False leaves roofs and ground as outlines, so a drawing of it on a layout shows what lies under it wherever no shadow falls -- how two documents stack on one sheet. Left out, the project's own default stands." }
+			"fillUncutSurfaces": { "type": "boolean", "description": "Whether the document fills its uncut surfaces. False leaves roofs and ground as outlines -- and draws no sun shadow either, since Archicad draws a shadow on a filled surface (D136). Left out, the project's own default stands." },
+			"uncutSurfaces": {
+				"type": "object",
+				"description": "How the uncut surfaces are filled: the switch, which of the dialog's three fills, and the pen a penColor fill is drawn in (0 is Archicad's transparent pen). Any field left out keeps what the document had.",
+				"properties": {
+					"fill": { "type": "boolean" },
+					"fillType": { "type": "string", "enum": [ "penColor", "materialShaded", "materialNotShaded" ] },
+					"pen": { "type": "integer" }
+				},
+				"additionalProperties": false
+			}
 		},
 		"required": [ "name" ],
 		"additionalProperties": false
@@ -404,6 +468,7 @@ GS::Optional<GS::UniString> CreateDocumentFrom3DCommand::GetResponseSchema () co
 			"effects3D": { "type": "integer", "description": "The document's vectorial effects flags, read back. Undocumented bits; reported whole." },
 			"shadowFill": { "type": "object" },
 			"fillUncutSurfaces": { "type": "boolean", "description": "Whether the document fills its uncut surfaces, read back." },
+			"uncutSurfaces": { "type": "object", "description": "fill, fillType and pen, read back." },
 			"isPerspective": { "type": "boolean" },
 			"error": { "type": "object" }
 		}
@@ -442,7 +507,9 @@ GS::ObjectState CreateDocumentFrom3DCommand::Execute (const GS::ObjectState& par
 	GS::ObjectState shadowFill;
 	const bool hasShadowFill = parameters.Get ("shadowFill", shadowFill);
 	bool fillUncut = true;
-	const bool hasUncut = parameters.Get ("fillUncutSurfaces", fillUncut);
+	GS::ObjectState uncutWanted;
+	const bool hasUncut = parameters.Get ("fillUncutSurfaces", fillUncut) ||
+						  parameters.Get ("uncutSurfaces", uncutWanted);
 
 	API_DocumentFrom3DDefaults before = {};
 	bool defaultsChanged = false;
@@ -543,6 +610,16 @@ GS::Optional<GS::UniString> SetDocumentFrom3DCommand::GetInputParametersSchema (
 			"sun": { "type": "object", "description": "The date and time the document keeps its sun at. Any field left out keeps its value." },
 			"shadowFill": { "type": "object", "description": "The fill its sun shadows are drawn in, as for CreateDocumentFrom3D." },
 			"fillUncutSurfaces": { "type": "boolean", "description": "Whether the document fills its uncut surfaces, as for CreateDocumentFrom3D." },
+			"uncutSurfaces": {
+				"type": "object",
+				"description": "How the uncut surfaces are filled: the switch, which of the dialog's three fills, and the pen a penColor fill is drawn in (0 is Archicad's transparent pen). Any field left out keeps what the document had.",
+				"properties": {
+					"fill": { "type": "boolean" },
+					"fillType": { "type": "string", "enum": [ "penColor", "materialShaded", "materialNotShaded" ] },
+					"pen": { "type": "integer" }
+				},
+				"additionalProperties": false
+			},
 			"effects3D": { "type": "integer", "description": "The document's vectorial effects flags, copied whole from a document read back with the effects wanted." }
 		},
 		"required": [ "databaseId" ],
@@ -559,6 +636,7 @@ GS::Optional<GS::UniString> SetDocumentFrom3DCommand::GetResponseSchema () const
 			"effects3D": { "type": "integer" },
 			"shadowFill": { "type": "object" },
 			"fillUncutSurfaces": { "type": "boolean" },
+			"uncutSurfaces": { "type": "object" },
 			"isPerspective": { "type": "boolean" },
 			"error": { "type": "object" }
 		}
