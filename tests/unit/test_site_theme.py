@@ -588,3 +588,42 @@ def test_the_map_field_is_centred_from_the_bottom_margin() -> None:
     assert (y0 + y1) / 2 * 1000 == pytest.approx(10.0 + (594.0 - 50.0) / 2), (
         "midway between the bottom and top margins, layout y running upward"
     )
+
+
+def test_a_legend_on_paper_keeps_its_small_marks() -> None:
+    from sun_study.archicad.site_analysis import Row, _legend
+
+    rows = [
+        Row("disc", "#3b4f8a", None, "BUS STOP", mark="B"),
+        Row("disc", "#c49a52", None, "A PLACE", mark="1", key=True),
+        Row("arrow", "#ffffff", "#6f7377", "PREVAILING BREEZES"),
+        Row("sun", "#ffffff", "#6f7377", "WINTER / SUMMER SUN"),
+        Row("symbol", "#d48f00", "#d48f00", "SUNRISE AND SUNSET", mark="SUN"),
+        Row("outline", "#ffffff", "#a8a8a8", "BUILDING FOOTPRINTS (OSM)"),
+    ]
+    paper = Drawing(1.0, "Site Analysis")
+    _legend(paper, rows, (0.731, 0.567), title="LEGEND", width_mm=93.0)
+    colours = [f.colour for f in paper.fills]
+    assert colours.count("#3b4f8a") == 1 and colours.count("#c49a52") == 1, "the 3 mm discs"
+    assert "#d48f00" in colours, "the office's sun, flattened"
+    assert colours.count("#ffffff") >= 2, "the arrow and the sun's disc"
+    assert "#a8a8a8" in colours, "the grey under the white outline"
+
+
+def test_every_label_on_a_layout_legend_stays_in_its_column() -> None:
+    from sun_study.archicad.site_analysis import CAPS_WIDTH
+
+    for drawing in (
+        context_drawing(context_bundle(), frame(), theme="flamingo"),
+        site_drawing(site_bundle(), frame(), theme="heron"),
+    ):
+        from sun_study.archicad.site_analysis import _legend
+
+        assert drawing.legend is not None
+        title, rows = drawing.legend
+        paper = Drawing(1.0, drawing.word)
+        _legend(paper, rows, (0.0, 0.5), title=title, width_mm=93.0)
+        for text in paper.texts:
+            longest = max(len(line) for line in text.text.split("\n"))
+            right = text.at[0] * 1000 + longest * text.height_mm * CAPS_WIDTH
+            assert right <= 93.0 + 0.5, (text.text, right)

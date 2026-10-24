@@ -153,6 +153,11 @@ TEXTURE_MM = 2.0
 #: The road reserve a street is drawn as on paper, by the register's function
 #: hierarchy (1 a motorway, 6 a local street, 7 and beyond a lane), in metres.
 RESERVE_M = {1: 30.0, 2: 24.0, 3: 20.0, 4: 16.0, 5: 12.0, 6: 10.0}
+#: What a line of capitals takes per character, as a share of its height:
+#: measured on the first layout legend (24 October 2026), where 41 capitals
+#: at 3 mm ran 96 mm. The placer's 0.6 is a fair mean for mixed lettering;
+#: a legend is all capitals and ran past the sheet's margin at it.
+CAPS_WIDTH = 0.85
 #: A numbered place's disc on the map, and the key's smaller one, radius on
 #: paper: the map's is the roundels' size, so every dot on the map is one size.
 PLACE_MM = 3.4
@@ -515,7 +520,9 @@ def _clean_ring(ring: Sequence[Point]) -> list[Point]:
     return out
 
 
-def _polygons(rings: Sequence[Sequence[Point]]) -> list[tuple[list[Point], list[list[Point]]]]:
+def _polygons(
+    rings: Sequence[Sequence[Point]], floor_m2: float = 1e-4
+) -> list[tuple[list[Point], list[list[Point]]]]:
     """Sort a feature's rings into polygons: ``(outer, holes)`` each.
 
     A cadastral or zoning feature arrives as every ring of a multipolygon in
@@ -525,11 +532,15 @@ def _polygons(rings: Sequence[Sequence[Point]]) -> list[tuple[list[Point], list[
     placed by containment, largest first: a ring inside an outer is that
     outer's hole, unless it sits inside one of its holes already, in which
     case it is an island and an outer of its own.
+
+    A ring under ``floor_m2`` is a sliver and is dropped: a square centimetre
+    of ground by default, and less on paper, where the drawing's own unit is
+    a metre of sheet and a 3 mm disc is a quarter of that (D138).
     """
     cleaned = [
         ring
         for ring in (_clean_ring(r) for r in rings)
-        if len(ring) >= 3 and abs(ring_area(ring)) > 1e-4
+        if len(ring) >= 3 and abs(ring_area(ring)) > floor_m2
     ]
     cleaned.sort(key=lambda ring: -abs(ring_area(ring)))
     polygons: list[tuple[list[Point], list[list[Point]]]] = []
@@ -777,7 +788,10 @@ class Drawing:
         # the legend meaning where the caller gives one, the layer's part
         # otherwise.
         identifier = element_id or f"SA {part.upper()}"
-        for outer, holes in _polygons(rings):
+        # A square centimetre of ground, or a tenth of a millimetre square of
+        # paper, whichever is less: the same sliver at any scale.
+        floor = min(1e-4, self.mm(0.1) ** 2)
+        for outer, holes in _polygons(rings, floor):
             if hatch:
                 # The lines of the hatch are the drawing's own, so their
                 # spacing is the sheet's and not a fill attribute's: a fill
@@ -1214,6 +1228,10 @@ class Row:
     key: bool = False
 
 
+#: The office's marks a legend row can show, by name.
+SYMBOLS = {"SUN": marks.SUN, "WIND": marks.WIND, "RAY_SUN": marks.RAY_SUN, "ARROW": marks.ARROW}
+
+
 def _legend(
     drawing: Drawing,
     rows: Sequence[Row],
@@ -1242,7 +1260,7 @@ def _legend(
     def chars(indent_mm: float, size: float) -> int | None:
         if width_mm is None:
             return None
-        return max(12, int((width_mm - indent_mm) / (size * 0.6)))
+        return max(12, int((width_mm - indent_mm) / (size * CAPS_WIDTH)))
 
     drawing.text("Legend", title, (x, top + mm(6)), height_mm=LEGEND_MM * 1.4, justification="Left")
     y = top
@@ -1257,7 +1275,7 @@ def _legend(
             keyed = True
             y -= mm(12)
             drawing.text(
-                "Legend", "KEY", (x, y + mm(3)), height_mm=LEGEND_MM * 1.2, justification="Left"
+                "Legend", "KEY", (x, y + mm(5)), height_mm=LEGEND_MM * 1.2, justification="Left"
             )
         y -= mm(key_pitch if item.key else 10.0)
         middle = y + swatch_h / 2
@@ -1303,10 +1321,84 @@ def _legend(
                     height_mm=size * (0.85 if len(item.mark) > 1 else 1.0),
                     colour="#ffffff" if solid else item.colour,
                 )
-        else:
-            drawing.text(
-                "Legend", item.colour, (x, middle), height_mm=LEGEND_MM, justification="Left"
+        elif item.kind == "outline":
+            # A white outline on the grey of the photograph it stands on.
+            drawing.fill(
+                "Legend",
+                [[(x, y), (x + swatch_w, y), (x + swatch_w, y + swatch_h), (x, y + swatch_h)]],
+                item.contour or "#a8a8a8",
+                contour=item.contour or "#a8a8a8",
             )
+            inset = mm(1.6)
+            drawing.line(
+                "Legend",
+                [
+                    (x + inset, y + inset),
+                    (x + swatch_w - inset, y + inset),
+                    (x + swatch_w - inset, y + swatch_h - inset),
+                    (x + inset, y + swatch_h - inset),
+                ],
+                colour=item.colour,
+                closed=True,
+                weight_mm=0.35,
+            )
+        elif item.kind == "sun":
+            centre = (x + swatch_w / 2, middle)
+            drawing.circle(
+                "Legend",
+                centre,
+                mm(1.9),
+                colour=item.contour or item.colour,
+                fill=item.colour,
+                weight_mm=0.25,
+                element_id="SA LEGEND",
+            )
+            for k in range(8):
+                a = k * math.pi / 4
+                drawing.line(
+                    "Legend",
+                    [
+                        (centre[0] + mm(2.5) * math.cos(a), centre[1] + mm(2.5) * math.sin(a)),
+                        (centre[0] + mm(3.2) * math.cos(a), centre[1] + mm(3.2) * math.sin(a)),
+                    ],
+                    colour=item.contour or item.colour,
+                    weight_mm=0.25,
+                )
+        elif item.kind == "arrow":
+            ring = marks.sketch_arrow(
+                (x + mm(1.0), middle),
+                (1.0, 0.0),
+                swatch_w - mm(2.0),
+                bow=mm(0.5),
+                w0=mm(0.5),
+                w1=mm(1.1),
+                head=mm(4.0),
+            )
+            drawing.fill(
+                "Legend",
+                [ring],
+                item.colour,
+                contour=item.contour or item.colour,
+                weight_mm=0.25,
+                element_id="SA LEGEND",
+            )
+        elif item.kind == "symbol" and item.mark in SYMBOLS:
+            for outer, holes in marks.polygons(
+                SYMBOLS[item.mark], swatch_h / 2, (x + swatch_w / 2, middle)
+            ):
+                drawing.fill(
+                    "Legend",
+                    [outer, *holes],
+                    item.colour,
+                    contour=item.contour or item.colour,
+                    element_id="SA LEGEND",
+                )
+        else:
+            # The label's own lettering, set small enough to stay in its swatch.
+            sample = item.colour.split("\n")
+            longest = max((len(line) for line in sample), default=1) or 1
+            fitted = min(LEGEND_MM, 16.0 / (longest * CAPS_WIDTH))
+            drawing.text("Legend", item.colour, (x, middle), height_mm=fitted, justification="Left")
         drawing.text(
             "Legend",
             label,
@@ -1949,7 +2041,7 @@ def _key_height_mm(rows: Sequence[Row], count: int) -> float:
     many = count > 24
     size = LEGEND_MM * (0.9 if many else 1.0)
     pitch = 5.4 if many else 6.6
-    wrap = max(12, int((LEGEND_COLUMN_MM - 9.0) / (size * 0.6)))
+    wrap = max(12, int((LEGEND_COLUMN_MM - 9.0) / (size * CAPS_WIDTH)))
     return sum(pitch + (len(textwrap.wrap(row.label, wrap)) - 1) * size * 1.3 for row in rows)
 
 
@@ -3654,9 +3746,9 @@ def site_drawing(
         interval, who, _ = described
         rows.append(Row("line", look.contour_ink, None, f"CONTOURS AT {interval:g} m AHD, {who}"))
     rows.append(
-        Row("text", "12 / R3", None, "NEIGHBOUR: NUMBER, STOREYS, ZONE")
+        Row("text", "12\n2 STOREY\nR3", None, "NEIGHBOUR: NUMBER, STOREYS, ZONE")
         if look.neighbour_zone
-        else Row("text", "12 / 2 STOREY", None, "NEIGHBOUR: NUMBER, STOREYS")
+        else Row("text", "12\n2 STOREY", None, "NEIGHBOUR: NUMBER, STOREYS")
     )
     rows += zone_rows
     if bundle.furniture.parking_lanes:
@@ -3700,7 +3792,7 @@ def site_drawing(
         if look.buildings == "mass":
             rows.append(Row("fill", BUILDING_GREY, base.road, "BUILDING FOOTPRINTS (OSM)"))
         elif look.buildings == "outline":
-            rows.append(Row("line", "#ffffff", None, "BUILDING FOOTPRINTS (OSM)"))
+            rows.append(Row("outline", "#ffffff", "#a8a8a8", "BUILDING FOOTPRINTS (OSM)"))
         elif look.buildings == "colour":
             rows.append(Row("fill", quiet, "#ffffff", "BUILDING, IN ITS ZONE'S COLOUR (OSM)"))
         else:
@@ -3711,11 +3803,13 @@ def site_drawing(
         rows.append(Row("dashed", FUTURE_MAGENTA, None, "FUTURE CONTEXT: LEP + ADG 3F ENVELOPE"))
     rows.append(Row("line", look.noise_pen, None, "NOISE SOURCE"))
     if look.wind in ("banners", "strands"):
-        rows.append(Row("fill", "#ffffff", look.wind_pen, "PREVAILING BREEZES"))
+        rows.append(Row("arrow", "#ffffff", look.wind_pen, "PREVAILING BREEZES"))
     elif look.wind == "circle":
         rows.append(Row("hatch", look.wind_pen, look.wind_pen, "PREVAILING BREEZES"))
     elif look.wind == "drawn":
-        rows.append(Row("fill", look.climate_ink, look.climate_ink, "PREVAILING BREEZES"))
+        rows.append(
+            Row("symbol", look.climate_ink, look.climate_ink, "PREVAILING BREEZES", mark="WIND")
+        )
     else:
         rows.append(
             Row("fill", themes.blend(look.wind_band, "#ffffff", 0.45), None, "PREVAILING BREEZES")
@@ -3730,9 +3824,17 @@ def site_drawing(
             )
         )
     elif look.sun == "drawn":
-        rows.append(Row("fill", look.sun_ink, look.sun_ink, "WINTER / SUMMER SUNRISE AND SUNSET"))
+        rows.append(
+            Row(
+                "symbol",
+                look.sun_ink,
+                look.sun_ink,
+                "WINTER / SUMMER SUNRISE AND SUNSET",
+                mark="SUN",
+            )
+        )
     else:
-        rows.append(Row("fill", look.sun_fill, look.sun_edge, "WINTER / SUMMER SUN (AM/PM)"))
+        rows.append(Row("sun", look.sun_fill, look.sun_edge, "WINTER / SUMMER SUN (AM/PM)"))
     for kind in sorted({u.kind for u in bundle.furniture.utilities}):
         rows.append(Row("dashed", UTILITY.get(kind, "#9b59b6"), None, f"{kind.upper()} MAIN"))
     _legend(drawing, rows, legend_at, title="LEGEND")
