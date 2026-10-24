@@ -994,6 +994,37 @@ def test_the_three_site_sheets_are_three_different_pictures(hidden_window: Any) 
     assert len({tuple(items) for items in drawn.values()}) == 3
 
 
+def test_the_context_sheet_is_centred_on_the_site_and_its_walk(hidden_window: Any) -> None:
+    """The run centres the context sheet on the site, and the five-minute
+    walk is the site's: the miniature had the site off to one side and the
+    ring round the station. The station sits inside the walk, and nothing
+    is drawn outside the frame, since a canvas clips nothing."""
+    frame = (10.0, 20.0, 239.0, 176.0)
+    paper: Any = tk.Canvas(hidden_window.root)
+    window._draw_context(paper, frame)
+    items = paper.find_all()
+
+    def middle(item: int) -> tuple[float, float]:
+        x0, y0, x1, y1 = paper.bbox(item)
+        return (x0 + x1) / 2, (y0 + y1) / 2
+
+    (site,) = [i for i in items if paper.itemcget(i, "fill") == window.CONTEXT_SITE]
+    ovals = [i for i in items if paper.type(i) == "oval"]
+    (walk,) = [i for i in ovals if paper.itemcget(i, "outline") == window.RING]
+    (station,) = [i for i in ovals if paper.itemcget(i, "fill") == theme.BLUE]
+    centre = ((frame[0] + frame[2]) / 2, (frame[1] + frame[3]) / 2)
+    for item in (site, walk):
+        assert middle(item) == pytest.approx(centre, abs=2)
+    reach = (paper.bbox(walk)[2] - paper.bbox(walk)[0]) / 2
+    sx, sy = middle(station)
+    assert (sx - centre[0]) ** 2 + (sy - centre[1]) ** 2 < reach**2, "the station within the walk"
+    for item in items:
+        x0, y0, x1, y1 = paper.bbox(item)
+        if item != walk:
+            assert x0 >= frame[0] - 3 and y0 >= frame[1] - 3, paper.type(item)
+            assert x1 <= frame[2] + 3 and y1 <= frame[3] + 3, paper.type(item)
+
+
 def test_a_model_is_shown_as_geometry_and_not_counted_as_a_sheet(hidden_window: Any) -> None:
     """The site study's context model and future model are geometry on their
     own layers, not layouts. The panel shows them as what they are -- no

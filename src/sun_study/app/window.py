@@ -2475,8 +2475,8 @@ HATCH = "#5A5A5A"
 #: of the sun's light on the plans, pre-blended because a Tk canvas has no
 #: alpha. The ground a courtyard's samples are drawn on, and the yield
 #: workbook's green heading row, are the two colours of those two sheets.
-ZONING = "#EBD6EA"
-ZONING_EDGE = "#D9A8D2"
+ZONING = "#FBE1C6"
+ZONING_EDGE = "#E9A96B"
 LOT = "#ECEAE2"
 TERRACE = "#E2E0D6"
 CANOPY = "#B5CFAA"
@@ -2497,6 +2497,19 @@ SITE_BLOCK = ("#F6DAD5", "#C9776C", "#E2A69D")
 TABLE_HEAD_WORDS = site_theme.blend(theme.INK, theme.ACCENT_TINT, 0.8)
 TABLE_LABEL = site_theme.blend(theme.CAPTION, theme.SURFACE, 0.55)
 TABLE_FIGURE = site_theme.blend(theme.HINT, theme.SURFACE, 0.45)
+#: The context sheet's town: the three lots along a block's street, as
+#: shares of its length -- a wide house, a narrow one, a middling one --
+#: dealt to the columns of blocks in turn; the site's column takes the one
+#: that is even about its middle, so the site, its middle lot, is centred.
+#: And the site in Flamingo's coral, the one accent.
+CONTEXT_STREETS = (
+    (1.35, 0.8, 0.95),
+    (0.85, 1.3, 0.85),
+    (0.9, 0.85, 1.35),
+    (1.15, 1.15, 0.8),
+)
+CONTEXT_SITE_STREET, CONTEXT_SITE_LOT = 1, 1
+CONTEXT_SITE = site_theme.blend(site_theme.CORAL, theme.SURFACE, 0.6)
 #: A sheet's corner, and a drawn block's: the button's radius on the paper,
 #: and two pixels on every block and boundary in the drawing, so the drawing
 #: is as rounded as the paper it is on and no more.
@@ -3212,106 +3225,157 @@ def _footprint(
     _rounded(paper, x0, y0, x1, y1, 1.0, fill=theme.SURFACE, outline=ink, width=width)
 
 
-def _roundel(paper: tk.Canvas, x: float, y: float, radius: float, letter: str) -> None:
+def _roundel(paper: tk.Canvas, x: float, y: float, radius: float) -> None:
     """A station's roundel as Flamingo draws it: a solid disc in the rail's
-    blue, its letter white and centred on its capital, not on its line."""
+    blue, a white T on it.
+
+    The T is drawn, a bar and a stem, not set in type: Tk puts text on
+    whole pixels, and on a disc a dozen pixels across a letter a pixel off
+    the middle reads as off -- which is how it read, set even on its
+    capital. Drawn, its box is centred on the disc exactly.
+    """
     paper.create_oval(
         x - radius, y - radius, x + radius, y + radius, fill=theme.BLUE, outline=theme.SURFACE
     )
-    font = tkfont.Font(root=paper, font=_face(7, True))
-    paper.create_text(
-        x, y + _cap_drop(font), text=letter, anchor="s", fill=theme.SURFACE, font=font
+    arm, stroke = radius * 0.5, radius * 0.3
+    top, foot = y - radius * 0.5, y + radius * 0.5
+    paper.create_line(
+        x - arm, top + stroke / 2, x + arm, top + stroke / 2, fill=theme.SURFACE, width=stroke
     )
+    paper.create_line(x, top + stroke, x, foot, fill=theme.SURFACE, width=stroke)
 
 
 def _draw_context(paper: tk.Canvas, frame: tuple[float, float, float, float]) -> None:
     """The context sheet, drawn to the edges of its frame as Flamingo draws
-    it: white streets between the blocks; each block washed in its zone and
-    built round its edge, the buildings white in a fine line of the zone's
-    ink with the yards open behind them; a park; the railway along one
-    street, its station's roundel on it and the five-minute walk round it;
-    and the site, two lots of one block, in the site's red. Everything is
-    laid out inside the frame by construction, because a Tk canvas clips
+    it, and centred as the run centres it, on the site.
+
+    The site in the middle of the field and the street grid laid out from
+    it, the blocks at the edges cut where the frame cuts them; each block
+    washed in its zone -- Flamingo's warm orange, or the grey of no zone --
+    and built along both its streets, the buildings white in a fine line of
+    the zone's ink, near alike, with the yards open behind them;
+    a park; the railway along the street north of the site, its station's
+    roundel on it; the five-minute walk round the site -- the catchment
+    is the site's, not the station's -- and the site itself, the middle lot
+    of its block on the rail street, in the site's coral. Everything
+    is laid out inside the frame by construction, because a Tk canvas clips
     nothing.
 
     Until 24 October the rail ran corner to corner across every block, the
     site was a box set down across the lots of its block rather than lots
-    of it, and a building was a lot with a line through it. "The icon is a
-    bit chaotic; the site sits shifted in the city blocks; the city blocks
-    do not look like buildings."
+    of it, and a building was a lot with a line through it. Then the grid
+    was laid from the corner, which put the site off to one side and the
+    walk round the station. "Our site needs to be in the middle. The circle
+    should be around our site, not around the train station." Then each
+    block had its own count of lots and each building its own depth, in a
+    lilac wash: "set the building into block more equally, more unified
+    and clean ... use some orange instead of pink."
     """
     fx0, fy0, fx1, fy1 = frame
     w, h = fx1 - fx0, fy1 - fy0
     u = w / 229.0  # the field's width on a full sheet, in millimetres
     street = 5 * u
-    cols, rows = 4, 3
-    block_w = (w - (cols - 1) * street) / cols
-    block_h = (h - (rows - 1) * street) / rows
-    inset, gap = 1.5 * u, 1.6 * u
-    site_block = (2, 1)
-    site_lots = 2
+    block_w, block_h = 56 * u, 48 * u
+    # Every block is laid out by one rule: three lots along each of its two
+    # streets, one gap between every two houses, every house on the line
+    # of its street and as wide as its lot, the back row the front's
+    # mirror. The lots are not equal -- a wide house, a narrow one -- and a
+    # wider house is a little deeper, so the houses differ in size while
+    # the rows stay rows. A fixed scatter of sizes read as houses dropped
+    # anywhere ("not be placed everywhere randomly").
+    inset, gap = 2 * u, 2.5 * u
+    deep = block_h * 0.34
+    mid_x, mid_y = (fx0 + fx1) / 2, (fy0 + fy1) / 2
+    site_block, park_block = (0, 0), (1, 1)
 
-    def block_at(col: int, row: int) -> tuple[float, float]:
-        return fx0 + col * (block_w + street), fy0 + row * (block_h + street)
+    def street_of(col: int) -> tuple[float, ...]:
+        # Dealt by column, so the lot lines run on down the column from block
+        # to block, and the site's column takes the pattern even about its
+        # middle.
+        return CONTEXT_STREETS[(CONTEXT_SITE_STREET + col) % len(CONTEXT_STREETS)]
 
-    for col in range(cols):
-        for row in range(rows):
-            bx, by = block_at(col, row)
-            if (col, row) == (3, 2):
+    def lots_along(left: float, shares: Sequence[float]) -> list[tuple[float, float, float]]:
+        """Each lot along a street from ``left``: where it starts and ends,
+        and its share."""
+        room = block_w - 2 * inset - (len(shares) - 1) * gap
+        out: list[tuple[float, float, float]] = []
+        x = left + inset
+        for share in shares:
+            wide = room * share / sum(shares)
+            out.append((x, x + wide, share))
+            x += wide + gap
+        return out
+
+    # The site's block is placed so the site, its front half, is centred.
+    top = mid_y - (inset + block_h / 2) / 2
+
+    def held(
+        x0: float, y0: float, x1: float, y1: float, least: float = 3.0
+    ) -> tuple[float, float, float, float] | None:
+        """A rectangle cut to the frame, or nothing when less than
+        ``least`` millimetres of it is left either way to read."""
+        x0, y0, x1, y1 = max(x0, fx0), max(y0, fy0), min(x1, fx1), min(y1, fy1)
+        return (x0, y0, x1, y1) if min(x1 - x0, y1 - y0) > least * u else None
+
+    across = math.ceil(w / 2 / (block_w + street))
+    down = math.ceil(h / 2 / (block_h + street)) + 1
+    for col in range(-across, across + 1):
+        for row in range(-down, down + 1):
+            bx = mid_x + col * (block_w + street) - block_w / 2
+            by = top + row * (block_h + street)
+            block = held(bx, by, bx + block_w, by + block_h)
+            if block is None:
+                continue
+            if (col, row) == park_block:
                 # A park on one block, its trees in canopy.
-                _rounded(paper, bx, by, bx + block_w, by + block_h, 2, fill=PARK, outline="")
-                for tx, ty, tr in ((0.3, 0.35, 6), (0.68, 0.62, 7.5), (0.32, 0.78, 4.5)):
-                    cx, cy, r = bx + block_w * tx, by + block_h * ty, tr * u
+                _rounded(paper, *block, 2, fill=PARK, outline="")
+                px0, py0, px1, py1 = block
+                for tx, ty, tr in ((0.3, 0.3, 6), (0.68, 0.55, 7.5), (0.3, 0.75, 4.5)):
+                    r = tr * u
+                    cx = min(max(px0 + (px1 - px0) * tx, px0 + r), px1 - r)
+                    cy = min(max(py0 + (py1 - py0) * ty, py0 + r), py1 - r)
                     paper.create_oval(cx - r, cy - r, cx + r, cy + r, fill=CANOPY, outline="")
                 continue
             zoned = ((col * 7 + row * 3 + 1) % 3) != 0
             ground, ink = (ZONING, ZONING_EDGE) if zoned else (LOT, NEIGHBOUR_EDGE)
-            _rounded(paper, bx, by, bx + block_w, by + block_h, 2, fill=ground, outline="")
-            # A row of buildings along each of the block's two streets,
-            # each its own depth, the yards between them open.
-            parts = 2 + (col + row) % 2
-            lot_w = (block_w - 2 * inset - (parts - 1) * gap) / parts
-            for front in (0, 1):
-                for part in range(parts):
-                    if (col, row) == site_block and front == 0 and part < site_lots:
+            _rounded(paper, *block, 2, fill=ground, outline="")
+            shares = street_of(col)
+            for back in (False, True):
+                for part, (x0, x1, share) in enumerate(
+                    lots_along(bx, shares[::-1] if back else shares)
+                ):
+                    if (col, row) == site_block and not back and part == CONTEXT_SITE_LOT:
                         continue
-                    lx = bx + inset + part * (lot_w + gap)
-                    deep = block_h * (0.3 + 0.05 * ((part * 5 + col * 3 + row + front) % 3))
-                    if front == 0:
-                        _footprint(paper, lx, by + inset, lx + lot_w, by + inset + deep, ink)
-                    else:
-                        _footprint(
-                            paper,
-                            lx,
-                            by + block_h - inset - deep,
-                            lx + lot_w,
-                            by + block_h - inset,
-                            ink,
-                        )
-    # The railway along the street between the first two rows, the station
-    # on it, and the five-minute walk round the station.
-    rail_y = fy0 + block_h + street / 2
+                    depth = deep * min(1.0, 0.55 + 0.33 * share)
+                    y0 = by + block_h - inset - depth if back else by + inset
+                    house = held(x0, y0, x1, y0 + depth, depth / u * 0.6)
+                    if house is not None:
+                        _footprint(paper, *house, ink)
+    # The railway along the street north of the site's block, the station
+    # on it at the corner, and the five-minute walk round the site.
+    rail_y = top - street / 2
     paper.create_line(fx0, rail_y, fx1, rail_y, fill=theme.BLUE, width=1.5, dash=(6, 2))
-    sx = fx0 + block_w * 1.5 + street
-    r = 60 * u
-    paper.create_oval(sx - r, rail_y - r, sx + r, rail_y + r, outline=RING, dash=(4, 3))
-    # The site: the first two lots of its block, front to the rail street
-    # and back to the middle of the block, as the cadastre has them.
-    bx, by = block_at(*site_block)
-    parts = 2 + sum(site_block) % 2
-    lot_w = (block_w - 2 * inset - (parts - 1) * gap) / parts
+    walk = 64 * u
+    paper.create_oval(
+        mid_x - walk, mid_y - walk, mid_x + walk, mid_y + walk, outline=RING, dash=(4, 3)
+    )
+    # The site: the middle lot of its block, front to the rail street and
+    # back to the middle of the block, as the cadastre has them.
+    left, right, _share = lots_along(mid_x - block_w / 2, street_of(site_block[0]))[
+        CONTEXT_SITE_LOT
+    ]
     _rounded(
         paper,
-        bx + inset,
-        by + inset,
-        bx + inset + site_lots * lot_w + (site_lots - 1) * gap,
-        by + block_h / 2,
+        left,
+        top + inset,
+        right,
+        top + block_h / 2,
         1.5,
-        fill=SITE_BLOCK[2],
+        fill=CONTEXT_SITE,
         outline=BOUNDARY,
         width=1.4,
     )
-    _roundel(paper, sx, rail_y, 6.5 * u, "T")
+    _roundel(paper, mid_x - block_w / 2 - street / 2, rail_y, 6.5 * u)
 
 
 def _draw_site(paper: tk.Canvas, frame: tuple[float, float, float, float]) -> None:
