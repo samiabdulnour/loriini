@@ -336,6 +336,7 @@ from sun_study.site import theme as site_theme
 from sun_study.site.arcgis import rings_of
 from sun_study.site.geocode import geocode
 from sun_study.site.http import FetchError
+from sun_study.site.nsw import lot_id
 
 #: A sheet label that is a time of day. Those are shadow diagrams; the
 #: banded and two-hour plans are not, and the two go to different subsets.
@@ -8723,6 +8724,17 @@ def site_analysis(
             "--site-scale", help="The site sheet's scale. Chosen to fit the site by default."
         ),
     ] = None,
+    lot: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--lot",
+            help=(
+                "The site's lot, as on the title: 34//DP1206876. Once per lot, or several "
+                "separated by commas. For an address the register puts on more than one "
+                "lot; the address then only titles the sheets."
+            ),
+        ),
+    ] = None,
     anchor: Annotated[
         str | None,
         typer.Option(
@@ -9084,13 +9096,23 @@ def site_analysis(
             typer.secho(f"  {kind}: {error}", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=2) from error
 
+    try:
+        lots = [lot_id(part) for entry in lot or [] for part in entry.split(",") if part.strip()]
+    except ValueError as error:
+        raise typer.BadParameter(str(error), param_hint="--lot") from error
+
     say: Callable[[str], None] = typer.echo
     context_bundle = fetch_or_load(
         "context",
         context,
         site_pipeline.load_context,
         lambda: site_pipeline.run_context(
-            address or "", scale=scale, out_dir=where, with_aerial=with_aerial, log=say
+            address or "",
+            scale=scale,
+            out_dir=where,
+            with_aerial=with_aerial,
+            lots=lots,
+            log=say,
         ),
     )
     site_bundle = fetch_or_load(
@@ -9098,14 +9120,19 @@ def site_analysis(
         site,
         site_pipeline.load_site,
         lambda: site_pipeline.run_site(
-            address or "", scale=site_scale, out_dir=where, with_aerial=with_aerial, log=say
+            address or "",
+            scale=site_scale,
+            out_dir=where,
+            with_aerial=with_aerial,
+            lots=lots,
+            log=say,
         ),
     )
     summary_bundle = fetch_or_load(
         "summary",
         summary,
         site_pipeline.load_summary,
-        lambda: site_pipeline.run_summary(address or "", out_dir=where, log=say),
+        lambda: site_pipeline.run_summary(address or "", out_dir=where, lots=lots, log=say),
     )
     for bundle in (context_bundle, site_bundle):
         for warning in getattr(bundle, "warnings", ()):
@@ -9118,7 +9145,7 @@ def site_analysis(
             True,
             site_pipeline.load_site,
             lambda: site_pipeline.run_model(
-                address or "", radius_m=model_radius, out_dir=where, log=say
+                address or "", radius_m=model_radius, out_dir=where, lots=lots, log=say
             ),
         )
     if connection is None:
@@ -9620,6 +9647,16 @@ def area_yield(
             ),
         ),
     ] = None,
+    lot: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--lot",
+            help=(
+                "The site's lot, as on the title: 34//DP1206876. For an address the register "
+                "puts on more than one lot: the area and the FSR are read on these lots."
+            ),
+        ),
+    ] = None,
     xlsx_out: Annotated[
         Path | None,
         typer.Option(
@@ -9722,7 +9759,10 @@ def area_yield(
     if address and (site_area is None or not (permissible_given or target_fsr is not None)):
         typer.echo(f"reading the site and its controls at {address}...")
         try:
-            found = site_pipeline.run_summary(address, log=say)
+            lots = [
+                lot_id(part) for entry in lot or [] for part in entry.split(",") if part.strip()
+            ]
+            found = site_pipeline.run_summary(address, lots=lots, log=say)
         except (FetchError, OSError, ValueError, RuntimeError) as error:
             typer.secho(
                 f"  the site could not be read ({error}); the FSR is left out.",

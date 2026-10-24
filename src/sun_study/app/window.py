@@ -5403,6 +5403,18 @@ class Window:
             "another suburb is refused rather than drawn. A unit number is "
             "taken as its building; a ranged number as every lot in the range.",
         )
+        self.site_lot, row = self._entry(
+            frame,
+            row,
+            "Site lot",
+            "",
+            "Only when the address is on more than one lot: the lot, e.g. 34//DP1206876.",
+            "The register sometimes holds one address on two lots at once -- "
+            "22A O'Connell Street, Parramatta is on two, 150 m apart -- and the "
+            "run then stops and lists them. Type the right one here, as on the "
+            "title; several, separated by commas. The address then only titles "
+            "the sheets, and the Yield study reads its area and FSR on these lots.",
+        )
 
         self.do_site_context = tk.BooleanVar(value=True)
         self.do_site_site = tk.BooleanVar(value=True)
@@ -6636,6 +6648,7 @@ class Window:
     TEXT_FIELDS = frozenset(
         {
             "Address",
+            "Site lot",
             "Custom day",
             "Option",
             "Set name",
@@ -7295,6 +7308,7 @@ class Window:
             "eye_title_block": self.eye_title_block,
             "eye_hours": self.eye_hours,
             "site_address": self.site_address,
+            "site_lot": self.site_lot,
             "site_scale": self.site_scale,
             "site_theme": self.site_theme,
             "site_site_theme": self.site_site_theme,
@@ -9184,6 +9198,7 @@ class Window:
             args += ["--context" if self.do_site_context.get() else "--no-context"]
             args += ["--site" if self.do_site_site.get() else "--no-site"]
             args += ["--summary" if self.do_site_summary.get() else "--no-summary"]
+            args += self._flag("--lot", self.site_lot)
             if self.do_site_model.get():
                 args += ["--model"]
                 if self.site_radius.get().strip():
@@ -9286,7 +9301,7 @@ class Window:
             )
         )
         if address and not (self.yield_site_area.get().strip() and permissible):
-            args += ["--address", address]
+            args += ["--address", address, *self._flag("--lot", self.site_lot)]
         # Every type goes, a share of nothing included: the sheet shows the
         # type on its own row either way.
         defaults = {name: size for name, _share, size in MIX_ROWS}
