@@ -153,6 +153,10 @@ TEXTURE_MM = 2.0
 #: The road reserve a street is drawn as on paper, by the register's function
 #: hierarchy (1 a motorway, 6 a local street, 7 and beyond a lane), in metres.
 RESERVE_M = {1: 30.0, 2: 24.0, 3: 20.0, 4: 16.0, 5: 12.0, 6: 10.0}
+#: How far inside the map field a hole is cut, in metres on the ground.
+HOLE_INSET_M = 0.3
+#: How far a loop split off a pinched ring is parted from the vertex it shared.
+PINCH_PART_M = 0.05
 #: The prevailing winds the site sheet draws: the bearing each blows from, and its name.
 WINDS = (
     (50.0, "NE SUMMER\nSEA BREEZE"),
@@ -1409,6 +1413,223 @@ def _buffered(points: Sequence[Point], half: float) -> list[Point]:
     ]
 
 
+def _clip_edge(ring: Sequence[Point], a: Point, b: Point, anticlockwise: bool) -> list[Point]:
+    """What of a ring lies on the inner side of one edge of a convex window,
+    the crossings cut in."""
+    (ax, ay), (bx, by) = a, b
+    ex, ey = bx - ax, by - ay
+
+    def inside(pt: Point) -> bool:
+        cross = ex * (pt[1] - ay) - ey * (pt[0] - ax)
+        return cross >= 0 if anticlockwise else cross <= 0
+
+    def crossing(p: Point, q: Point) -> Point:
+        dx, dy = q[0] - p[0], q[1] - p[1]
+        denominator = dx * ey - dy * ex
+        if abs(denominator) < 1e-12:
+            return q
+        t = ((ax - p[0]) * ey - (ay - p[1]) * ex) / denominator
+        return (p[0] + dx * t, p[1] + dy * t)
+
+    kept: list[Point] = []
+    previous = ring[-1]
+    for current in ring:
+        if inside(current):
+            if not inside(previous):
+                kept.append(crossing(previous, current))
+            kept.append(current)
+        elif inside(previous):
+            kept.append(crossing(previous, current))
+        previous = current
+    return kept
+
+
+def _clip_ring(ring: Sequence[Point], window: Sequence[Point]) -> list[Point]:
+    """The part of a ring inside a convex window (Sutherland-Hodgman): each
+    edge of the window in turn keeps what lies on its inner side and cuts the
+    crossings. Empty when nothing is inside."""
+    out = [pt for i, pt in enumerate(ring) if i == 0 or pt != ring[i - 1]]
+    n = len(window)
+    anticlockwise = ring_area(list(window)) > 0
+    for k in range(n):
+        if len(out) < 3:
+            return []
+        out = _clip_edge(out, window[k], window[(k + 1) % n], anticlockwise)
+    return out if len(out) >= 3 else []
+
+
+def _self_crossing(ring: Sequence[Point]) -> bool:
+    """Whether any two edges of the ring cross; a fill Archicad refuses."""
+
+    def orient(p: Point, q: Point, r: Point) -> float:
+        return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
+    n = len(ring)
+    edges = [(ring[i], ring[(i + 1) % n]) for i in range(n)]
+    for i in range(n):
+        a, b = edges[i]
+        for j in range(i + 2, n):
+            if i == 0 and j == n - 1:
+                continue
+            c, d = edges[j]
+            if orient(a, b, c) * orient(a, b, d) < 0 and orient(c, d, a) * orient(c, d, b) < 0:
+                return True
+    return False
+
+
+def _strips(points: Sequence[Point], half: float) -> list[list[Point]]:
+    """A road as white fills: the one mitred strip where it holds, or, where a
+    tight bend makes that strip cross itself, a rectangle per segment and a
+    disc at each joint -- more fills, none refused."""
+    ring = _buffered(points, half)
+    if not ring:
+        return []
+    if not _self_crossing(ring):
+        return [ring]
+    out: list[list[Point]] = []
+    pts = [pt for i, pt in enumerate(points) if i == 0 or pt != points[i - 1]]
+    for (ax, ay), (bx, by) in pairwise(pts):
+        length = math.hypot(bx - ax, by - ay) or 1.0
+        nx, ny = -(by - ay) / length * half, (bx - ax) / length * half
+        out.append([(ax + nx, ay + ny), (bx + nx, by + ny), (bx - nx, by - ny), (ax - nx, ay - ny)])
+    for x, y in pts:
+        out.append(
+            [
+                (x + half * math.cos(math.pi * k / 6), y + half * math.sin(math.pi * k / 6))
+                for k in range(12)
+            ]
+        )
+    return out
+
+
+def _clipped(rings: Sequence[Sequence[Point]], window: Sequence[Point]) -> list[list[Point]]:
+    """Rings cut to the map field, so a zone that runs a kilometre past the
+    sheet ends at its edge; a ring left with nothing inside is dropped.
+
+    A hole is cut to a window a hand's width inside the field instead, so
+    that where both it and its outer ran past the sheet the hole still sits
+    strictly inside the outer's cut edge: Archicad refuses a fill whose hole
+    touches its contour, and a few centimetres of wash at the sheet's edge
+    is cheaper than the fill.
+    """
+    outers = [_clip_ring(ring, window) for ring in rings]
+    outers = [ring for ring in outers if ring]
+    if len(outers) < 2:
+        return [loop for ring in outers for loop in _loops(ring)]
+    cx = sum(x for x, _ in window) / len(window)
+    cy = sum(y for _, y in window) / len(window)
+    inset = []
+    for x, y in window:
+        dx, dy = cx - x, cy - y
+        length = math.hypot(dx, dy) or 1.0
+        inset.append((x + dx / length * HOLE_INSET_M * 1.5, y + dy / length * HOLE_INSET_M * 1.5))
+    out: list[list[Point]] = []
+    for ring in outers:
+        # Probed at its centroid: a cut ring's first point may sit on the
+        # outer's own cut edge, which is neither inside nor out.
+        probe = ring_centroid(ring)
+        size = abs(ring_area(ring))
+        in_other = any(
+            other is not ring
+            and abs(ring_area(other)) > size
+            and point_in_ring(probe[0], probe[1], other)
+            for other in outers
+        )
+        if in_other:
+            out.extend(_loops(_clip_ring(ring, inset)))
+        else:
+            out.extend(_loops(ring))
+    return out
+
+
+def _loops(ring: Sequence[Point]) -> list[list[Point]]:
+    """A ring that comes back through a point it has already passed, split
+    there into the loops it is made of; a loop with no area dropped. Cutting
+    a concave polygon to a window can pinch it so, and Archicad refuses a
+    fill whose contour touches itself."""
+    if not ring:
+        return []
+    ring = _pinched(ring)
+    out: list[list[Point]] = []
+    stack: list[Point] = []
+    seen: dict[tuple[float, float], int] = {}
+    for pt in ring:
+        key = (round(pt[0], 3), round(pt[1], 3))
+        at = seen.get(key)
+        if at is not None:
+            loop = stack[at:]
+            if len(loop) >= 3 and abs(ring_area(loop)) > 1e-3:
+                out.append(loop)
+            for dropped in loop:
+                seen.pop((round(dropped[0], 3), round(dropped[1], 3)), None)
+            stack = stack[:at]
+        seen[key] = len(stack)
+        stack.append(pt)
+    if len(stack) >= 3 and abs(ring_area(stack)) > 1e-3:
+        out.append(stack)
+    return _parted(out)
+
+
+def _pinched(ring: Sequence[Point], tolerance: float = PINCH_PART_M) -> list[Point]:
+    """A ring that comes back within a hair of itself -- a vertex within
+    ``tolerance`` of an edge it is not on -- made to touch there exactly, the
+    vertex snapped onto the edge and the edge given that point, so the loops
+    can be split at it. Archicad refuses the near miss as it refuses the
+    touch, and a cut polygon makes both."""
+    pts = list(ring)
+    for _ in range(8):
+        n = len(pts)
+        found = False
+        for i in range(n):
+            px, py = pts[i]
+            for j in range(n):
+                if j in (i, (i - 1) % n):
+                    continue
+                (ax, ay), (bx, by) = pts[j], pts[(j + 1) % n]
+                dx, dy = bx - ax, by - ay
+                l2 = dx * dx + dy * dy
+                if l2 < 1e-12:
+                    continue
+                t = ((px - ax) * dx + (py - ay) * dy) / l2
+                if t <= 0.0 or t >= 1.0:
+                    continue
+                qx, qy = ax + dx * t, ay + dy * t
+                if math.hypot(px - qx, py - qy) < tolerance:
+                    pts[i] = (qx, qy)
+                    pts.insert(j + 1, (qx, qy))
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            break
+    return pts
+
+
+def _parted(loops: list[list[Point]]) -> list[list[Point]]:
+    """Loops that still share a vertex -- the pinch they were split at --
+    parted there: the smaller loop's copy of it is moved a few centimetres
+    toward its own centroid, so a loop that becomes a hole no longer touches
+    its outer. A sibling moved the same way loses nothing."""
+    where: dict[tuple[float, float], list[tuple[int, int]]] = {}
+    for i, loop in enumerate(loops):
+        for j, (x, y) in enumerate(loop):
+            where.setdefault((round(x, 3), round(y, 3)), []).append((i, j))
+    for shared in where.values():
+        if len({i for i, _ in shared}) < 2:
+            continue
+        largest = max(shared, key=lambda ij: abs(ring_area(loops[ij[0]])))[0]
+        for i, j in shared:
+            if i == largest:
+                continue
+            cx, cy = ring_centroid(loops[i])
+            x, y = loops[i][j]
+            length = math.hypot(cx - x, cy - y) or 1.0
+            step = min(PINCH_PART_M, length / 2)
+            loops[i][j] = (x + (cx - x) / length * step, y + (cy - y) / length * step)
+    return loops
+
+
 def _sheet_mm(bundle: ContextBundle | SiteBundle, frame: Frame, at: Point) -> tuple[float, float]:
     """A project point as sheet millimetres from the map field's top-left, north up."""
     x, y = lonlat_to_mercator(*frame.unproject(*at))
@@ -1575,7 +1796,12 @@ def context_drawing(
                 element_id="SA AERIAL WASH",
             )
 
+    field = _map_rectangle(bundle, frame)
+
     def tint(part: str, rings: Sequence[Sequence[Point]], cat: themes.Category, ident: str) -> None:
+        rings = _clipped(rings, field)
+        if not rings:
+            return
         present[cat.id] = cat
         colour = cat.on_paper() if on_paper else cat.fill
         drawing.fill(
@@ -1599,6 +1825,9 @@ def context_drawing(
         if not rings or not code:
             continue
         if t.zoning == "lep":
+            rings = _clipped(rings, field)
+            if not rings:
+                continue
             label = _lep_label(str(code), props.get("LAY_CLASS"))
             lep_seen[str(code)] = label
             colour = themes.zone_fill(str(code))
@@ -1669,8 +1898,7 @@ def context_drawing(
     streets = t.streets if (t.streets != "none" or wash) else "lines"
     if streets == "white":
         for road in bundle.roads:
-            strip = _buffered(frame.ring(road.coords), _reserve_m(road.hierarchy) / 2.0)
-            if strip:
+            for strip in _strips(frame.ring(road.coords), _reserve_m(road.hierarchy) / 2.0):
                 drawing.fill(
                     "Streets", [strip], "#ffffff", contour="#ffffff", element_id="SA STREET"
                 )
@@ -2512,6 +2740,7 @@ def site_drawing(
     rows: list[Row] = []
     zone_rows: list[Row] = []
     present: dict[str, themes.Category] = {}
+    field = _map_rectangle(bundle, frame)
 
     # The zoning: its boundaries, hatched over the aerial in the family
     # colours, filled in the ePlanning colours, filled on the lots as the
@@ -2525,7 +2754,13 @@ def site_drawing(
         for code, rings, feature in zone_rings:
             if not code or not rings:
                 continue
-            projected = [frame.ring(r) for r in rings]
+            projected = _clipped([frame.ring(r) for r in rings], field)
+            if not projected:
+                continue
+            # The site keeps the photograph's own colours: its lot is cut out
+            # of the zone it lies in, a hole in the wash and the hatch alike.
+            if site and any(point_in_ring(*centroid, ring) for ring in projected):
+                projected.append(list(site))
             if look.zones == "lep":
                 label = _lep_label(str(code), feature["properties"].get("LAY_CLASS"))
                 lep_seen[str(code)] = label
@@ -2597,13 +2832,15 @@ def site_drawing(
             cat = category_of(str(code) if code else None)
             if cat is not None and cat.id == "water":
                 present[cat.id] = cat
-                drawing.fill(
-                    "Zoning",
-                    [frame.ring(r) for r in rings],
-                    cat.on_paper(),
-                    contour=cat.on_paper(),
-                    element_id=f"SA {cat.label}",
-                )
+                water = _clipped([frame.ring(r) for r in rings], field)
+                if water:
+                    drawing.fill(
+                        "Zoning",
+                        water,
+                        cat.on_paper(),
+                        contour=cat.on_paper(),
+                        element_id=f"SA {cat.label}",
+                    )
         for cat in base.categories:
             if cat.id in present:
                 zone_rows.append(_category_row(cat, on_paper=True, wash=False))
@@ -2611,7 +2848,7 @@ def site_drawing(
     if look.heritage:
         kinds: set[str] = set()
         for feature in bundle.heritage["features"]:
-            rings = [frame.ring(r) for r in rings_of(feature.get("geometry"))]
+            rings = _clipped([frame.ring(r) for r in rings_of(feature.get("geometry"))], field)
             if not rings:
                 continue
             conservation = "Conservation" in str(feature["properties"].get("LAY_CLASS") or "")

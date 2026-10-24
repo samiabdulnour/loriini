@@ -313,6 +313,7 @@ from sun_study.rules.days import DAY_HELP, day_tag, day_title, parse_day, with_d
 from sun_study.rules.ruleset import BUILTIN_RULESETS, Ruleset, RulesetError, load_ruleset
 from sun_study.site import pipeline as site_pipeline
 from sun_study.site import theme as site_theme
+from sun_study.site.arcgis import rings_of
 from sun_study.site.geocode import geocode
 from sun_study.site.http import FetchError
 
@@ -8339,6 +8340,22 @@ def _stacked_shadow_plans(
     typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
 
 
+def _site_rings_of(
+    bundle: site_pipeline.ContextBundle | site_pipeline.SiteBundle,
+) -> tuple[tuple[tuple[float, float], ...], ...]:
+    """The site's rings, in longitude and latitude, from whichever bundle is
+    the run's reference: the site bundle carries them; the context bundle,
+    which stands in with --no-site, carries the site's lots."""
+    rings = getattr(bundle, "site_rings", None)
+    if rings:
+        return tuple(tuple(ring) for ring in rings)
+    return tuple(
+        tuple(ring)
+        for feature in bundle.site_lots["features"]
+        for ring in rings_of(feature.get("geometry"))
+    )
+
+
 def _site_out_dir(address: str, out: Path | None) -> Path:
     """Where a run keeps what it fetched: under Documents, by address, unless told."""
     if out is not None:
@@ -8853,7 +8870,7 @@ def site_analysis(
             points = context_model.boundary_points(connection, layer_name)
             if len(points) >= 3:
                 try:
-                    fit = site_drawing.fit_frame(base, reference.site_rings, points)
+                    fit = site_drawing.fit_frame(base, _site_rings_of(reference), points)
                 except ValueError as error:
                     typer.secho(f"  no fit: {error}", fg=typer.colors.YELLOW)
             else:
@@ -8904,7 +8921,7 @@ def site_analysis(
         )
         if anchor == "site" and placing and reference is not None:
             frame = site_drawing.placed_frame(
-                frame, reference.site_rings, square=square_to_site, origin_at=origin_at
+                frame, _site_rings_of(reference), square=square_to_site, origin_at=origin_at
             )
         if quiet:
             return frame

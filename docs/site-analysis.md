@@ -113,6 +113,12 @@ Archicad does have, and that is the whole of the port (D136):
 - a theme's **text scale** applies to the map's words and not the sheet's:
   the title, the legend and the credit keep their size.
 
+Every zone, institution and heritage fill is cut to the map field, with the
+site's own lot cut out of the zone it lies in on the site sheet, and a cut
+ring that pinches is split into its loops, because Archicad refuses a fill
+whose contour touches or nearly touches itself (D136 records what the first
+live run refused and why).
+
 Fonts are not themed: the add-on's `CreateTexts` takes no face, so a text
 is in the Text tool's default. The generator's Arial Narrow and DejaVu are
 a project-template matter.

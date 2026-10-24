@@ -20,11 +20,15 @@ from sun_study.archicad.site_analysis import (
     Frame,
     _aerial,
     _buffered,
+    _clipped,
+    _loops,
+    _strips,
     context_drawing,
     frame_for,
     site_drawing,
 )
 from sun_study.site import curate, marks, theme
+from sun_study.site.geo import ring_area
 from sun_study.site.imagery import Aerial, Tile, toned
 from tests.unit.test_site_analysis import (
     KOGARAH,
@@ -386,3 +390,96 @@ def test_an_aerial_on_paper_is_never_asked_for() -> None:
     drawing = Drawing(3000.0, "Context Analysis")
     bundle = context_bundle()
     assert not _aerial(drawing, bundle, frame()), "no tiles, nothing placed"
+
+
+def test_a_zone_is_cut_to_the_map_field_and_one_outside_it_dropped() -> None:
+    window = [(0.0, 0.0), (100.0, 0.0), (100.0, 50.0), (0.0, 50.0)]
+    big = [(-500.0, -500.0), (500.0, -500.0), (500.0, 500.0), (-500.0, 500.0)]
+    (cut,) = _clipped([big], window)
+    assert sorted(cut) == sorted(window), "a zone round the whole sheet becomes the sheet"
+    half = [(50.0, -10.0), (200.0, -10.0), (200.0, 60.0), (50.0, 60.0)]
+    (cut,) = _clipped([half], window)
+    assert min(x for x, _ in cut) == pytest.approx(50.0) and max(x for x, _ in cut) == 100.0
+    assert _clipped([[(300.0, 300.0), (400.0, 300.0), (400.0, 400.0)]], window) == []
+    turned = [(0.0, 0.0), (70.7, 70.7), (0.0, 141.4), (-70.7, 70.7)]
+    (cut,) = _clipped([big], turned)
+    assert abs(ring_area(cut)) == pytest.approx(abs(ring_area(turned)), rel=1e-3), (
+        "any convex window"
+    )
+
+
+def test_the_site_is_a_hole_in_the_zone_wash_it_lies_in() -> None:
+    drawing = site_drawing(site_bundle(), frame(), theme="canary")
+    zone = next(f for f in drawing.fills if f.element_id.startswith("SA R3"))
+    assert len(zone.rings) == 2, "the outer ring, and the site cut out of it"
+
+
+def test_a_hole_that_reaches_the_sheets_edge_is_kept_just_inside_it() -> None:
+    from sun_study.site.geo import point_in_ring
+
+    window = [(0.0, 0.0), (100.0, 0.0), (100.0, 50.0), (0.0, 50.0)]
+    outer = [(-500.0, -500.0), (500.0, -500.0), (500.0, 500.0), (-500.0, 500.0)]
+    hole = [(40.0, 20.0), (60.0, 20.0), (60.0, 80.0), (40.0, 80.0)]
+    cut_outer, cut_hole = _clipped([outer, hole], window)
+    assert all(point_in_ring(x, y, cut_outer) for x, y in cut_hole), "strictly inside"
+    assert max(y for _, y in cut_hole) < 50.0
+
+
+def test_a_pinched_ring_is_split_into_its_loops() -> None:
+    pinched = [
+        (0.0, 0.0),
+        (10.0, 0.0),
+        (10.0, 10.0),
+        (5.0, 5.0),
+        (0.0, 10.0),
+        (0.0, 7.0),
+        (5.0, 5.0),
+    ]
+    loops = _loops(pinched)
+    assert len(loops) == 2 and all(len(loop) >= 3 for loop in loops)
+    assert _loops([(0.0, 0.0), (10.0, 0.0), (7.0, 3.0), (10.0, 0.0), (10.0, 10.0)]) == [
+        [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]
+    ], "a spike out and back has no area and goes"
+    assert _loops([(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]) == [
+        [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]
+    ]
+
+
+def test_a_hairpin_road_becomes_rectangles_and_discs_rather_than_a_crossed_strip() -> None:
+    straight = _strips([(0.0, 0.0), (100.0, 0.0)], 5.0)
+    assert len(straight) == 1
+    hairpin = _strips([(0.0, 0.0), (100.0, 0.0), (0.0, 1.0)], 5.0)
+    assert len(hairpin) == 2 + 3, "a rectangle per segment and a disc per joint"
+
+
+def test_loops_split_at_a_pinch_no_longer_share_the_vertex() -> None:
+    pinched = [
+        (0.0, 0.0),
+        (10.0, 0.0),
+        (10.0, 10.0),
+        (5.0, 5.0),
+        (0.0, 10.0),
+        (0.0, 7.0),
+        (5.0, 5.0),
+    ]
+    big, small = sorted(_loops(pinched), key=lambda loop: -abs(ring_area(loop)))
+    assert (5.0, 5.0) in big and (5.0, 5.0) not in small
+    moved = next(pt for pt in small if math.dist(pt, (5.0, 5.0)) < 0.1)
+    assert 0.0 < math.dist(moved, (5.0, 5.0)) <= 0.051
+
+
+def test_a_ring_that_nearly_touches_itself_is_split_as_if_it_did() -> None:
+    # A square with a bay cut in from the top that comes within a centimetre
+    # of the bottom edge: two loops once the bay's tip is snapped onto it.
+    ring = [
+        (0.0, 0.0),
+        (10.0, 0.0),
+        (10.0, 10.0),
+        (6.0, 10.0),
+        (6.0, 0.01),
+        (4.0, 0.01),
+        (4.0, 10.0),
+        (0.0, 10.0),
+    ]
+    loops = _loops(ring)
+    assert len(loops) == 2, [len(loop) for loop in loops]

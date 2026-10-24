@@ -5283,6 +5283,33 @@ the context theme they draw on, so the pairs still match when a person wants
 them to. The retired names resolve as the generator's do: `conure`,
 `flamingo-2`, `dove`, `cardinal`, `kookaburra`.
 
+**What the first live run found** (Parramatta, 24 October 2026, all four
+themes on both sheets). The dotted line type was there, the toned tiles
+placed like the originals, and the crescents, arrows and lot fills went in
+whole. What Archicad refused was geometry, eight fills in all, and each
+refusal was a rule of its own:
+
+- *A zone a kilometre past the sheet.* Fit in Window showed a 3 km extent
+  for a 276 m sheet. Zone, institution and heritage fills are now cut to
+  the map field (`_clipped`, Sutherland-Hodgman against the field's four
+  edges, which may be turned). A hole is cut to a window 30 cm inside the
+  field, so that where both it and its outer ran past the sheet the hole
+  still sits strictly inside the outer's cut edge.
+- *The site under the zone wash.* Canary's site is meant to keep the
+  photograph's colours; the site's lot is now a hole in the zone it lies in.
+- *A street strip that crossed itself* at a tight bend: the mitred strip is
+  kept where it holds and a rectangle per segment with a disc per joint
+  drawn where it does not.
+- *A cut zone that pinched* -- came back through a point it had passed, or
+  within two centimetres of an edge: Archicad refuses both. The ring is
+  split into its loops at the pinch (`_loops`), a near miss first snapped
+  into an exact one (`_pinched`), and the smaller loop parted from the
+  shared vertex by five centimetres (`_parted`), so a loop that becomes a
+  hole no longer touches its outer.
+
+And one bug of the run's own: with `--no-site` the fit step read
+`site_rings` off the context bundle, which has only `site_lots`.
+
 *What this does not change:* what either sheet says, where the site lands,
 the layers, the element IDs, the credit, or anything about the context model.
 
