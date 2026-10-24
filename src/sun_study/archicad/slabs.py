@@ -14,6 +14,10 @@ use. Which slabs are the massing, and what each is, is the person's to say:
   filter shows, so that a massing modelled as *New* over an existing
   building counts the new and not the old. Archicad decides what the filter
   shows (Tapir's ``IsVisibleByRenovation``), whichever filter is set.
+* **by renovation status** -- only the slabs whose own *Renovation Status*
+  is one asked for: the new, or the new and the existing. The same question
+  as a filter's, asked of each slab, so nothing has to be set on the floor
+  plan first (D140).
 
 With no layer named at all, every slab on a layer that is showing counts as
 massing: the quick answer to "what is the yield of what I am looking at".
@@ -80,6 +84,27 @@ OWN_ID_PREFIX = "SA "
 #: outlines is one wait against one timeout.
 BATCH = 300
 
+#: Archicad's three renovation statuses, by what it calls them in the
+#: languages it is most often run in here. A status read that is none of
+#: these is reported, never guessed.
+RENOVATION_STATUSES: dict[str, str] = {
+    "existing": "existing",
+    "new": "new",
+    "to be demolished": "demolished",
+    "demolished": "demolished",
+    "bestand": "existing",
+    "neu": "new",
+    "neubau": "new",
+    "abbruch": "demolished",
+    "existant": "existing",
+    "nouveau": "new",
+    "à démolir": "demolished",
+    "a démolir": "demolished",
+}
+#: The property a slab's renovation status is read from.
+RENOVATION_PROPERTY = "Renovation Status"
+
+
 #: What a massing layer's use is said to be in the run's listing.
 BY_LEVEL = "by level"
 
@@ -120,6 +145,12 @@ class SlabReading:
     """Slabs Archicad would not describe, or that had no outline, by guid."""
     ground_m: float | None = None
     """The level of the project's ground storey, when one is named for it."""
+    statuses: tuple[str, ...] = ()
+    """The renovation statuses kept, when only some were asked for."""
+    by_status: Mapping[str, int] = field(default_factory=dict)
+    """How many slabs were left out under each status not asked for."""
+    unknown_status: Mapping[str, int] = field(default_factory=dict)
+    """Statuses read that are none of the three, by what Archicad called them."""
 
 
 def ring_from(points: Any, arcs: Any = None) -> Ring | None:
@@ -213,12 +244,15 @@ def read_slabs(
     *,
     renovation: bool = False,
     shown_layers_only: bool = False,
+    statuses: Iterable[str] | None = None,
 ) -> SlabReading:
     """Every slab in the floor plan, with its outline, storey, layer and height.
 
     ``renovation`` keeps only what the floor plan's renovation filter shows;
     ``shown_layers_only`` only what is on a layer that is showing. Both are
     Archicad's own filters, applied before anything comes down the wire.
+    ``statuses`` keeps only the slabs whose own renovation status is one of
+    them -- ``existing``, ``new``, ``demolished`` -- read off each slab.
     """
     filters: list[str] = []
     if renovation:
@@ -234,6 +268,33 @@ def read_slabs(
         raise ArchicadError(f"GetElementsByType returned no element list: {found!r}")
     if not elements:
         return SlabReading((), tuple(filters))
+
+    kept_statuses: tuple[str, ...] = ()
+    by_status: dict[str, int] = {}
+    unknown: dict[str, int] = {}
+    if statuses is not None:
+        kept_statuses = tuple(sorted(set(statuses)))
+        status_of = _renovation_statuses(connection, elements)
+        chosen: list[Any] = []
+        for element in elements:
+            guid = str(((element or {}).get("elementId") or {}).get("guid", ""))
+            said = status_of.get(guid, "")
+            status = RENOVATION_STATUSES.get(said.strip().casefold())
+            if status is None:
+                unknown[said or "(none)"] = unknown.get(said or "(none)", 0) + 1
+            elif status in kept_statuses:
+                chosen.append(element)
+            else:
+                by_status[status] = by_status.get(status, 0) + 1
+        elements = chosen
+        if not elements:
+            return SlabReading(
+                (),
+                tuple(filters),
+                statuses=kept_statuses,
+                by_status=by_status,
+                unknown_status=unknown,
+            )
 
     rows: list[Any] = []
     for start in range(0, len(elements), BATCH):
@@ -289,7 +350,57 @@ def read_slabs(
         slabs.append(
             MassingSlab(guid, element_id, layer, storey, level, outline, holes, bottom, thickness)
         )
-    return SlabReading(tuple(slabs), tuple(filters), own, tuple(unreadable), _ground_of(storeys))
+    return SlabReading(
+        tuple(slabs),
+        tuple(filters),
+        own,
+        tuple(unreadable),
+        _ground_of(storeys),
+        kept_statuses,
+        by_status,
+        unknown,
+    )
+
+
+def _renovation_statuses(connection: ArchicadConnection, elements: Sequence[Any]) -> dict[str, str]:
+    """Each element's renovation status as Archicad words it, by guid.
+
+    ``GetAllProperties`` is the only way to find the built-in property by
+    name; the values then come back as the enumeration's own words, in the
+    project's language, which is why ``RENOVATION_STATUSES`` knows several.
+    """
+    listed = connection.run_tapir("GetAllProperties")
+    properties = listed.get("properties") if isinstance(listed, dict) else None
+    found = next(
+        (
+            entry.get("propertyId")
+            for entry in properties or []
+            if isinstance(entry, dict)
+            and str(entry.get("propertyName", "")).strip().casefold()
+            == RENOVATION_PROPERTY.casefold()
+        ),
+        None,
+    )
+    if not isinstance(found, dict):
+        raise ArchicadError(
+            "The project has no Renovation Status property to read, so the slabs cannot be "
+            "chosen by their status."
+        )
+    out: dict[str, str] = {}
+    for start in range(0, len(elements), BATCH):
+        part = list(elements[start : start + BATCH])
+        response = connection.run_tapir(
+            "GetPropertyValuesOfElements",
+            {"elements": part, "properties": [{"propertyId": found}]},
+        )
+        rows = response.get("propertyValuesForElements") if isinstance(response, dict) else None
+        for element, row in zip(part, rows or [], strict=False):
+            guid = str(((element or {}).get("elementId") or {}).get("guid", ""))
+            values = (row or {}).get("propertyValues") if isinstance(row, dict) else None
+            first = values[0] if isinstance(values, list) and values else {}
+            value = (first or {}).get("propertyValue", first) if isinstance(first, dict) else {}
+            out[guid] = str((value or {}).get("value", "")) if isinstance(value, dict) else ""
+    return out
 
 
 def _tidy(name: str) -> str:

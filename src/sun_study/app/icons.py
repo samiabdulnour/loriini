@@ -413,7 +413,7 @@ BY_LABEL: dict[str, str] = {
     "Residential layers": "yield",
     "Commercial layers": "yield",
     "Retail layers": "yield",
-    "Massing layers": "model",
+    "Layers": "model",
     "Retail levels": "storey_datum",
     "Commercial levels": "storey_datum",
     "Site area (m²)": "site",

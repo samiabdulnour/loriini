@@ -230,3 +230,41 @@ def test_one_layer_cannot_be_two_things() -> None:
         floors_from([], ["05 | Mass"], [" 05 |  mass "])
     with pytest.raises(ValueError, match="both retail and massing"):
         floors_from([], retail=["05 | Mass"], massing=["05 | Mass"])
+
+
+def test_slabs_are_chosen_by_their_own_renovation_status() -> None:
+    from tests.unit.test_archicad_adapter import connect as connect_
+
+    rows = [row(1, 0, SQUARE), row(1, 1, SQUARE), row(1, 0, SQUARE), row(1, 0, SQUARE)]
+    statuses = ["New", "Existing", "To Be Demolished", "Unbekannt"]
+    connection, transport = connect_(
+        {
+            "GetElementsByType": {
+                "elements": [{"elementId": {"guid": f"G{i}"}} for i in range(len(rows))]
+            },
+            "GetAllProperties": {
+                "properties": [
+                    {"propertyId": {"guid": "P0"}, "propertyName": "Area"},
+                    {"propertyId": {"guid": "RS"}, "propertyName": "Renovation Status"},
+                ]
+            },
+            "GetPropertyValuesOfElements": {
+                "propertyValuesForElements": [
+                    {"propertyValues": [{"propertyValue": {"value": status}}]}
+                    for status in statuses
+                ]
+            },
+            "GetDetailsOfElements": {"detailsOfElements": rows[:1]},
+            "GetAttributesByType": {"attributes": [{"index": 1, "name": "05 | Mass"}]},
+            "GetStories": {"stories": [{"index": 0, "level": 0.0, "name": "Ground"}]},
+        }
+    )
+    reading = read_slabs(connection, statuses=("new",))
+    assert [slab.guid for slab in reading.slabs] == ["G0"], "the new one alone"
+    assert reading.statuses == ("new",)
+    assert reading.by_status == {"existing": 1, "demolished": 1}
+    assert reading.unknown_status == {"Unbekannt": 1}, "never guessed"
+    (details,) = transport.all_parameters_for("GetDetailsOfElements")
+    assert [e["elementId"]["guid"] for e in details["elements"]] == ["G0"], (
+        "only the chosen slabs are described"
+    )

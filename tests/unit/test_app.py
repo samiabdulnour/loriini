@@ -1223,12 +1223,14 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     only_yield(hidden_window)
     hidden_window.yield_option.delete(0, "end")
     hidden_window.yield_option.insert(0, "Option 02")
-    hidden_window.yield_residential.insert(0, "01 | Wall.External")
-    hidden_window.yield_retail.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_slabs.set("Slabs on chosen layers")
     hidden_window.yield_massing.insert(0, "01 | Massing - Main Building.3D OPT2")
     hidden_window.yield_retail_levels.insert(0, "Ground")
     hidden_window.yield_commercial_levels.insert(0, "Level 01, Level 02")
-    hidden_window.yield_renovation.set(True)
+    # Filled, but in rows this answer does not show: they must not count.
+    hidden_window.yield_residential.insert(0, "01 | Wall.External")
+    hidden_window.yield_retail.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_renovation_status.set("As the floor plan's filter")
     hidden_window.yield_site_area.insert(0, "1386.78")
     hidden_window.yield_fsr_residential.insert(0, "2.8")
     hidden_window.yield_fsr_retail.insert(0, "0.4")
@@ -1243,8 +1245,9 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     assert job.label == window.YIELD_JOB
     assert args[0] == "yield"
     assert flag(args, "--option") == ["Option 02"]
-    assert flag(args, "--residential-layer") == ["01 | Wall.External"]
-    assert flag(args, "--retail-layer") == ["01 | Floor.Structural"]
+    assert "--residential-layer" not in args and "--retail-layer" not in args, (
+        "a layer left in a hidden row changes nothing"
+    )
     assert flag(args, "--massing-layer") == ["01 | Massing - Main Building.3D OPT2"]
     assert flag(args, "--retail-level") == ["Ground"]
     assert flag(args, "--commercial-level") == ["Level 01", "Level 02"]
@@ -1306,12 +1309,14 @@ def test_the_workbook_is_chosen_with_a_save_dialog(
 
 def test_option_layers_and_a_workbook_of_their_own(hidden_window: Any, tmp_path: Path) -> None:
     only_yield(hidden_window)
+    hidden_window.yield_slabs.set("A layer per option")
     hidden_window.yield_option_layers.insert(0, "01 | Massing.3D OPT1, 01 | Massing.3D OPT2")
     hidden_window.yield_workbook.insert(0, r"P:³3\Yield.xlsx")
     hidden_window.tables.delete(0, "end")
     hidden_window.tables.insert(0, str(tmp_path))
     (job,) = hidden_window.jobs()
     assert flag(job.args, "--option-layer") == ["01 | Massing.3D OPT1", "01 | Massing.3D OPT2"]
+    assert "--option" not in job.args, "each option is named after its layer"
     assert flag(job.args, "--xlsx") == [r"P:³3\Yield.xlsx"], "the typed path over the folder"
     hidden_window.yield_xlsx.set(False)
     (job,) = hidden_window.jobs()
@@ -4283,3 +4288,49 @@ def test_the_offices_cos_schedule_is_offered_first_and_nothing_else_is_guessed(
     hidden_window.do_communal.set(True)
     communal = hidden_window.jobs()[-1]
     assert "--zone-hourly" in communal.args and "--zone-schedule" not in communal.args
+
+
+def test_the_yield_page_shows_only_the_rows_its_slabs_answer_needs(hidden_window: Any) -> None:
+    """One question, four answers, and the rows each one reads (D140)."""
+    made = hidden_window
+    only_yield(made)
+
+    def showing(widget: Any) -> bool:
+        return bool(widget.winfo_manager())
+
+    made.yield_slabs.set("Every slab showing")
+    made._sync()
+    assert showing(made.yield_retail_levels) and not showing(made.yield_massing)
+    assert not showing(made.yield_residential) and not showing(made.yield_option_layers)
+    made.yield_slabs.set("A layer per use")
+    made._sync()
+    assert showing(made.yield_residential) and showing(made.yield_retail)
+    assert not showing(made.yield_retail_levels), "a layer per use tells the use itself"
+    made.yield_slabs.set("A layer per option")
+    made._sync()
+    assert showing(made.yield_option_layers) and not showing(made.yield_option)
+    assert made._label_wide < 400, "no hint line dropped into the label column"
+
+
+def test_renovation_is_read_off_each_slab_or_the_floor_plans_filter(hidden_window: Any) -> None:
+    made = hidden_window
+    only_yield(made)
+    (job,) = made.jobs()
+    assert "--renovation-status" not in job.args and "--renovation-filter" not in job.args
+    made.yield_renovation_status.set("New only")
+    (job,) = made.jobs()
+    assert flag(job.args, "--renovation-status") == ["new"]
+    made.yield_renovation_status.set("Existing and new")
+    (job,) = made.jobs()
+    assert flag(job.args, "--renovation-status") == ["existing-and-new"]
+
+
+def test_a_preset_saved_before_the_slabs_row_opens_as_what_it_meant(hidden_window: Any) -> None:
+    made = hidden_window
+    made.apply({"yield_massing_layers": "01 | Massing.3D", "yield_renovation": True})
+    assert made.yield_slabs.get() == "Slabs on chosen layers"
+    assert made.yield_renovation_status.get() == "As the floor plan's filter"
+    made.apply({"yield_residential_layers": "05 | Mass.Residential"})
+    assert made.yield_slabs.get() == "A layer per use"
+    made.apply({"yield_slabs": "Every slab showing", "yield_massing_layers": "x"})
+    assert made.yield_slabs.get() == "Every slab showing", "a saved answer is kept as it is"

@@ -5522,3 +5522,43 @@ draws FUSE.
 
 *What this does not change:* what a sheet shows, or any fill's colour.
 
+### D140 — The Yield page asks which slabs and which renovation status, and shows only the rows the answer needs
+
+Asked 24 October 2026, with the Yield page on screen: *"the yield is a
+little too much to set up. is there posibility to simplify this? usualy you
+just have different slabs. maybe you should have possibility to select
+renovation filter. the options are confusing. think of easier way of doing
+this."*
+
+**Seven rows were four ways of saying one thing, all asked at once.**
+Option layers, three use layers, massing layers and two level rows sat one
+under another, and which of them a run would read depended on which were
+filled -- a rule the page never said. They are the answers to one question,
+so the page now asks it: *Slabs*, four tiles -- *Everything showing* (the
+usual answer, use told by level), *Chosen layers* (the same, on the layers
+chosen), *Layer per use*, *Layer per option* -- and shows only the rows that
+answer reads, usually just the two level rows. A hidden row sends nothing,
+so a layer left in it from another day cannot change the count. Nothing went
+to an Advanced panel: the window's rule (its own docstring) is that a section
+does not hide its inputs somewhere else, and none is hidden here -- the
+answer decides what is asked.
+
+**The renovation filter is chosen, not set beforehand.** Tapir can carry a
+renovation filter's GUID onto a view but cannot list the project's filters
+by name or set one on the floor plan, so choosing a filter by name would
+need a new add-on command and a rebuild. What a filter decides is each
+element's *Renovation Status*, which is a built-in property Tapir does read.
+So *Renovation* is four tiles -- *Any*, *New only*, *Existing and new*,
+*Floor plan's filter* -- the first three read off each slab
+(`--renovation-status`), the last the old checkbox's behaviour. Measured on
+the sample project: 453 slabs, all Existing, of which *New only* counts none
+and says so. The status is read in the project's language; English, German
+and French are known, and any other word is reported rather than guessed.
+
+**A preset saved the old way opens as what it meant**: option layers filled
+read as *Layer per option*, use layers as *Layer per use*, massing layers as
+*Chosen layers*, and the renovation checkbox ticked as *Floor plan's filter*.
+
+*What this does not change:* the command line's flags, which still combine
+as before, and the arithmetic.
+

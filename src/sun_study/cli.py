@@ -9217,6 +9217,17 @@ def area_yield(
             ),
         ),
     ] = False,
+    renovation_status: Annotated[
+        str,
+        typer.Option(
+            "--renovation-status",
+            help=(
+                "Which slabs count by their own renovation status: 'any', 'new' (the "
+                "proposal alone) or 'existing-and-new' (all but what is to be demolished). "
+                "Read off each slab, so the floor plan's filter need not be set."
+            ),
+        ),
+    ] = "any",
     gfa_residential: Annotated[
         float, typer.Option("--gfa-residential", help="BEA to GFA, residential.")
     ] = 0.725,
@@ -9454,12 +9465,25 @@ def area_yield(
     else:
         permissible = Permissible()
 
+    wanted_statuses = {
+        "any": None,
+        "new": ("new",),
+        "existing-and-new": ("existing", "new"),
+    }
+    if renovation_status not in wanted_statuses:
+        typer.secho(
+            f"--renovation-status takes any, new or existing-and-new, not {renovation_status!r}.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
     connection = _connect(port, timeout)
     try:
         reading = read_slabs(
             connection,
             renovation=renovation_filter,
             shown_layers_only=not (residential or commercial or retail or massing or options),
+            statuses=wanted_statuses[renovation_status],
         )
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
@@ -9474,11 +9498,25 @@ def area_yield(
         else [(option, residential, commercial, retail, massing)]
     )
     everything = not (residential or commercial or retail or massing or options)
+    status_words = {"new": "new", "existing-and-new": "existing or new"}
     typer.echo(
         f"read {_slabs(len(reading.slabs))}"
         + (", only those the renovation filter shows" if renovation_filter else "")
+        + (
+            f", only the {status_words[renovation_status]} ones"
+            if renovation_status in status_words
+            else ""
+        )
         + (", on the layers showing" if everything else "")
     )
+    for status, count in sorted(reading.by_status.items()):
+        typer.echo(f"  {_slabs(count)} left out as {status}")
+    for said, count in sorted(reading.unknown_status.items()):
+        typer.secho(
+            f"  {_slabs(count)} with a renovation status of {said!r}, which is none of "
+            "Existing, New or To Be Demolished, left out",
+            fg=typer.colors.YELLOW,
+        )
     if reading.own:
         typer.echo(f"  {reading.own} of Loriini's own context slabs left out")
     if reading.unreadable:
@@ -9544,7 +9582,12 @@ def area_yield(
         counted = sum(count for _use, count, _area in assignment.by_layer.values())
         source = [
             f"BEA : {_slabs(counted)}, measured to their edges"
-            + (", as the renovation filter shows them" if renovation_filter else ""),
+            + (", as the renovation filter shows them" if renovation_filter else "")
+            + (
+                f", the {status_words[renovation_status]} ones only"
+                if renovation_status in status_words
+                else ""
+            ),
             *notes_,
         ]
         try:
