@@ -2072,6 +2072,69 @@ def test_the_councils_trees_are_not_credited_to_openstreetmap() -> None:
     assert sources.OSM in bundle.sources_used(), "the nominal tree is OpenStreetMap's"
 
 
+def _flush_project(drawing: Any, fills: int) -> Any:
+    """A project that answers what ``_flush`` asks of it, for ``drawing``."""
+    return connect(
+        {
+            "GetAttributesByType": {
+                "attributes": [
+                    {"name": name, "index": 10 + i, "attributeId": {"guid": f"L{i}"}}
+                    for i, name in enumerate(drawing.layers)
+                ]
+            },
+            "GetLayers": {
+                "layers": [{"layerAttribute": {"name": "x", "isHidden": False, "isLocked": False}}]
+            },
+            "CreateLayers": {"success": True},
+            "CreateFills": {"success": True, "elements": [{"guid": f"F{n}"} for n in range(fills)]},
+            "CreatePolylines": {"elements": [{"elementId": {"guid": "P"}}] * 3},
+        }
+    )
+
+
+def test_a_line_or_a_contour_that_is_not_dashed_is_drawn_solid() -> None:
+    """D146: given no line type, an element takes its tool's -- the Polyline
+    tool on the sample project was on Dense Dotted. Every plain line and every
+    plain fill's contour is sent the continuous line type by name; dashed and
+    dotted keep theirs."""
+    from sun_study.archicad.site_analysis import Drawing, _Attributes, _flush
+
+    drawing = Drawing(200.0, "Site Analysis")
+    drawing.circle("Trees", (0.0, 0.0), 3.0, fill="#7dbb57", wash=True, dashed=True)
+    drawing.circle("Trees", (9.0, 0.0), 3.0, fill="#7dbb57", wash=True)
+    drawing.line("Site", [(0.0, 0.0), (10.0, 0.0)])
+    drawing.line("Site", [(0.0, 5.0), (10.0, 5.0)], dashed=True)
+    drawing.line("Site", [(0.0, 9.0), (10.0, 9.0)], dotted=True)
+    connection, transport_ = _flush_project(drawing, 2)
+
+    _flush(
+        connection,
+        drawing,
+        _Attributes(solid_fill=1, dashed=2, pens=(), wash_fill=3, dotted=4, solid=7),
+    )
+
+    dashed_fill, plain_fill = transport_.parameters_for("CreateFills")["fills"]
+    assert dashed_fill["lineTypeIndex"] == 2 and plain_fill["lineTypeIndex"] == 7
+    plain, dashed, dotted = transport_.parameters_for("CreatePolylines")["polylinesData"]
+    assert (plain["lineTypeIndex"], dashed["lineTypeIndex"], dotted["lineTypeIndex"]) == (7, 2, 4)
+
+
+def test_the_solid_line_type_is_found_by_its_names() -> None:
+    from sun_study.archicad.site_analysis import SOLID_LINES, attribute_index
+
+    connection, _ = connect(
+        {
+            "GetAttributesByType": {
+                "attributes": [
+                    {"name": "Dense Dotted", "index": 3},
+                    {"name": "Solid Line", "index": 1},
+                ]
+            }
+        }
+    )
+    assert attribute_index(connection, "Line", SOLID_LINES) == 1
+
+
 def test_a_dashed_fill_reaches_archicad_with_the_dashed_line_type() -> None:
     from sun_study.archicad.site_analysis import Drawing, _Attributes, _flush
 

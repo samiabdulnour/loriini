@@ -471,6 +471,8 @@ def draw_legend_and_outline(
 
     outlines = 0
     empty = attribute_index(connection, "Fill", ("Empty Fill", "Empty", "Background"))
+    # Continuous, named: a fill given no line type takes the Fill tool's (D146).
+    continuous = attribute_index(connection, "Line", ("Solid Line", "Solid", "Continuous"))
     if rings and window is not None and outline_pen is not None and empty is not None:
         cx, cy = window.centre
         for x0, y0, x1, y1 in cells:
@@ -491,6 +493,7 @@ def draw_legend_and_outline(
                         "backgroundPen": 0,
                         "contourPen": outline_pen,
                         "showArea": False,
+                        **({"lineTypeIndex": continuous} if continuous is not None else {}),
                     }
                 )
                 outlines += 1
