@@ -6007,3 +6007,51 @@ the middle of the shadows -- with all of them inside the frame.
 *What this does not change:* the fills, their style or labels (D145, D147),
 the hourly sheets' placement, or the combined sheets (D141 to D148).
 
+### D150 — The legend's colours are spaced to be told apart
+
+Asked 25 October 2026, of the combined shadow sheet (D143): *"the
+differences in fill colours are too small, and it's not clear what is what.
+can you make the differences more significant?"*
+
+**What was wrong.** The colours were sampled off SSDA 401 (D77) and the
+marked-up legend of 21 September 2026, and they were faithful to the
+office's sheet: so faithful that its closeness came with them. Measured in
+CIEDE2000, the five rows on the sheet sat 4 to 7 apart -- existing and
+future greys 4.2, the future grey and the palest blue 5.0, the SEARs and
+proposed blues 5.8 -- enough to see two swatches differ side by side in
+the legend, not enough to say which row a patch on the plan belongs to, and
+less once printed. The greys ran L* 93, 86, 65 and the blues
+86, 77, 70 with a chroma of 5 to 12: the "blues" were greys with a tint,
+and the future grey and the palest blue had the same lightness.
+
+**Decided.** The split stays -- grey for what will be there, blue for what
+is argued about, lilac for the ADG envelope, each ramp darkening toward the
+newer claim -- and the steps are set in CIELAB rather than sampled:
+
+| row | was | now | L* |
+|---|---|---|---|
+| EXISTING | (235, 235, 235) | (232, 232, 232) | 92 |
+| FUTURE | (216, 216, 216) | (174, 174, 174) | 71 |
+| EXISTING ON SITE | (158, 158, 158) | (124, 124, 124) | 52 |
+| TOD | (207, 215, 224) | (170, 223, 251) | 86 |
+| SEARS | (175, 191, 204) | (82, 166, 219) | 65 |
+| ADG ENVELOPE | (192, 182, 214) | (195, 164, 227) | 72 |
+| PROPOSED | (156, 172, 191) | (0, 108, 181) | 44 |
+
+Every pair of the seven is now at least 14 apart in CIEDE2000 (19 in
+CIE76), and each ramp steps at least 19 in L*, so a black-and-white print
+still orders them. The proposal is the darkest, strongest blue on the sheet,
+which is what being applied for should look like. A test holds the spacing:
+every pair at least 15 apart in CIE76, each ramp darkening by at least 15.
+The window's hints ("the lightest grey", "the strongest blue") read as they
+did.
+
+**Run, sample project.** The five-row stack of D144 again: the run matched
+pens 236, 217, 176, 174 and 145 and set them to the new colours in `15 |
+Shadow Plans`; read back, each printed at its row's RGB, and the pens the
+previous run had set (216, 196, 116, 156) were back at `00 ENZ PRINT`'s own
+colours. The fifteen documents already there were re-set to their new pens.
+
+*What this does not change:* the rows, their words or order, the stack
+(D141 to D143), or the every-hour drawing's red and blue fills (D147).
+

@@ -888,7 +888,7 @@ def test_the_stacked_command_takes_the_shadow_diagrams_legend(
     assert kwargs["scale"] == 1000.0
     assert kwargs["window"].centre == (0.0, 40.0)
     assert kwargs["pen_table_index"] == 42
-    assert kwargs["legend"][0] == ("EXISTING NEIGHBOURING BUILDINGS", (235, 235, 235))
+    assert kwargs["legend"][0] == ("EXISTING NEIGHBOURING BUILDINGS", (232, 232, 232))
     assert [words for words, _ in kwargs["legend"]][2:] == [
         "CURRENT LEP 2023 BUILDING HEIGHT LIMIT",
         "PROPOSED BUILDING ENVELOPE",
@@ -896,10 +896,10 @@ def test_the_stacked_command_takes_the_shadow_diagrams_legend(
     ((name, source, colours),) = cli_module()._PEN_SETS_MADE
     assert name == f"{prefix} Shadow Plans" and source == "PT-GUID"
     assert set(colours.values()) == {
-        (235, 235, 235),
-        (216, 216, 216),
-        (207, 215, 224),
-        (156, 172, 191),
+        (232, 232, 232),
+        (174, 174, 174),
+        (170, 223, 251),
+        (0, 108, 181),
     }, "every row's pen set to its legend colour"
     assert "drawn at 1:1000" in result.output
 
