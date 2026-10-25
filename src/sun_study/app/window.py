@@ -1826,7 +1826,7 @@ class Dock(ttk.Frame):
     LIFT = 2
     #: The lift: ink at a tenth over the panel's chrome, the figure the
     #: button faces were lifted by before D132 flattened them.
-    LIFT_GREY = "#DCDBD2"
+    LIFT_GREY = "#DADADA"
 
     def _draw(self, sheet: Sheet) -> tk.Canvas:
         """One sheet, at the master's proportions with its title block.
@@ -1926,7 +1926,7 @@ FLATS_MM = tuple(
     for down in range(2)
     for across in range(3)
 )
-SHADOW_GREY = "#8F8E87"
+SHADOW_GREY = "#8E8E8E"
 #: The office yield sheet's legend: the podium lilac, the tower yellow.
 PODIUM = "#DCCBF7"
 TOWER = "#FFF4A8"
@@ -2326,7 +2326,7 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     reach = 11.5
     face(
         ((-reach, -reach, 0), (reach, -reach, 0), (reach, reach, 0), (-reach, reach, 0)),
-        "#EEF0E8",
+        "#EEEEEE",
         SHADOW_GREY,
     )
     for level, wobble in ((-7.0, 1.2), (-3.5, 0.6), (4.0, -0.8), (8.0, 0.4)):
@@ -2347,7 +2347,7 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     paper.create_polygon(ring, fill="", outline=RING, dash=(4, 3), smooth=True)
 
     # -- the blocks, far to near ---------------------------------------
-    grey = ("#F4F3EE", "#C6C5BE", "#DEDDD6")
+    grey = ("#F3F3F3", "#C5C5C5", "#DDDDDD")
     # Painter's order: what is further from the viewer -- smaller x + y --
     # is drawn first, and the site takes its turn among the blocks. The
     # fifth block is the heritage item; the site is ours, in red.
@@ -2456,16 +2456,16 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
 #: The drawing set's palette on a miniature, the same one the design review
 #: drew them in: the site boundary red and dash-dotted, the massing grey in a
 #: heavy line, the neighbours light, sun amber, and shade and shadow hatched.
-#: The greys are the window's warm ones since D133: Archicad's cool greys
-#: read blue beside the lemon chrome. The boundary's red and the pin's blue
+#: The greys are the window's own, neutral since D153 as the window's are
+#: (they were warm from D133). The boundary's red and the pin's blue
 #: are a drawing set's conventions, not the interface's colours, and stay.
 BOUNDARY = "#C0392B"
 BOUNDARY_DASH = (6, 2, 1, 2)
-MASSING = "#E6E5DC"
-NEIGHBOUR = "#F3F2EB"
-NEIGHBOUR_EDGE = "#A3A298"
-ROAD = "#DAD9CF"
-RING = "#B5B4A9"
+MASSING = "#E4E4E4"
+NEIGHBOUR = "#F2F2F2"
+NEIGHBOUR_EDGE = "#A1A1A1"
+ROAD = "#D8D8D8"
+RING = "#B3B3B3"
 LIT = "#F2C86B"
 HATCH = "#5A5A5A"
 #: What the drawings add since D136, each the colour of a thing the run
@@ -2479,16 +2479,16 @@ HATCH = "#5A5A5A"
 #: workbook's green heading row, are the two colours of those two sheets.
 ZONING = "#FBE1C6"
 ZONING_EDGE = "#E9A96B"
-LOT = "#ECEAE2"
-TERRACE = "#E2E0D6"
+LOT = "#EAEAEA"
+TERRACE = "#DFDFDF"
 CANOPY = "#B5CFAA"
 CONTOUR = "#E2C98C"
 PARK = "#DCE7D2"
-SHADOW_CAST = "#CFCEC5"
+SHADOW_CAST = "#CDCDCD"
 SHADOW_EXTRA = "#B9CDEF"
 GLAZING = "#F4D35E"
 BEAM = "#FBEFD6"
-COURT_GROUND = "#EEF0E8"
+COURT_GROUND = "#EEEEEE"
 YIELD_HEAD = "#CFE3C4"
 HERITAGE = ("#F3E3C4", "#D9B97E", "#E8D0A0")
 SITE_BLOCK = ("#F6DAD5", "#C9776C", "#E2A69D")
@@ -2523,9 +2523,9 @@ BLOCK_RADIUS = 2
 #: so the panel has one way of saying hours of sun.
 HOURS_RAMP = ("#6B8ED6", "#9BB8E3", "#B5CFAA", "#EFE39A", "#F2C86B", "#E6A04E", "#D4702E")
 #: The two answers to the ADG's two hours: the sun's amber for a flat that
-#: reaches them, the warm grey of no sun for one that falls short. Not blue:
+#: reaches them, the grey of no sun for one that falls short. Not blue:
 #: on these sheets blue is the pin and the rail line, never an answer.
-MEETS, FALLS_SHORT = LIT, "#E7E6E2"
+MEETS, FALLS_SHORT = LIT, "#E6E6E6"
 
 
 def _rounded(
@@ -3106,8 +3106,8 @@ def _draw_drawing(
             width=0.6,
         )
         houses = [
-            (*house, ("#F7F6F1", "#DDDCD3", "#ECEBE4"), NEIGHBOUR_EDGE, 0.7) for house in TOWN_ISO
-        ] + [(-2.2, -2.2, 2.2, 2.2, 3.2, ("#F3F2EC", "#CFCEC5", "#E2E1DA"), theme.INK, 1.0)]
+            (*house, ("#F6F6F6", "#DBDBDB", "#EBEBEB"), NEIGHBOUR_EDGE, 0.7) for house in TOWN_ISO
+        ] + [(-2.2, -2.2, 2.2, 2.2, 3.2, ("#F2F2F2", "#CDCDCD", "#E1E1E1"), theme.INK, 1.0)]
         for x0, y0, x1, y1, tall, tints, edge, weight in sorted(houses, key=lambda h: h[0] + h[1]):
             poly(
                 [at(x0, y1, 0), at(x1, y1, 0), at(x1, y1, tall), at(x0, y1, tall)],

@@ -6085,3 +6085,32 @@ are gone.
 *What this does not change:* the four styles, their colours or defaults, or
 the office's palette in `curate`, which maps the zones onto the legend's
 categories for every theme.
+
+### D153 — Every grey in the window is neutral
+
+Asked 25 October 2026, with the window's picture recoloured by hand: *"also
+please change the grey background in software. I redid that in artefact ...
+so please do it for all versions"*.
+
+**The rule the picture follows.** Read pixel by pixel against the capture it
+was made from, every warm grey in it became the neutral grey of the same
+lightness (Rec. 601 luma, rounded) -- the surround `#F1F0E6` to `#EFEFEF`, the
+page `#F8F7F0` to `#F7F7F7`, the dividers `#E3E2D8` to `#E1E1E1`, the ink
+`#1F1F1D` to `#1F1F1F` -- and nothing with a colour in it moved: the lemon,
+its tint, the blue, the ochre. So that is the rule, applied to the source
+rather than to a picture of it: every colour in `sun_study.app.theme`,
+`window.py` (the sheets panel's drawings) and `scripts/make_icons.py` whose
+channels lie within 16 of each other with blue the lowest -- the warm greys,
+and the sage of a courtyard -- is that grey now. The bluish pale of the icons
+(`#F3F7FD`) is a tint and stays.
+
+**All versions.** The palette is one module for Windows and the Mac alike,
+so both builds take it. The icons are drawn from the same figures, so
+`make_icons.py` was rerun: 476 of the window's PNGs changed, and the eight
+palette icons of the add-on in Archicad, which are neutral now beside
+Archicad's own greys. The contrast the comments promise still holds: the
+hint grey `#6A6A6A` is 5.4:1 on white, a field's edge `#888888` 3.5:1.
+
+*What this does not change:* the web site, whose pale sage ground the warm
+surround was lightened from (D132); the sheets drawn in Archicad; or the
+lemon accent and the blue.
