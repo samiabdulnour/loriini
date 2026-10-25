@@ -9,10 +9,10 @@ deliberately not part of a theme.
 Ported from the office's ``au-site-analysis`` generator (``src/render/
 template.ts``), colour for colour: its four graphic templates for the
 context sheet -- Flamingo, Kingfisher, Heron, Canary -- and its four site
-themes of the same names. The office's own legend, read off its Oatley sheet,
-which these sheets
-were drawn in before the themes, stays as a fifth so a saved preset still
-draws what it drew.
+themes of the same names -- site-analyst.com's four, and only those (D152).
+The office's own legend the sheets were drawn in before the themes was a
+fifth, FUSE, until then; the fields' defaults below are still its values,
+and every theme sets what it draws differently.
 
 The generator prints to a PDF, where a tint has an opacity and a texture is a
 pattern. Archicad has neither on a fill, so each is realised as what Archicad
@@ -33,6 +33,7 @@ __all__ = [
     "DEFAULT_SITE_THEME",
     "DEFAULT_THEME",
     "LEP_ZONE_FILL",
+    "SITE_ANALYST",
     "SITE_THEMES",
     "THEMES",
     "Category",
@@ -51,6 +52,10 @@ __all__ = [
 ]
 
 Texture = Literal["dots", "lines", "cross"]
+
+#: Where the four styles are from, and named: the window links to it beside
+#: the style rows and the info box credits it (D152).
+SITE_ANALYST = "https://site-analyst.com"
 
 
 @dataclass(frozen=True)
@@ -176,12 +181,6 @@ class Theme:
 
 
 # -- the palettes --------------------------------------------------------------
-
-# The office's own legend, per the Oatley (2546) sheet: the palette these
-# sheets were first drawn in, kept as a theme of its own.
-FUSE_CATEGORIES: tuple[Category, ...] = tuple(
-    Category(c.id, c.label, c.fill, 1.0, c.stroke) for c in curate.CATEGORIES
-)
 
 # Flamingo's land-use palette. Four hues, each a family: peach for the
 # residential zones, sand for the centres, teal for open space and the
@@ -556,12 +555,6 @@ THEMES: tuple[Theme, ...] = (
         disc_park_ink="#1c1c1c",
         categories=HERON_CATEGORIES,
     ),
-    Theme(
-        "fuse",
-        "FUSE",
-        "the office's own legend over the aerial, as these sheets were first drawn",
-        categories=FUSE_CATEGORIES,
-    ),
 )
 
 DEFAULT_THEME = "flamingo"
@@ -571,8 +564,6 @@ _ALIASES: dict[str, str] = {
     "flamingo-white": "flamingo",
     "flamingo-2": "kingfisher",
     "conure": "canary",
-    "office": "fuse",
-    "oatley": "fuse",
 }
 
 
@@ -715,17 +706,12 @@ class SiteTheme:
     look: SiteLook = field(default_factory=SiteLook)
 
 
-# FUSE: the sheet as it was first drawn -- the aerial in colour, the site in
-# the office's red, dimensions and the fall in its blue, grey building masses,
-# yellow suns with rays, white wind banners at the corners.
-FUSE_LOOK = SiteLook()
-
 CLIMATE_GREY = "#6f7377"
 
 #: What the generator's site sheet draws in the same colours whatever the
 #: theme (``siteSheet.ts``): the trees in Flamingo's park teal at 38%, the
 #: parking in its plum, the muted building, contours at 0.6 mm, no railway
-#: line. FUSE keeps the colours these sheets were first drawn in.
+#: line.
 GENERATOR_SITE = {
     "tree_fill": TEAL,
     "tree_edge": TEAL_INK,
@@ -940,14 +926,6 @@ SITE_THEMES: tuple[SiteTheme, ...] = (
         "flamingo",
         CANARY_LOOK,
     ),
-    SiteTheme(
-        "fuse",
-        "FUSE",
-        "the sheet as it was first drawn: the aerial in colour, the site in the office's "
-        "red, yellow suns, white wind banners",
-        "fuse",
-        FUSE_LOOK,
-    ),
 )
 
 DEFAULT_SITE_THEME = "heron"
@@ -956,8 +934,6 @@ _SITE_ALIASES: dict[str, str] = {
     "dove": "heron",
     "cardinal": "heron",
     "kookaburra": "kingfisher",
-    "office": "fuse",
-    "oatley": "fuse",
 }
 
 

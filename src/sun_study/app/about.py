@@ -20,6 +20,10 @@ loriini.app; one that does not is the source, and shows the source licence.
 The full text remains the authority and the box says so; the button under it
 puts the whole of it on screen for the person who needs it.
 
+*Whose are the sheets' styles?* site-analyst.com's: the context and site
+sheets are drawn in its four, Flamingo, Kingfisher, Heron and Canary, and
+named as it names them (D152), so the box says so and links to it.
+
 *Is this any good yet?* The prototype notice, in the same words as the README,
 the run bar and every exported file -- from ``disclaimer``, so the four cannot
 drift apart.
@@ -53,6 +57,7 @@ from sun_study import AUTHOR, COPYRIGHT, PRODUCT, __version__, licence
 from sun_study.app import theme
 from sun_study.disclaimer import DISCLAIMER, STATUS
 from sun_study.site.sources import SOURCES, credit_line
+from sun_study.site.theme import SITE_ANALYST
 
 __all__ = ["About", "show"]
 
@@ -162,6 +167,7 @@ class About(tk.Toplevel):
         row = 0
         row = self._status(page, row)
         row = self._licence(page, row)
+        row = self._styles(page, row)
         row = self._sources(page, row)
         row = self._credit(page, row)
 
@@ -247,6 +253,19 @@ class About(tk.Toplevel):
             "build is the licence, and where the two differ the file wins."
         )
         self._paragraph(page, row, closing, style="Hint.TLabel")
+        return int(card.grid_info()["row"]) + 1
+
+    def _styles(self, page: ttk.Frame, row: int) -> int:
+        """Where the sheets' four styles come from, and the way there."""
+        card = self._title(page, row, "The sheets' styles")
+        inner = self._paragraph(
+            card,
+            0,
+            "The site analysis draws its context and site sheets in the four "
+            "styles of site-analyst.com -- Flamingo, Kingfisher, Heron and "
+            "Canary -- ported colour for colour and named as it names them.",
+        )
+        self._link(card, inner, SITE_ANALYST)
         return int(card.grid_info()["row"]) + 1
 
     def _sources(self, page: ttk.Frame, row: int) -> int:

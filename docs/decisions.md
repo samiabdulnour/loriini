@@ -6047,3 +6047,41 @@ replaces all of it.
 (`site/lorikeet.png`), which is a picture and not the mark; the add-on's
 palette in Archicad, whose first button is the solar study's sun on a massing
 like the others; or the lemon theme around the mark.
+
+### D152 — Site-analyst.com's four styles, and only those
+
+Asked 25 October 2026: *"remove fuse theme from site and context analysis.
+its gonna be only those four. give a link on site-analyst.com in explanation
+and in about"*.
+
+**FUSE goes.** The context and site sheets are drawn in Flamingo,
+Kingfisher, Heron or Canary -- site-analyst.com's four -- and nothing else.
+FUSE, the office's own legend over the colour aerial that the sheets were
+drawn in before the themes, kept since as a fifth so a saved run would draw
+what it drew, is out of both style rows, both lists in
+`sun_study.site.theme`, the CLI's `--theme` / `--site-theme`, and the MCP
+tool's choices; its retired names `office` and `oatley` go with it. A preset
+that chose it names nothing now and is drawn in the default (Flamingo,
+Heron), and the CLI says so on the way, as it does for any name it does not
+know. The fields' defaults in `Theme` and `SiteLook` were FUSE's values and
+stay as they are -- every theme sets what it draws differently, and the
+drawing code is not touched.
+
+**Where the styles are from, a click away.** `theme.SITE_ANALYST` is the
+address. The two style rows' explanations say the styles are
+site-analyst.com's, and under the rows a link, *The four styles at
+site-analyst.com*, opens it: an explanation in the sidebar card changes as
+the pointer moves to it, so the link is on the page. The info box has a card
+of its own, *The sheets' styles*, saying the sheets are drawn in its four,
+ported colour for colour and named as it names them, with the address under
+it as the registers' terms are.
+
+**Tests.** The drawing tests that read their colours off FUSE now read them
+off Heron's palette (the context sheet, the worksheet through the add-on,
+the site's dimensions) or Kingfisher's (the neighbours as fills); the tests
+of FUSE alone -- the names on the map, the zigzag on the road's own line --
+are gone.
+
+*What this does not change:* the four styles, their colours or defaults, or
+the office's palette in `curate`, which maps the zones onto the legend's
+categories for every theme.

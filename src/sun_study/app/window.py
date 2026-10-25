@@ -143,11 +143,11 @@ FIT_WORDS: dict[str, str] = {
     "Ignore it: use the project's north": "none",
 }
 
-#: The house styles the sheets are drawn in, named as the site-analysis
-#: site's STYLE row names them -- Flamingo, Kingfisher, Heron, Canary, a bird
-#: each, the site sheet's in the context sheet's order -- and FUSE, the
-#: office's own legend, after them; and the ``--theme`` / ``--site-theme``
-#: each sends. What each one looks like is the row's tooltip.
+#: The house styles the sheets are drawn in, named as site-analyst.com's
+#: STYLE row names them -- Flamingo, Kingfisher, Heron, Canary, a bird each,
+#: the site sheet's in the context sheet's order, and only those four (D152);
+#: and the ``--theme`` / ``--site-theme`` each sends. What each one looks like
+#: is the row's tooltip.
 CONTEXT_STYLES: dict[str, str] = {t.label: t.id for t in site_theme.THEMES}
 SITE_STYLES: dict[str, str] = {
     site_theme.site_theme(t.id).label: t.id
@@ -158,7 +158,9 @@ SITE_STYLES: dict[str, str] = {
 
 def _style_id(label: str, *, site: bool) -> str:
     """The theme a style row names, by its label or by a name it had before:
-    a preset saved when FUSE was Oatley still says "Oatley"."""
+    a preset saved when Canary was Conure still says "Conure". A style that
+    is gone, FUSE (D152), names nothing, and the sheet is drawn in the
+    default."""
     styles = SITE_STYLES if site else CONTEXT_STYLES
     if label in styles:
         return styles[label]
@@ -4077,6 +4079,13 @@ class Window:
 
         webbrowser.open(WEBSITE)
 
+    @staticmethod
+    def _styles_home() -> None:
+        """site-analyst.com, where the sheets' four styles come from."""
+        import webbrowser
+
+        webbrowser.open(site_theme.SITE_ANALYST)
+
     def _about(self, at: str = "") -> None:
         """Open the info box, at the top or at the data sources.
 
@@ -5536,23 +5545,22 @@ class Window:
             "where the station is a long way off. The site sheet ignores this "
             "and picks the scale its boundary fits at.",
         )
-        # The house style each sheet is drawn in: the generator's four, and
-        # the office's own legend the sheets were first drawn in. Two rows,
-        # because the two sheets take different styles -- a context sheet on
-        # paper beside a site sheet on the photograph is how the office's
-        # packages have it.
+        # The house style each sheet is drawn in: site-analyst.com's four, and
+        # only those (D152). Two rows, because the two sheets take different
+        # styles -- a context sheet on paper beside a site sheet on the
+        # photograph is how the office's packages have it.
         self.site_theme, row = self._combo(
             frame,
             row,
             "Context style",
-            "The context sheet's style, named as on the site-analysis site. Flamingo by default.",
+            "The context sheet's style, one of site-analyst.com's four. Flamingo by default.",
             "Flamingo sits on plain paper: four tints with textures, every "
             "street white, green street names. Kingfisher is the masterplan "
             "palette, pale zone grounds and a white cadastre. Heron is the "
             "office sheet over a grey aerial, white lots and lettering. Canary "
             "is Heron with the zoning in the NSW ePlanning colours, keyed by "
-            "zone code. FUSE is the office's own legend over the aerial, as "
-            "these sheets were first drawn.",
+            "zone code. All four are site-analyst.com's, named as it names them; "
+            "the link under these rows opens it.",
         )
         self.site_theme.configure(values=list(CONTEXT_STYLES), state="readonly")
         self.site_theme.set(site_theme.theme(site_theme.DEFAULT_THEME).label)
@@ -5560,18 +5568,33 @@ class Window:
             frame,
             row,
             "Site style",
-            "The site sheet's style, named as on the site-analysis site. Heron by default.",
+            "The site sheet's style, one of site-analyst.com's four. Heron by default.",
             "Heron is the grey aerial with the zones hatched in its palette, the "
             "site in its red, the sun as an open crown and the winds as "
             "hand-drawn strands. Kingfisher is on paper: the buildings in their "
             "zone's colour, the sun paths as yellow crescents, the winds as "
             "blue ones. Flamingo is on paper with the office's drawn suns and "
             "winds. Canary is the office's classic sheet: one black circle for "
-            "the sun and the winds, the zones in the ePlanning colours. FUSE "
-            "is the sheet as it was first drawn.",
+            "the sun and the winds, the zones in the ePlanning colours. All four "
+            "are site-analyst.com's; the link under these rows opens it.",
         )
         self.site_site_theme.configure(values=list(SITE_STYLES), state="readonly")
         self.site_site_theme.set(site_theme.site_theme(site_theme.DEFAULT_SITE_THEME).label)
+        # Where the styles come from, as a link: a name in a picker is a word
+        # until somebody has seen the sheets it stands for, and the site that
+        # names them shows them (D152).
+        styles_home = ttk.Label(
+            frame, text="The four styles at site-analyst.com", style="Link.TLabel", cursor="hand2"
+        )
+        styles_home.grid(row=row, column=1, sticky="w", pady=(4, 2))
+        styles_home.bind("<Button-1>", lambda _event: self._styles_home())
+        Tooltip(
+            styles_home,
+            "Opens site-analyst.com in the browser: the site the four styles "
+            "come from, named as it names them, with each one shown on a sheet.",
+            title="site-analyst.com",
+        )
+        row += 1
         self.site_anchor, row = self._tiles(
             frame,
             row,
