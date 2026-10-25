@@ -169,9 +169,11 @@
     rect(0, 0, cols, rows, sky(elev));
     rect(0, g, cols, rows - g, C.ground);
     sun.cells = sunCells(sun, R, frame);
+    function shine() { sun.cells.forEach(function (c) { rect(c[0], c[1], 1, 1, c[2]); }); }
     // On its own the sun is part of the sky, behind the towers and the bird;
-    // as the pointer it is drawn over everything, afterwards.
-    if (!aim) sun.cells.forEach(function (c) { rect(c[0], c[1], 1, 1, c[2]); });
+    // as the pointer it comes in front of the towers, so it is never lost,
+    // and stays behind the bird.
+    if (!aim) shine();
 
     var tall = null;
     towers.forEach(function (b) {
@@ -187,6 +189,7 @@
       for (var wy = g - b.ph + 2; wy < g - 1; wy += 3)
         for (var wx = b.px + 1; wx < b.px + b.pw - 1; wx += 2) rect(wx, wy, 1, 1, C.glass);
     });
+    if (aim) shine();
 
     // The lorikeet, its feet on the tallest tower's roof, its tail hanging
     // over the side, bobbing now and then.
@@ -224,6 +227,11 @@
     var px = sctx.getImageData(0, 0, cols, rows).data, d = cells.data;
     var bg = rgb(root.getPropertyValue('--bg').trim() || '#e1e4de');
     var tick = Math.floor(now / 1400);
+    // The pointer's sun never falls away or blinks out.
+    var keep = {};
+    if (aim && sun) sun.cells.forEach(function (s) {
+      if (s[0] >= 0 && s[1] >= 0 && s[0] < cols && s[1] < rows) keep[s[1] * cols + s[0]] = true;
+    });
     for (var y = 0; y < rows; y++) {
       for (var x = 0; x < cols; x++) {
         var i = y * cols + x, n = seed[i], j = i * 4, c = px, k = j;
@@ -231,17 +239,11 @@
         // the boundary breathing a little.
         var fall = Math.max(1 - x / (cols * .26), 1 - y / (rows * .1), 0);
         // A few cells anywhere blink out, a fresh few every beat.
-        if ((fall > 0 && n < fall * (.86 + .14 * Math.sin(now / 900 + n * 9))) ||
-            ((n * 9301 + tick * 49297) % 233) / 233 < .025) { c = bg; k = 0; }
+        if (!keep[i] && ((fall > 0 && n < fall * (.86 + .14 * Math.sin(now / 900 + n * 9))) ||
+            ((n * 9301 + tick * 49297) % 233) / 233 < .025)) { c = bg; k = 0; }
         d[j] = c[k]; d[j + 1] = c[k + 1]; d[j + 2] = c[k + 2]; d[j + 3] = 255;
       }
     }
-    // The pointer's sun, over everything and never falling away.
-    if (aim && sun) sun.cells.forEach(function (s) {
-      if (s[0] < 0 || s[1] < 0 || s[0] >= cols || s[1] >= rows) return;
-      var j = (s[1] * cols + s[0]) * 4, v = rgb(s[2]);
-      d[j] = v[0]; d[j + 1] = v[1]; d[j + 2] = v[2];
-    });
     octx.putImageData(cells, 0, 0);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(out, 0, 0, cols * cell, rows * cell);
