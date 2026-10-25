@@ -77,22 +77,25 @@ pre code { background: none; border: 0; padding: 0; }
 img.px { image-rendering: pixelated; }
 
 .wrap { max-width: var(--measure); margin: 0 auto; padding: 0 16px; }
+/* Every page runs the width of the window, its margins a share of it, as
+   the front does; the text on a tab's page keeps its own measure. */
+.wrap.wide, header.top.wide { max-width: none; padding-left: max(16px, 5.6vw); padding-right: max(16px, 5.6vw); }
 
-/* The top bar: the head, the name, four tabs. */
+/* The top bar, the same on every page: the name on the left of a tab's
+   page, linking home, and the four tabs on the right, in capitals. On the
+   front the large name stands in for it, and the tabs are alone. */
 header.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 16px; flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: .6rem; font-weight: 600; text-decoration: none; }
-.brand:hover { color: inherit; }
-.brand img { width: 25px; height: 26px; image-rendering: pixelated; }
+header.top.wide { padding-top: 2.4rem; padding-bottom: 0; }
+header.top.bare { justify-content: flex-end; }
+.home { font-size: var(--s); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; text-decoration: none; padding: .15rem 0; }
+.home:hover { color: inherit; }
 nav.main { display: flex; gap: .5rem clamp(1.25rem, 4vw, 3.5rem); flex-wrap: wrap; font-size: var(--s); text-transform: uppercase; letter-spacing: .02em; }
 nav.main a { text-decoration: none; padding: .15rem 0; }
 nav.main a[aria-current="page"] { box-shadow: 0 1px 0 currentColor; }
 
 /* ---- The front: the name, large, over the top of the picture, and the
    picture the width of the page. The picture is a canvas of whole cells,
-   edge to edge, with a sharp edge all round. The front runs wider than a
-   tab's page, its margins a share of the window. ---- */
-.wide, header.top.wide { max-width: none; padding-left: max(16px, 5.6vw); padding-right: max(16px, 5.6vw); }
-header.top.bare { justify-content: flex-end; padding-top: 2.4rem; padding-bottom: 0; }
+   edge to edge, with a sharp edge all round. ---- */
 .front { padding-bottom: 3rem; }
 .front .name {
   position: relative; z-index: 1; pointer-events: none;
