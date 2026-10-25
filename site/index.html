@@ -49,10 +49,11 @@
    The sky takes the hour's colour: pale at sunrise, blue at noon, red at
    sunset, with three bands of glow round the sun, a plain yellow disc, and
    its light colours the ground, the shadows and the bird a little. Every
-   cell but the towers' carries a fine grain, as video does, fresh each
-   frame. The sun keeps to the day's arc on its own; the pointer takes it, always behind the towers, the bird
-   and the ground, and the shadows follow it: short when it is high, long
-   when it is low, thrown away from its side. */
+   cell but the towers' carries a faint grain, as video does, changing on a
+   slow beat. The sun keeps to the day's arc on its own; the pointer takes
+   it, always behind the towers, the bird and the ground, and the shadows
+   follow it: short when it is high, long when it is low, thrown away from
+   its side. */
 (function () {
   var box = document.querySelector('.picture');
   var canvas = document.getElementById('picture');
@@ -124,17 +125,25 @@
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
   }
   // The grain: each cell's red, green and blue shifted a little apart and
-  // its brightness a little, at random, fresh each frame, as on video. The
-  // towers' black stays black.
-  var GRAIN = 16, GLOW = 8;
+  // its brightness a little, as on video. It changes on a slow beat, a fresh
+  // grain every 1.4 seconds as the old front's cells blinked, and the same
+  // within a beat however often the picture is drawn, so moving the sun does
+  // not hurry it. The towers' black stays black.
+  var GRAIN = 5, GLOW = 3, BEAT = 1400;
+  function hash(n) {
+    n = Math.imul(n ^ (n >>> 16), 0x45d9f3b);
+    n = Math.imul(n ^ (n >>> 16), 0x45d9f3b);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967296 * 2 - 1;
+  }
   function grain() {
     var img = sctx.getImageData(0, 0, cols, rows), d = img.data;
+    var beat = Math.imul(Math.floor(performance.now() / BEAT), 668265263);
     for (var j = 0; j < d.length; j += 4) {
       if (d[j] + d[j + 1] + d[j + 2] === 0) continue;
-      var l = (Math.random() * 2 - 1) * GLOW;
-      d[j] += l + (Math.random() * 2 - 1) * GRAIN;
-      d[j + 1] += l + (Math.random() * 2 - 1) * GRAIN;
-      d[j + 2] += l + (Math.random() * 2 - 1) * GRAIN;
+      var n = Math.imul(j, 374761393) + beat, l = hash(n) * GLOW;
+      d[j] += l + hash(n + 1) * GRAIN;
+      d[j + 1] += l + hash(n + 2) * GRAIN;
+      d[j + 2] += l + hash(n + 3) * GRAIN;
     }
     sctx.putImageData(img, 0, 0);
   }
