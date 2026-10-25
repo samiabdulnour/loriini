@@ -602,9 +602,10 @@ def _stack(day: dt.date, hours: list[int], *labels: str) -> Stack:
 
 
 def test_a_combined_sheet_holds_every_set_of_an_hour_in_one_cell() -> None:
-    """Named for the combined set; each cell's pile reads bottom to top, and
-    the drawings of a cell are named apart for the hour and the set, since a
-    sheet finds its drawings by name."""
+    """Named for the combined set; each cell's pile reads bottom to top, the
+    top drawing named for the hour alone as the cell's one title (D148) and
+    the ones under it apart for the hour and the set, since a sheet finds its
+    drawings by name."""
     stack = _stack(dt.date(2024, 6, 21), [9, 12, 15], "PROPOSED", "FUTURE", "EXISTING")
 
     groups, cells = stack_sheet_groups(stack, sheets="one")
@@ -615,9 +616,11 @@ def test_a_combined_sheet_holds_every_set_of_an_hour_in_one_cell() -> None:
     assert first_cell == [
         ("VIEW-PROPOSED-21 Jun 09:00", "JUNE 21 -9AM PROPOSED"),
         ("VIEW-FUTURE-21 Jun 09:00", "JUNE 21 -9AM FUTURE"),
-        ("VIEW-EXISTING-21 Jun 09:00", "JUNE 21 -9AM EXISTING"),
+        ("VIEW-EXISTING-21 Jun 09:00", "JUNE 21 -9AM"),
     ]
     assert [len(pile) for pile in groups[0][1]] == [3, 3, 3]
+    names = [name for pile in groups[0][1] for _, name in pile]
+    assert len(set(names)) == len(names), "no two drawings of a sheet share a name"
 
 
 def test_an_hour_a_set_lacks_is_left_out_of_that_cell() -> None:
@@ -630,6 +633,9 @@ def test_an_hour_a_set_lacks_is_left_out_of_that_cell() -> None:
     )
     groups, _ = stack_sheet_groups(stack, sheets="one")
     assert [len(pile) for pile in groups[0][1]] == [2, 1]
+    assert groups[0][1][1] == [("VIEW-PROPOSED-21 Jun 12:00", "JUNE 21 -12PM")], (
+        "the set left on top of a cell carries its title"
+    )
 
 
 def test_the_combined_sheets_remove_their_stale_sheets_and_clear_the_upper_drawings(
@@ -662,9 +668,16 @@ def test_the_combined_sheets_remove_their_stale_sheets_and_clear_the_upper_drawi
         redrawn.append(database_id)
         return "could not redraw"
 
+    titled: list[tuple[str, Any]] = []
+
+    def one_title(_connection: object, database_id: str, piles: Any) -> str | None:
+        titled.append((database_id, piles))
+        return "could not title"
+
     monkeypatch.setattr(module, "remove_stale_layouts", forget)
     monkeypatch.setattr(module, "place_stacks_on_sheets", place_one)
     monkeypatch.setattr(module, "update_drawings", redraw)
+    monkeypatch.setattr(module, "one_title_per_pile", one_title)
     stack = _stack(dt.date(2024, 6, 21), [9, 12], "PROPOSED", "EXISTING")
 
     reports, gone, said = make_stack_sheets(
@@ -673,7 +686,10 @@ def test_the_combined_sheets_remove_their_stale_sheets_and_clear_the_upper_drawi
 
     assert len(reports) == 1
     assert redrawn == [f"DB-{SS} Shadow Plans Combined - JUNE 21"], "every sheet redrawn"
-    assert said == ["could not redraw"]
+    ((titled_sheet, titled_piles),) = titled
+    assert titled_sheet == f"DB-{SS} Shadow Plans Combined - JUNE 21"
+    assert [name for _, name in titled_piles[0]] == ["JUNE 21 -9AM PROPOSED", "JUNE 21 -9AM"]
+    assert said == ["could not title", "could not redraw"]
 
     assert removed == [
         (f"{SS} Shadow Plans Combined - ", {f"{SS} Shadow Plans Combined - JUNE 21"})
@@ -1032,3 +1048,78 @@ def test_a_sheet_is_redrawn_through_tapir_and_a_refusal_is_said_not_raised(
     quiet = RedrawTransport()
     assert module.update_drawings(ArchicadConnection(quiet), "LAYOUT") is None
     assert not [name for name, _ in quiet.sent if name == "UpdateDrawings"]
+
+
+class TitleTransport:
+    """A sheet of drawings with titles; answers the reads and records the set."""
+
+    def __init__(self, drawings: dict[str, dict[str, Any]], *, refuse: bool = False) -> None:
+        self.drawings = drawings
+        self.refuse = refuse
+        self.set: list[dict[str, Any]] = []
+
+    def send(self, payload: dict[str, Any]) -> dict[str, Any]:
+        name = payload["parameters"]["addOnCommandId"]["commandName"]
+        given = payload["parameters"].get("addOnCommandParameters") or {}
+        names = list(self.drawings)
+        if name == "GetAddOnVersion":
+            answer: dict[str, Any] = {"version": "1.5.8"}
+        elif name == "GetElementsByType":
+            answer = {"elements": [{"elementId": {"guid": f"G-{n}"}} for n in names]}
+        elif name == "GetDetailsOfElements":
+            answer = {
+                "detailsOfElements": [
+                    {"details": {"customName": n, **self.drawings[n]}} for n in names
+                ]
+            }
+        elif name == "SetDetailsOfElements":
+            self.set = given["elementsWithDetails"]
+            answer = {"executionResults": [{"success": not self.refuse} for _ in self.set]}
+        else:
+            answer = {"success": True}
+        return {"succeeded": True, "result": {"addOnCommandResponse": answer}}
+
+
+def _titled(index: int, numbered: bool = True) -> dict[str, Any]:
+    return {"titleLibraryPartIndex": index, "isInNumbering": numbered}
+
+
+def test_only_the_top_drawing_of_a_cell_keeps_its_title() -> None:
+    """D148: every drawing of a stacked cell sits on one frame, so their titles
+    printed over each other. The ones under the top lose theirs and leave the
+    numbering; a top drawing that lost its title on an earlier run, as the one
+    under another, is given back the title the others wore."""
+    from sun_study.archicad.layout import one_title_per_pile
+
+    transport = TitleTransport(
+        {
+            "9AM TOD": _titled(32),
+            "9AM": _titled(32),
+            "12PM TOD": _titled(0, numbered=False),
+            "12PM": _titled(0, numbered=False),
+        }
+    )
+    piles = [[("V1", "9AM TOD"), ("V2", "9AM")], [("V3", "12PM TOD"), ("V4", "12PM")]]
+
+    assert one_title_per_pile(ArchicadConnection(transport), "LAYOUT", piles) is None
+
+    changed = {
+        one["elementId"]["guid"]: one["details"]["typeSpecificDetails"] for one in transport.set
+    }
+    assert changed == {
+        "G-9AM TOD": {"titleLibraryPartIndex": 0, "isInNumbering": False},
+        "G-12PM": {"titleLibraryPartIndex": 32, "isInNumbering": True},
+    }, "the drawings already right are left alone"
+
+
+def test_a_sheet_whose_titles_are_right_is_not_touched_and_a_refusal_is_said() -> None:
+    from sun_study.archicad.layout import one_title_per_pile
+
+    right = TitleTransport({"9AM TOD": _titled(0, numbered=False), "9AM": _titled(32)})
+    piles = [[("V1", "9AM TOD"), ("V2", "9AM")]]
+    assert one_title_per_pile(ArchicadConnection(right), "LAYOUT", piles) is None
+    assert right.set == []
+
+    refused = TitleTransport({"9AM TOD": _titled(32), "9AM": _titled(32)}, refuse=True)
+    note = one_title_per_pile(ArchicadConnection(refused), "LAYOUT", piles)
+    assert note is not None and "title" in note

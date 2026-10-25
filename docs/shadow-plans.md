@@ -116,14 +116,18 @@ A run then makes, from the base combination:
   darker and ignores the shadow's pen. The pens are matched by colour
   against the project's pen table, as the fills' rows are;
 - **one combined sheet set**, `15 | Shadow Plans Combined - JUNE 21`, dealt
-  as a labelled set's is, with **every row's drawing in each cell**, named
-  for the hour and the row (`JUNE 21 -9AM EXISTING`), their origins at the
-  cell's centre and clipped to it, laid bottom to top as the scenarios in
-  the order named and then the sources from the last to the first. The
-  add-on brings them to the front in that order, gives every drawing above
-  the lowest a transparent background (`ArrangeDrawings`), and every drawing
-  is then redrawn (Tapir's `UpdateDrawings`), since a drawing of a 3D
-  Document keeps showing what its document was until it is;
+  as a labelled set's is, with **every row's drawing in each cell**, their
+  origins at the cell's centre and clipped to it, laid bottom to top as the
+  scenarios in the order named and then the sources from the last to the
+  first. The add-on brings them to the front in that order, gives every
+  drawing above the lowest a transparent background (`ArrangeDrawings`), and
+  every drawing is then redrawn (Tapir's `UpdateDrawings`), since a drawing
+  of a 3D Document keeps showing what its document was until it is;
+- **one title per cell** ([D148](decisions.md)): the top drawing is named
+  for the hour alone (`JUNE 21 -9AM`) and keeps its title; the ones under it
+  are named for the hour and the row (`JUNE 21 -9AM TOD`), since a sheet
+  finds its drawings by name, and are given no title and left out of the
+  sheet's drawing numbering, so the titles that remain count 1, 2, 3;
 - **the whole site in every cell** ([D143](decisions.md)): the run measures
   the plan extent of the model elements the rows' combinations show and puts
   each drawing's origin where that window's centre lands in the middle of
