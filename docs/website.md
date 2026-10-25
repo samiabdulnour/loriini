@@ -24,8 +24,8 @@ inline, talking to nothing.
 | `site/terms.html`, `site/privacy.html` | The licence terms and the privacy note, **drafts for a lawyer's hour** (licence-model.md §7). |
 | `site/style.css` | The one stylesheet. One typeface in two weights (400, 600) and three sizes (`--s`, `--m`, `--l`) and nothing else; thin 1px lines, flat buttons, a pale sage page (`#e1e4de`). |
 | `site/fonts/` | Inter, regular and semibold, Latin and Latin Extended, self-hosted, with its licence (SIL OFL 1.1). |
-| `site/favicon.ico`, `site/icon-*.png`, `site/apple-touch-icon.png` | The square lorikeet-and-sun tile, at its native 32×32 pixels and scaled up whole. |
-| `site/lorikeet-head.png`, `site/lorikeet.png` | The head beside the name in the header, and the whole bird the mosaic perches on its tower, both at native resolution and drawn with `pixelated`. |
+| `site/favicon.ico`, `site/icon-*.png`, `site/apple-touch-icon.png` | The application icon, the lorikeet over the black L on its orange tile (D151), written by `scripts/make_icon.py`: `icon-52.png` is the mark beside the name in the header, at double density. |
+| `site/lorikeet.png` | The whole bird the mosaic perches on its tower, at native resolution and drawn with `pixelated`. |
 | `site/download/` | The current build's zip, put there at deploy time and never committed. |
 | `deploy/site/` | The Dockerfile, nginx's config, and `fly.toml` for the `loriini-site` app. |
 
