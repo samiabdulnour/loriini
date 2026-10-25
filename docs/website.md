@@ -12,20 +12,20 @@ It is a handful of static files and the current build, served by nginx, on
 Fly.io beside the licence service, at `https://loriini.app` (and
 `www.loriini.app`; the `loriini-site.fly.dev` address keeps working). No
 cookies, no analytics, no third-party requests (the font is served from the
-site itself), nothing to keep running; the one script is the front's mosaic,
+site itself), nothing to keep running; the one script is the front's picture,
 inline, talking to nothing.
 
 ## What is where
 
 | | |
 |---|---|
-| `site/index.html` | The front: the name and the picture, nothing else. The picture is a canvas drawn as a mosaic of whole cells, edge to edge, falling away into the page at its edges. The pointer is the sun: over the picture the sun stands under it, the sky's colour and the shadows' length follow its height, and the shadows' side and the clock follow its place across; let go, it carries on along its arc from that hour. Its source is a pixel scene (the sun crossing 21 June, the towers' shadows, the lorikeet perched on the tallest) until there is a screen recording; uncommenting the `<video id="film">` beside the canvas makes the mosaic draw the film instead. |
+| `site/index.html` | The front: the picture, the width of the page between the top bar and the footer, and nothing else; the name and the line under it are there for screen readers and search, not seen. The picture is a canvas of whole cells, edge to edge, with a sharp edge all round: LORIINI in pixel letters standing as blocks, the lorikeet beside it (perched on the last letter at half size when the screen is narrow), and their shadows on the ground in front of them. The sky is a heatmap of the sun, in bands, dusk-warm when the sun is low and a sharp yellow on blue when it is high. The sun keeps to the day's arc on its own; the pointer takes it, always behind the letters, the bird and the ground, and the shadows follow it, short when it is high, long when it is low, thrown away from its side. |
 | `site/makes.html`, `site/works.html`, `site/price.html`, `site/download.html` | The tabs: what it makes, how it works, price, download. Contact lives in every footer. |
 | `site/terms.html`, `site/privacy.html` | The licence terms and the privacy note, **drafts for a lawyer's hour** (licence-model.md §7). |
 | `site/style.css` | The one stylesheet. One typeface in two weights (400, 600) and three sizes (`--s`, `--m`, `--l`) and nothing else; thin 1px lines, flat buttons, a pale sage page (`#e1e4de`). |
 | `site/fonts/` | Inter, regular and semibold, Latin and Latin Extended, self-hosted, with its licence (SIL OFL 1.1). |
 | `site/favicon.ico`, `site/icon-*.png`, `site/apple-touch-icon.png` | The square lorikeet-and-sun tile, at its native 32×32 pixels and scaled up whole. |
-| `site/lorikeet-head.png`, `site/lorikeet.png` | The head beside the name in the header, and the whole bird the mosaic perches on its tower, both at native resolution and drawn with `pixelated`. |
+| `site/lorikeet-head.png`, `site/lorikeet.png` | The head beside the name in the header, and the whole bird the front's picture stands beside the name, both at native resolution and drawn with `pixelated`. |
 | `site/download/` | The current build's zip, put there at deploy time and never committed. |
 | `deploy/site/` | The Dockerfile, nginx's config, and `fly.toml` for the `loriini-site` app. |
 
