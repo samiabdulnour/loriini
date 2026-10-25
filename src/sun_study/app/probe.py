@@ -16,6 +16,7 @@ from sun_study.archicad.connection import (
     Instance,
     TapirUnavailableError,
     find_instances,
+    project_name,
 )
 from sun_study.archicad.cos_schedule import schedule_names
 from sun_study.archicad.layers import read_layers
@@ -289,7 +290,7 @@ def options(port: int) -> ProjectOptions:
         connection = ArchicadConnection(HttpTransport(port=port, timeout_seconds=READING_SECONDS))
         version = connection.tapir_version
         info = connection.run_tapir("GetProjectInfo", {}) or {}
-        project = str(info.get("projectName") or "")
+        project = project_name(info)
     except TapirUnavailableError:
         # Archicad answered; the add-on did not. A different failure from a
         # port with nothing on it, and a different thing to tell somebody.

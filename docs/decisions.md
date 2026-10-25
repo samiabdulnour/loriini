@@ -6114,3 +6114,41 @@ hint grey `#6A6A6A` is 5.4:1 on white, a field's edge `#888888` 3.5:1.
 *What this does not change:* the web site, whose pale sage ground the warm
 surround was lightened from (D132); the sheets drawn in Archicad; or the
 lemon accent and the blue.
+
+### D154 — On Windows the window is set in Archicad's face, and the sheets measure their type
+
+Asked 26 October 2026, testing the merged Mac work on Windows: *"fix that
+unsaved-file case! then please check the sheets. miniatures there look of.
+also the font, in windows the font should be the same as it is in
+archicad"*.
+
+**Archicad's face.** Archicad 26's palettes on Windows are set in the
+system's message font: Segoe UI 9 on an English Windows, read off the
+registry's `WindowMetrics` and matched letter for letter against a capture
+of the Navigator. Tk builds `TkDefaultFont` from the same setting, so
+`theme._archicads_face` asks Tk for it rather than naming a face, and a
+Windows set in another language gets its own, as Archicad does. Inter is no
+longer registered on Windows. The Mac keeps D132's Inter: the request was
+for Windows, and on a Mac the window does not sit inside Archicad's frame.
+
+**The sheets measure their type.** A miniature is laid out in sheet
+millimetres, which scale with the panel, and lettered at eight points,
+which do not. At eleven pixels, which eight points are on Windows, two
+figures did not hold: the 13 mm left under a cell
+for its hour was shorter than the hour's line, and every hour sat on the
+bottom of its drawing; the 34 mm chip was narrower than "SD.01", and the
+number ran into its edges. The room under a cell is now the hour's line and
+three pixels, and the chip is the number's width and five pixels a side,
+within the title block -- each at least what it was.
+
+**A project never saved is read.** Archicad gives one no name, only
+`isUntitled`, and the window took a blank name for a project it could not
+read: a new file read in full (135 layers, 55 masters, 11 storeys) was
+shown as "could not read the project", with every list empty. It is named
+`Untitled`, as Archicad's title bar names it, in the picker and in the
+probe; the run already said an unsaved project's results cannot be traced
+to a file.
+
+*What this does not change:* the Mac's face, the sizes, the drawings
+inside the miniatures, or Tk's drawing on Windows, which does not smooth
+its edges as the Mac's does.

@@ -70,14 +70,16 @@ window does today, the D132 reading is the one that holds.
    the tinted header. No focus ring is drawn on a tab or a tile, because it
    read as a second mark. The count on a card's header is what its tick is
    worth, and the dock draws the same.
-7. **Type is Inter, at the body size the operating system uses.** The face
-   the web site is set in, carried with the program (``assets/fonts``) and
-   registered for this process alone when the window opens, so nothing is
-   installed; a machine where that fails falls back to Segoe UI. Titles are
-   bold, hints are ``HINT`` grey and clear 4.5:1, group captions are small
-   capitals. Nothing on a thumbnail carries anything a person must read. On a
-   Mac the same face, registered through CoreText and falling back to the
-   Mac's own, at the same size on screen -- see ``points``.
+7. **Type is Archicad's on Windows, Inter on a Mac, at the body size the
+   operating system uses.** On Windows the window sits beside Archicad and
+   is set in the face Archicad's palettes are: the system's message font,
+   Segoe UI 9 on an English Windows, which Tk calls ``TkDefaultFont`` (D154).
+   On a Mac, Inter -- the web site's face, carried with the program
+   (``assets/fonts``) and registered through CoreText for this process
+   alone, so nothing is installed -- falling back to the Mac's own, at the
+   same size on screen (see ``points``). Titles are bold, hints are ``HINT``
+   grey and clear 4.5:1, group captions are small capitals. Nothing on a
+   thumbnail carries anything a person must read.
 """
 
 from __future__ import annotations
@@ -278,14 +280,15 @@ INSIDE: dict[str, str] = {
 #: the window that has to look different there -- which is the type and the
 #: Dock's icon, and nothing else.
 MACOS = sys.platform == "darwin"
-#: And the Windows build, where the bundled face can be registered.
+#: And the Windows build, which is set in Archicad's face rather than the
+#: bundled one.
 WINDOWS = sys.platform == "win32"
 
-#: The face and the log's face. Inter -- the web site's face, carried in
-#: ``assets/fonts`` and registered for this process by ``_load_fonts`` when
-#: the theme is applied; ``FACE`` is settled then. Where the registering
-#: fails it falls back to the face the rest of the operating system is set
-#: in: Segoe UI on Windows; on a Mac the system's own, which Tk names
+#: The face and the log's face, settled when the theme is applied. On
+#: Windows, Archicad's own (``_archicads_face``, D154). On a Mac, Inter --
+#: the web site's face, carried in ``assets/fonts`` and registered for this
+#: process by ``_load_fonts``; where the registering fails it falls back to
+#: the face the rest of the Mac is set in, which Tk names
 #: ``.AppleSystemUIFont`` (San Francisco), and a family Tk cannot find falls
 #: back to that same font rather than failing, so this cannot leave a Mac
 #: without type. Menlo has been the Mac's monospace since 10.6 and lines up
@@ -456,6 +459,20 @@ def _has_face(name: str) -> bool:
         return False
 
 
+def _archicads_face() -> str:
+    """The face Archicad's palettes are set in on Windows (D154).
+
+    Archicad takes the system's message font, as Tk does for
+    ``TkDefaultFont``, so asking Tk is asking the same setting: Segoe UI on
+    an English Windows, the system's own on another.
+    """
+    try:
+        family = str(tkfont.nametofont("TkDefaultFont").actual("family"))
+    except (tk.TclError, RuntimeError):
+        return FALLBACK_FACE
+    return family or FALLBACK_FACE
+
+
 def apply(root: tk.Misc) -> ttk.Style:
     """Dress the window. Returns the style, already configured.
 
@@ -470,8 +487,11 @@ def apply(root: tk.Misc) -> ttk.Style:
     # enumerates families, and ``_has_face`` below is that enumeration. On
     # a Mac the registering can report a file it already holds as a
     # failure, so the face is asked for either way.
-    _load_fonts()
-    FACE = BUNDLED_FACE if _has_face(BUNDLED_FACE) else FALLBACK_FACE
+    if WINDOWS:
+        FACE = _archicads_face()
+    else:
+        _load_fonts()
+        FACE = BUNDLED_FACE if _has_face(BUNDLED_FACE) else FALLBACK_FACE
 
     # clam is the themeable one. Without it every `configure` below is
     # accepted and then ignored by the platform engine, which is worse than

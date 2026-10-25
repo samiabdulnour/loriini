@@ -38,6 +38,7 @@ from sun_study.archicad.connection import (
     PORT_RANGE,
     STANDALONE_TAPIR_NAMESPACE,
     TAPIR_NAMESPACE,
+    UNTITLED,
     ArchicadConnection,
     ArchicadError,
     CommandFailedError,
@@ -373,6 +374,7 @@ class _FakeArchicad(http.server.BaseHTTPRequestHandler):
     """Answers the two commands the port scan uses, and nothing else."""
 
     project_name = "2400_SAMPLE1"
+    untitled = False
 
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", 0))
@@ -382,7 +384,12 @@ class _FakeArchicad(http.server.BaseHTTPRequestHandler):
         else:
             body = {
                 "succeeded": True,
-                "result": {"addOnCommandResponse": {"projectName": self.project_name}},
+                "result": {
+                    "addOnCommandResponse": {
+                        "projectName": self.project_name,
+                        "isUntitled": self.untitled,
+                    }
+                },
             }
         encoded = json.dumps(body).encode()
         self.send_response(200)
@@ -399,8 +406,8 @@ class _FakeArchicad(http.server.BaseHTTPRequestHandler):
 
 
 @contextlib.contextmanager
-def _fake_archicad() -> Iterator[int]:
-    server = http.server.HTTPServer(("127.0.0.1", 0), _FakeArchicad)
+def _fake_archicad(handler: type[_FakeArchicad] = _FakeArchicad) -> Iterator[int]:
+    server = http.server.HTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -447,6 +454,20 @@ def test_an_instance_that_will_not_name_its_project_is_still_reported() -> None:
 
     assert found == (Instance(port=port, project=""),)
     assert found[0].describe() == f"port {port}"
+
+
+def test_a_project_never_saved_is_listed_as_untitled() -> None:
+    """Archicad gives a new file no name, only ``isUntitled``. Listed blank, it
+    read as an Archicad with nothing open, beside one that really has none."""
+
+    class NeverSaved(_FakeArchicad):
+        project_name = ""
+        untitled = True
+
+    with _fake_archicad(NeverSaved) as port:
+        found = find_instances(ports=[port])
+    assert found == (Instance(port=port, project=UNTITLED),)
+    assert found[0].describe() == f"port {port} -- Untitled"
 
 
 def test_the_port_hint_names_the_other_instance_and_the_flag_to_use() -> None:
