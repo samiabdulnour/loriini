@@ -12,20 +12,20 @@ It is a handful of static files and the current build, served by nginx, on
 Fly.io beside the licence service, at `https://loriini.app` (and
 `www.loriini.app`; the `loriini-site.fly.dev` address keeps working). No
 cookies, no analytics, no third-party requests (the font is served from the
-site itself), nothing to keep running; the one script is the front's mosaic,
+site itself), nothing to keep running; the one script is the front's picture,
 inline, talking to nothing.
 
 ## What is where
 
 | | |
 |---|---|
-| `site/index.html` | The front: the name and the picture, nothing else. The picture is a canvas drawn as a mosaic of cells with thin gaps, falling away into the page at its edges and knocked out by the pointer. Its source is a pixel scene (the sun crossing 21 June, the towers' shadows, the lorikeet perched on the tallest) until there is a screen recording; uncommenting the `<video id="film">` beside the canvas makes the mosaic draw the film instead. |
+| `site/index.html` | The front: the name, large, over the top of the picture, and the picture the width of the page, on white; the front runs wider than a tab's page, its margins a share of the window, and its top bar holds only the tabs, while every other page's has the name on the left, linking home; every page runs the same width, its margins a share of the window. The picture is a canvas of whole cells, edge to edge, with a sharp edge all round: five black towers and the lorikeet standing where the sky meets the ground, the bird turned to face left, and their light grey shadows on the strip of khaki ground in front of them. The sky takes the hour's colour, pale at sunrise, blue at noon, red at sunset, passing between them through a nearly white sky and, in the evening, an apricot and an orange, with three uneven bands of glow round the sun, a plain yellow disc, tight at noon and spreading wide at sunrise and sunset; its light colours the ground, the shadows and the bird a little. The sun keeps to the day's arc on its own; the pointer takes it, always behind the towers, the bird and the ground, and the shadows follow it, short when it is high, long when it is low, thrown away from its side. On a narrow screen the picture shows the middle of the scene, round the bird. |
 | `site/makes.html`, `site/works.html`, `site/price.html`, `site/download.html` | The tabs: what it makes, how it works, price, download. Contact lives in every footer. |
 | `site/terms.html`, `site/privacy.html` | The licence terms and the privacy note, **drafts for a lawyer's hour** (licence-model.md §7). |
-| `site/style.css` | The one stylesheet. One typeface in two weights (400, 600) and three sizes (`--s`, `--m`, `--l`) and nothing else; thin 1px lines, flat buttons, a pale sage page (`#e1e4de`). |
+| `site/style.css` | The one stylesheet. One typeface in two weights (400, 600) and three sizes (`--s`, `--m`, `--l`) and nothing else; thin 1px lines, flat buttons, a white page. |
 | `site/fonts/` | Inter, regular and semibold, Latin and Latin Extended, self-hosted, with its licence (SIL OFL 1.1). |
-| `site/favicon.ico`, `site/icon-*.png`, `site/apple-touch-icon.png` | The application icon, the lorikeet over the black L on its orange tile (D151), written by `scripts/make_icon.py`: `icon-52.png` is the mark beside the name in the header, at double density. |
-| `site/lorikeet.png` | The whole bird the mosaic perches on its tower, at native resolution and drawn with `pixelated`. |
+| `site/favicon.ico`, `site/icon-*.png`, `site/apple-touch-icon.png` | The application icon, the lorikeet over the black L on its orange tile (D151), written by `scripts/make_icon.py`. `icon-52.png`, the mark at double density, is not shown in the top bar, which carries the name alone, as the front does. |
+| `site/lorikeet.png` | The whole bird that stands among the front picture's towers, at native resolution and drawn with its pixels whole. |
 | `site/download/` | The current build's zip, put there at deploy time and never committed. |
 | `deploy/site/` | The Dockerfile, nginx's config, and `fly.toml` for the `loriini-site` app. |
 
