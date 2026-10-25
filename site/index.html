@@ -12,8 +12,7 @@
 </head>
 <body>
 
-<header class="top wrap">
-  <a class="brand" href="/"><img src="lorikeet-head.png" alt=""> Loriini</a>
+<header class="top wrap wide bare">
   <nav class="main">
     <a href="makes.html">What it makes</a>
     <a href="works.html">How it works</a>
@@ -22,39 +21,36 @@
   </nav>
 </header>
 
-<!-- The front is only the picture: the name and the lorikeet, the sun
-     throwing their shadows. Everything said in words lives on its own page,
-     one per tab above. -->
-<main class="wrap front">
-  <h1 class="unseen">Loriini</h1>
+<!-- The front is the name over the picture: the towers and the lorikeet
+     under the sun, their shadows on the ground. Everything said in words
+     lives on its own page, one per tab above. -->
+<main class="wrap wide front">
+  <h1 class="name">Loriini</h1>
   <p class="unseen">Sun studies from Archicad, for a NSW DA.</p>
   <div class="picture">
-    <canvas id="picture" role="img" aria-label="LORIINI in coloured pixel letters and a pixel lorikeet beside it, facing the word, under a sky coloured as a heatmap of the sun; the sun follows the pointer and their shadows turn and stretch on the ground"></canvas>
+    <canvas id="picture" role="img" aria-label="Five black towers and a pixel lorikeet on the ground under the sun, the sky pale at sunrise, blue at noon and red at sunset; the sun follows the pointer and the shadows turn and stretch in front of them"></canvas>
   </div>
 </main>
 
 <footer class="slim">
-  <div class="wrap cols">
+  <div class="wrap wide cols">
     <div>Žofia Kosová, trading as Loriini.app · IČO 19785283</div>
     <div><a href="mailto:hi@loriini.app">hi@loriini.app</a> · <a href="terms.html">Licence terms</a> · <a href="privacy.html">Privacy</a></div>
   </div>
 </footer>
 
 <script>
-/* The front's picture: LORIINI in pixel letters, one colour of the lorikeet
-   to each, the lorikeet beside it, and the sun throwing their shadows on the
-   ground in front of them. The scene is drawn at one pixel per cell and each
-   pixel scaled up whole, edge to edge, to a sharp edge all round.
+/* The front's picture: five black towers and the lorikeet on the ground,
+   the sun crossing behind them and their shadows falling on the ground in
+   front of them. The scene is drawn at one pixel per cell, the bird's own
+   pixels for cells, and each pixel scaled up whole, edge to edge, to a sharp
+   edge all round.
 
-   The sky is a heatmap of the sun, in bands from the sun outwards, uneven
-   and drifting a little, its colours and spacing set by how high the sun
-   stands: on the horizon a dusk, warm all the way out, its bands close
-   together; halfway up the full heat, white through yellow, orange, red and
-   magenta to blue; overhead sharp, a white sun in one thin yellow ring, the
-   bands then spreading far apart into an even blue. The sun keeps to the
-   day's arc on its own; the pointer takes it, always behind the letters, the
-   bird and the ground, and the shadows follow it: short when it is high,
-   long when it is low, thrown away from its side. */
+   The sky takes the hour's colour: pale at sunrise, blue at noon, red at
+   sunset, with three bands of glow round the sun, a plain yellow disc. The
+   sun keeps to the day's arc on its own; the pointer takes it, always behind
+   the towers, the bird and the ground, and the shadows follow it: short when
+   it is high, long when it is low, thrown away from its side. */
 (function () {
   var box = document.querySelector('.picture');
   var canvas = document.getElementById('picture');
@@ -67,61 +63,56 @@
   var bird = new Image();
   bird.src = 'lorikeet.png';
 
-  var C = { sun: '#ffd21e', core: '#ff8a1f', ray: '#fff6c8' };
-  // The ground in the sun and in shade.
-  var ground = [[118, 124, 112], [236, 224, 188]];
-
-  // The letters, five cells by seven, the I three wide, coloured head to
-  // tail like the lorikeet.
-  var glyphs = {
-    L: ['X....', 'X....', 'X....', 'X....', 'X....', 'X....', 'XXXXX'],
-    O: ['.XXX.', 'X...X', 'X...X', 'X...X', 'X...X', 'X...X', '.XXX.'],
-    R: ['XXXX.', 'X...X', 'X...X', 'XXXX.', 'X.X..', 'X..X.', 'X...X'],
-    I: ['XXX', '.X.', '.X.', '.X.', '.X.', '.X.', 'XXX'],
-    N: ['X...X', 'XX..X', 'XX..X', 'X.X.X', 'X..XX', 'X..XX', 'X...X']
-  };
-  var WORD = 'LORIINI';
-  var INKS = ['#1846d6', '#2fd3ff', '#12a84a', '#a8e000', '#ffd21e', '#ff8a1f', '#f0301e'];
-  var wordWidth = WORD.split('').reduce(function (w, ch) { return w + glyphs[ch][0].length; }, 0) + WORD.length - 1;
-
-  // The heatmap's stops, from the sun outwards, as hue, saturation and
-  // lightness, for a sun on the horizon, halfway up and overhead.
-  var heat = [
-    { pos: [0, .14, .30, .46, .62, .80, 1],
-      hsl: [[34, 100, 72], [26, 100, 56], [12, 86, 52], [345, 64, 46], [305, 48, 32], [262, 50, 27], [248, 52, 17]] },
-    { pos: [0, .12, .26, .42, .58, .76, 1],
-      hsl: [[49, 100, 89], [49, 100, 58], [27, 100, 56], [4, 87, 53], [324, 69, 46], [266, 58, 42], [235, 65, 25]] },
-    { pos: [0, .07, .13, .135, .32, .60, 1],
-      hsl: [[52, 100, 95], [50, 100, 58], [50, 100, 58], [205, 82, 76], [210, 74, 63], [213, 64, 50], [218, 74, 38]] }
+  var C = { tower: '#000', sun: '#ffd900' };
+  var GROUND = [214, 207, 147], SHADE = [184, 184, 184];
+  // The sky at sunrise, noon and sunset: the three bands of glow from the
+  // sun outwards, then the sky itself.
+  var SKIES = [
+    [[255, 236, 110], [255, 244, 145], [255, 250, 172], [255, 255, 195]],
+    [[196, 232, 246], [152, 213, 242], [114, 200, 239], [76, 187, 236]],
+    [[255, 170, 50], [255, 140, 45], [255, 113, 42], [255, 88, 40]]
   ];
-  var BANDS = 9;
+
+  // The scene, as shares of a frame 70 cells high and 189 wide: where the
+  // sky meets the ground, where the towers and the bird stand, the towers'
+  // edges and tops. A narrower picture shows the middle of it, round the bird.
+  var ROWS = 70, WIDE = 189, HORIZON = .436, BASE = .78, FOCUS = .56;
+  var TOWERS = [[0, .128, HORIZON], [.169, .296, .358], [.372, .45, .358], [.651, .778, .358], [.859, .987, .358]];
+  var BIRD_AT = .475;
+
   function clamp(v) { return Math.min(Math.max(v, 0), 1); }
-  function hsl(c) {
-    var s = c[1] / 100, l = c[2] / 100, a = s * Math.min(l, 1 - l);
+  function smooth(a, b, v) { v = clamp((v - a) / (b - a)); return v * v * (3 - 2 * v); }
+  function rgb2hsl(c) {
+    var r = c[0] / 255, g = c[1] / 255, b = c[2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn, h = 0, s = 0;
+    if (d) {
+      s = d / (1 - Math.abs(2 * l - 1));
+      h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h = (h * 60 + 360) % 360;
+    }
+    return [h, s, l];
+  }
+  function hsl2rgb(c) {
+    var s = c[1], l = c[2], a = s * Math.min(l, 1 - l);
     function f(n) { var k = (n + c[0] / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); }
     return [f(0), f(8), f(4)];
   }
-  // Hue the short way round the wheel, so red turns to blue through magenta
-  // and purple rather than through grey.
-  function mixHsl(a, b, f) {
-    var dh = ((b[0] - a[0] + 540) % 360) - 180;
-    return [(a[0] + dh * f + 360) % 360, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
-  }
-  // The bands' colours for a sun at this height.
-  function bandsFor(elev) {
-    var e = clamp(elev) * 2, lo = heat[e < 1 ? 0 : 1], hi = heat[e < 1 ? 1 : 2], f = e < 1 ? e : e - 1;
-    var pos = lo.pos.map(function (p, i) { return p + (hi.pos[i] - p) * f; });
-    var col = lo.hsl.map(function (c, i) { return mixHsl(c, hi.hsl[i], f); });
-    var out = [];
-    for (var b = 0; b < BANDS; b++) {
-      var v = b / (BANDS - 1), i = 1;
-      while (i < pos.length - 1 && v > pos[i]) i++;
-      out.push(hsl(mixHsl(col[i - 1], col[i], clamp((v - pos[i - 1]) / (pos[i] - pos[i - 1] || 1)))));
+  // The sky for the hour: the morning turns from pale to blue straight, the
+  // evening from blue to red round the colour wheel through purple and
+  // magenta, the bands and the sky the same way, so neither passes through
+  // grey.
+  function skyFor(hour) {
+    if (hour <= .5) {
+      var f = smooth(.15, .33, hour);
+      return SKIES[0].map(function (c, i) { return c.map(function (v, k) { return Math.round(v + (SKIES[1][i][k] - v) * f); }); });
     }
-    return out;
+    var e = smooth(.67, .82, hour);
+    return SKIES[1].map(function (c, i) {
+      var a = rgb2hsl(c), b = rgb2hsl(SKIES[2][i]), dh = (b[0] - a[0] + 360) % 360;
+      return hsl2rgb([(a[0] + dh * e + 360) % 360, a[1] + (b[1] - a[1]) * e, a[2] + (b[2] - a[2]) * e]);
+    });
   }
 
-  // Smooth noise, for the bands' and the sun's uneven edges.
+  // Smooth noise, so the bands of glow are a little uneven.
   var perm = [];
   for (var i = 0; i < 256; i++) perm[i] = i;
   for (i = 255; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), sw = perm[i]; perm[i] = perm[j]; perm[j] = sw; }
@@ -133,84 +124,39 @@
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
   }
 
-  // The layout, in cells. Wide, the bird stands on the ground beside the
-  // word; narrow, it perches on the word's last letter at half size. Of the
-  // ways that fit, the one with the largest letters on the screen is taken,
-  // the bird beside the word wherever its cells can be four pixels or more.
-  // The scene is centred, the sky and the ground running on round it.
-  var W, H, cell, cols, rows, g, lay;
-  var GROUND = .18;
+  var W, H, cols, rows, off, hz, base;
   function size() {
     var r = box.getBoundingClientRect();
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     W = r.width; H = r.height;
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    function plan(s, beside) {
-      var p = { s: s, beside: beside, full: beside, bw: beside ? 40 : 20, bh: beside ? 53 : 27 };
-      p.width = 4 + wordWidth * s + (beside ? 4 + p.bw : 0) + 4;
-      p.height = (beside ? Math.max(7 * s, p.bh) : 7 * s + p.bh) + 6;
-      p.cell = Math.floor(Math.min(W / p.width, H * (1 - GROUND) / p.height));
-      p.size = 7 * s * p.cell;
-      return p;
-    }
-    function best(list, least) {
-      return list.filter(function (p) { return p.cell >= least; })
-        .sort(function (a, b) { return b.size - a.size || b.cell - a.cell; })[0];
-    }
-    lay = best([7, 6, 5, 4, 3].map(function (s) { return plan(s, true); }), 4) ||
-          best([4, 3, 2].map(function (s) { return plan(s, false); }), 3) || plan(2, false);
-    cell = Math.max(lay.cell, 2);
-    cols = Math.ceil(W / cell); rows = Math.ceil(H / cell);
-    g = rows - Math.max(3, Math.round(rows * GROUND));
+    rows = ROWS;
+    cols = Math.max(1, Math.round(W / (H / rows)));
+    off = cols >= WIDE ? Math.round((WIDE - cols) / 2) : Math.min(Math.max(Math.round(FOCUS * WIDE - cols / 2), 0), WIDE - cols);
+    hz = Math.round(HORIZON * rows); base = Math.round(BASE * rows);
     src.width = obj.width = cols; src.height = obj.height = rows;
   }
+  function at(share) { return Math.round(share * WIDE) - off; }
 
   function rect(c, x, y, w, h, colour) { c.fillStyle = colour; c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
 
-  // The sun's cells: a disc with an orange core, its edge a little uneven
-  // and moving, and rays, the four straight ones and the four diagonal ones
-  // taking turns.
-  function sunCells(sun, R, frame) {
-    var list = [];
-    for (var dy = -R - 1; dy <= R + 1; dy++)
-      for (var dx = -R - 1; dx <= R + 1; dx++) {
-        var a = Math.atan2(dy, dx), d = Math.sqrt(dx * dx + dy * dy);
-        var edge = R + .3 + (noise(Math.cos(a) * 1.5 + frame * .04, Math.sin(a) * 1.5 + 7) - .5) * 2.2;
-        if (d <= edge) list.push([sun.x + dx, sun.y + dy, d <= R * .5 ? C.core : C.sun]);
-      }
-    var straight = frame % 4 < 2;
-    for (var k = 0; k < 8; k++) {
-      if ((k % 2 === 0) !== straight) continue;
-      var ang = k * Math.PI / 4, ux = Math.round(Math.cos(ang)), uy = Math.round(Math.sin(ang));
-      for (var s = R + 3; s <= R + 4; s++) list.push([sun.x + ux * s, sun.y + uy * s, C.ray]);
-    }
-    return list;
-  }
-
-  // The word and the bird, on a clear layer of their own: drawn over the
+  // The towers and the bird, on a clear layer of their own: drawn over the
   // scene, and read back as the shapes whose shadows fall on the ground.
   function figures(frame) {
-    var s = lay.s, x = Math.floor((cols - lay.width) / 2) + 4;
-    var top = g - 7 * s, last = 0;
     octx.clearRect(0, 0, cols, rows);
-    WORD.split('').forEach(function (ch, n) {
-      var gl = glyphs[ch];
-      for (var gy = 0; gy < 7; gy++)
-        for (var gx = 0; gx < gl[gy].length; gx++)
-          if (gl[gy][gx] === 'X') rect(octx, x + gx * s, top + gy * s, s, s, INKS[n]);
-      last = x;
-      x += (gl[0].length + 1) * s;
+    TOWERS.forEach(function (tw) {
+      var x0 = at(tw[0]), x1 = at(tw[1]), top = Math.round(tw[2] * rows);
+      rect(octx, x0, top, x1 - x0, base - top, C.tower);
     });
-    // The lorikeet, turned to face the word: on the ground beside it, or
-    // perched on its last letter; hopping now and then.
+    // The lorikeet, turned to face left, its feet on the ground with the
+    // towers', its tail over the shadows; hopping now and then.
     if (bird.complete && bird.naturalWidth) {
-      var bw = lay.bw, bh = lay.bh, feet = lay.beside ? g : top;
-      var bx = lay.beside ? x - s + 4 : last + Math.round(1.5 * s) - Math.round(bw * .45);
-      var by = feet - Math.round(bh * .82) - (frame % 23 < 2 ? 1 : 0);
+      var bw = bird.naturalWidth, bh = bird.naturalHeight, bx = at(BIRD_AT);
+      var by = base - Math.round(bh * .82) - (frame % 23 < 2 ? 1 : 0);
       octx.save();
       octx.translate(bx + bw, by); octx.scale(-1, 1);
-      octx.imageSmoothingEnabled = !lay.full;
+      octx.imageSmoothingEnabled = false;
       octx.drawImage(bird, 0, 0, bw, bh);
       octx.restore();
     }
@@ -220,56 +166,57 @@
   }
 
   function draw(frame) {
-    // Where the sun stands. On its own it keeps to the day's arc for the
-    // hour t; as the pointer it stands where the pointer is, and the hour and
-    // its height are read back from there.
-    var R = Math.max(3, Math.round(rows * .045)), span = (g - R - 2) * .85, sun;
+    // Where the sun stands. On its own it keeps to the day's arc across the
+    // picture for the hour t; as the pointer it stands where the pointer is,
+    // and the hour and its height are read back from there.
+    var R = Math.max(3, Math.round(rows * .087)), low = hz - R, span = low - R - 2, sun;
     if (!aim) {
       var e = Math.sin(Math.PI * t);
-      sun = { x: Math.round(cols * (.04 + .92 * t)), y: Math.round(g - R - 1 - e * span), elev: e, hour: t };
+      sun = { x: Math.round(cols * (.06 + .88 * t)), y: Math.round(low - e * span), elev: e, hour: t };
     } else {
       var px = Math.floor(aim.x), py = Math.floor(aim.y);
-      sun = { x: px, y: py, elev: clamp((g - R - 1 - py) / span), hour: clamp((px / cols - .04) / .92) };
+      sun = { x: px, y: py, elev: clamp((low - py) / span), hour: clamp((px / cols - .06) / .88) };
     }
 
-    // The sky. Low, the bands sit close together; high, the first few hug
-    // the sun and the rest spread far out, the sky an even blue.
-    var big = Math.max(cols, g), D = big * (.5 + .5 * sun.elev), P = 1 - .5 * sun.elev;
-    var bands = bandsFor(sun.elev), fq = 4 / big, drift = frame * .015;
-    var sky = sctx.createImageData(cols, g), q = sky.data;
-    for (var y = 0; y < g; y++)
+    // The sky, with its three bands of glow round the sun, closer together
+    // when the sun is low.
+    var sky = skyFor(sun.hour), step = R * (.5 + .35 * sun.elev), fq = 3 / rows, drift = frame * .015;
+    var img = sctx.createImageData(cols, hz), q = img.data;
+    for (var y = 0; y < hz; y++)
       for (var x = 0; x < cols; x++) {
-        var v = Math.sqrt((x - sun.x) * (x - sun.x) + (y - sun.y) * (y - sun.y)) / D;
-        // The noise grows with the distance, so the sun's own ring stays crisp.
-        var n = noise(x * fq + drift, y * fq) * .65 + noise(x * fq * 2.3 - drift, y * fq * 2.3 + 9) * .35 - .5;
-        v = v * (1 + n * .4) + n * .015;
-        var b = bands[Math.min(BANDS - 1, Math.floor(Math.pow(clamp(v), P) * BANDS))], k = (y * cols + x) * 4;
-        q[k] = b[0]; q[k + 1] = b[1]; q[k + 2] = b[2]; q[k + 3] = 255;
+        var d = Math.sqrt((x - sun.x) * (x - sun.x) + (y - sun.y) * (y - sun.y));
+        d *= 1 + (noise(x * fq + drift, y * fq) - .5) * .3;
+        var c = sky[Math.min(3, Math.max(0, Math.floor((d - R) / step + 1)))], k = (y * cols + x) * 4;
+        q[k] = c[0]; q[k + 1] = c[1]; q[k + 2] = c[2]; q[k + 3] = 255;
       }
-    sctx.putImageData(sky, 0, 0);
-    sunCells(sun, R, frame).forEach(function (c) { if (c[1] < g) rect(sctx, c[0], c[1], 1, 1, c[2]); });
+    sctx.putImageData(img, 0, 0);
+    // The sun, a plain yellow disc, behind the ground when it is down.
+    for (var dy = -R; dy <= R; dy++)
+      for (var dx = -R; dx <= R; dx++)
+        if (dx * dx + dy * dy <= R * R + R * .6 && sun.y + dy < hz) rect(sctx, sun.x + dx, sun.y + dy, 1, 1, C.sun);
 
-    // The ground, lit, with the shadows on it. A point h cells above the
-    // ground falls h * dy cells in front of the figures and h * dx across.
+    // The ground, with the shadows on it. A point h cells above the ground
+    // falls h * sy cells in front of the figures and h * sx across.
     var mask = figures(frame);
     var ang = .1 + sun.elev * 1.35;
     var L = Math.min(2.4, Math.cos(ang) / Math.sin(ang));
-    var dy = .28 * L, dx = -(sun.hour - .5) * 1.6 * L;
-    // Low sun is warmer light.
-    var lit = [ground[1][0], ground[1][1] * (1 - (1 - sun.elev) * .27), ground[1][2] * (1 - (1 - sun.elev) * .55)];
-    var land = sctx.createImageData(cols, rows - g), d = land.data;
-    for (y = g; y < rows; y++)
+    var sy = .55 * L, sx = -(sun.hour - .5) * 1.6 * L;
+    var land = sctx.createImageData(cols, rows - hz), g = land.data;
+    for (y = hz; y < rows; y++)
       for (x = 0; x < cols; x++) {
-        var h = (y - g) / dy, sx = Math.round(x - h * dx), sy = Math.round(g - h);
-        var dark = sx >= 0 && sx < cols && sy >= 0 && mask[sy * cols + sx] === 1;
-        var c = dark ? ground[0] : lit, j = ((y - g) * cols + x) * 4;
-        d[j] = c[0]; d[j + 1] = c[1]; d[j + 2] = c[2]; d[j + 3] = 255;
+        var dark = false;
+        if (y > base) {
+          var h = (y - base) / sy, mx = Math.round(x - h * sx), my = Math.round(base - h);
+          dark = mx >= 0 && mx < cols && my >= 0 && mask[my * cols + mx] === 1;
+        }
+        var c2 = dark ? SHADE : GROUND, j = ((y - hz) * cols + x) * 4;
+        g[j] = c2[0]; g[j + 1] = c2[1]; g[j + 2] = c2[2]; g[j + 3] = 255;
       }
-    sctx.putImageData(land, 0, g);
+    sctx.putImageData(land, 0, hz);
 
     sctx.drawImage(obj, 0, 0);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(src, 0, 0, cols * cell, rows * cell);
+    ctx.drawImage(src, 0, 0, W, H);
   }
 
   var t = .3, frame = 0, aim = null, held = 0, queued = false;
@@ -284,15 +231,15 @@
   // leaves the picture; a touch leaves it where it was put for a few seconds.
   function point(e) {
     var r = canvas.getBoundingClientRect();
-    aim = { x: (e.clientX - r.left) / cell, y: (e.clientY - r.top) / cell };
+    aim = { x: (e.clientX - r.left) / r.width * cols, y: (e.clientY - r.top) / r.height * rows };
     held = e.pointerType === 'touch' ? performance.now() + 4000 : Infinity;
-    canvas.style.cursor = aim.y < g ? 'none' : 'crosshair';
+    canvas.style.cursor = aim.y < hz ? 'none' : 'crosshair';
     redraw();
   }
   // Back to its arc, carrying on from the hour it was let go at.
   function letGo() {
     if (!aim) return;
-    t = clamp((Math.floor(aim.x) / cols - .04) / .92);
+    t = clamp((Math.floor(aim.x) / cols - .06) / .88);
     aim = null;
     redraw();
   }
