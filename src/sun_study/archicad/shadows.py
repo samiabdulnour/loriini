@@ -116,26 +116,32 @@ __all__ = [
 #: The greys a baseline is drawn in, lightest first, and the blues a scenario
 #: is drawn in, palest first.
 #:
-#: Not a guess and not a taste. These six are sampled straight out of the
-#: legend of SSDA 401 -- the Campsie SSDA sheet -- so a run reproduces the
-#: sheet the office already draws by hand rather than approximating it. The
-#: split is the one the sheet itself makes: what will be there is grey and
-#: recedes, what is being argued about is blue and comes forward, and within
-#: each ramp the later entry is the stronger one because it is the newer claim.
+#: The split is the one SSDA 401 -- the Campsie SSDA sheet -- makes: what will
+#: be there is grey and recedes, what is being argued about is blue and comes
+#: forward, and within each ramp the later entry is the stronger one because
+#: it is the newer claim.
+#:
+#: The steps are wider than that sheet's (D150). Sampled off it, the closest
+#: rows were 4 to 7 apart in CIEDE2000 -- existing and future greys 4.2, the
+#: future grey and the palest blue 5.0 -- which on a printed sheet is one
+#: colour. These are spaced in CIELAB instead: the greys at L* 92, 71 and 52,
+#: the blues at L* 86, 65 and 44 with more chroma each step, so every pair of
+#: the seven legend rows is at least 14 apart and a black-and-white print
+#: still tells them apart by lightness.
 #:
 #: Both ramps repeat if a project names more sources than there are steps.
 #: Six is what the busiest reference sheet needed; a seventh would cycle back
 #: to the lightest, which is visibly wrong on the sheet and is meant to be --
 #: the answer then is to pass a colour, not to have the tool invent one.
 BASELINE_RAMP: tuple[tuple[int, int, int], ...] = (
-    (235, 235, 235),
-    (216, 216, 216),
-    (158, 158, 158),
+    (232, 232, 232),
+    (174, 174, 174),
+    (124, 124, 124),
 )
 SCENARIO_RAMP: tuple[tuple[int, int, int], ...] = (
-    (207, 215, 224),
-    (175, 191, 204),
-    (156, 172, 191),
+    (170, 223, 251),
+    (82, 166, 219),
+    (0, 108, 181),
 )
 
 #: The ADG envelope's colour: a lilac, not a fourth blue. It is the proposal
@@ -143,14 +149,13 @@ SCENARIO_RAMP: tuple[tuple[int, int, int], ...] = (
 #: just under the proposal and what shows of it is the fringe the extra room
 #: would add; in a fourth blue that fringe could not be told from the
 #: proposal's own edge.
-ADG_ENVELOPE_RGB: tuple[int, int, int] = (192, 182, 214)
+ADG_ENVELOPE_RGB: tuple[int, int, int] = (195, 164, 227)
 
 #: The office's shadow legend, row by row: the short name a run is given, the
 #: words on the sheet, whether it accumulates or is compared, and its colour.
 #:
-#: Colours read off the marked-up legend of 21 September 2026 pixel by pixel.
-#: The greys agree with the SSDA 401 ramp exactly; the blues sit a few units
-#: from the ramp's first sampling and are what the sheet shows now.
+#: The rows and their order are the marked-up legend of 21 September 2026;
+#: the colours are the ramps above (D150).
 #:
 #: Matched by name rather than dealt out by position, so a project that has no
 #: future context still draws its proposal in the proposal's blue. By

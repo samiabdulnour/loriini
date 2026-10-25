@@ -940,8 +940,43 @@ def test_a_legend_row_keeps_its_colour_when_another_is_left_out() -> None:
     )
     colours = {short: rgb for short, _words, _role, rgb in LEGEND}
 
-    assert styles["existing"].rgb == colours["EXISTING"] == (235, 235, 235)
-    assert styles["proposed"].rgb == colours["PROPOSED"] == (156, 172, 191)
+    assert styles["existing"].rgb == colours["EXISTING"] == (232, 232, 232)
+    assert styles["proposed"].rgb == colours["PROPOSED"] == (0, 108, 181)
+
+
+def _lab(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
+    """sRGB to CIELAB under D65."""
+
+    def linear(channel: int) -> float:
+        c = channel / 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    def f(t: float) -> float:
+        return t ** (1 / 3) if t > 216 / 24389 else (24389 / 27 * t + 16) / 116
+
+    r, g, b = (linear(c) for c in rgb)
+    x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047
+    y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b
+    z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / 1.08883
+    return 116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))
+
+
+def test_every_legend_row_can_be_told_from_every_other() -> None:
+    """D150: sampled off SSDA 401 the closest rows were 5.5 apart, one colour
+    on a print. Every pair is now 15 or more, and each ramp darkens step by
+    step, so the newer claim is the stronger one and a black-and-white print
+    still orders them."""
+    from itertools import combinations, pairwise
+    from math import dist
+
+    from sun_study.archicad.shadows import BASELINE_RAMP, LEGEND, SCENARIO_RAMP
+
+    rows = {short: _lab(rgb) for short, _words, _role, rgb in LEGEND}
+    closest = min(combinations(rows, 2), key=lambda pair: dist(rows[pair[0]], rows[pair[1]]))
+    assert dist(rows[closest[0]], rows[closest[1]]) >= 15, closest
+    for ramp in (BASELINE_RAMP, SCENARIO_RAMP):
+        lightness = [_lab(rgb)[0] for rgb in ramp]
+        assert all(a - b >= 15 for a, b in pairwise(lightness)), lightness
 
 
 def test_the_fills_are_stamped_even_though_the_add_on_answers_a_bare_guid() -> None:

@@ -169,7 +169,10 @@ scenarios -- fifteen documents and one A1 at 1:2000 in 49 s, each row in
 the legend's own colour through the run's pen set, stacked TOD < SEARS <
 PROPOSED < FUTURE < EXISTING. This is the main route for any diagram that
 involves the neighbours; the fills route is kept for the design's own
-every-hour drawing (`sun-study shadows --shadow-all-hours-only`).
+every-hour drawing (`sun-study shadows --shadow-all-hours-only`). Rerun
+the same day with the legend's colours spaced further apart
+([D150](decisions.md)): each row is a step anyone can tell from the next,
+the proposal the strongest blue.
 
 **Run live on 24 October 2026** on the Graphisoft sample project in
 Archicad 30 ([D142](decisions.md)): the existing neighbours as a source, the
