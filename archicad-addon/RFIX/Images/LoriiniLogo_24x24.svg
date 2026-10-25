@@ -8,7 +8,7 @@
   <polyline points="25.00,2.00 25.00,0.40" fill="none" stroke="#D98A1E" stroke-width="1.10" stroke-linecap="round" stroke-linejoin="round"/>
   <polyline points="21.60,10.60 18.60,12.30" fill="none" stroke="#D98A1E" stroke-width="1.27" stroke-linecap="round" stroke-linejoin="round"/>
   <polyline points="24.60,12.30 21.60,14.00" fill="none" stroke="#D98A1E" stroke-width="1.27" stroke-linecap="round" stroke-linejoin="round"/>
-  <polygon points="14.00,12.00 22.50,16.70 14.00,21.40 5.50,16.70" fill="#F4F3EE" stroke="#3C3C3A" stroke-width="1.10" stroke-linejoin="round"/>
-  <polygon points="5.50,16.70 14.00,21.40 14.00,27.00 5.50,22.30" fill="#C6C5BE" stroke="#3C3C3A" stroke-width="1.10" stroke-linejoin="round"/>
-  <polygon points="22.50,16.70 14.00,21.40 14.00,27.00 22.50,22.30" fill="#DEDDD6" stroke="#3C3C3A" stroke-width="1.10" stroke-linejoin="round"/>
+  <polygon points="14.00,12.00 22.50,16.70 14.00,21.40 5.50,16.70" fill="#F3F3F3" stroke="#3C3C3C" stroke-width="1.10" stroke-linejoin="round"/>
+  <polygon points="5.50,16.70 14.00,21.40 14.00,27.00 5.50,22.30" fill="#C5C5C5" stroke="#3C3C3C" stroke-width="1.10" stroke-linejoin="round"/>
+  <polygon points="22.50,16.70 14.00,21.40 14.00,27.00 22.50,22.30" fill="#DDDDDD" stroke="#3C3C3C" stroke-width="1.10" stroke-linejoin="round"/>
 </svg>

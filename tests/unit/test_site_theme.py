@@ -67,29 +67,19 @@ def test_every_theme_has_the_whole_legend_in_colours_the_add_on_can_take() -> No
             curate.rgb(ink)
 
 
-def test_fuse_is_the_office_legend_the_sheets_were_first_drawn_in() -> None:
-    fuse = theme.theme("fuse")
-    assert [(c.id, c.fill, c.stroke) for c in fuse.categories] == [
-        (c.id, c.fill, c.stroke) for c in curate.CATEGORIES
-    ]
-    assert fuse.ground == "aerial" and fuse.streets == "lines" and fuse.roundel == "ring"
-    assert theme.site_theme("fuse").look.sun == "discs"
-
-
 def test_themes_resolve_by_id_and_by_their_former_names() -> None:
     assert theme.theme("Kingfisher").id == "kingfisher"
     assert theme.theme("conure").id == "canary"
     assert theme.theme("flamingo-2").id == "kingfisher"
-    assert theme.theme("office").id == "fuse"
-    assert theme.theme("oatley").id == "fuse", "the name it had"
-    assert theme.site_theme("oatley").id == "fuse"
+    assert not theme.is_theme("fuse") and not theme.is_site_theme("fuse"), "gone (D152)"
+    assert theme.theme("fuse").id == "flamingo" and theme.site_theme("oatley").id == "heron"
     assert theme.theme(None).id == theme.DEFAULT_THEME == "flamingo"
     assert theme.theme("no such bird").id == "flamingo"
     assert theme.site_theme("dove").id == "heron"
     assert theme.site_theme("kookaburra").id == "kingfisher"
     assert theme.site_theme(None).id == theme.DEFAULT_SITE_THEME == "heron"
-    assert theme.theme_ids() == ("flamingo", "kingfisher", "heron", "canary", "fuse")
-    assert theme.site_theme_ids() == ("heron", "kingfisher", "flamingo", "canary", "fuse")
+    assert theme.theme_ids() == ("flamingo", "kingfisher", "heron", "canary")
+    assert theme.site_theme_ids() == ("heron", "kingfisher", "flamingo", "canary")
 
 
 def test_a_tint_on_paper_is_the_colour_laid_over_white() -> None:
@@ -516,13 +506,6 @@ def test_the_site_analyst_themes_number_the_places_and_key_them() -> None:
     ]
 
 
-def test_fuse_keeps_the_names_on_the_map() -> None:
-    drawing = context_drawing(context_bundle(), frame(), theme="fuse")
-    on_map = {t.text for t in drawing.texts if not t.layer.endswith(".Sheet")}
-    assert {"ST GEORGE\nHOSPITAL", "JUBILEE OVAL", "KOGARAH"} <= on_map
-    assert not any(f.element_id.startswith("SA PLACE ") for f in drawing.fills)
-
-
 def test_more_than_one_station_is_numbered_nearest_the_site_first() -> None:
     from sun_study.site import nsw
 
@@ -672,14 +655,6 @@ def test_canary_draws_the_offices_zigzag_beside_the_road() -> None:
             assert 1.5 <= _distance_to_line(pt, road) <= 2.5, "10 mm out, teeth 2 mm either way"
 
 
-def test_fuse_keeps_the_zigzag_on_the_road() -> None:
-    bundle = site_bundle()
-    drawing = site_drawing(bundle, frame(), theme="fuse")
-    road = frame().ring(bundle.roads[0].coords)
-    zigzags = [line for line in drawing.lines if line.part == "Noise"]
-    assert zigzags and all(_distance_to_line(pt, road) < 0.5 for pt in zigzags[0].points)
-
-
 def test_herons_sun_paths_are_white_bands_winters_broken_into_dashes() -> None:
     drawing = site_drawing(site_bundle(), frame(), theme="heron")
     paths = [f for f in drawing.fills if f.element_id == "SA SUN PATH"]
@@ -750,11 +725,6 @@ def test_the_generator_themes_draw_the_site_sheets_furniture_in_its_colours() ->
         f for f in heron.fills if f.element_id.startswith("SA TREE") and "TRUNK" not in f.element_id
     )
     assert canopy.colour == "#5a9c89" and canopy.wash, "over the photo, a wash of the teal"
-    fuse = site_drawing(site_bundle(), frame(), theme="fuse")
-    old = next(
-        f for f in fuse.fills if f.element_id.startswith("SA TREE") and "TRUNK" not in f.element_id
-    )
-    assert old.colour == "#7dbb57", "FUSE keeps the colours it was first drawn in"
 
 
 def test_bus_stops_on_the_site_sheet_are_the_blue_ring_in_every_theme() -> None:
@@ -789,9 +759,11 @@ def test_a_preset_saved_under_a_former_style_name_still_draws_that_style() -> No
     pytest.importorskip("tkinter", reason="this machine has no tkinter")
     from sun_study.app.window import CONTEXT_STYLES, SITE_STYLES, _style_id
 
-    assert "FUSE" in CONTEXT_STYLES and "FUSE" in SITE_STYLES and "Oatley" not in CONTEXT_STYLES
-    assert _style_id("FUSE", site=False) == "fuse"
-    assert _style_id("Oatley", site=False) == "fuse", "a preset saved before the rename"
-    assert _style_id("Oatley", site=True) == "fuse"
+    assert list(CONTEXT_STYLES) == ["Flamingo", "Kingfisher", "Heron", "Canary"]
+    assert list(SITE_STYLES) == list(CONTEXT_STYLES), "in the context sheet's order"
+    assert _style_id("Conure", site=False) == "canary", "a preset saved before the rename"
+    # FUSE is gone (D152): a preset that chose it names nothing, and the
+    # sheet is drawn in the default.
+    assert _style_id("FUSE", site=False) == "" and _style_id("Oatley", site=True) == ""
     assert _style_id("Heron", site=True) == "heron"
     assert _style_id("nonsense", site=False) == ""

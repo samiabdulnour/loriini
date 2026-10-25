@@ -41,8 +41,8 @@ corners, the face, and above all the accent: a pale lemon under dark text
 where a dark blue carried white. Where a principle below says what the
 window does today, the D132 reading is the one that holds.
 
-1. **Three surfaces, and nothing else is a colour.** The ground is a warm
-   off-white: ``CHROME`` for the window's surround, the sidebar and the
+1. **Three surfaces, and nothing else is a colour.** The ground is a neutral
+   off-white (D153): ``CHROME`` for the window's surround, the sidebar and the
    dock, ``PAGE`` -- a shade lighter -- for the page a section is laid out
    on. Anything you edit or anything the run makes is a white card on that
    ground. The accent means chosen or switched on, and it is pale, so what
@@ -91,13 +91,13 @@ from typing import Any
 
 # -- the palette, the same one the icons are drawn from --------------------
 
-#: The window's surround, the sidebar and the dock: the warm off-white the
-#: web site's ground is lightened to. It was Archicad's own neutral #F0F0F0
-#: from D109 to D132, sampled so the window would not look like a different
-#: program parked on top of Archicad; the warmth is slight enough that the
-#: window still sits beside Archicad's grey, and it is the one thing that
-#: says the window and the site are the same product.
-CHROME = "#F1F0E6"
+#: The window's surround, the sidebar and the dock: a neutral off-white. It
+#: was Archicad's own neutral #F0F0F0 from D109 to D132, sampled so the window
+#: would not look like a different program parked on top of Archicad, then a
+#: warm one after the web site's ground; since D153 every grey in the window
+#: is neutral again, each the grey of the same lightness as the warm one it
+#: replaced, and the lemon and the blue are the only colours left.
+CHROME = "#EFEFEF"
 
 #: Where the settings are. White, because the icons are drawn on white and a
 #: sheet of paper on grey is not a sheet of paper. Archicad's panels agree.
@@ -106,7 +106,7 @@ SURFACE = "#FFFFFF"
 #: The page a section is laid out on: a shade *lighter* than the surround
 #: now, a rounded panel the cards sit on, so the page reads as the lit
 #: thing and the surround as what holds it.
-PAGE = "#F8F7F0"
+PAGE = "#F7F7F7"
 
 #: The sidebar of pages down the left, and the sheets panel down the right.
 #: The surround's own colour: neither is a panel of its own any more, the
@@ -116,27 +116,27 @@ SIDEBAR = CHROME
 #: pointer. A white card like the others.
 HELP = "#FFFFFF"
 #: A panel's edge when its study is off, or it has no study.
-PANEL_EDGE = "#E3E2D8"
+PANEL_EDGE = "#E1E1E1"
 #: The grey of a sidebar group's caption -- SET UP, STUDIES, TOOLS. Darker
 #: than ``HINT`` because it sits on the surround, not on white.
-CAPTION = "#5B5A52"
+CAPTION = "#595959"
 
 #: A control nobody has chosen, and the trough of the progress bar.
-MUTED = "#ECEBE2"
+MUTED = "#EAEAEA"
 
-INK = "#1F1F1D"
-BODY = "#3C3C3A"
+INK = "#1F1F1F"
+BODY = "#3C3C3C"
 #: The line under a control. 5.3:1 on white, which is the point of it.
-HINT = "#6B6A63"
-#: A divider. Lighter than a field's edge, and warm -- LINE separates, EDGE
+HINT = "#6A6A6A"
+#: A divider. Lighter than a field's edge -- LINE separates, EDGE
 #: encloses something you can type in, and clears 3:1 on white because a
 #: control's boundary owes the eye that much.
-LINE = "#E3E2D8"
-EDGE = "#8A8980"
+LINE = "#E1E1E1"
+EDGE = "#888888"
 #: A button face's edge, and since D133 a sheet's in the panel: lighter than
 #: a field's, because a button is pressed and not typed in. The same figure
 #: ``scripts/make_icons.py`` draws the faces with.
-FACE_EDGE = "#CFCEC3"
+FACE_EDGE = "#CDCDCD"
 
 #: The accent: what is chosen, switched on, or the action a page leads to.
 #: Pale lemon, after the web site's lemon board (D132), and pale on purpose:
@@ -943,7 +943,7 @@ def apply(root: tk.Misc) -> ttk.Style:
         lightcolor=MUTED,
         darkcolor=MUTED,
     )
-    style.map("Vertical.TScrollbar", background=[("active", "#CFCCC2")])
+    style.map("Vertical.TScrollbar", background=[("active", "#CCCCCC")])
     #: The same bar in the sheets panel, whose gutter is the panel's grey.
     style.configure("Dock.Vertical.TScrollbar", troughcolor=SIDEBAR, bordercolor=SIDEBAR)
     #: And on a page, whose gutter is the page's grey.
