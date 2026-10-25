@@ -6931,6 +6931,16 @@ def shadows(
             ),
         ),
     ] = False,
+    shadow_all_hours_colour: Annotated[
+        str,
+        typer.Option(
+            "--shadow-all-hours-colour",
+            help=(
+                "The colour of the every-hour drawing, red or blue: each hour a 25 % "
+                "drafting fill in the pen nearest it, no outline."
+            ),
+        ),
+    ] = "red",
     shadow_all_hours_only: Annotated[
         bool,
         typer.Option(
@@ -7044,6 +7054,7 @@ def shadows(
             shadow_storey=shadow_storey,
             shadow_all_hours=shadow_all_hours or shadow_all_hours_only,
             only_all_hours=shadow_all_hours_only,
+            all_hours_colour=shadow_all_hours_colour,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -7079,6 +7090,7 @@ def shadows(
             shadow_storey=shadow_storey,
             shadow_all_hours=shadow_all_hours or shadow_all_hours_only,
             only_all_hours=shadow_all_hours_only,
+            all_hours_colour=shadow_all_hours_colour,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -7166,6 +7178,7 @@ def shadows(
             shadow_storey=shadow_storey,
             shadow_all_hours=shadow_all_hours or shadow_all_hours_only,
             only_all_hours=shadow_all_hours_only,
+            all_hours_colour=shadow_all_hours_colour,
             shadow_favourite=shadow_favourite,
             terrain_floor=shadow_terrain_floor,
             edge_tolerance=shadow_edge,
@@ -7195,6 +7208,7 @@ def _shadow_report(
     shadow_favourite: str | None,
     shadow_all_hours: bool = False,
     only_all_hours: bool = False,
+    all_hours_colour: str = "red",
     terrain_floor: float | None,
     edge_tolerance: float,
     drawing_scale: float,
@@ -7436,6 +7450,7 @@ def _shadow_report(
             transform=frame,
             all_hours=outlined,
             only_all_hours=only_all_hours and outlined is not None,
+            all_hours_colour=all_hours_colour,
         )
         typer.echo("")
         typer.echo(drawn.describe())

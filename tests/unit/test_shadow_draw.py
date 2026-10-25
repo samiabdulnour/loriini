@@ -99,6 +99,7 @@ class ShadowTransport:
                     "attributes": [
                         {"name": "Solid Fill", "index": 65},
                         {"name": "Empty Fill", "index": 137},
+                        {"name": "25 %", "index": 24},
                     ]
                 }
             if given.get("attributeType") == "Line":
@@ -608,7 +609,7 @@ def test_every_hour_of_the_design_is_outlined_on_one_layer_of_its_own() -> None:
     connection, transport = connect(labels)
     day = "JUNE 21"
     transport.layers.append(("all-hours", all_hours_layer_name(day), 300, False))
-    report = draw_shadow_series(connection, drawn_series, all_hours=key)
+    report = draw_shadow_series(connection, drawn_series, all_hours=key, all_hours_pen=45)
 
     assert not transport.all_parameters_for("CreatePolylines"), "fills, not polylines (D145)"
     outlines = [
@@ -618,9 +619,13 @@ def test_every_hour_of_the_design_is_outlined_on_one_layer_of_its_own() -> None:
         if fill["layerIndex"] == 300
     ]
     assert outlines
-    assert all(fill["fillIndex"] == 137 for fill in outlines), "the empty fill"
+    # D147, the office's own shadow fill: 25 %, drafting, the pen, a
+    # transparent background and no outline.
+    assert all(fill["fillIndex"] == 24 for fill in outlines), "the 25 % fill"
+    assert all(fill["determination"] == "drafting" for fill in outlines)
+    assert all(fill["fillPen"] == 45 and fill["backgroundPen"] == 0 for fill in outlines)
+    assert all(fill["contourPen"] == 0 for fill in outlines), "no outline"
     assert all(fill["lineTypeIndex"] == 1 for fill in outlines), "continuous, not dense dotted"
-    assert all(fill["backgroundPen"] == 0 and fill["contourPen"] == 1 for fill in outlines)
     assert all(
         fill["contours"][0]["points"][0] != fill["contours"][0]["points"][-1] for fill in outlines
     ), "left open: the add-on closes it"
@@ -679,7 +684,9 @@ def test_only_the_every_hour_drawing_draws_no_hour_of_its_own() -> None:
     day = "JUNE 21"
     transport.layers.append(("all-hours", all_hours_layer_name(day), 300, False))
 
-    report = draw_shadow_series(connection, drawn_series, all_hours=key, only_all_hours=True)
+    report = draw_shadow_series(
+        connection, drawn_series, all_hours=key, only_all_hours=True, all_hours_pen=45
+    )
 
     assert not [h for h in hatches(transport) if h["layerIndex"] != 300], "no fill for any hour"
     assert report.fills == 0 and report.combinations == ()
@@ -699,10 +706,10 @@ def test_only_the_every_hour_drawing_needs_a_designed_building() -> None:
         draw_shadow_series(connection, series(["9AM"]), only_all_hours=True)
 
 
-def test_a_project_without_an_empty_fill_is_told_rather_than_hidden_under_solid_hours(
+def test_a_project_without_the_25_percent_fill_is_told_rather_than_drawn_solid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A solid fill per hour would hide every hour but the last; with no empty
+    """A solid fill per hour would hide every hour but the last; with no 25 %
     fill to draw them in, the run stops and says which fill to add."""
     from sun_study.archicad import shadows as module
 
@@ -712,8 +719,59 @@ def test_a_project_without_an_empty_fill_is_told_rather_than_hidden_under_solid_
     labels = ["9AM"]
     drawn = series(labels)
     connection, _ = connect(labels)
-    with pytest.raises(ArchicadError, match="Empty Fill"):
+    with pytest.raises(ArchicadError, match="25 %"):
         draw_shadow_series(connection, drawn, all_hours="PROPOSED")
+
+
+def test_the_every_hour_drawing_is_red_or_blue_in_the_nearest_pen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D147: red by default, the pen nearest the office's pen-45 red; blue
+    when asked; anything else refused."""
+    from sun_study.archicad import shadows as module
+    from sun_study.archicad.draw import Pen
+
+    monkeypatch.setattr(
+        module,
+        "pen_table",
+        lambda _c: (Pen(1, (0, 0, 0)), Pen(45, (204, 9, 32)), Pen(7, (20, 80, 210))),
+    )
+    labels = ["9AM"]
+    grid = ground_plane_grid(
+        (np.array([-40.0, -5.0, 0.0]), np.array([10.0, 5.0, 20.0])),
+        datum_m=0.0,
+        spacing_m=2.0,
+        margin_m=40.0,
+    )
+    sources = default_sources(
+        box((-40.0, -5.0, 0.0), (-30.0, 5.0, 10.0)),
+        box((0.0, -5.0, 0.0), (10.0, 5.0, 20.0)),
+        None,
+    )
+    key = module.designed_source([source.spec for source in sources])
+    drawn = cast_shadows(
+        grid,
+        sources=sources,
+        sun_vectors=np.repeat(WEST_45, 1, axis=0),
+        moments=[dt.datetime(2024, 6, 21, 9, tzinfo=dt.UTC)],
+        labels=labels,
+        spacing_m=2.0,
+        outline=key,
+    )
+    for colour, pen in (("red", 45), ("blue", 7)):
+        connection, transport = connect(labels)
+        transport.layers.append(("all-hours", module.all_hours_layer_name("JUNE 21"), 300, False))
+        draw_shadow_series(connection, drawn, all_hours=key, all_hours_colour=colour)
+        drawn_fills = [
+            fill
+            for call in transport.all_parameters_for("CreateFills")
+            for fill in call["fills"]
+            if fill["layerIndex"] == 300
+        ]
+        assert drawn_fills and all(fill["fillPen"] == pen for fill in drawn_fills), colour
+    connection, _ = connect(labels)
+    with pytest.raises(ArchicadError, match="red or blue"):
+        draw_shadow_series(connection, drawn, all_hours=key, all_hours_colour="green")
 
 
 def test_the_designed_building_is_proposed_or_else_the_last_scenario() -> None:

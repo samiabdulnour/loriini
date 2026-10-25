@@ -53,6 +53,7 @@ from sun_study.archicad.draw import (
     clear_layer,
     create_elements,
     ensure_layer,
+    pen_table,
     place_texts,
 )
 from sun_study.archicad.ids import (
@@ -586,6 +587,9 @@ def _as_legend_fill(
     one: dict[str, Any] = {
         "contours": [{"points": list(hatch["coordinates"])}],
         "layerIndex": hatch["layerIndex"],
+        # A drafting fill, named: a fill given no category takes the Fill
+        # tool's, and a cover fill is drawn as a model view option says (D147).
+        "determination": "drafting",
         "fillPen": hatch["fillPenIndex"],
         "showArea": False,
     }
@@ -692,9 +696,19 @@ def _create_legend_fills(
     return answers
 
 
-#: The fill an hour's outline is drawn in: empty, so the seven hours drawn
-#: over one another all show, each as its contour. First found first used.
-ALL_HOURS_FILLS: tuple[str, ...] = ("Empty Fill", "Empty", "Background")
+#: The fill each hour of the every-hour drawing is drawn in: the office's
+#: 25 % dots, as its own shadow fills are set (D147) -- a dot pattern on a
+#: transparent background, so the hours drawn over one another all show
+#: through. First found first used.
+ALL_HOURS_FILLS: tuple[str, ...] = ("25 %", "25%", "Percent 25")
+
+#: The colours the every-hour drawing is drawn in, by the name a run asks
+#: for, matched to the nearest pen of the model's pen table: the red is the
+#: office's own pen 45 on the sample project, (204, 9, 32) (D147).
+ALL_HOURS_COLOURS: dict[str, tuple[int, int, int]] = {
+    "red": (204, 9, 32),
+    "blue": (30, 90, 200),
+}
 
 #: The line type of that contour: continuous. Named, because a fill takes the
 #: Fill tool's line type otherwise, and the polylines this replaced came out
@@ -712,14 +726,16 @@ def _all_hours_elements(
     fill_index: int | None = None,
     line_type_index: int | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """One day's outlines as fills, in the add-on's ``CreateFills`` shape, and
+    """One day's shadows as fills, in the add-on's ``CreateFills`` shape, and
     each hour's label.
 
-    A fill per ring, its contour in ``pen`` on the continuous line type, its
-    pattern ``fill_index`` -- the project's empty fill -- on a transparent
-    background, so every hour's shadow shows through the others as its
-    outline, and each is a fill a person can select, measure, or give a
-    pattern of their own (D145). The ring goes open: the add-on closes it.
+    A fill per ring, set as the office sets its shadow fills (D147): a
+    **drafting** fill -- a fill given no category takes the Fill tool's, and
+    on the sample project that drew every hour as a solid black block -- in
+    ``fill_index``, the 25 % dots, in ``pen``, on a transparent background,
+    with **no outline** (contour pen 0). The hours drawn over one another all
+    show through the dots, and each is a fill a person can select or measure
+    (D145). The ring goes open: the add-on closes it.
 
     The label sits on the vertex of that hour's outline farthest from the
     middle of all of them -- the tip of the shadow, which is where the hours
@@ -744,8 +760,9 @@ def _all_hours_elements(
             fill: dict[str, Any] = {
                 "contours": [{"points": [{"x": x, "y": y} for x, y in points]}],
                 "layerIndex": layer_index,
+                "determination": "drafting",
                 "fillPen": pen,
-                "contourPen": pen,
+                "contourPen": 0,
                 "backgroundPen": 0,
                 "showArea": False,
             }
@@ -814,7 +831,8 @@ def draw_shadow_series(
     transform: PlanTransform | None = None,
     favourite: str | None = None,
     all_hours: str | None = None,
-    all_hours_pen: int = 1,
+    all_hours_pen: int | None = None,
+    all_hours_colour: str = "red",
     label_height_mm: float = 2.5,
     only_all_hours: bool = False,
 ) -> ShadowDrawReport:
@@ -827,11 +845,12 @@ def draw_shadow_series(
 
     ``all_hours`` names a source whose own shadow was outlined (see
     ``cast_shadows``); each day then also gets one layer carrying that shadow
-    at every hour, each hour a fill with an empty pattern, a transparent
-    background and a continuous contour, labelled with its hour at the tip,
-    and a combination showing that layer alone. Empty, because fills laid
-    over one another hide each other, and the point of the drawing is to see
-    every hour at once (D145).
+    at every hour, each hour a drafting fill in the 25 % dots on a
+    transparent background with no outline, labelled with its hour at the
+    tip, and a combination showing that layer alone. Dots, because solid
+    fills laid over one another hide each other, and the point of the drawing
+    is to see every hour at once (D145, D147). ``all_hours_pen`` is the pen,
+    or with none the pen nearest ``all_hours_colour``, red or blue.
 
     ``storey_index`` is which storey the fills belong to; ``None`` omits the
     floor index entirely, which is what a worksheet needs and what a plan must
@@ -887,11 +906,23 @@ def draw_shadow_series(
     continuous = attribute_index(connection, "Line", ALL_HOURS_LINES) if days else None
     if days and empty is None:
         raise ArchicadError(
-            f"The every-hour drawing is drawn as fills with an empty pattern, so the hours "
-            f"show through one another, and the project has no fill called "
-            f"{' or '.join(repr(name) for name in ALL_HOURS_FILLS)}. Add one to the "
-            f"project's fill types and run again."
+            f"The every-hour drawing is drawn in the 25 % dot fill on a transparent "
+            f"background, so the hours show through one another, and the project has no "
+            f"fill called {' or '.join(repr(name) for name in ALL_HOURS_FILLS)}. Add one to "
+            f"the project's fill types and run again."
         )
+    if days and all_hours_pen is None:
+        wanted_rgb = ALL_HOURS_COLOURS.get(all_hours_colour.casefold())
+        if wanted_rgb is None:
+            raise ArchicadError(
+                f"The every-hour drawing is drawn red or blue, not {all_hours_colour!r}."
+            )
+        pens = pen_table(connection)
+        all_hours_pen = min(
+            pens,
+            key=lambda pen: sum((a - b) ** 2 for a, b in zip(pen.rgb, wanted_rgb, strict=True)),
+        ).index
+    drawn_pen = all_hours_pen if all_hours_pen is not None else 1
     # Hidden in every hour's combination too, so a single hour never shows
     # the every-hour lines over it.
     wanted += [all_hours_layer_name(day) for day in days]
@@ -1002,7 +1033,7 @@ def draw_shadow_series(
             [(i.label, [placed(r) for r in i.outlines.get(all_hours or "", ())]) for i in instants],
             layer.index,
             storey_index,
-            all_hours_pen,
+            drawn_pen,
             label_height_mm,
             fill_index=empty,
             line_type_index=continuous,

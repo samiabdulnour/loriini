@@ -5900,3 +5900,37 @@ outline (D143) is sent it too.
 
 *What this does not change:* any colour, weight or pen, any line that is
 meant to be dashed or dotted, or which elements a sheet draws.
+
+### D147 — The shadow fills are the office's: 25 %, drafting, red or blue, no outline
+
+Asked 25 October 2026, with a screenshot of the every-hour drawing (D145)
+showing each hour as a solid black block in a thick jagged outline: *"when
+you create shadows, make them 25%, drafting fill, red or blue without
+outline. this is correct setting"* -- the Fill tool set to `25 %`, Drafting
+Fill, fill pen 45 (red), background pen 0, the outline off.
+
+**Why black.** The add-on draws a fill from the Fill tool's defaults and
+changes only what it is told. The every-hour fills were not told their
+category, so they took the Fill tool's, and drawn as that category under
+the floor plan's model view options they came out solid black; their
+contour, in pen 1 with the tool's weight, was the thick outline. The same
+was true of the shadow diagram's own legend fills and the combined sheet's
+swatches and site outlines: none named its category.
+
+**Decided.** Every fill the shadow routes make names `drafting`. The
+every-hour drawing is drawn as the office draws its shadow fills: the `25 %`
+fill (`25 %`, `25%` or `Percent 25`, first found), in the pen nearest the
+office's red -- (204, 9, 32), its pen 45 -- or with
+`--shadow-all-hours-colour blue` the nearest blue, a transparent background
+and no outline (contour pen 0). Dots rather than a solid, so the seven hours
+over one another all show. A project without the 25 % fill is told before
+anything is drawn. The stacked 3D Documents keep their solid shadows: the
+split between the rows is the upper rows covering the lower, and dots would
+let every row show through every other.
+
+**Run, sample project.** The tower at every hour from 9 to 3: nineteen fills
+in `25 %`, pen 45, background 0, contour 0, seven labels, no polyline; read
+back through Tapir, which does not report a fill's category.
+
+*What this does not change:* which shadow is drawn, the hours, the labels,
+the layer, its view and sheet (D144, D145), or the stack (D141 to D143).

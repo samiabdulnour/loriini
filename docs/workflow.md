@@ -282,8 +282,10 @@ of `sun-study shadow-plans`, Archicad casting every shadow
 ([shadow-plans.md](shadow-plans.md)). The fills described below, Loriini's
 own caster, are kept for one drawing: the designed building's own shadow at
 every hour on one plan, `--shadow-all-hours-only`, drawn on the floor plan
-with a view and a sheet and nothing per hour: each hour a fill with an empty
-pattern and a continuous outline, labelled at its tip ([D145](decisions.md)).
+with a view and a sheet and nothing per hour: each hour a drafting fill in the
+`25 %` dots, red (or `--shadow-all-hours-colour blue`), on a transparent
+background with no outline, labelled at its tip ([D145](decisions.md),
+[D147](decisions.md)).
 
 A different study from the one above, sharing the export machinery and almost
 nothing else. Settled against a real SSDA set on Crows Nest; see
