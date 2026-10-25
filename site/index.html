@@ -46,12 +46,14 @@
    pixels for cells, and each pixel scaled up whole, edge to edge, to a sharp
    edge all round.
 
-   The sky takes the hour's colour: pale at sunrise, blue at noon, red at
-   sunset, with three bands of glow round the sun, a plain yellow disc, and
-   its light colours the ground, the shadows and the bird a little. The sun
-   keeps to the day's arc on its own; the pointer takes it, always behind
-   the towers, the bird and the ground, and the shadows follow it: short
-   when it is high, long when it is low, thrown away from its side. */
+   The sky runs down to the towers' feet, the ground a strip in front of
+   them. It takes the hour's colour: pale at sunrise, blue at noon, red at
+   sunset, with three bands of glow round the sun, a plain yellow disc,
+   spreading wide at sunrise and sunset; and its light colours the ground,
+   the shadows and the bird a little. The sun keeps to the day's arc on its
+   own; the pointer takes it, always behind the towers, the bird and the
+   ground, and the shadows follow it: short when it is high, long when it is
+   low, thrown away from its side. */
 (function () {
   var box = document.querySelector('.picture');
   var canvas = document.getElementById('picture');
@@ -88,10 +90,11 @@
   var TINT = .22;
 
   // The scene, as shares of a frame 70 cells high and 189 wide: where the
-  // sky meets the ground, where the towers and the bird stand, the towers'
-  // edges and tops. A narrower picture shows the middle of it, round the bird.
-  var ROWS = 70, WIDE = 189, HORIZON = .436, BASE = .78, FOCUS = .56;
-  var TOWERS = [[0, .128, HORIZON], [.169, .296, .358], [.372, .45, .358], [.651, .778, .358], [.859, .987, .358]];
+  // towers and the bird stand, which is where the sky meets the ground, and
+  // the towers' edges and tops. A narrower picture shows the middle of it,
+  // round the bird.
+  var ROWS = 70, WIDE = 189, BASE = .78, FOCUS = .56;
+  var TOWERS = [[0, .128, .436], [.169, .296, .358], [.372, .45, .358], [.651, .778, .358], [.859, .987, .358]];
   var BIRD_AT = .475;
 
   function clamp(v) { return Math.min(Math.max(v, 0), 1); }
@@ -133,7 +136,7 @@
     rows = ROWS;
     cols = Math.max(1, Math.round(W / (H / rows)));
     off = cols >= WIDE ? Math.round((WIDE - cols) / 2) : Math.min(Math.max(Math.round(FOCUS * WIDE - cols / 2), 0), WIDE - cols);
-    hz = Math.round(HORIZON * rows); base = Math.round(BASE * rows);
+    base = hz = Math.round(BASE * rows);
     src.width = obj.width = cols; src.height = obj.height = rows;
   }
   function at(share) { return Math.round(share * WIDE) - off; }
@@ -183,9 +186,10 @@
       sun = { x: px, y: py, elev: clamp((low - py) / span), hour: clamp((px / cols - .06) / .88) };
     }
 
-    // The sky, with its three bands of glow round the sun, closer together
-    // when the sun is low.
-    var day = skyFor(sun.hour), step = R * (.5 + .35 * sun.elev), fq = 3 / rows, drift = frame * .015;
+    // The sky, with its three bands of glow round the sun: tight round it
+    // at noon, spreading wide at sunrise and sunset.
+    var dusk = smooth(.2, .5, Math.abs(sun.hour - .5));
+    var day = skyFor(sun.hour), step = R * (.55 + 2.4 * dusk), fq = 3 / rows, drift = frame * .015;
     var img = sctx.createImageData(cols, hz), q = img.data;
     for (var y = 0; y < hz; y++)
       for (var x = 0; x < cols; x++) {
