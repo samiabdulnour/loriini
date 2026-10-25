@@ -1146,11 +1146,10 @@ def test_a_sheet_number_sits_inside_its_chip(hidden_window: Any) -> None:
     (chip,) = paper.find_withtag("chip")
     (number,) = _text_items(paper, "SD.01")
     chip_left, _, chip_right, _ = paper.bbox(chip)
-    face = window.tkfont.Font(font=paper.itemcget(number, "font"))
-    middle = paper.coords(number)[0]
-    half = face.measure("SD.01") / 2
-    assert chip_left + window.CHIP_PAD - 1 <= middle - half
-    assert middle + half <= chip_right - window.CHIP_PAD + 1
+    # A text item's box is a pixel or so wider than its letters.
+    number_left, _, number_right, _ = paper.bbox(number)
+    assert chip_left + window.CHIP_PAD - 2 <= number_left
+    assert number_right <= chip_right - window.CHIP_PAD + 2
 
 
 def test_the_blue_edge_rims_the_whole_sheet(hidden_window: Any) -> None:
