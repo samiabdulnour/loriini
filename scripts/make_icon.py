@@ -2,20 +2,26 @@
 
     uv run python scripts/make_icon.py
 
-Reads ``assets/loriini-icon-1024.png`` -- the lorikeet on its rounded tile,
-transparent outside the corners -- and writes, beside it:
+Reads ``assets/loriini-icon-1024.png`` -- the lorikeet over the black L on
+its orange tile, rounded, transparent outside the corners (D151) -- and
+writes, beside it:
 
 * ``loriini.ico``, carrying every size Windows asks for;
 * ``loriini.icns``, carrying every size a Mac asks for, on Apple's grid;
 * ``loriini-icon-256.png``, the Dock's picture for a window started from a
   checkout and the MCP server's icon;
-* ``loriini-icon-32.png``, the mark in the window's tool bar;
+* ``loriini-icon-32.png``;
+* ``loriini-mark-32.png`` and ``loriini-mark-64.png``, the mark at the top
+  left of the window and of the About box: the same tile, since D151 the
+  icon is the mark;
 * ``loriini-icon-tile-1024.png``, the icon on cream, opaque, for anywhere that
   wants a square with nothing transparent in it;
 
-and the website's copies in ``site``: ``icon-256.png``, ``icon-1024.png`` and a
+and the website's copies in ``site``: ``icon-256.png``, ``icon-1024.png``, a
 ``favicon.ico`` carrying only the sizes a browser tab uses, a tenth of the
-weight of the program's.
+weight of the program's, ``icon-52.png`` for the header beside the name (26
+pixels, at double density), and ``apple-touch-icon.png``, the tile square and
+opaque on its own orange, because a phone rounds the corners itself.
 
 Run it when the artwork changes; the build scripts do not, because an icon
 changes about once a year and a build happens all day.
@@ -59,6 +65,8 @@ TARGET = ASSETS / "loriini.ico"
 MAC_TARGET = ASSETS / "loriini.icns"
 #: The PNGs the program reads at run time, by size.
 PNG_TARGETS = {256: ASSETS / "loriini-icon-256.png", 32: ASSETS / "loriini-icon-32.png"}
+#: The mark at the top left of the window and the About box, by size.
+MARK_TARGETS = {32: ASSETS / "loriini-mark-32.png", 64: ASSETS / "loriini-mark-64.png"}
 TILE_TARGET = ASSETS / "loriini-icon-tile-1024.png"
 SITE = ROOT / "site"
 
@@ -84,6 +92,15 @@ MAC_SHADOW_ALPHA = 0.3
 
 #: The cream behind the opaque tile.
 CREAM = (249, 243, 239)
+
+#: The tile's own orange, behind the phone's icon: a phone wants a square with
+#: nothing transparent and rounds it itself, so the corners are filled with
+#: the tile rather than with cream.
+TILE_ORANGE = (235, 81, 41)
+
+#: A phone's home-screen icon, and the header's mark at double density.
+TOUCH_SIZE = 180
+HEADER_SIZE = 52
 
 
 def render(source: Image.Image, size: int) -> Image.Image:
@@ -140,7 +157,7 @@ def main() -> int:
     written = ", ".join(str(size) for size in MAC_SIZES)
     print(f"wrote {MAC_TARGET}  ({MAC_TARGET.stat().st_size / 1024:.1f} kB, sizes {written})")
 
-    for size, target in PNG_TARGETS.items():
+    for size, target in [*PNG_TARGETS.items(), *MARK_TARGETS.items()]:
         render(source, size).save(target, optimize=True)
         print(f"wrote {target}  ({target.stat().st_size / 1024:.1f} kB)")
 
@@ -156,7 +173,14 @@ def main() -> int:
     )
     render(source, 256).save(SITE / "icon-256.png", optimize=True)
     source.save(SITE / "icon-1024.png", optimize=True)
-    print(f"wrote {favicon}  ({favicon.stat().st_size / 1024:.1f} kB), icon-256.png, icon-1024.png")
+    render(source, HEADER_SIZE).save(SITE / f"icon-{HEADER_SIZE}.png", optimize=True)
+    square = Image.new("RGBA", source.size, (*TILE_ORANGE, 255))
+    square.alpha_composite(source)
+    render(square, TOUCH_SIZE).convert("RGB").save(SITE / "apple-touch-icon.png", optimize=True)
+    print(
+        f"wrote {favicon}  ({favicon.stat().st_size / 1024:.1f} kB), icon-256.png, "
+        f"icon-1024.png, icon-{HEADER_SIZE}.png, apple-touch-icon.png"
+    )
     return 0
 
 

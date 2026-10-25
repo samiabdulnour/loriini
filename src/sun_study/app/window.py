@@ -3902,9 +3902,10 @@ class Window:
 
         brand = ttk.Frame(top, style="Chrome.TFrame")
         brand.pack(side="left", padx=(0, PAD * 2))
-        # The parrot, the program's own mark: the pixel lorikeet on no tile,
-        # standing on the chrome (D136). Its own 32-pixel file: Tk can only
-        # shrink a picture by dropping pixels, which leaves the eye in pieces.
+        # The program's own mark: the application icon itself, the lorikeet
+        # over the black L on its orange tile (D151). Its own 32-pixel file:
+        # Tk can only shrink a picture by dropping pixels, which leaves the
+        # eye in pieces.
         mark = brand_mark(self.root)
         if mark is not None:
             self._mark = mark  # Tk forgets a picture nothing in Python holds
@@ -9433,9 +9434,10 @@ class Window:
 #: PNG, because a Mac does nothing with an .ico.
 MAC_DOCK_ICON = "loriini-icon-256.png"
 
-#: The mark the tool bar shows: the pixel lorikeet, at the size it is shown
-#: (D136). Its own file, reduced from ``loriini-mark-1024.png`` with a
-#: proper filter: Tk can only shrink a picture by dropping pixels.
+#: The mark the tool bar shows: the application icon, at the size it is shown
+#: (D151). Its own file, reduced from ``loriini-icon-1024.png`` with a proper
+#: filter by ``scripts/make_icon.py``: Tk can only shrink a picture by
+#: dropping pixels.
 BRAND_MARK = "loriini-mark-32.png"
 
 
@@ -9458,7 +9460,7 @@ def icon_path() -> Path | None:
 
 
 def brand_mark(window: tk.Misc) -> tk.PhotoImage | None:
-    """The parrot at 32 pixels for the tool bar, or ``None`` without it."""
+    """The mark at 32 pixels for the tool bar, or ``None`` without it."""
     packaged = getattr(sys, "_MEIPASS", None)
     root = Path(packaged) if packaged else Path(__file__).resolve().parents[3]
     found = root / "assets" / BRAND_MARK

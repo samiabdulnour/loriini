@@ -81,7 +81,7 @@ img.px { image-rendering: pixelated; }
 header.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 16px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: .6rem; font-weight: 600; text-decoration: none; }
 .brand:hover { color: inherit; }
-.brand img { width: 25px; height: 26px; image-rendering: pixelated; }
+.brand img { width: 26px; height: 26px; }
 nav.main { display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: var(--s); }
 nav.main a { text-decoration: none; padding: .15rem 0; }
 nav.main a[aria-current="page"] { box-shadow: 0 1px 0 currentColor; }

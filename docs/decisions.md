@@ -6007,3 +6007,43 @@ the middle of the shadows -- with all of them inside the frame.
 *What this does not change:* the fills, their style or labels (D145, D147),
 the hourly sheets' placement, or the combined sheets (D141 to D148).
 
+
+### D151 — The lorikeet over the L is the icon, and the icon is the mark
+
+Asked 25 October 2026, with a new picture: a pixel lorikeet, wings open,
+perched on the foot of a black L on an orange square -- *"I need to change
+the icon of loriini everywhere"*.
+
+**One artwork for every place.** `assets/loriini-icon-1024.png` is the new
+picture, and `scripts/make_icon.py` writes every size from it as before: the
+.ico, the .icns on Apple's grid, the Dock's and the MCP server's 256, the
+site's favicon and large icons. Until now the window's top left and the
+About box wore a mark of their own, the whole bird on no tile (D136), and the
+site's header a head cut from it. Both now wear the icon: the script also
+writes `loriini-mark-32.png` and `-64.png` from the tile, `site/icon-52.png`
+for the header beside the name, and `site/apple-touch-icon.png`, square and
+opaque on the tile's orange, because a phone rounds the corners itself. The
+bird-only artwork and the head (`loriini-mark-1024.png`,
+`site/lorikeet-head.png`) are gone.
+
+**The square, inside the old rounded tile.** The picture is a square to its
+edges and the tile keeps D136's rounded corners: a square icon stands out in
+a Mac's Dock and on a Windows desktop beside rounded ones. The wing's tip
+reaches the top right corner, and the rounding cut 212 of its pixels, so the
+picture is drawn 976 pixels across in the 1024 with its own orange (235, 81,
+41) for the margin: nothing of the bird or the L is lost, and the margin is
+the ground's colour, so it cannot be seen.
+
+**From the picture that came.** It came as a 360-pixel screenshot, and like
+the last lorikeet its squares are not on a regular grid, so it was enlarged
+with Lanczos rather than square by square; reducing its colours to a palette
+to sharpen the squares lost the purple and the eye's white. Every size people
+look at, 256 and under, is a reduction and sharp; the 512 and 1024 a Mac
+shows in the Finder's large views are an enlargement and a little soft. A
+larger original dropped in as `loriini-icon-1024.png` and the script rerun
+replaces all of it.
+
+*What this does not change:* the bird the site's mosaic perches on its tower
+(`site/lorikeet.png`), which is a picture and not the mark; the add-on's
+palette in Archicad, whose first button is the solar study's sun on a massing
+like the others; or the lemon theme around the mark.
