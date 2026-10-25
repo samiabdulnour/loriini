@@ -37,7 +37,7 @@
     <video id="film" autoplay muted loop playsinline preload="auto">
       <source src="demo.mp4" type="video/mp4">
     </video> -->
-    <canvas id="mosaic" role="img" aria-label="A pixel lorikeet perched on a tower while the sun crosses the sky and the buildings' shadows turn, drawn as a mosaic of small cells"></canvas>
+    <canvas id="mosaic" role="img" aria-label="A pixel lorikeet perched on a tower while the sun crosses the sky and the buildings' shadows turn, drawn as a mosaic of small cells; the sun follows the pointer"></canvas>
     <div class="clock" id="clock">09:00</div>
   </div>
 </main>
@@ -53,9 +53,11 @@
 /* The front's picture. A source is drawn at one pixel per cell: the film when
    there is one, otherwise a pixel scene of 21 June, 09:00 to 15:00, with the
    sun crossing, the towers' shadows turning and the lorikeet on the tallest.
-   Each source pixel is then drawn as a cell with a thin gap, the page colour
-   showing through. Cells fall away along the left and top edges, a few blink
-   out anywhere, and the pointer knocks out the ones it passes. */
+   Each source pixel is then drawn as a whole cell, edge to edge, scaled up
+   without smoothing. Cells fall away along the left and top edges and a few
+   blink out anywhere, the page colour showing through. The pointer is the
+   sun: over the picture the sun stands under it, and the sky, the shadows and
+   the clock take the hour and the height from where it is. */
 (function () {
   var panel = document.querySelector('.splash-right');
   var canvas = document.getElementById('mosaic');
@@ -65,6 +67,8 @@
   var ctx = canvas.getContext('2d');
   var src = document.createElement('canvas');
   var sctx = src.getContext('2d', { willReadFrequently: true });
+  var out = document.createElement('canvas');
+  var octx = out.getContext('2d');
   var root = getComputedStyle(document.documentElement);
   var bird = new Image();
   bird.src = 'lorikeet.png';
@@ -73,6 +77,17 @@
     ground: '#161616', shadow: '#060606',
     sun: '#ffd21e', core: '#ff8a1f', ray: '#ffe98a', glass: 'rgba(255,255,255,.32)'
   };
+  // A colour as numbers, for writing cells straight into the picture.
+  var paint = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  var rgbs = {};
+  function rgb(c) {
+    if (!rgbs[c]) {
+      paint.clearRect(0, 0, 1, 1); paint.fillStyle = c; paint.fillRect(0, 0, 1, 1);
+      rgbs[c] = paint.getImageData(0, 0, 1, 1).data;
+    }
+    return rgbs[c];
+  }
+  function clamp(v) { return Math.min(Math.max(v, 0), 1); }
   // The sky takes the hour's colour from how high the sun stands: purple at
   // dusk and dawn, red then orange and gold as it climbs, blue overhead.
   var skyStops = [
@@ -84,7 +99,7 @@
     [1, [62, 118, 190]]
   ];
   function sky(elev) {
-    var e = Math.min(Math.max(elev, 0), 1), a = skyStops[0], b = a;
+    var e = clamp(elev), a = skyStops[0], b = a;
     for (var i = 1; i < skyStops.length; i++) { a = b; b = skyStops[i]; if (e <= b[0]) break; }
     var f = (e - a[0]) / (b[0] - a[0] || 1);
     return 'rgb(' + [0, 1, 2].map(function (k) {
@@ -99,7 +114,7 @@
     { x: .80, w: .10, h: .38, c: '#12a84a' }
   ];
 
-  var W, H, cell, cols, rows, seed, knocked;
+  var W, H, cell, cols, rows, seed, cells;
   function size() {
     var r = panel.getBoundingClientRect();
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -109,33 +124,54 @@
     cell = W < 600 ? 9 : 12;
     cols = Math.ceil(W / cell); rows = Math.ceil(H / cell);
     src.width = cols; src.height = rows;
+    out.width = cols; out.height = rows;
+    cells = octx.createImageData(cols, rows);
     seed = new Float32Array(cols * rows);
     for (var i = 0; i < seed.length; i++) seed[i] = Math.random();
-    knocked = new Float64Array(cols * rows);
   }
 
   function rect(x, y, w, h, c) { sctx.fillStyle = c; sctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
 
-  function scene(t, frame) {
-    var g = rows - Math.max(3, Math.round(rows * .07));
-    var elev = Math.sin(Math.PI * t);
-    rect(0, 0, cols, rows, sky(elev));
-    rect(0, g, cols, rows - g, C.ground);
-    var R = Math.max(3, Math.round(rows * .065));
-    var sx = Math.round(cols * (.04 + .92 * t));
-    var sy = Math.round(g - R - 2 - elev * (g * .72));
+  // Where the sun stands. On its own it keeps to the day's arc for the hour t;
+  // as the pointer it stands where the pointer is, and the hour and its height
+  // are read back from there.
+  function sunAt(g, R) {
+    if (!aim) {
+      var e = Math.sin(Math.PI * t);
+      return { x: Math.round(cols * (.04 + .92 * t)), y: Math.round(g - R - 2 - e * (g * .72)), elev: e, hour: t };
+    }
+    var x = Math.floor(aim.x), y = Math.floor(aim.y);
+    return { x: x, y: y, elev: clamp((g - R - 2 - y) / (g * .72)), hour: clamp((x / cols - .04) / .92) };
+  }
+
+  // The sun's cells: a disc with an orange core, and rays, the four straight
+  // ones and the four diagonal ones taking turns.
+  function sunCells(sun, R, frame) {
+    var list = [];
     for (var dy = -R; dy <= R; dy++)
       for (var dx = -R; dx <= R; dx++) {
         var d = dx * dx + dy * dy;
-        if (d <= R * R + R * .6) rect(sx + dx, sy + dy, 1, 1, d <= (R * .5) * (R * .5) ? C.core : C.sun);
+        if (d <= R * R + R * .6) list.push([sun.x + dx, sun.y + dy, d <= (R * .5) * (R * .5) ? C.core : C.sun]);
       }
-    // Rays: the four straight ones and the four diagonal ones take turns.
     var straight = frame % 4 < 2;
     for (var k = 0; k < 8; k++) {
       if ((k % 2 === 0) !== straight) continue;
       var a = k * Math.PI / 4, ux = Math.round(Math.cos(a)), uy = Math.round(Math.sin(a));
-      for (var s = R + 2; s <= R + 3; s++) rect(sx + ux * s, sy + uy * s, 1, 1, C.ray);
+      for (var s = R + 2; s <= R + 3; s++) list.push([sun.x + ux * s, sun.y + uy * s, C.ray]);
     }
+    return list;
+  }
+
+  function scene(frame) {
+    var g = rows - Math.max(3, Math.round(rows * .07));
+    var R = Math.max(3, Math.round(rows * .065));
+    var sun = sunAt(g, R), elev = sun.elev, sx = sun.x;
+    rect(0, 0, cols, rows, sky(elev));
+    rect(0, g, cols, rows - g, C.ground);
+    sun.cells = sunCells(sun, R, frame);
+    // On its own the sun is part of the sky, behind the towers and the bird;
+    // as the pointer it is drawn over everything, afterwards.
+    if (!aim) sun.cells.forEach(function (c) { rect(c[0], c[1], 1, 1, c[2]); });
 
     var tall = null;
     towers.forEach(function (b) {
@@ -161,6 +197,7 @@
       sctx.imageSmoothingEnabled = !full;
       sctx.drawImage(bird, Math.round(tall.px + tall.pw * .7 - bw2 * .62), Math.round(g - tall.ph - bh2 * .82) - bob, bw2, bh2);
     }
+    return sun;
   }
 
   function filmFrame() {
@@ -170,62 +207,86 @@
     sctx.drawImage(film, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, cols, rows);
   }
 
-  var t = 0, frame = 0;
+  var t = 0, frame = 0, aim = null, held = 0;
   function draw(now) {
     var playing = film && film.readyState >= 2;
-    if (playing) filmFrame(); else scene(t, frame);
+    var sun = playing ? null : scene(frame);
+    if (playing) filmFrame();
+    canvas.style.cursor = playing ? '' : 'none';
     if (clock) {
       clock.hidden = playing;
-      var m = 540 + Math.round(t * 360);
-      clock.textContent = String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+      if (sun) {
+        var m = 540 + Math.round(sun.hour * 360);
+        clock.textContent = String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+      }
     }
 
-    var px = sctx.getImageData(0, 0, cols, rows).data;
-    ctx.fillStyle = root.getPropertyValue('--bg').trim() || '#e1e4de';
-    ctx.fillRect(0, 0, W, H);
+    var px = sctx.getImageData(0, 0, cols, rows).data, d = cells.data;
+    var bg = rgb(root.getPropertyValue('--bg').trim() || '#e1e4de');
     var tick = Math.floor(now / 1400);
     for (var y = 0; y < rows; y++) {
       for (var x = 0; x < cols; x++) {
-        var i = y * cols + x, n = seed[i];
+        var i = y * cols + x, n = seed[i], j = i * 4, c = px, k = j;
         // The edges toward the name and the header fall away into the page,
         // the boundary breathing a little.
         var fall = Math.max(1 - x / (cols * .26), 1 - y / (rows * .1), 0);
-        if (fall > 0 && n < fall * (.86 + .14 * Math.sin(now / 900 + n * 9))) continue;
         // A few cells anywhere blink out, a fresh few every beat.
-        if (((n * 9301 + tick * 49297) % 233) / 233 < .025) continue;
-        if (knocked[i] > now) continue;
-        var j = i * 4;
-        ctx.fillStyle = 'rgb(' + px[j] + ',' + px[j + 1] + ',' + px[j + 2] + ')';
-        ctx.fillRect(x * cell, y * cell, cell - 1, cell - 1);
+        if ((fall > 0 && n < fall * (.86 + .14 * Math.sin(now / 900 + n * 9))) ||
+            ((n * 9301 + tick * 49297) % 233) / 233 < .025) { c = bg; k = 0; }
+        d[j] = c[k]; d[j + 1] = c[k + 1]; d[j + 2] = c[k + 2]; d[j + 3] = 255;
       }
     }
+    // The pointer's sun, over everything and never falling away.
+    if (aim && sun) sun.cells.forEach(function (s) {
+      if (s[0] < 0 || s[1] < 0 || s[0] >= cols || s[1] >= rows) return;
+      var j = (s[1] * cols + s[0]) * 4, v = rgb(s[2]);
+      d[j] = v[0]; d[j + 1] = v[1]; d[j + 2] = v[2];
+    });
+    octx.putImageData(cells, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(out, 0, 0, cols * cell, rows * cell);
   }
 
-  function knock(e) {
+  var queued = false;
+  function redraw() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () { queued = false; draw(performance.now()); });
+  }
+  // The pointer is the sun. A mouse keeps it until it leaves the picture; a
+  // finger lifts, so a touch leaves the sun where it was put for a few seconds.
+  function point(e) {
     var r = canvas.getBoundingClientRect();
-    var cx = (e.clientX - r.left) / cell, cy = (e.clientY - r.top) / cell, now = performance.now();
-    for (var y = Math.floor(cy - 3); y <= cy + 3; y++)
-      for (var x = Math.floor(cx - 3); x <= cx + 3; x++) {
-        if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
-        var d = (x + .5 - cx) * (x + .5 - cx) + (y + .5 - cy) * (y + .5 - cy);
-        if (d < 7) knocked[y * cols + x] = Math.max(knocked[y * cols + x], now + 900 + seed[y * cols + x] * 1400);
-      }
+    aim = { x: (e.clientX - r.left) / cell, y: (e.clientY - r.top) / cell };
+    held = e.pointerType === 'touch' ? performance.now() + 4000 : Infinity;
+    redraw();
+  }
+  // Back to its arc, carrying on from the hour it was let go at.
+  function letGo() {
+    if (!aim) return;
+    t = clamp((Math.floor(aim.x) / cols - .04) / .92);
+    aim = null;
+    redraw();
   }
 
   size();
   window.addEventListener('resize', function () { size(); draw(performance.now()); });
+  canvas.addEventListener('pointermove', point);
+  canvas.addEventListener('pointerdown', point);
+  canvas.addEventListener('pointerleave', function (e) { if (e.pointerType !== 'touch') letGo(); });
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     t = .35;
     bird.onload = function () { draw(performance.now()); };
     draw(performance.now());
   } else {
-    canvas.addEventListener('pointermove', knock);
-    canvas.addEventListener('pointerdown', knock);
     setInterval(function () {
+      if (aim && performance.now() > held) letGo();
       draw(performance.now());
       frame++;
-      t += 1 / 220;
-      if (t >= 1) t = 0;
+      if (!aim) {
+        t += 1 / 220;
+        if (t >= 1) t = 0;
+      }
     }, 100);
   }
 })();

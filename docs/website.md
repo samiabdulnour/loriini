@@ -19,7 +19,7 @@ inline, talking to nothing.
 
 | | |
 |---|---|
-| `site/index.html` | The front: the name and the picture, nothing else. The picture is a canvas drawn as a mosaic of cells with thin gaps, falling away into the page at its edges and knocked out by the pointer. Its source is a pixel scene (the sun crossing 21 June, the towers' shadows, the lorikeet perched on the tallest) until there is a screen recording; uncommenting the `<video id="film">` beside the canvas makes the mosaic draw the film instead. |
+| `site/index.html` | The front: the name and the picture, nothing else. The picture is a canvas drawn as a mosaic of whole cells, edge to edge, falling away into the page at its edges. The pointer is the sun: over the picture the sun stands under it, the sky's colour and the shadows' length follow its height, and the shadows' side and the clock follow its place across; let go, it carries on along its arc from that hour. Its source is a pixel scene (the sun crossing 21 June, the towers' shadows, the lorikeet perched on the tallest) until there is a screen recording; uncommenting the `<video id="film">` beside the canvas makes the mosaic draw the film instead. |
 | `site/makes.html`, `site/works.html`, `site/price.html`, `site/download.html` | The tabs: what it makes, how it works, price, download. Contact lives in every footer. |
 | `site/terms.html`, `site/privacy.html` | The licence terms and the privacy note, **drafts for a lawyer's hour** (licence-model.md §7). |
 | `site/style.css` | The one stylesheet. One typeface in two weights (400, 600) and three sizes (`--s`, `--m`, `--l`) and nothing else; thin 1px lines, flat buttons, a pale sage page (`#e1e4de`). |
