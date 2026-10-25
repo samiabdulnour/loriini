@@ -5972,3 +5972,38 @@ were renamed by hand once, so the rerun reused them instead of placing new.
 *What this does not change:* the stack, its order, colours or transparency
 (D141 to D143), or the sheets of one row, whose drawings keep their titles.
 
+### D149 — The every-hour sheet is fitted to its shadows
+
+Asked 25 October 2026, of the every-hour drawing's sheet (D144): *"can you
+place correctly shadows in the plan on the layout?"*
+
+**What was wrong.** Read back on the sample project, the sheet `15 | Shadow
+Diagrams - JUNE 21 ALL HOURS` carried a 78 x 86 mm drawing at 1:1000, its
+lower-left corner at the middle of an 841 x 594 mm page, while the shadows
+it is for spread 214 x 142 m. Two causes. The view was made with no zoom,
+so it took whatever the floor plan was zoomed to when the run reached it,
+and the drawing showed that much of the plan; and the drawing was put down
+by its corner where the one cell's middle is, as `layout_from_views` puts
+every drawing, and never arranged. Most of the shadow was outside the frame
+and what was inside sat up and right of the middle.
+
+**Decided.** The drawing step records, per day, the plan extent of the
+every-hour fills and their labels. The sheet is then made as the combined
+shadow plans make theirs (D143): the view's zoom is that extent with 10 m
+round it, the scale the largest standard one at which it fits the sheet's one
+cell clear of the title block, and the drawing is arranged through
+`place_on_sheets`, its origin set so the extent's middle is the cell's and
+its frame clipped to the cell. `--drawing-scale` now defaults to none: given,
+it is the every-hour sheet's scale as well as each hour's; left out, each
+hour's sheet stays at 1:1000 and the every-hour sheet is fitted. The run
+says the extent and the scale.
+
+**Run, sample project.** The tower at every hour from 9 to 3: the shadows and
+their margin 234 x 162 m, drawn at 1:500 on `A1 Landscape`; read back, the
+drawing is at 1:500, clipped to the cell from 34 to 707 mm across and 34 to
+560 mm up, its origin placed so the cell's middle is project (25, -55.5) --
+the middle of the shadows -- with all of them inside the frame.
+
+*What this does not change:* the fills, their style or labels (D145, D147),
+the hourly sheets' placement, or the combined sheets (D141 to D148).
+

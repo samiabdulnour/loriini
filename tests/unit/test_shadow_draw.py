@@ -699,6 +699,82 @@ def test_only_the_every_hour_drawing_draws_no_hour_of_its_own() -> None:
     }
     assert written == {all_hours_combination_name(day)}
 
+    # D149: the extent its sheet is fitted to, every outline and label in it.
+    ((extent_day, (x0, y0, x1, y1)),) = report.all_hours_extents
+    assert extent_day == day
+    points = [
+        (point["x"], point["y"])
+        for call in transport.all_parameters_for("CreateFills")
+        for fill in call["fills"]
+        for contour in fill["contours"]
+        for point in contour["points"]
+    ]
+    assert x0 == min(x for x, _ in points) and x1 == max(x for x, _ in points)
+    assert y0 == min(y for _, y in points) and y1 == max(y for _, y in points)
+
+
+def test_the_every_hour_sheet_is_fitted_to_its_shadows_and_centred(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D149: the view was zoomed wherever the screen was and the drawing put
+    down by a corner, so the shadows were cut off and off the middle. The view
+    now covers the shadows and a margin, the scale is the largest standard one
+    that fits the sheet, and the shadows' middle is the sheet's."""
+    from sun_study.archicad import shadows as module
+    from sun_study.archicad.layout import LayoutReport, NavigatorItem
+    from sun_study.archicad.views import StoreyView
+
+    viewed: list[dict[str, Any]] = []
+    placed: list[tuple[Any, dict[str, Any]]] = []
+
+    def views(_c: object, _storeys: Any, **kwargs: Any) -> list[Any]:
+        viewed.append(kwargs)
+        return [StoreyView(0, kwargs["suffix"], "VIEW")]
+
+    def place(_c: object, groups: Any, **kwargs: Any) -> list[Any]:
+        placed.append((groups, kwargs))
+        return [
+            LayoutReport(name, 1, (), kwargs["scale"], (), database_id="DB") for name, _ in groups
+        ]
+
+    storey = NavigatorItem("STOREY", "Ground Floor", "StoryItem", "0")
+    monkeypatch.setattr(module, "storey_items", lambda _c, _i: ({0: storey}, []))
+    monkeypatch.setattr(module, "views_for_storeys", views)
+    monkeypatch.setattr(module, "place_on_sheets", place)
+    monkeypatch.setattr(module, "remove_stale_layouts", lambda *_a: [])
+    monkeypatch.setattr(module, "_every_hour_scale", lambda _c, _w, _m: 1500)
+
+    built = module.build_shadow_sheets(
+        ArchicadConnection(ShadowTransport(["9AM"], 0)),
+        series(["9AM"]),
+        only_all_hours=True,
+        all_hours_extents={"JUNE 21": (-80.0, -120.0, 130.0, 20.0)},
+    )
+
+    ((asked,),) = [viewed]
+    assert asked["drawing_scale"] == 1500
+    assert asked["zoom"] == (-90.0, -130.0, 140.0, 30.0), "the shadows and 10 m round them"
+    ((groups, kwargs),) = placed
+    assert groups == [
+        (f"{naming.prefix()} Shadow Diagrams - JUNE 21 ALL HOURS", [("VIEW", "JUNE 21 ALL HOURS")])
+    ]
+    assert kwargs["cells"] == 1 and kwargs["scale"] == 1500
+    assert kwargs["offset"] == pytest.approx((-25.0 / 1500, 50.0 / 1500)), "the shadows' middle"
+    assert kwargs["aspect"] == pytest.approx(230.0 / 160.0)
+    assert any("1:1500" in line for line in built.fitted)
+
+    viewed.clear()
+    placed.clear()
+    module.build_shadow_sheets(
+        ArchicadConnection(ShadowTransport(["9AM"], 0)),
+        series(["9AM"]),
+        only_all_hours=True,
+        all_hours_extents={"JUNE 21": (-80.0, -120.0, 130.0, 20.0)},
+        all_hours_scale=500.0,
+    )
+    assert viewed[0]["drawing_scale"] == 500.0, "a scale asked for is kept"
+    assert placed[0][1]["offset"] == pytest.approx((-25.0 / 500, 50.0 / 500))
+
 
 def test_only_the_every_hour_drawing_needs_a_designed_building() -> None:
     connection, _ = connect(["9AM"])

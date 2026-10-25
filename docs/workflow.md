@@ -285,7 +285,11 @@ every hour on one plan, `--shadow-all-hours-only`, drawn on the floor plan
 with a view and a sheet and nothing per hour: each hour a drafting fill in the
 `25 %` dots, red (or `--shadow-all-hours-colour blue`), on a transparent
 background with no outline, labelled at its tip ([D145](decisions.md),
-[D147](decisions.md)).
+[D147](decisions.md)). Its sheet is fitted to the shadows
+([D149](decisions.md)): the view covers them and 10 m round them, the scale
+is the largest standard one at which that fits the sheet clear of the title
+block (or `--drawing-scale`, if given), and the shadows' middle is the
+sheet's.
 
 A different study from the one above, sharing the export machinery and almost
 nothing else. Settled against a real SSDA set on Crows Nest; see

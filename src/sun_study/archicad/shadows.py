@@ -68,14 +68,18 @@ from sun_study.archicad.ids import (
 from sun_study.archicad.layers import ensure_combination, read_layers
 from sun_study.archicad.layout import (
     Filing,
+    choose_master,
     file_under_subset,
     layout_from_views,
+    master_layouts,
     remove_stale_layouts,
     storey_items,
 )
+from sun_study.archicad.plan_sheet import PlanWindow, cell_size_mm, fitted_scale
 from sun_study.archicad.read import elements_by_ifc_ids
 from sun_study.archicad.sheeting import DEFAULT_SHEET_MODE, cells_for, sheet_chunks
 from sun_study.archicad.site_analysis import attribute_index
+from sun_study.archicad.sun_eyes import TITLE_BLOCK_MM, place_on_sheets
 from sun_study.archicad.views import views_for_storeys
 from sun_study.core.geometry import PlanTransform, rotation_about_z
 from sun_study.core.patches import Ring
@@ -422,6 +426,9 @@ class ShadowDrawReport:
     refused: tuple[str, ...] = ()
     """The fills Archicad would not draw, each said as which and how big.
     Left out of the drawing and of every total; see ``_create_legend_fills``."""
+    all_hours_extents: tuple[tuple[str, tuple[float, float, float, float]], ...] = ()
+    """Per day, the plan extent of its every-hour fills and labels, in project
+    metres ``(xMin, yMin, xMax, yMax)``: what its sheet is fitted to (D149)."""
 
     def describe(self) -> str:
         if not self.fills and not self.combinations and self.all_hours:
@@ -485,6 +492,8 @@ class ShadowSheetReport:
     filing: Filing | None
     removed: tuple[str, ...] = ()
     """Earlier sheets under the same stem this run did not remake."""
+    fitted: tuple[str, ...] = ()
+    """How each every-hour sheet was fitted to its shadows, as said (D149)."""
 
     def describe(self) -> str:
         lines = [
@@ -492,6 +501,7 @@ class ShadowSheetReport:
             f"carrying {self.drawings} drawings"
         ]
         lines.extend(f"  {name}" for name in self.sheets)
+        lines.extend(f"  {line}" for line in self.fitted)
         lines.extend(f"  removed {name!r}, a sheet of an earlier run" for name in self.removed)
         if self.filing is not None:
             lines.append("  " + self.filing.describe())
@@ -1026,6 +1036,7 @@ def draw_shadow_series(
         else NOT_GROUPED
     )
 
+    extents: list[tuple[str, tuple[float, float, float, float]]] = []
     for day, instants in days.items():
         layer = ensure_layer(connection, all_hours_layer_name(day))
         cleared += clear_layer(connection, layer.index)
@@ -1042,6 +1053,9 @@ def draw_shadow_series(
             connection.run_loriini("CreateFills", {"fills": outlines})
         if texts:
             place_texts(connection, texts, layer.index)
+        extent = _extent_of(outlines, texts)
+        if extent is not None:
+            extents.append((day, extent))
 
     # After the fills, so the combinations are recorded against layers that
     # certainly exist and carry the right visibility.
@@ -1079,7 +1093,30 @@ def draw_shadow_series(
         note=note,
         all_hours=tuple(every_hour),
         refused=tuple(refused),
+        all_hours_extents=tuple(extents),
     )
+
+
+def _extent_of(
+    fills: Sequence[Mapping[str, Any]], texts: Sequence[Mapping[str, Any]]
+) -> tuple[float, float, float, float] | None:
+    """The plan extent of the every-hour fills' contours and the labels' points."""
+    points = [
+        (float(point["x"]), float(point["y"]))
+        for fill in fills
+        for contour in fill.get("contours") or []
+        for point in contour.get("points") or []
+    ]
+    points += [
+        (float(text["coordinate"]["x"]), float(text["coordinate"]["y"]))
+        for text in texts
+        if isinstance(text.get("coordinate"), Mapping)
+    ]
+    if not points:
+        return None
+    xs = [x for x, _ in points]
+    ys = [y for _, y in points]
+    return (min(xs), min(ys), max(xs), max(ys))
 
 
 def _refused_fill(hatch: Mapping[str, Any], element_id: str | None) -> str:
@@ -1155,12 +1192,22 @@ def build_shadow_sheets(
     zoom: tuple[float, float, float, float] | None = None,
     all_hours: bool = False,
     only_all_hours: bool = False,
+    all_hours_extents: Mapping[str, tuple[float, float, float, float]] | None = None,
+    all_hours_scale: float | None = None,
 ) -> ShadowSheetReport:
     """One View per hour, then the day's Layouts as ``sheets`` says, filed.
 
     ``all_hours`` adds, per day, a View of that day's every-hour drawing (see
     ``draw_shadow_series``) and a sheet of its own carrying it;
     ``only_all_hours`` makes that and no view or sheet per hour.
+
+    An every-hour sheet whose day has an extent in ``all_hours_extents`` is
+    fitted to its shadows (D149): the view's zoom is the extent with
+    ``ALL_HOURS_MARGIN_M`` round it, the scale ``all_hours_scale`` or, with
+    none, the largest standard one at which that fits the sheet clear of the
+    title block, and the drawing is placed with the shadows' middle in the
+    middle of the sheet and clipped to it, as the combined shadow plans place
+    theirs. A day with no extent is placed as before, at ``drawing_scale``.
 
     The View is the piece that makes this work: it is a view of the *site
     plan*, pinned to that hour's Layer Combination, so the drawing carries the
@@ -1221,26 +1268,51 @@ def build_shadow_sheets(
             names.append(name)
             placed += report.drawings_placed
 
+    fitted: list[str] = []
+    extents = all_hours_extents or {}
     for date_label in _by_date(series) if (all_hours or only_all_hours) else {}:
         caption = f"{date_label} {ALL_HOURS_WORD}"
+        extent = extents.get(date_label)
+        window = _padded(extent) if extent is not None else None
+        scale = all_hours_scale or drawing_scale
+        if window is not None and all_hours_scale is None:
+            scale = _every_hour_scale(connection, window, master_layout) or drawing_scale
         views = views_for_storeys(
             connection,
             [storey],
             combination=all_hours_combination_name(date_label),
             suffix=f"Shadow {caption}",
-            drawing_scale=drawing_scale,
-            zoom=zoom,
+            drawing_scale=scale,
+            zoom=_corners(window) if window is not None else zoom,
         )
         made.extend((view.navigator_id, caption) for view in views)
         name = naming.named(f"{naming.SHADOW_WORD}s - {caption}")
-        report = layout_from_views(
-            connection,
-            [(view.navigator_id, caption) for view in views],
-            layout_name=name,
-            scale=drawing_scale,
-            master_layout=master_layout,
-            cells=cells_for(sheet_chunks(1, sheets)),
-        )
+        drawings = [(view.navigator_id, caption) for view in views]
+        if window is not None:
+            cx, cy = window.centre
+            (report,) = place_on_sheets(
+                connection,
+                [(name, drawings)],
+                cells=1,
+                scale=scale,
+                master_layout=master_layout,
+                offset=(-cx / scale, -cy / scale),
+                aspect=window.aspect,
+            )
+            fitted.append(
+                f"{caption}: the shadows and {ALL_HOURS_MARGIN_M:g} m round them, "
+                f"{window.width:.0f} x {window.height:.0f} m, drawn at 1:{scale:g} "
+                f"in the middle of the sheet"
+            )
+        else:
+            report = layout_from_views(
+                connection,
+                drawings,
+                layout_name=name,
+                scale=drawing_scale,
+                master_layout=master_layout,
+                cells=cells_for(sheet_chunks(1, sheets)),
+            )
         names.append(name)
         placed += report.drawings_placed
 
@@ -1254,4 +1326,35 @@ def build_shadow_sheets(
         drawings=placed,
         filing=filing,
         removed=tuple(removed),
+        fitted=tuple(fitted),
     )
+
+
+#: Kept round an every-hour drawing's shadows on its sheet, in project metres:
+#: room for the hour labels at the tips and some of the street beyond (D149).
+ALL_HOURS_MARGIN_M = 10.0
+
+
+def _padded(extent: tuple[float, float, float, float]) -> PlanWindow:
+    x_min, y_min, x_max, y_max = extent
+    m = ALL_HOURS_MARGIN_M
+    return PlanWindow(x_min - m, y_min - m, x_max + m, y_max + m)
+
+
+def _corners(window: PlanWindow) -> tuple[float, float, float, float]:
+    return (window.x_min, window.y_min, window.x_max, window.y_max)
+
+
+def _every_hour_scale(
+    connection: ArchicadConnection, window: PlanWindow, master_layout: str | None
+) -> int | None:
+    """The largest standard scale the window fits one cell of the master's page
+    at, clear of the title block; ``None`` when the master cannot be read."""
+    try:
+        master = choose_master(master_layouts(connection), master_layout)
+    except ArchicadError:
+        return None
+    cell = cell_size_mm(
+        connection, master.identifier, 1, title_block_mm=TITLE_BLOCK_MM, aspect=window.aspect
+    )
+    return fitted_scale(window, cell) if cell is not None else None

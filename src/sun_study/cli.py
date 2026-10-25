@@ -6953,7 +6953,17 @@ def shadows(
             ),
         ),
     ] = False,
-    drawing_scale: Annotated[float, typer.Option("--drawing-scale")] = 1000.0,
+    drawing_scale: Annotated[
+        float | None,
+        typer.Option(
+            "--drawing-scale",
+            help=(
+                "The scale the shadow views are drawn at. Left out, each hour's sheet is "
+                "1:1000 and the every-hour sheet the largest standard scale its shadows "
+                "fit the sheet at."
+            ),
+        ),
+    ] = None,
     master_layout: Annotated[str | None, typer.Option("--master-layout")] = None,
     shadow_subset: Annotated[str | None, typer.Option("--shadow-subset")] = None,
     sheets: Annotated[str, typer.Option("--sheets", help=SHEETS_HELP)] = SHADOW_SHEETS,
@@ -7211,7 +7221,7 @@ def _shadow_report(
     all_hours_colour: str = "red",
     terrain_floor: float | None,
     edge_tolerance: float,
-    drawing_scale: float,
+    drawing_scale: float | None,
     master_layout: str | None,
     shadow_subset: str | None,
     check_georeferencing: bool,
@@ -7460,12 +7470,14 @@ def _shadow_report(
                 connection,
                 series,
                 storey_index=shadow_storey,
-                drawing_scale=drawing_scale,
+                drawing_scale=drawing_scale or HOUR_SHEET_SCALE,
                 master_layout=master_layout,
                 subset=shadow_subset,
                 sheets=sheets,
                 all_hours=outlined is not None,
                 only_all_hours=only_all_hours and outlined is not None,
+                all_hours_extents=dict(drawn.all_hours_extents),
+                all_hours_scale=drawing_scale,
             )
             typer.echo("")
             typer.echo(built.describe())
@@ -7474,6 +7486,11 @@ def _shadow_report(
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from error
     typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
+
+
+#: The scale each hour's shadow sheet is drawn at when none is given. The
+#: every-hour sheet is fitted to its shadows instead (D149).
+HOUR_SHEET_SCALE = 1000.0
 
 
 #: A grid past this many samples is said to be large before it is cast. About
