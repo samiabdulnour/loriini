@@ -169,11 +169,9 @@
     rect(0, 0, cols, rows, sky(elev));
     rect(0, g, cols, rows - g, C.ground);
     sun.cells = sunCells(sun, R, frame);
-    function shine() { sun.cells.forEach(function (c) { rect(c[0], c[1], 1, 1, c[2]); }); }
-    // On its own the sun is part of the sky, behind the towers and the bird;
-    // as the pointer it comes in front of the towers, so it is never lost,
-    // and stays behind the bird.
-    if (!aim) shine();
+    // The sun is part of the sky, behind the towers and the bird, on its own
+    // and as the pointer alike.
+    sun.cells.forEach(function (c) { rect(c[0], c[1], 1, 1, c[2]); });
 
     var tall = null;
     towers.forEach(function (b) {
@@ -189,7 +187,6 @@
       for (var wy = g - b.ph + 2; wy < g - 1; wy += 3)
         for (var wx = b.px + 1; wx < b.px + b.pw - 1; wx += 2) rect(wx, wy, 1, 1, C.glass);
     });
-    if (aim) shine();
 
     // The lorikeet, its feet on the tallest tower's roof, its tail hanging
     // over the side, bobbing now and then.
