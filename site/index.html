@@ -42,10 +42,9 @@
 <script>
 /* The front's picture: five black towers and the lorikeet on the ground,
    the sun crossing behind them and their shadows falling on the ground in
-   front of them. The sky, the sun, the ground, the towers and the shadows
-   are drawn as shapes at the screen's own resolution; only the lorikeet
-   keeps its pixels, each scaled up whole, and its shadow is its own
-   silhouette laid on the ground, pixels and all.
+   front of them. The scene is drawn at one pixel per cell, the bird's own
+   pixels for cells, and each pixel scaled up whole, edge to edge, to a sharp
+   edge all round.
 
    The sky runs down to the towers' feet, the ground a strip in front of
    them. It takes the hour's colour: pale at sunrise, blue at noon, red at
@@ -60,9 +59,10 @@
   var canvas = document.getElementById('picture');
   if (!canvas || !canvas.getContext) return;
   var ctx = canvas.getContext('2d');
-  // The bird in the sky's light, turned to face left, and its silhouette.
-  var sprite = document.createElement('canvas'), pctx = sprite.getContext('2d', { willReadFrequently: true });
-  var shape = document.createElement('canvas'), hctx = shape.getContext('2d');
+  var src = document.createElement('canvas');
+  var sctx = src.getContext('2d');
+  var obj = document.createElement('canvas');
+  var octx = obj.getContext('2d', { willReadFrequently: true });
   var bird = new Image();
   bird.src = 'lorikeet.png';
 
@@ -126,120 +126,106 @@
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
   }
 
-  // The scene is laid out in cells, 70 to the picture's height, the
-  // lorikeet's pixels; each shape is drawn in those units, scaled to the
-  // screen.
-  var W, H, dpr, cols, rows, off, hz, base;
+  var W, H, cols, rows, off, hz, base;
   function size() {
     var r = box.getBoundingClientRect();
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
     W = r.width; H = r.height;
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     rows = ROWS;
     cols = Math.max(1, Math.round(W / (H / rows)));
-    off = cols >= WIDE ? (WIDE - cols) / 2 : Math.min(Math.max(FOCUS * WIDE - cols / 2, 0), WIDE - cols);
-    base = hz = BASE * rows;
+    off = cols >= WIDE ? Math.round((WIDE - cols) / 2) : Math.min(Math.max(Math.round(FOCUS * WIDE - cols / 2), 0), WIDE - cols);
+    base = hz = Math.round(BASE * rows);
+    src.width = obj.width = cols; src.height = obj.height = rows;
   }
-  function at(share) { return share * WIDE - off; }
-  function css(c) { return 'rgb(' + Math.round(c[0]) + ',' + Math.round(c[1]) + ',' + Math.round(c[2]) + ')'; }
+  function at(share) { return Math.round(share * WIDE) - off; }
 
-  // The lorikeet in the sky's light: warmer at sunrise and sunset, a little
-  // cooler at noon. And its silhouette, in the shadow's colour.
-  function paintBird(light, shade) {
-    var bw = bird.naturalWidth, bh = bird.naturalHeight;
-    if (sprite.width !== bw) { sprite.width = shape.width = bw; sprite.height = shape.height = bh; }
-    pctx.clearRect(0, 0, bw, bh);
-    pctx.save(); pctx.translate(bw, 0); pctx.scale(-1, 1); pctx.drawImage(bird, 0, 0); pctx.restore();
-    var img = pctx.getImageData(0, 0, bw, bh), a = img.data;
-    for (var i = 0; i < a.length; i += 4) { a[i] *= light[0]; a[i + 1] *= light[1]; a[i + 2] *= light[2]; }
-    pctx.putImageData(img, 0, 0);
-    hctx.globalCompositeOperation = 'source-over';
-    hctx.clearRect(0, 0, bw, bh);
-    hctx.drawImage(sprite, 0, 0);
-    hctx.globalCompositeOperation = 'source-in';
-    hctx.fillStyle = css(shade);
-    hctx.fillRect(0, 0, bw, bh);
-  }
+  function rect(c, x, y, w, h, colour) { c.fillStyle = colour; c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
 
-  // A band of glow: a disc whose edge wavers a little and drifts.
-  function glow(x, y, r, band, drift, colour) {
-    ctx.beginPath();
-    for (var i = 0; i <= 72; i++) {
-      var a = i / 72 * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
-      var rr = r * (1 + (noise(c * 1.4 + drift + band * 5, s * 1.4 + band * 5) - .5) * .12);
-      if (i) ctx.lineTo(x + c * rr, y + s * rr); else ctx.moveTo(x + c * rr, y + s * rr);
+  // The towers and the bird, on a clear layer of their own: drawn over the
+  // scene, and read back as the shapes whose shadows fall on the ground.
+  function figures(frame, light) {
+    octx.clearRect(0, 0, cols, rows);
+    TOWERS.forEach(function (tw) {
+      var x0 = at(tw[0]), x1 = at(tw[1]), top = Math.round(tw[2] * rows);
+      rect(octx, x0, top, x1 - x0, base - top, C.tower);
+    });
+    // The lorikeet, turned to face left, its feet on the ground with the
+    // towers', its tail over the shadows; hopping now and then.
+    if (bird.complete && bird.naturalWidth) {
+      var bw = bird.naturalWidth, bh = bird.naturalHeight, bx = at(BIRD_AT);
+      var by = base - Math.round(bh * .82) - (frame % 23 < 2 ? 1 : 0);
+      octx.save();
+      octx.translate(bx + bw, by); octx.scale(-1, 1);
+      octx.imageSmoothingEnabled = false;
+      octx.drawImage(bird, 0, 0, bw, bh);
+      octx.restore();
     }
-    ctx.fillStyle = colour;
-    ctx.fill();
+    // The figures take the sky's light too: the towers stay black, the bird
+    // warms at sunrise and sunset and cools a little at noon.
+    var img = octx.getImageData(0, 0, cols, rows), a = img.data, mask = new Uint8Array(cols * rows);
+    for (var i = 0; i < mask.length; i++) {
+      mask[i] = a[i * 4 + 3] > 110 ? 1 : 0;
+      a[i * 4] *= light[0]; a[i * 4 + 1] *= light[1]; a[i * 4 + 2] *= light[2];
+    }
+    octx.putImageData(img, 0, 0);
+    return mask;
   }
 
   function draw(frame) {
-    var ready = bird.complete && bird.naturalWidth;
-    ctx.setTransform(dpr * W / cols, 0, 0, dpr * H / rows, 0, 0);
-
     // Where the sun stands. On its own it keeps to the day's arc across the
     // picture for the hour t; as the pointer it stands where the pointer is,
     // and the hour and its height are read back from there.
-    var R = rows * .087, low = hz - R, span = low - R - 2, sun;
+    var R = Math.max(3, Math.round(rows * .087)), low = hz - R, span = low - R - 2, sun;
     if (!aim) {
       var e = Math.sin(Math.PI * t);
-      sun = { x: cols * (.06 + .88 * t), y: low - e * span, elev: e, hour: t };
+      sun = { x: Math.round(cols * (.06 + .88 * t)), y: Math.round(low - e * span), elev: e, hour: t };
     } else {
-      sun = { x: aim.x, y: aim.y, elev: clamp((low - aim.y) / span), hour: clamp((aim.x / cols - .06) / .88) };
+      var px = Math.floor(aim.x), py = Math.floor(aim.y);
+      sun = { x: px, y: py, elev: clamp((low - py) / span), hour: clamp((px / cols - .06) / .88) };
     }
 
     // The sky, with its three bands of glow round the sun: tight round it
-    // at noon, spreading wide at sunrise and sunset. Then the sun, a plain
-    // yellow disc; the ground, drawn next, hides it when it is down.
+    // at noon, spreading wide at sunrise and sunset.
     var dusk = smooth(.2, .5, Math.abs(sun.hour - .5));
-    var day = skyFor(sun.hour), step = R * (.37 + 1.6 * dusk), drift = frame * .015;
-    ctx.fillStyle = css(day.bands[3]);
-    ctx.fillRect(0, 0, cols, hz);
-    for (var k = 3; k >= 1; k--) glow(sun.x, sun.y, R + k * step, k, drift, css(day.bands[k - 1]));
-    ctx.beginPath(); ctx.arc(sun.x, sun.y, R, 0, Math.PI * 2);
-    ctx.fillStyle = C.sun; ctx.fill();
+    var day = skyFor(sun.hour), step = R * (.55 + 2.4 * dusk), fq = 3 / rows, drift = frame * .015;
+    var img = sctx.createImageData(cols, hz), q = img.data;
+    for (var y = 0; y < hz; y++)
+      for (var x = 0; x < cols; x++) {
+        var d = Math.sqrt((x - sun.x) * (x - sun.x) + (y - sun.y) * (y - sun.y));
+        d *= 1 + (noise(x * fq + drift, y * fq) - .5) * .3;
+        var c = day.bands[Math.min(3, Math.max(0, Math.floor((d - R) / step + 1)))], k = (y * cols + x) * 4;
+        q[k] = c[0]; q[k + 1] = c[1]; q[k + 2] = c[2]; q[k + 3] = 255;
+      }
+    sctx.putImageData(img, 0, 0);
+    // The sun, a plain yellow disc, behind the ground when it is down.
+    for (var dy = -R; dy <= R; dy++)
+      for (var dx = -R; dx <= R; dx++)
+        if (dx * dx + dy * dy <= R * R + R * .6 && sun.y + dy < hz) rect(sctx, sun.x + dx, sun.y + dy, 1, 1, C.sun);
 
-    // The ground, and the shadows on it. A point h cells above the ground
-    // falls h * shy cells in front of the figures and h * shx across.
-    var ground = lit(GROUND, day.light), shade = lit(SHADE, day.light);
-    ctx.fillStyle = css(ground);
-    ctx.fillRect(0, hz, cols, rows - hz);
+    // The ground, with the shadows on it. A point h cells above the ground
+    // falls h * sy cells in front of the figures and h * sx across.
+    var mask = figures(frame, day.light), ground = lit(GROUND, day.light), shade = lit(SHADE, day.light);
     var ang = .1 + sun.elev * 1.35;
     var L = Math.min(2.4, Math.cos(ang) / Math.sin(ang));
-    var shy = .55 * L, shx = -(sun.hour - .5) * 1.6 * L;
-    var bw = ready ? bird.naturalWidth : 0, bh = ready ? bird.naturalHeight : 0;
-    var bx = Math.round(at(BIRD_AT)), by = Math.round(base - bh * .82) - (frame % 23 < 2 ? 1 : 0);
-    if (ready) paintBird(day.light, shade);
-    ctx.save();
-    ctx.beginPath(); ctx.rect(0, base, cols, rows - base); ctx.clip();
-    ctx.fillStyle = css(shade);
-    TOWERS.forEach(function (tw) {
-      var x0 = at(tw[0]), x1 = at(tw[1]), h = base - tw[2] * rows;
-      ctx.beginPath();
-      ctx.moveTo(x0, base); ctx.lineTo(x1, base);
-      ctx.lineTo(x1 + h * shx, base + h * shy); ctx.lineTo(x0 + h * shx, base + h * shy);
-      ctx.fill();
-    });
-    // The bird's shadow: its silhouette, each pixel laid on the ground by the
-    // same rule, so it slants and stretches as the towers' do.
-    if (ready) {
-      ctx.transform(1, 0, -shx, -shy, bx + (base - by) * shx, base + (base - by) * shy);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(shape, 0, 0);
-    }
-    ctx.restore();
+    var sy = .55 * L, sx = -(sun.hour - .5) * 1.6 * L;
+    var land = sctx.createImageData(cols, rows - hz), g = land.data;
+    for (y = hz; y < rows; y++)
+      for (x = 0; x < cols; x++) {
+        var dark = false;
+        if (y > base) {
+          var h = (y - base) / sy, mx = Math.round(x - h * sx), my = Math.round(base - h);
+          dark = mx >= 0 && mx < cols && my >= 0 && mask[my * cols + mx] === 1;
+        }
+        var c2 = dark ? shade : ground, j = ((y - hz) * cols + x) * 4;
+        g[j] = c2[0]; g[j + 1] = c2[1]; g[j + 2] = c2[2]; g[j + 3] = 255;
+      }
+    sctx.putImageData(land, 0, hz);
 
-    // The towers, and the lorikeet in front, turned to face left, its feet on
-    // the ground with the towers', hopping now and then.
-    ctx.fillStyle = C.tower;
-    TOWERS.forEach(function (tw) {
-      var x0 = at(tw[0]), top = tw[2] * rows;
-      ctx.fillRect(x0, top, at(tw[1]) - x0, base - top);
-    });
-    if (ready) {
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sprite, bx, by, bw, bh);
-    }
+    sctx.drawImage(obj, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(src, 0, 0, W, H);
   }
 
   var t = .3, frame = 0, aim = null, held = 0, queued = false;
@@ -262,7 +248,7 @@
   // Back to its arc, carrying on from the hour it was let go at.
   function letGo() {
     if (!aim) return;
-    t = clamp((aim.x / cols - .06) / .88);
+    t = clamp((Math.floor(aim.x) / cols - .06) / .88);
     aim = null;
     redraw();
   }
