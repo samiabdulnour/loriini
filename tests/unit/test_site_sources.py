@@ -43,10 +43,11 @@ ANSWERED_BY: dict[str, str] = {
     "services1.arcgis.com": "City of Sydney",
 }
 
-#: Hosts that appear in the package and are not where any data comes from.
-#: One entry, and it is the contact address in the User-Agent header -- which
-#: the Overpass mirrors ask for and which credits nobody.
-NOT_A_SOURCE = {"github.com"}
+#: Hosts that appear in the package and are not where any data comes from:
+#: the contact address in the User-Agent header, which the Overpass mirrors
+#: ask for and which credits nobody; and site-analyst.com, where the sheets'
+#: four styles are from, which the window links to and nothing fetches (D152).
+NOT_A_SOURCE = {"github.com", "site-analyst.com"}
 
 
 def _hosts_fetched() -> set[str]:

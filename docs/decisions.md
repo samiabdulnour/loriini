@@ -6007,3 +6007,110 @@ the middle of the shadows -- with all of them inside the frame.
 *What this does not change:* the fills, their style or labels (D145, D147),
 the hourly sheets' placement, or the combined sheets (D141 to D148).
 
+
+### D151 — The lorikeet over the L is the icon, and the icon is the mark
+
+Asked 25 October 2026, with a new picture: a pixel lorikeet, wings open,
+perched on the foot of a black L on an orange square -- *"I need to change
+the icon of loriini everywhere"*.
+
+**One artwork for every place.** `assets/loriini-icon-1024.png` is the new
+picture, and `scripts/make_icon.py` writes every size from it as before: the
+.ico, the .icns on Apple's grid, the Dock's and the MCP server's 256, the
+site's favicon and large icons. Until now the window's top left and the
+About box wore a mark of their own, the whole bird on no tile (D136), and the
+site's header a head cut from it. Both now wear the icon: the script also
+writes `loriini-mark-32.png` and `-64.png` from the tile, `site/icon-52.png`
+for the header beside the name, and `site/apple-touch-icon.png`, square and
+opaque on the tile's orange, because a phone rounds the corners itself. The
+bird-only artwork and the head (`loriini-mark-1024.png`,
+`site/lorikeet-head.png`) are gone.
+
+**The square, inside the old rounded tile.** The picture is a square to its
+edges and the tile keeps D136's rounded corners: a square icon stands out in
+a Mac's Dock and on a Windows desktop beside rounded ones. The wing's tip
+reaches the top right corner, and the rounding cut 212 of its pixels, so the
+picture is drawn 976 pixels across in the 1024 with its own orange (235, 81,
+41) for the margin: nothing of the bird or the L is lost, and the margin is
+the ground's colour, so it cannot be seen.
+
+**From the picture that came.** It came as a 360-pixel screenshot, and like
+the last lorikeet its squares are not on a regular grid, so it was enlarged
+with Lanczos rather than square by square; reducing its colours to a palette
+to sharpen the squares lost the purple and the eye's white. Every size people
+look at, 256 and under, is a reduction and sharp; the 512 and 1024 a Mac
+shows in the Finder's large views are an enlargement and a little soft. A
+larger original dropped in as `loriini-icon-1024.png` and the script rerun
+replaces all of it.
+
+*What this does not change:* the bird the site's mosaic perches on its tower
+(`site/lorikeet.png`), which is a picture and not the mark; the add-on's
+palette in Archicad, whose first button is the solar study's sun on a massing
+like the others; or the lemon theme around the mark.
+
+### D152 — Site-analyst.com's four styles, and only those
+
+Asked 25 October 2026: *"remove fuse theme from site and context analysis.
+its gonna be only those four. give a link on site-analyst.com in explanation
+and in about"*.
+
+**FUSE goes.** The context and site sheets are drawn in Flamingo,
+Kingfisher, Heron or Canary -- site-analyst.com's four -- and nothing else.
+FUSE, the office's own legend over the colour aerial that the sheets were
+drawn in before the themes, kept since as a fifth so a saved run would draw
+what it drew, is out of both style rows, both lists in
+`sun_study.site.theme`, the CLI's `--theme` / `--site-theme`, and the MCP
+tool's choices; its retired names `office` and `oatley` go with it. A preset
+that chose it names nothing now and is drawn in the default (Flamingo,
+Heron), and the CLI says so on the way, as it does for any name it does not
+know. The fields' defaults in `Theme` and `SiteLook` were FUSE's values and
+stay as they are -- every theme sets what it draws differently, and the
+drawing code is not touched.
+
+**Where the styles are from, a click away.** `theme.SITE_ANALYST` is the
+address. The two style rows' explanations say the styles are
+site-analyst.com's, and under the rows a link, *The four styles at
+site-analyst.com*, opens it: an explanation in the sidebar card changes as
+the pointer moves to it, so the link is on the page. The info box has a card
+of its own, *The sheets' styles*, saying the sheets are drawn in its four,
+ported colour for colour and named as it names them, with the address under
+it as the registers' terms are.
+
+**Tests.** The drawing tests that read their colours off FUSE now read them
+off Heron's palette (the context sheet, the worksheet through the add-on,
+the site's dimensions) or Kingfisher's (the neighbours as fills); the tests
+of FUSE alone -- the names on the map, the zigzag on the road's own line --
+are gone.
+
+*What this does not change:* the four styles, their colours or defaults, or
+the office's palette in `curate`, which maps the zones onto the legend's
+categories for every theme.
+
+### D153 — Every grey in the window is neutral
+
+Asked 25 October 2026, with the window's picture recoloured by hand: *"also
+please change the grey background in software. I redid that in artefact ...
+so please do it for all versions"*.
+
+**The rule the picture follows.** Read pixel by pixel against the capture it
+was made from, every warm grey in it became the neutral grey of the same
+lightness (Rec. 601 luma, rounded) -- the surround `#F1F0E6` to `#EFEFEF`, the
+page `#F8F7F0` to `#F7F7F7`, the dividers `#E3E2D8` to `#E1E1E1`, the ink
+`#1F1F1D` to `#1F1F1F` -- and nothing with a colour in it moved: the lemon,
+its tint, the blue, the ochre. So that is the rule, applied to the source
+rather than to a picture of it: every colour in `sun_study.app.theme`,
+`window.py` (the sheets panel's drawings) and `scripts/make_icons.py` whose
+channels lie within 16 of each other with blue the lowest -- the warm greys,
+and the sage of a courtyard -- is that grey now. The bluish pale of the icons
+(`#F3F7FD`) is a tint and stays.
+
+**All versions.** The palette is one module for Windows and the Mac alike,
+so both builds take it. The icons are drawn from the same figures, so
+`make_icons.py` was rerun: 476 of the window's PNGs changed, and the eight
+palette icons of the add-on in Archicad, which are neutral now beside
+Archicad's own greys. The contrast the comments promise still holds: the
+hint grey `#6A6A6A` is 5.4:1 on white, a field's edge `#888888` 3.5:1.
+
+*What this does not change:* the web site, whose pale sage ground the warm
+surround was lightened from (D132); the sheets drawn in Archicad; or the
+lemon accent and the blue.

@@ -25,7 +25,7 @@ datas += [(str(ROOT / 'assets' / 'icons'), 'assets/icons')]
 # the files with Windows for the running process alone, so nothing is
 # installed; without them the window falls back to Segoe UI.
 datas += [(str(ROOT / 'assets' / 'fonts'), 'assets/fonts')]
-# The bird at 256 pixels, for the agent's client to show beside the server's
+# The icon at 256 pixels, for the agent's client to show beside the server's
 # name (`sun_study.agent.tools.icon` looks for it at `assets` under _MEIPASS),
 # and at 32 for the window's tool bar (`sun_study.app.window.brand_mark`).
 datas += [(str(ROOT / 'assets' / 'loriini-icon-256.png'), 'assets')]

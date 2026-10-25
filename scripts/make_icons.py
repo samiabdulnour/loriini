@@ -49,19 +49,19 @@ from PIL import Image, ImageChops, ImageColor, ImageDraw
 # chose, ochre is the sun and what the sun reaches. Everything built stays
 # grey, so a colour in an icon always means something.
 
-INK = "#3C3C3A"
+INK = "#3C3C3C"
 PAPER = "#FFFFFF"
-FOLD = "#E6E5DF"
-FACE = "#F4F3EE"
-GREY_L = "#DEDDD6"
-GREY = "#C6C5BE"
-GREY_D = "#9A9992"
+FOLD = "#E5E5E5"
+FACE = "#F3F3F3"
+GREY_L = "#DDDDDD"
+GREY = "#C5C5C5"
+GREY_D = "#999999"
 #: The edge of a control you can press or type into, and the one colour in
 #: here that is not a drawing decision. GREY_D is a shading grey and reads
 #: at about 2.8:1 on white, which is under the 3:1 a control boundary owes
 #: the eye; this is the window's own field edge and clears it.
-CONTROL_EDGE = "#8A8980"
-GROUND = "#EDEBE4"
+CONTROL_EDGE = "#888888"
+GROUND = "#EBEBEB"
 #: The accent the window's controls wear since D132: pale lemon, ink on it.
 #: ``theme.ACCENT`` and its tint and edge are the same three numbers, and
 #: they have to be: a switch drawn here sits on a row the theme colours.
@@ -69,9 +69,9 @@ ACCENT = "#FFF07A"
 ACCENT_T = "#FFF9CF"
 ACCENT_EDGE = "#E6D65A"
 #: The faces' greys: a button's edge, a control that is off, a divider.
-FACE_EDGE = "#CFCEC3"
-OFF = "#ECEBE2"
-DIVIDER = "#E3E2D8"
+FACE_EDGE = "#CDCDCD"
+OFF = "#EAEAEA"
+DIVIDER = "#E1E1E1"
 BLUE = "#1E63C8"
 BLUE_T = "#C3D7F5"
 BLUE_D = "#14417F"
@@ -721,7 +721,7 @@ def studies() -> list[Icon]:
                 Poly(((22.5, 17.4), (28.5, 13.9), (28.5, 18.9), (22.5, 22.4)), fill=GREY_L),
                 # A tree, because a tree says open space in one stroke.
                 Line(((16, 24.5), (16, 20.5)), fill=INK, width=1.3),
-                Disc(16, 18.6, 3.0, fill="#DEDDD6", outline=INK),
+                Disc(16, 18.6, 3.0, fill="#DDDDDD", outline=INK),
                 *sun(cx=26.8, cy=5.4, r=2.6),
             ],
         ),
@@ -1069,8 +1069,8 @@ def settings() -> list[Icon]:
             "group",
             "a folder with the neighbours already in it",
             [
-                Poly(((3, 7), (12, 7), (14.2, 9.8), (29, 9.8), (29, 26), (3, 26)), fill="#E9E8E1"),
-                rect(3, 12, 26, 14, fill="#FBFAF7"),
+                Poly(((3, 7), (12, 7), (14.2, 9.8), (29, 9.8), (29, 26), (3, 26)), fill="#E8E8E8"),
+                rect(3, 12, 26, 14, fill="#FAFAFA"),
                 *footprint(11, 20.4, half_w=3.2, half_h=1.8),
                 *footprint(21, 20.4, half_w=3.2, half_h=1.8),
             ],
@@ -1142,7 +1142,7 @@ def settings() -> list[Icon]:
             "a named set of layer states, bracketed",
             [
                 rect(10.5, 7.5, 11, 4, fill=PAPER),
-                rect(10.5, 13.5, 11, 4, fill="#FBFAF7"),
+                rect(10.5, 13.5, 11, 4, fill="#FAFAFA"),
                 rect(10.5, 19.5, 11, 4, fill=FACE),
                 # The brackets are the icon. Nothing else in the set has them,
                 # and a saved set of states is exactly what a bracket means.
@@ -1155,7 +1155,7 @@ def settings() -> list[Icon]:
             "layers pushed into the run whatever the combination says",
             [
                 rect(15.5, 7.5, 13, 4, fill=PAPER),
-                rect(15.5, 13.5, 13, 4, fill="#FBFAF7"),
+                rect(15.5, 13.5, 13, 4, fill="#FAFAFA"),
                 rect(15.5, 19.5, 13, 4, fill=FACE),
                 # Forced in from outside: the arrow points at the stack.
                 Line(((2.5, 15.5), (9.5, 15.5)), fill=BLUE, width=2.5),
@@ -1269,7 +1269,7 @@ def settings() -> list[Icon]:
             [
                 Poly(
                     ((2.5, 8), (11.5, 8), (13.7, 10.8), (31, 10.8), (31, 27), (2.5, 27)),
-                    fill="#E9E8E1",
+                    fill="#E8E8E8",
                 ),
                 Poly(
                     ((9, 5), (20, 5), (20, 14), (17.5, 16.5), (9, 16.5)),
@@ -1277,7 +1277,7 @@ def settings() -> list[Icon]:
                     width=1.2,
                     detail=True,
                 ),
-                rect(2.5, 13, 28.5, 14, fill="#FBFAF7"),
+                rect(2.5, 13, 28.5, 14, fill="#FAFAFA"),
             ],
         ),
         Icon(
@@ -1349,9 +1349,9 @@ def settings() -> list[Icon]:
             [
                 Poly(
                     ((2.5, 8), (11.5, 8), (13.7, 10.8), (31, 10.8), (31, 27), (2.5, 27)),
-                    fill="#E9E8E1",
+                    fill="#E8E8E8",
                 ),
-                rect(2.5, 13, 28.5, 14, fill="#FBFAF7"),
+                rect(2.5, 13, 28.5, 14, fill="#FAFAFA"),
                 *block(cx=16, top=14.6, half=6, rise=3.3, tall=3.4),
             ],
         ),
@@ -1412,7 +1412,7 @@ def settings() -> list[Icon]:
                             7 + 4.4 * col + (2.2 if row % 2 else 0),
                             11 + 4 * row,
                             1.05,
-                            fill="#8F8E87",
+                            fill="#8E8E8E",
                         )
                         for row in range(4)
                         for col in range(4)
@@ -1423,7 +1423,7 @@ def settings() -> list[Icon]:
                 *only_small(
                     [
                         Disc(
-                            9 + 7 * col + (3.5 if row % 2 else 0), 12 + 6 * row, 1.9, fill="#8F8E87"
+                            9 + 7 * col + (3.5 if row % 2 else 0), 12 + 6 * row, 1.9, fill="#8E8E8E"
                         )
                         for row in range(3)
                         for col in range(3)
@@ -1531,9 +1531,9 @@ def settings() -> list[Icon]:
             [
                 Poly(
                     ((2.5, 8), (11.5, 8), (13.7, 10.8), (31, 10.8), (31, 27), (2.5, 27)),
-                    fill="#E9E8E1",
+                    fill="#E8E8E8",
                 ),
-                rect(2.5, 13, 28.5, 14, fill="#FBFAF7"),
+                rect(2.5, 13, 28.5, 14, fill="#FAFAFA"),
                 Line(((16, 16), (16, 23)), fill=BLUE, width=2.0),
                 Poly(((12.5, 20), (19.5, 20), (16, 24.5)), fill=BLUE, outline=None),
             ],
@@ -1660,7 +1660,7 @@ FACES: dict[str, Face] = {
     "bar_trough": Face(OFF, OFF, DIVIDER, wide=256, tall=10, radius=5),
     "bar_fill": Face(ACCENT, ACCENT, wide=256, tall=10, radius=5),
     "thumb": Face(FACE_EDGE, FACE_EDGE, wide=12, tall=96, radius=4, margin=2),
-    "thumb_hover": Face("#B5B4AA", "#B5B4AA", wide=12, tall=96, radius=4, margin=2),
+    "thumb_hover": Face("#B3B3B3", "#B3B3B3", wide=12, tall=96, radius=4, margin=2),
     # A study's box. The header's tint and the rule under it are part of the
     # picture, so the corners of the tint are the corners of the box and not
     # a square patch poking out past a curve.

@@ -31,6 +31,7 @@ from sun_study.archicad.site_analysis import (
     summary_rows,
 )
 from sun_study.site import nsw, osm, transport
+from sun_study.site import theme as themes
 from sun_study.site.arcgis import rings_of
 from sun_study.site.geo import (
     Extent,
@@ -211,46 +212,40 @@ def test_the_site_can_be_squared_to_its_long_boundary_and_set_on_a_corner() -> N
 def test_the_context_drawing_carries_the_legends_colours_and_the_site_on_top() -> None:
     bundle = context_bundle()
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    # The office's own legend, as the sheets were first drawn: the theme the
-    # colours below are read off. The others are checked in test_site_theme.
-    drawing = context_drawing(bundle, frame, theme="fuse")
+    # Heron, the office sheet over the aerial: the colours below are read off
+    # its own palette. The other three are checked in test_site_theme.
+    heron = themes.theme("heron")
+    drawing = context_drawing(bundle, frame, theme="heron")
 
     zoning = [f for f in drawing.fills if "(R3)" in f.element_id or "(DM)" in f.element_id]
-    assert [f.colour for f in zoning] == ["#f7c1bd"], (
-        "R3 is drawn in the R3 tan; DM is not a category"
+    assert [f.colour for f in zoning] == [heron.category("r3").fill], (
+        "R3 is drawn in the theme's R3; DM is not a category"
     )
     assert zoning[0].element_id == "SA R3 MEDIUM DENSITY RESIDENTIAL (R3)"
     assert all(f.element_id for f in drawing.fills), "every fill says what it is"
     institutions = [f for f in drawing.fills if f.element_id.startswith("SA MEDICAL")]
-    assert institutions[0].colour == "#f27ba9" and institutions[0].contour == "#e5237e"
+    medical = heron.category("medical")
+    assert institutions[0].colour == medical.fill and institutions[0].contour == medical.stroke
     assert any(f.element_id == "SA GENERAL HERITAGE SITE" for f in drawing.fills)
 
     site_lines = [line for line in drawing.lines if line.dashed and line.weight_mm == 0.9]
-    assert site_lines and site_lines[0].dashed and site_lines[0].colour == "#e30613"
+    assert site_lines and site_lines[0].dashed and site_lines[0].colour == heron.site
     # The site is 20 m a side in the project frame, whatever the turn.
     sides = [math.dist(a, b) for a, b in pairwise(site_lines[0].points)]
     assert sides == pytest.approx([20.0] * 4, rel=0.01)
 
     labels = {t.text for t in drawing.texts if not t.layer.endswith(".Sheet")}
-    assert {
-        "TEST ST",
-        "BACK LN",
-        "KOGARAH",
-        "JUBILEE OVAL",
-        "ST GEORGE\nHOSPITAL",
-        "B",
-        "T",
-    } <= labels
+    # The streets named plain, the places numbered on the map and named in
+    # the legend's key, as site-analyst.com draws them.
+    assert {"TEST ST", "BACK LN", "1", "2", "B", "T"} <= labels
     assert "SITE" not in labels, "the legend says what red is"
     assert any(t.text.startswith("400m") for t in drawing.texts)
-    # A street gets its white band, a lane does not: one band.
-    bands = [f for f in drawing.fills if f.element_id == "SA STREET NAME BAND"]
-    assert len(bands) == 1 and bands[0].colour == "#ffffff" and len(bands[0].rings[0]) == 6
-    # The stop's letter sits on the roundel's centre, in the roundel's colour.
+    assert not any(f.element_id == "SA STREET NAME BAND" for f in drawing.fills), "plain names"
+    # The stop's letter sits on the roundel's centre, white on the solid disc.
     letter = next(t for t in drawing.texts if t.text == "B")
     roundel = next(f for f in drawing.fills if f.element_id == "SA BUS STOP")
     centre = (sum(x for x, _ in roundel.rings[0]) / 24, sum(y for _, y in roundel.rings[0]) / 24)
-    assert letter.at == pytest.approx(centre, abs=1e-6) and letter.colour == "#2f7fd6"
+    assert letter.at == pytest.approx(centre, abs=1e-6) and letter.colour == "#ffffff"
     assert any(f.hatch for f in drawing.fills if f.element_id == "SA GENERAL HERITAGE SITE")
     assert len(drawing.layers) <= 5, drawing.layers
     assert any(f.wash for f in drawing.fills if f.element_id == "SA SITE")
@@ -258,6 +253,7 @@ def test_the_context_drawing_carries_the_legends_colours_and_the_site_on_top() -
     legend = [t.text for t in drawing.texts if t.layer.endswith(".Sheet")]
     assert "R3 MEDIUM DENSITY RESIDENTIAL" in legend and "MEDICAL" in legend
     assert "R2 LOW DENSITY RESIDENTIAL" not in legend
+    assert {"ST GEORGE HOSPITAL", "JUBILEE OVAL", "KOGARAH"} <= set(legend), "the key"
     assert drawing.mm(4.0) == pytest.approx(12.0), "4 mm on paper is 12 m at 1:3000"
 
 
@@ -296,7 +292,8 @@ def site_bundle() -> SiteBundle:
 
 def test_the_site_drawing_fills_the_neighbouring_buildings() -> None:
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    drawing = site_drawing(site_bundle(), frame, theme="fuse")
+    # Kingfisher draws every neighbour as a fill in its zone's colour.
+    drawing = site_drawing(site_bundle(), frame, theme="kingfisher")
     masses = [
         f for f in drawing.fills if f.layer.endswith(".Context") and f.element_id == "SA BUILDINGS"
     ]
@@ -306,7 +303,7 @@ def test_the_site_drawing_fills_the_neighbouring_buildings() -> None:
     assert not any(
         line.points[0] == footprint[0] and line.points[-1] == footprint[0] for line in drawing.lines
     ), "the footprint is a fill, not a closed outline"
-    trees = [f for f in drawing.fills if f.wash and f.element_id.startswith("SA TREE")]
+    trees = [f for f in drawing.fills if f.element_id.startswith("SA TREE")]
     assert drawing.fills.index(masses[0]) < drawing.fills.index(trees[0]), (
         "canopies over the masses"
     )
@@ -314,7 +311,7 @@ def test_the_site_drawing_fills_the_neighbouring_buildings() -> None:
 
 def test_the_site_drawing_dimensions_levels_and_orients_the_site() -> None:
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    drawing = site_drawing(site_bundle(), frame, theme="fuse")
+    drawing = site_drawing(site_bundle(), frame, theme="heron")
     texts = [t.text for t in drawing.texts]
 
     dimensions = [
@@ -330,19 +327,19 @@ def test_the_site_drawing_dimensions_levels_and_orients_the_site() -> None:
         t.text for t in drawing.texts if t.layer.endswith(".Site") and t.text.startswith("FALL")
     )
     assert "AREA 400" in info or "AREA 399" in info or "AREA 401" in info
-    assert "3\n2 STOREY\nR3 MEDIUM DENSITY RESIDENTIAL" in texts
-    assert {"W\nAM", "W\nPM", "S\nAM", "S\nPM", "N", "NE SUMMER SEA BREEZE"} <= set(texts)
+    assert "3\n2 STOREY" in texts
     assert any(f.element_id == "SA ACCESS" for f in drawing.fills), "a driveway becomes a triangle"
-    assert any(line.colour == "#3b4fd8" for line in drawing.lines), (
+    assert any(f.element_id == "SA NOISE" for f in drawing.fills), (
         "a hierarchy-4 road is a noise source"
     )
     assert len(drawing.layers) <= 5, drawing.layers
 
-    # The north disc sits along true north from the site, at 0.42 of the field.
+    # The north disc sits along true north from the site.
     north = next(t for t in drawing.texts if t.text == "N" and t.layer.endswith(".Sheet"))
     direction = frame.direction(0.0)
-    radius = min(690.0, 594.0) * 0.2 * 0.42
-    assert north.at[0] == pytest.approx(direction[0] * radius, abs=1.0)
+    assert math.atan2(north.at[1], north.at[0]) == pytest.approx(
+        math.atan2(direction[1], direction[0]), abs=0.01
+    )
 
 
 def test_the_summary_table_fills_what_is_published_and_rules_up_the_rest() -> None:
@@ -502,7 +499,7 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
                             context_drawing(
                                 context_bundle(),
                                 frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site"),
-                                theme="fuse",
+                                theme="heron",
                             ).layers
                         )
                     ),
@@ -550,7 +547,7 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
         }
     )
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
-    report = draw_context(connection, context_bundle(), frame, view=False, theme="fuse")
+    report = draw_context(connection, context_bundle(), frame, view=False, theme="heron")
 
     commands = transport_.commands()
     assert (
@@ -567,8 +564,8 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
     zone = next(f for f in fills if f.get("elementId") == "SA R3 MEDIUM DENSITY RESIDENTIAL (R3)")
     assert zone["determination"] == "drafting" and zone["showArea"] is False
     assert zone["foregroundColour"] == pytest.approx(
-        {"red": 0xF7 / 255, "green": 0xC1 / 255, "blue": 0xBD / 255}
-    )
+        {"red": 0xEC / 255, "green": 0xCB / 255, "blue": 0xB2 / 255}
+    ), "Heron's R3"
     assert zone["fillIndex"] == 1
     assert len(zone["contours"]) == 1 and len(zone["contours"][0]["points"]) == 4, (
         "no closing point"
@@ -588,11 +585,11 @@ def test_drawing_makes_the_worksheet_through_the_add_on_and_fills_in_colour() ->
     pens = {pen["index"]: pen for pen in table["pens"]}
     assert site_line["linePenIndex"] in pens and site_line["linePenIndex"] >= 136
     assert pens[site_line["linePenIndex"]]["color"] == pytest.approx(
-        {"red": 0xE3 / 255, "green": 0x06 / 255, "blue": 0x13 / 255}
-    )
+        {"red": 0xCF / 255, "green": 0x4A / 255, "blue": 0x2E / 255}
+    ), "Heron's red"
     assert "isActiveForModel" not in table, "never made the model's table"
     texts = [t for call in transport_.all_parameters_for("CreateTexts") for t in call["texts"]]
-    site_text = next(t for t in texts if t["text"] == "KOGARAH")
+    site_text = next(t for t in texts if t["text"] == "TEST ST")
     assert site_text["justification"] == "Center" and site_text["anchor"] == "MiddleMiddle"
     assert all("layerIndex" in t for t in texts), "the add-on's texts take their layer at creation"
     assert "SetDetailsOfElements" not in commands, "so nothing has to be moved afterwards"
