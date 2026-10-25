@@ -48,19 +48,17 @@
 
    The sky takes the hour's colour: pale at sunrise, blue at noon, red at
    sunset, with three bands of glow round the sun, a plain yellow disc, and
-   its light colours the ground, the shadows and the bird a little. Every
-   cell but the towers' carries a faint grain, as video does, changing on a
-   slow beat. The sun keeps to the day's arc on its own; the pointer takes
-   it, always behind the towers, the bird and the ground, and the shadows
-   follow it: short when it is high, long when it is low, thrown away from
-   its side. */
+   its light colours the ground, the shadows and the bird a little. The sun
+   keeps to the day's arc on its own; the pointer takes it, always behind
+   the towers, the bird and the ground, and the shadows follow it: short
+   when it is high, long when it is low, thrown away from its side. */
 (function () {
   var box = document.querySelector('.picture');
   var canvas = document.getElementById('picture');
   if (!canvas || !canvas.getContext) return;
   var ctx = canvas.getContext('2d');
   var src = document.createElement('canvas');
-  var sctx = src.getContext('2d', { willReadFrequently: true });
+  var sctx = src.getContext('2d');
   var obj = document.createElement('canvas');
   var octx = obj.getContext('2d', { willReadFrequently: true });
   var bird = new Image();
@@ -123,29 +121,6 @@
     u = u * u * (3 - 2 * u); v = v * v * (3 - 2 * v);
     var a = lattice(xi, yi), b = lattice(xi + 1, yi), c = lattice(xi, yi + 1), d = lattice(xi + 1, yi + 1);
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-  }
-  // The grain: each cell's red, green and blue shifted a little apart and
-  // its brightness a little, as on video. It changes on a slow beat, a fresh
-  // grain every 1.4 seconds as the old front's cells blinked, and the same
-  // within a beat however often the picture is drawn, so moving the sun does
-  // not hurry it. The towers' black stays black.
-  var GRAIN = 5, GLOW = 3, BEAT = 1400;
-  function hash(n) {
-    n = Math.imul(n ^ (n >>> 16), 0x45d9f3b);
-    n = Math.imul(n ^ (n >>> 16), 0x45d9f3b);
-    return ((n ^ (n >>> 16)) >>> 0) / 4294967296 * 2 - 1;
-  }
-  function grain() {
-    var img = sctx.getImageData(0, 0, cols, rows), d = img.data;
-    var beat = Math.imul(Math.floor(performance.now() / BEAT), 668265263);
-    for (var j = 0; j < d.length; j += 4) {
-      if (d[j] + d[j + 1] + d[j + 2] === 0) continue;
-      var n = Math.imul(j, 374761393) + beat, l = hash(n) * GLOW;
-      d[j] += l + hash(n + 1) * GRAIN;
-      d[j + 1] += l + hash(n + 2) * GRAIN;
-      d[j + 2] += l + hash(n + 3) * GRAIN;
-    }
-    sctx.putImageData(img, 0, 0);
   }
 
   var W, H, cols, rows, off, hz, base;
@@ -210,12 +185,12 @@
 
     // The sky, with its three bands of glow round the sun, closer together
     // when the sun is low.
-    var day = skyFor(sun.hour), step = R * (.5 + .35 * sun.elev), fq = 3 / rows, drift = frame * .025;
+    var day = skyFor(sun.hour), step = R * (.5 + .35 * sun.elev), fq = 3 / rows, drift = frame * .015;
     var img = sctx.createImageData(cols, hz), q = img.data;
     for (var y = 0; y < hz; y++)
       for (var x = 0; x < cols; x++) {
         var d = Math.sqrt((x - sun.x) * (x - sun.x) + (y - sun.y) * (y - sun.y));
-        d *= 1 + (noise(x * fq + drift, y * fq) - .5) * .4;
+        d *= 1 + (noise(x * fq + drift, y * fq) - .5) * .3;
         var c = day.bands[Math.min(3, Math.max(0, Math.floor((d - R) / step + 1)))], k = (y * cols + x) * 4;
         q[k] = c[0]; q[k + 1] = c[1]; q[k + 2] = c[2]; q[k + 3] = 255;
       }
@@ -245,7 +220,6 @@
     sctx.putImageData(land, 0, hz);
 
     sctx.drawImage(obj, 0, 0);
-    grain();
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(src, 0, 0, W, H);
   }
