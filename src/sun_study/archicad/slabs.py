@@ -4,12 +4,15 @@ A massing is modelled in slabs, one per floor, and the yield analysis
 (roadmap R3, ``rules.area_yield``) is their areas added up by level and by
 use. Which slabs are the massing, and what each is, is the person's to say:
 
-* **by layer** -- the slabs on the layers named as residential, as
-  commercial and as retail. The layer is also what says a slab's use.
+* **by layer** -- the slabs on the layers named as residential and as
+  commercial. The layer is also what says a slab's use.
 * **by layer and level** -- the slabs on the layers named as *massing*,
-  whose use is told by the level they stand on: the ground floor retail,
-  the levels named commercial, everything else residential. An option
-  modelled on one layer -- a podium with a tower on it -- is read this way.
+  whose use is told by the level they stand on: the levels named commercial
+  are commercial, everything else residential. An option modelled on one
+  layer -- a podium with a tower on it -- is read this way.
+
+Commercial is every floor that is not a home, the shops with the offices: a
+layer or a level of shops is named as commercial (D159).
 * **by the renovation filter** -- only the slabs the floor plan's renovation
   filter shows, so that a massing modelled as *New* over an existing
   building counts the new and not the old. Archicad decides what the filter
@@ -57,7 +60,6 @@ from sun_study.core.plan_area import Arc, Ring, floor_area
 from sun_study.rules.area_yield import (
     COMMERCIAL,
     RESIDENTIAL,
-    RETAIL,
     Floor,
     Use,
     level_index,
@@ -428,10 +430,8 @@ def floors_from(
     slabs: Iterable[MassingSlab],
     residential: Sequence[str] = (),
     commercial: Sequence[str] = (),
-    retail: Sequence[str] = (),
     massing: Sequence[str] = (),
     *,
-    retail_levels: Sequence[int] = (),
     commercial_levels: Sequence[int] = (),
     ground_m: float | None = None,
     others_m: Sequence[float] = (),
@@ -448,15 +448,9 @@ def floors_from(
     named: dict[str, set[str]] = {
         RESIDENTIAL: {_tidy(name) for name in residential if name.strip()},
         COMMERCIAL: {_tidy(name) for name in commercial if name.strip()},
-        RETAIL: {_tidy(name) for name in retail if name.strip()},
         BY_LEVEL: {_tidy(name) for name in massing if name.strip()},
     }
-    words = {
-        RESIDENTIAL: "residential",
-        COMMERCIAL: "commercial",
-        RETAIL: "retail",
-        BY_LEVEL: "massing",
-    }
+    words = {RESIDENTIAL: "residential", COMMERCIAL: "commercial", BY_LEVEL: "massing"}
     kinds = list(named)
     for i, first in enumerate(kinds):
         for second in kinds[i + 1 :]:
@@ -481,8 +475,6 @@ def floors_from(
             kept.append((slab, RESIDENTIAL))
         elif key in named[COMMERCIAL]:
             kept.append((slab, COMMERCIAL))
-        elif key in named[RETAIL]:
-            kept.append((slab, RETAIL))
         else:
             passed_over[slab.layer] = passed_over.get(slab.layer, 0) + 1
 
@@ -495,12 +487,7 @@ def floors_from(
     for (slab, kind), index in zip(kept, indices, strict=True):
         use: Use
         if kind == BY_LEVEL:
-            if index in retail_levels:
-                use = RETAIL
-            elif index in commercial_levels:
-                use = COMMERCIAL
-            else:
-                use = RESIDENTIAL
+            use = COMMERCIAL if index in commercial_levels else RESIDENTIAL
             levels_used[level_name(index)] = use
         else:
             use = kind  # type: ignore[assignment]
@@ -510,7 +497,7 @@ def floors_from(
         by_layer[slab.layer] = (kind, count + 1, total + area)
     missing = tuple(
         name
-        for name in [*residential, *commercial, *retail, *massing]
+        for name in [*residential, *commercial, *massing]
         if name.strip() and _tidy(name) not in seen
     )
     ordered = dict(sorted(levels_used.items(), key=lambda item: _level_order(item[0])))

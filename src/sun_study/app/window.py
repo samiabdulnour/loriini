@@ -5722,11 +5722,14 @@ class Window:
         told by level -- and by the renovation filter; or, with no layer
         named, by what is showing.
 
-        Two boxes. The study's own says what is measured, what it is called
-        and against what; the second holds the office's efficiencies, the
-        mix and the parking figures, which are set once for the practice and
-        kept with Save as default. Every one of them is also an input cell in
-        the workbook the run writes, so a what-if is typed into Excel.
+        Three boxes (D159). The study's own says what is measured and what it
+        is called, and where the sheet and the workbook go; the second the
+        site and the controls it is measured against; the third the
+        efficiencies, the mix and the parking figures, which are set once for
+        the practice and kept with Save as default. Two uses: residential
+        and commercial, which is the shops as well as the offices. Every one
+        of the figures is also an input cell in the workbook the run writes,
+        so a what-if is typed into Excel.
         """
         row = 0
         self.do_yield = tk.BooleanVar(value=False)
@@ -5768,8 +5771,8 @@ class Window:
             "Which slabs are the massing. Everything showing is the usual answer.",
             "Everything showing: every slab on a layer that is showing, its use told by "
             "the level it stands on. Chosen layers: the slabs on the layers you choose, "
-            "the use told the same way. Layer per use: a layer of residential slabs, one "
-            "of commercial, one of retail. Layer per option: each layer one whole option, "
+            "the use told the same way. Layer per use: a layer of residential slabs and "
+            "one of commercial. Layer per option: each layer one whole option, "
             "a sheet and a workbook page each.",
         )
         self.yield_renovation_status, row = self._tiles(
@@ -5823,7 +5826,7 @@ class Window:
             "Layers",
             "The layers whose slabs are the massing.",
             "Every slab on these layers is counted, its use told by the level it stands "
-            "on: the retail and commercial levels below, every other level residential. A "
+            "on: the commercial levels below, every other level residential. A "
             "layer cannot be named twice; the run refuses one that is.",
         )
         rows_of("layers", before)
@@ -5841,68 +5844,21 @@ class Window:
             frame,
             row,
             "Commercial layers",
-            "The layers whose slabs are commercial floor: offices, a podium.",
+            "The layers whose slabs are commercial floor: shops, offices, a podium.",
             "Counted at the commercial efficiencies, and left out of the units.",
-        )
-        self.yield_retail, row = self._picker(
-            frame,
-            row,
-            "Retail layers",
-            "The layers whose slabs are retail floor.",
-            "Counted at the retail efficiencies, and left out of the units.",
         )
         rows_of("per_use", before)
         before = {str(child) for child in frame.winfo_children()}
-        self.yield_retail_levels, row = self._level_picker(
-            frame,
-            row,
-            "Retail levels",
-            "The levels that are retail: the ground, usually. Every other level is residential.",
-            "The levels are counted up from the ground -- the level nearest the project's "
-            "ground storey -- as the run names them in its log: Ground, Level 01, B 01.",
-        )
         self.yield_commercial_levels, row = self._level_picker(
             frame,
             row,
             "Commercial levels",
-            "The levels that are commercial.",
-            "A level can be retail or commercial, not both; every other level is residential.",
+            "The levels that are commercial: shops, offices, a podium. Every other level is "
+            "residential.",
+            "The levels are counted up from the ground -- the level nearest the project's "
+            "ground storey -- as the run names them in its log: Ground, Level 01, B 01.",
         )
         rows_of("levels", before)
-        self.yield_site_area, row = self._entry(
-            frame,
-            row,
-            "Site area (m²)",
-            "",
-            "Blank reads it at the address on the Site analysis page, when one is typed.",
-            "The FSR is the GFA over this. From the address it is the cadastral lots' own "
-            "area, which is the figure to confirm against the survey.",
-        )
-        self.yield_fsr_residential, row = self._entry(
-            frame,
-            row,
-            "Permissible FSR, residential",
-            "",
-            "The sheet splits the permissible FSR by use. Blank everywhere reads the LEP's.",
-            "The LEP's one FSR, read at the address, goes on the residential row with a "
-            "note; split it here, or in the workbook.",
-        )
-        self.yield_fsr_commercial, row = self._entry(
-            frame,
-            row,
-            "Permissible FSR, commercial",
-            "",
-            "",
-            "The part of the permissible FSR that is commercial floor.",
-        )
-        self.yield_fsr_retail, row = self._entry(
-            frame,
-            row,
-            "Permissible FSR, retail",
-            "",
-            "",
-            "The part of the permissible FSR that is retail floor.",
-        )
         self.yield_view, row = self._entry(
             frame,
             row,
@@ -5942,7 +5898,35 @@ class Window:
             default=AREA_TABLE,
         )
 
-        frame, row = self._panel(outer, 1, title="Efficiencies, mix and parking"), 0
+        frame, row = self._panel(outer, 1, title="Site and controls"), 0
+        self.yield_site_area, row = self._entry(
+            frame,
+            row,
+            "Site area (m²)",
+            "",
+            "Blank reads it at the address on the Site analysis page, when one is typed.",
+            "The FSR is the GFA over this. From the address it is the cadastral lots' own "
+            "area, which is the figure to confirm against the survey.",
+        )
+        self.yield_fsr_residential, row = self._entry(
+            frame,
+            row,
+            "Permissible FSR, residential",
+            "",
+            "The sheet splits the permissible FSR by use. Blank everywhere reads the LEP's.",
+            "The LEP's one FSR, read at the address, goes on the residential row with a "
+            "note; split it here, or in the workbook.",
+        )
+        self.yield_fsr_commercial, row = self._entry(
+            frame,
+            row,
+            "Permissible FSR, commercial",
+            "",
+            "",
+            "The part of the permissible FSR that is commercial floor.",
+        )
+
+        frame, row = self._panel(outer, 2, title="Efficiencies, mix and parking"), 0
         self.yield_gfa_residential, row = self._entry(
             frame,
             row,
@@ -5958,15 +5942,7 @@ class Window:
             "BEA to GFA, commercial",
             "0.85",
             "The share of the commercial BEA that is GFA.",
-            "An office floor loses less to cores and circulation. The sheet's 0.85.",
-        )
-        self.yield_gfa_retail, row = self._entry(
-            frame,
-            row,
-            "BEA to GFA, retail",
-            "0.95",
-            "The share of the retail BEA that is GFA.",
-            "A shop floor is nearly all floor. The sheet's 0.95.",
+            "A shop or office floor loses less to cores and circulation. The sheet's 0.85.",
         )
         self.yield_nla_residential, row = self._entry(
             frame,
@@ -5983,14 +5959,6 @@ class Window:
             "GFA to NLA, commercial",
             "0.9",
             "The share of the commercial GFA that is net lettable.",
-            "Said on the sheet; nothing else is worked from it.",
-        )
-        self.yield_nla_retail, row = self._entry(
-            frame,
-            row,
-            "GFA to NLA, retail",
-            "0.9",
-            "The share of the retail GFA that is net lettable.",
             "Said on the sheet; nothing else is worked from it.",
         )
         self.yield_affordable_share, row = self._entry(
@@ -6021,7 +5989,7 @@ class Window:
             "Basement site ratio",
             "0.4",
             "The share of the site a basement level may take, 0.4 for forty per cent.",
-            "The rates per unit type and per m² of commercial and retail floor are the "
+            "The rates per unit type and per m² of commercial floor are the "
             "sheet's, and are inputs in the workbook.",
         )
 
@@ -7366,21 +7334,16 @@ class Window:
             "yield_workbook": self.yield_workbook,
             "yield_residential_layers": self.yield_residential,
             "yield_commercial_layers": self.yield_commercial,
-            "yield_retail_layers": self.yield_retail,
             "yield_massing_layers": self.yield_massing,
-            "yield_retail_levels": self.yield_retail_levels,
             "yield_commercial_levels": self.yield_commercial_levels,
             "yield_site_area": self.yield_site_area,
             "yield_fsr_residential": self.yield_fsr_residential,
             "yield_fsr_commercial": self.yield_fsr_commercial,
-            "yield_fsr_retail": self.yield_fsr_retail,
             "yield_view": self.yield_view,
             "yield_gfa_residential": self.yield_gfa_residential,
             "yield_gfa_commercial": self.yield_gfa_commercial,
-            "yield_gfa_retail": self.yield_gfa_retail,
             "yield_nla_residential": self.yield_nla_residential,
             "yield_nla_commercial": self.yield_nla_commercial,
-            "yield_nla_retail": self.yield_nla_retail,
             "yield_affordable_share": self.yield_affordable_share,
             "yield_sqm_per_space": self.yield_sqm_per_space,
             "yield_basement_ratio": self.yield_basement_ratio,
@@ -7494,6 +7457,17 @@ class Window:
                 self.yield_slabs.set("A layer per use")
             elif filled("yield_massing_layers"):
                 self.yield_slabs.set("Slabs on chosen layers")
+        # Retail is commercial now (D159): an older file's retail layers and
+        # levels join the commercial ones rather than being dropped.
+        for retail, box in (
+            ("yield_retail_layers", self.yield_commercial),
+            ("yield_retail_levels", self.yield_commercial_levels),
+        ):
+            value = saved.get(retail)
+            if isinstance(value, str) and value.strip():
+                joined = [*self._listed(box), *(v.strip() for v in value.split(",") if v.strip())]
+                box.delete(0, "end")
+                box.insert(0, ", ".join(dict.fromkeys(joined)))
         if "yield_renovation_status" not in saved and saved.get("yield_renovation") is True:
             self.yield_renovation_status.set("As the floor plan's filter")
 
@@ -8198,7 +8172,7 @@ class Window:
             (
                 "A layer per use",
                 "site",
-                "Layer per use: a layer of residential slabs, one of commercial, one of retail.",
+                "Layer per use: a layer of residential slabs and one of commercial.",
             ),
             (
                 "A layer per option",
@@ -9334,10 +9308,8 @@ class Window:
         pickers: list[tuple[str, Any, str]] = [
             ("--residential-layer", self.yield_residential, "per_use"),
             ("--commercial-layer", self.yield_commercial, "per_use"),
-            ("--retail-layer", self.yield_retail, "per_use"),
             ("--massing-layer", self.yield_massing, "layers"),
             ("--option-layer", self.yield_option_layers, "option_layers"),
-            ("--retail-level", self.yield_retail_levels, "levels"),
             ("--commercial-level", self.yield_commercial_levels, "levels"),
         ]
         for flag, box, group in pickers:
@@ -9354,17 +9326,14 @@ class Window:
         for flag, control in (
             ("--gfa-residential", self.yield_gfa_residential),
             ("--gfa-commercial", self.yield_gfa_commercial),
-            ("--gfa-retail", self.yield_gfa_retail),
             ("--nla-residential", self.yield_nla_residential),
             ("--nla-commercial", self.yield_nla_commercial),
-            ("--nla-retail", self.yield_nla_retail),
             ("--affordable-share", self.yield_affordable_share),
             ("--sqm-per-space", self.yield_sqm_per_space),
             ("--basement-site-ratio", self.yield_basement_ratio),
             ("--site-area", self.yield_site_area),
             ("--fsr-residential", self.yield_fsr_residential),
             ("--fsr-commercial", self.yield_fsr_commercial),
-            ("--fsr-retail", self.yield_fsr_retail),
         ):
             args += self._flag(flag, control)
         # Whatever the page does not say about the site is read at the
@@ -9375,7 +9344,6 @@ class Window:
             for box in (
                 self.yield_fsr_residential,
                 self.yield_fsr_commercial,
-                self.yield_fsr_retail,
             )
         )
         if address and not (self.yield_site_area.get().strip() and permissible):

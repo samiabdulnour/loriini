@@ -6322,3 +6322,39 @@ showed what a list could not do: a read-only list ignores the delete and
 insert that put saved settings back, so the sheets' styles had never come
 back on reopening. A saved value is now set on such a list, and only one it
 offers.
+
+### D159 — The Yield page in three panels, and shops and offices one use
+
+Asked 26 October 2026: *"in yield, make basic window, make commercial and
+retail one category"*. Asked what the one category is called and at whose
+rates: *Commercial, at the commercial rates*; and what the basic panel
+holds: *the massing and what it is written to, with the site apart*.
+
+**Three panels.** The study's own, under its switch: Slabs, Renovation,
+Option, the layer and level pickers the Slabs answer needs (D140), the view
+beside the table and the workbook. *Site and controls*: the site area and
+the permissible FSR, residential and commercial. *Efficiencies, mix and
+parking*, as before.
+
+**One non-residential use.** Retail was a third use with rates of its own
+-- BEA to GFA 0.95 against commercial's 0.85, a parking space per 30 m² of
+GFA under the SEPP against commercial's per 100 m² -- and a row of its own on
+the sheet and in the workbook. It is gone: a shop is commercial floor,
+counted at the commercial rates, told by a commercial layer or a
+commercial level, with one share of the permissible FSR. The command line
+loses `--retail-layer`, `--retail-level`, `--gfa-retail`, `--nla-retail`
+and `--fsr-retail`; the sheet's legend loses the retail colour; the
+workbook is re-laid for two uses from the number of uses rather than from
+offsets written for three, every cell still styled as the template cell
+it stands for, and a recalculation of all its formulas checks each against
+the value written. The template's own figures change with it, and the
+tests say how by hand: its retail floor counted as commercial, its
+permissible FSR's retail 0.4 joined to the commercial 0.2.
+
+**Older files.** A preset's retail layers and levels join its commercial
+ones in the window. A workbook written before reads its retail floor and
+its retail FSR back as commercial; its retail efficiencies and parking rate
+are dropped, so that floor takes commercial's.
+
+*What this does not change:* the residential figures, the mix, the
+parking per unit, or how a slab is measured.

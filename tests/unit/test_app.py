@@ -1375,15 +1375,14 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     hidden_window.yield_option.insert(0, "Option 02")
     hidden_window.yield_slabs.set("Slabs on chosen layers")
     hidden_window.yield_massing.insert(0, "01 | Massing - Main Building.3D OPT2")
-    hidden_window.yield_retail_levels.insert(0, "Ground")
-    hidden_window.yield_commercial_levels.insert(0, "Level 01, Level 02")
+    hidden_window.yield_commercial_levels.insert(0, "Ground, Level 01")
     # Filled, but in rows this answer does not show: they must not count.
     hidden_window.yield_residential.insert(0, "01 | Wall.External")
-    hidden_window.yield_retail.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_commercial.insert(0, "01 | Floor.Structural")
     hidden_window.yield_renovation_status.set("As the floor plan's filter")
     hidden_window.yield_site_area.insert(0, "1386.78")
     hidden_window.yield_fsr_residential.insert(0, "2.8")
-    hidden_window.yield_fsr_retail.insert(0, "0.4")
+    hidden_window.yield_fsr_commercial.insert(0, "0.4")
     hidden_window.yield_affordable_share.delete(0, "end")
     hidden_window.yield_affordable_share.insert(0, "15")
     hidden_window.yield_view.insert(0, "Yield Axo")
@@ -1395,22 +1394,22 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     assert job.label == window.YIELD_JOB
     assert args[0] == "yield"
     assert flag(args, "--option") == ["Option 02"]
-    assert "--residential-layer" not in args and "--retail-layer" not in args, (
+    assert "--residential-layer" not in args and "--commercial-layer" not in args, (
         "a layer left in a hidden row changes nothing"
     )
     assert flag(args, "--massing-layer") == ["01 | Massing - Main Building.3D OPT2"]
-    assert flag(args, "--retail-level") == ["Ground"]
-    assert flag(args, "--commercial-level") == ["Level 01", "Level 02"]
+    assert flag(args, "--commercial-level") == ["Ground", "Level 01"]
+    assert not any("retail" in arg for arg in args), "shops are commercial (D159)"
     assert "--renovation-filter" in args
     assert flag(args, "--gfa-residential") == ["0.725"]
-    assert flag(args, "--gfa-retail") == ["0.95"]
+    assert flag(args, "--gfa-commercial") == ["0.85"]
     assert flag(args, "--nla-commercial") == ["0.9"]
     assert flag(args, "--affordable-share") == ["15"]
     assert flag(args, "--sqm-per-space") == ["40"]
     assert flag(args, "--basement-site-ratio") == ["0.4"]
     assert flag(args, "--site-area") == ["1386.78"]
-    assert flag(args, "--fsr-residential") == ["2.8"] and flag(args, "--fsr-retail") == ["0.4"]
-    assert "--fsr-commercial" not in args
+    assert flag(args, "--fsr-residential") == ["2.8"]
+    assert flag(args, "--fsr-commercial") == ["0.4"]
     assert "--address" not in args, "the site and the permissible FSR are both typed"
     # Every type goes, the two at nothing included: the sheet keeps their rows.
     assert flag(args, "--unit") == [
@@ -4863,16 +4862,44 @@ def test_the_yield_page_shows_only_the_rows_its_slabs_answer_needs(hidden_window
 
     made.yield_slabs.set("Every slab showing")
     made._sync()
-    assert showing(made.yield_retail_levels) and not showing(made.yield_massing)
+    assert showing(made.yield_commercial_levels) and not showing(made.yield_massing)
     assert not showing(made.yield_residential) and not showing(made.yield_option_layers)
     made.yield_slabs.set("A layer per use")
     made._sync()
-    assert showing(made.yield_residential) and showing(made.yield_retail)
-    assert not showing(made.yield_retail_levels), "a layer per use tells the use itself"
+    assert showing(made.yield_residential) and showing(made.yield_commercial)
+    assert not showing(made.yield_commercial_levels), "a layer per use tells the use itself"
     made.yield_slabs.set("A layer per option")
     made._sync()
     assert showing(made.yield_option_layers) and not showing(made.yield_option)
     assert made._label_wide < 400, "no hint line dropped into the label column"
+
+
+def test_the_yield_page_has_two_uses_and_three_panels(hidden_window: Any) -> None:
+    """D159. Shops and offices are one use, commercial, at the commercial
+    rates: no retail field is left on the page. The site and the controls
+    have a panel of their own between the study's and the efficiencies."""
+    made = hidden_window
+    assert not [name for name in vars(made) if "retail" in name], "no retail field"
+    assert made.yield_site_area.master is made.yield_fsr_residential.master
+    assert made.yield_site_area.master is made.yield_fsr_commercial.master
+    assert made.yield_site_area.master is not made.yield_option.master, "a panel of its own"
+    assert made.yield_gfa_commercial.master is not made.yield_site_area.master
+
+
+def test_an_older_presets_retail_joins_the_commercial_rows(hidden_window: Any) -> None:
+    """A preset saved before D159 kept retail apart. Its retail layers and
+    levels are commercial now, added to the commercial ones, not dropped."""
+    made = hidden_window
+    made.apply(
+        {
+            "yield_commercial_layers": "01 | Offices",
+            "yield_retail_layers": "01 | Shops, 01 | Offices",
+            "yield_commercial_levels": "Level 01",
+            "yield_retail_levels": "Ground",
+        }
+    )
+    assert made._listed(made.yield_commercial) == ["01 | Offices", "01 | Shops"]
+    assert made._listed(made.yield_commercial_levels) == ["Level 01", "Ground"]
 
 
 def test_renovation_is_read_off_each_slab_or_the_floor_plans_filter(hidden_window: Any) -> None:

@@ -9,7 +9,7 @@ One list of rows serves three readers, so they cannot disagree: the sheet
 Loriini draws on a layout, the lines the command prints, and the workbook.
 
 The workbook is the office's template, filled. Its cells are the template's
-cells -- the site in C6, the permissible FSR in C10:C12, the storey table
+cells -- the site in C6, the permissible FSR in C10:C11, the storey table
 from J113 -- so that somebody who knows the template finds everything where
 it was; the inputs are red, as the template has them, and everything else
 is a formula over them and over the storeys' measured BEA, so a what-if on
@@ -17,13 +17,23 @@ an efficiency, a share or a rate is typed into Excel rather than rerun.
 One sheet per option: a run adds its option beside the ones already in the
 workbook, which it reads back from a hidden sheet that keeps each option's
 data.
+
+The template has three uses, residential, commercial and retail; the sheet
+has two, the shops being commercial floor (D159). Where the template gives
+each use a row -- the FSR, the GFA, the commercial parking, the
+efficiencies -- or a column -- the storey table's BEA, GFA and NSA -- the
+sheet has one a use and closes up the template's retail one, every formula
+worked from where the rows and columns now are; each cell still wears the
+look of the template cell it stands for. An option saved while retail stood
+apart reads back with its retail floor, and its retail FSR, as commercial.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any, Literal
 
@@ -34,7 +44,6 @@ from sun_study.rules.area_yield import (
     COMMERCIAL,
     LABELS,
     RESIDENTIAL,
-    RETAIL,
     USES,
     Efficiencies,
     Feasibility,
@@ -228,13 +237,13 @@ def rows(sheet: Feasibility) -> list[TableRow]:
     row(
         "Total Residential", "", count(sepp["residential"]), count(dcp["residential"]), kind="total"
     )
-    for use, rates in ((COMMERCIAL, sheet.parking.commercial), (RETAIL, sheet.parking.retail)):
-        row(
-            LABELS[use],
-            f"1/{1 / rates.sepp:g} / 1/{1 / rates.dcp:g} m²" if rates.sepp and rates.dcp else "",
-            count(sepp[use]),
-            count(dcp[use]),
-        )
+    rates = sheet.parking.commercial
+    row(
+        LABELS[COMMERCIAL],
+        f"1/{1 / rates.sepp:g} / 1/{1 / rates.dcp:g} m²" if rates.sepp and rates.dcp else "",
+        count(sepp[COMMERCIAL]),
+        count(dcp[COMMERCIAL]),
+    )
     row("Total Parking", "", count(sepp["total"]), count(dcp["total"]), kind="total")
     row(
         "Total Basements",
@@ -324,6 +333,16 @@ _PLAIN_BOLD = xlsx.Format(size=10, bold=True)
 _TABLE_COL = 10
 _TABLE_ROW = 111
 
+#: How many uses the template has a row or a column for: residential,
+#: commercial and retail. The sheet has ``len(USES)`` of them, and the
+#: template's for a use the sheet does not have is closed up (D159).
+_TEMPLATE_USES = 3
+
+#: How the storey table heads a use's column.
+_SHORT: Mapping[str, str] = {RESIDENTIAL: "Resi", COMMERCIAL: "Comm"}
+
+_COL_XML = re.compile(r'<col min="(\d+)" max="(\d+)"([^>]*)/>')
+
 
 def _col(index: int) -> str:
     return xlsx.column(index)
@@ -397,8 +416,9 @@ class _TemplateSheet:
     Every cell Loriini writes stands for a cell of the template, and takes
     that cell's style index: the same row for the blocks that do not move,
     a role's row for the ones that do -- a mix of six types has a sixth row
-    styled like the second -- and the storey table's first, middle and last
-    level rows for however many levels the massing has. The ``Format`` the
+    styled like the second, the commercial row and column the template's
+    commercial ones -- and the storey table's first, middle and last level
+    rows for however many levels the massing has. The ``Format`` the
     caller names is ignored; the look is the template's. When the sheet is
     finished, every template cell in a mapped row that was not written is
     written blank with its style, so the boxes close and the bars run
@@ -461,9 +481,30 @@ class _TemplateSheet:
                         self.raw.blank(row, col, style)
             if template_row in look.ROW_HEIGHTS:
                 self.raw.row_heights[row] = look.ROW_HEIGHTS[template_row]
-        self.raw.cols_xml = look.COLS_XML
+        self.raw.cols_xml = _widths(self.cols, table_cols)
         self.raw.zoom = 85
         self.raw.print_area = f"$A$3:$E${last_main_row}"
+
+
+def _widths(cols: Mapping[int, int], table_cols: range) -> str:
+    """The template's column widths, each on the column that stands for the
+    template's: the main block's where they are, the storey table's moved
+    with their columns -- the narrow gap before the unit mix stays a gap
+    when the retail columns before it are closed up."""
+    template: dict[int, str] = {}
+    for first, last, rest in _COL_XML.findall(look.COLS_XML):
+        for col in range(int(first), int(last) + 1):
+            template[col] = rest
+    mine = {col: rest for col, rest in template.items() if col < table_cols.start}
+    for col in table_cols:
+        rest = template.get(cols.get(col, col))
+        if rest is not None:
+            mine[col] = rest
+    return (
+        "<cols>"
+        + "".join(f'<col min="{col}" max="{col}"{mine[col]}/>' for col in sorted(mine))
+        + "</cols>"
+    )
 
 
 def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
@@ -474,17 +515,23 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     e = sheet.efficiencies
 
     # -- where everything lands, worked out first: the template's rows for a
-    # five-type mix, moving down when a mix has more types.
+    # five-type mix, moving down when a mix has more types, and a row a use
+    # where the template has one a use.
+    uses = len(USES)
     site_row = 6
-    fsr_head, fsr_first = 9, 10  # residential, commercial, retail; total after
-    fsr_total = fsr_first + 3
-    gfa_head, gfa_first = 16, 17
-    gfa_total = gfa_first + 3
-    split_head = 22
-    market_share_row, affordable_share_row = 23, 24
-    market_title = 26
-    market_head = 28
-    market_first = 29
+    fsr_head, fsr_first = 9, 10  # a row a use; the total after
+    fsr_last = fsr_first + uses - 1
+    fsr_total = fsr_last + 1
+    gfa_title = fsr_total + 2
+    gfa_head = gfa_title + 1
+    gfa_first = gfa_head + 1
+    gfa_last = gfa_first + uses - 1
+    gfa_total = gfa_last + 1
+    split_head = gfa_total + 2
+    market_share_row, affordable_share_row = split_head + 1, split_head + 2
+    market_title = affordable_share_row + 2
+    market_head = market_title + 2
+    market_first = market_head + 1
     market_total = market_first + n_market
     affordable_title = market_total + 2
     affordable_head = affordable_title + 1
@@ -508,12 +555,12 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     affordable_parking_first = affordable_parking_head + 1
     visitors_row = affordable_parking_first + n_affordable + 1
     resi_parking_total = visitors_row + 2
-    commercial_parking, retail_parking = resi_parking_total + 1, resi_parking_total + 2
-    parking_total, basements_row = resi_parking_total + 3, resi_parking_total + 4
+    commercial_parking = resi_parking_total + 1
+    parking_total, basements_row = commercial_parking + 1, commercial_parking + 2
     eff_title = basements_row + 2
     eff_head = eff_title + 1
-    eff_first = eff_head + 1  # residential, commercial, retail
-    market_eff_title = eff_first + 5
+    eff_first = eff_head + 1  # a row a use, then the template's two spare rows
+    market_eff_title = eff_first + uses + 2
     market_avg_nla, market_avg_gfa = market_eff_title + 1, market_eff_title + 5
     affordable_eff_title = market_avg_gfa + 2
     affordable_avg_nla, affordable_avg_gfa = affordable_eff_title + 1, affordable_eff_title + 5
@@ -532,10 +579,12 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     target_row, proposed_row, difference_row = summary_head + 1, summary_head + 2, summary_head + 3
     # Columns of the storey table.
     c_level, c_f2f, c_height = tc, tc + 1, tc + 2
-    c_bea = tc + 3  # resi, comm, retail, total
-    c_gfa = c_bea + 4
-    c_nsa = c_gfa + 4
-    c_mix = c_nsa + 6  # one per market type, then total; the column before is labels
+    c_bea = tc + 3  # a column a use, then the total
+    c_gfa = c_bea + uses + 1
+    c_nsa = c_gfa + uses + 1
+    # One per market type, then the total: after the NSA's total, a gap and a
+    # column of labels.
+    c_mix = c_nsa + uses + 3
     c_adg = c_mix + n_market + 1  # C Vent, Solar >2hr, <2hr, 0hr
     c_back = c_adg + 5  # GBA, GFA, NLA from the mix
     c_diff = c_back + 4
@@ -546,12 +595,23 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     eff_nla = {use: f"$E${eff_first + i}" for i, use in enumerate(USES)}
 
     # -- which template cell each of mine stands for ------------------------------
-    rows_map: dict[int, int] = {row: row for row in range(1, market_first)}
+    rows_map: dict[int, int] = {}
+
+    def map_run(mine_first: int, template_first: int, count: int) -> None:
+        for i in range(count):
+            rows_map[mine_first + i] = template_first + i
 
     def map_block(mine_first: int, template_first: int, count: int, template_count: int) -> None:
         for i in range(count):
             rows_map[mine_first + i] = template_first + min(i, template_count - 1)
 
+    # The head, then the FSR and the GFA: a row a use, standing for the
+    # template's rows for its first uses, and the rows between as they are.
+    map_run(1, 1, fsr_first - 1)
+    map_block(fsr_first, 10, uses, _TEMPLATE_USES)
+    map_run(fsr_total, 13, gfa_first - fsr_total)
+    map_block(gfa_first, 17, uses, _TEMPLATE_USES)
+    map_run(gfa_total, 20, market_first - gfa_total)
     map_block(market_first, 29, n_market, 5)
     rows_map[market_total] = 34
     rows_map[market_total + 1] = 35
@@ -573,8 +633,11 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     rows_map[visitors_row - 1] = 75
     rows_map[visitors_row] = 76
     rows_map[visitors_row + 1] = 77
-    for offset, template_row in enumerate(range(78, 108)):
-        rows_map[resi_parking_total + offset] = template_row
+    rows_map[resi_parking_total] = 78
+    rows_map[commercial_parking] = 79
+    map_run(parking_total, 81, eff_first - parking_total)
+    map_block(eff_first, 86, uses, _TEMPLATE_USES)
+    map_run(eff_first + uses, 89, basement_ratio_row - (eff_first + uses) + 1)
     for offset in range(4):
         rows_map[t + offset] = _TABLE_ROW + offset
     for i in range(len(levels)):
@@ -585,6 +648,15 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
         rows_map[summary_head + offset] = template_row
     ws.rows.update(rows_map)
     cols_map: dict[int, int] = {}
+    # BEA, GFA and NSA are the template's M:P, Q:T and U:X: a column a use
+    # and the total, the template's for the use the sheet does not have
+    # closed up; then its gap (Y) and its labels (Z).
+    for start, template_start in ((c_bea, 13), (c_gfa, 17), (c_nsa, 21)):
+        for j in range(uses):
+            cols_map[start + j] = template_start + min(j, _TEMPLATE_USES - 1)
+        cols_map[start + uses] = template_start + _TEMPLATE_USES
+    cols_map[c_mix - 2] = 25  # Y
+    cols_map[c_mix - 1] = 26  # Z
     for j in range(n_market):
         cols_map[c_mix + j] = 27 + min(j, 4)  # AA to AE
     cols_map[c_mix + n_market] = 32  # AF
@@ -645,7 +717,7 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     ws.formula(
         fsr_total,
         3,
-        f"SUM(C{fsr_first}:C{fsr_first + 2})",
+        f"SUM(C{fsr_first}:C{fsr_last})",
         total_allowed if total_allowed is not None else 0.0,
         _RATIO_BOLD,
     )
@@ -653,20 +725,20 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     ws.formula(
         fsr_total,
         4,
-        f"SUM(D{fsr_first}:D{fsr_first + 2})",
+        f"SUM(D{fsr_first}:D{fsr_last})",
         total_fsr if total_fsr is not None else 0.0,
         _RATIO_BOLD,
     )
     ws.formula(
         fsr_total,
         5,
-        f"SUM(E{fsr_first}:E{fsr_first + 2})",
+        f"SUM(E{fsr_first}:E{fsr_last})",
         _value_diff(total_fsr, total_allowed) if total_allowed is not None else 0.0,
         _RATIO_BOLD,
     )
 
     # -- GFA ------------------------------------------------------------------
-    section(15, "GFA")
+    section(gfa_title, "GFA")
     for col, head in enumerate(("Permissible", "Proposed", "Difference"), start=3):
         ws.text(gfa_head, col, head, _HEAD)
     for i, use in enumerate(USES):
@@ -693,15 +765,15 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     ws.formula(
         gfa_total,
         3,
-        f"SUM(C{gfa_first}:C{gfa_first + 2})",
+        f"SUM(C{gfa_first}:C{gfa_last})",
         allowed_total if allowed_total is not None else 0.0,
         _AREA_BOLD,
     )
-    ws.formula(gfa_total, 4, f"SUM(D{gfa_first}:D{gfa_first + 2})", sheet.total_gfa_m2, _AREA_BOLD)
+    ws.formula(gfa_total, 4, f"SUM(D{gfa_first}:D{gfa_last})", sheet.total_gfa_m2, _AREA_BOLD)
     ws.formula(
         gfa_total,
         5,
-        f"SUM(E{gfa_first}:E{gfa_first + 2})",
+        f"SUM(E{gfa_first}:E{gfa_last})",
         _value_diff(sheet.total_gfa_m2, allowed_total) if allowed_total is not None else 0.0,
         _AREA_BOLD,
     )
@@ -850,7 +922,7 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     # -- storeys ---------------------------------------------------------------------
     section(storeys_title, "Number of Storeys")
     ws.text(storeys_resi, 1, "Residential", _LABEL)
-    resi_col, total_col = _col(c_bea), _col(c_bea + 3)
+    resi_col, total_col = _col(c_bea), _col(c_bea + uses)
     ws.formula(
         storeys_resi,
         3,
@@ -924,25 +996,26 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
         dcp["residential"],
         _COUNT_BOLD,
     )
-    for row, use, rates in (
-        (commercial_parking, COMMERCIAL, sheet.parking.commercial),
-        (retail_parking, RETAIL, sheet.parking.retail),
-    ):
-        ws.text(row, 1, LABELS[use], _TOTAL_LABEL)
-        ws.number(row, 2, rates.sepp, _IN_RATE)
-        ws.number(row, 3, rates.dcp, _IN_RATE4)
-        ws.formula(row, 4, f"B{row}*{gfa_cell[use]}", sepp[use], _COUNT_BOLD)
-        ws.formula(row, 5, f"C{row}*{gfa_cell[use]}", dcp[use], _COUNT_BOLD)
+    row, rates = commercial_parking, sheet.parking.commercial
+    ws.text(row, 1, LABELS[COMMERCIAL], _TOTAL_LABEL)
+    ws.number(row, 2, rates.sepp, _IN_RATE)
+    ws.number(row, 3, rates.dcp, _IN_RATE4)
+    ws.formula(row, 4, f"B{row}*{gfa_cell[COMMERCIAL]}", sepp[COMMERCIAL], _COUNT_BOLD)
+    ws.formula(row, 5, f"C{row}*{gfa_cell[COMMERCIAL]}", dcp[COMMERCIAL], _COUNT_BOLD)
     ws.text(parking_total, 1, "Total Parking", _TOTAL_LABEL)
     ws.formula(
         parking_total,
         4,
-        f"SUM(D{resi_parking_total}:D{retail_parking})",
+        f"SUM(D{resi_parking_total}:D{commercial_parking})",
         sepp["total"],
         _COUNT_BOLD,
     )
     ws.formula(
-        parking_total, 5, f"SUM(E{resi_parking_total}:E{retail_parking})", dcp["total"], _COUNT_BOLD
+        parking_total,
+        5,
+        f"SUM(E{resi_parking_total}:E{commercial_parking})",
+        dcp["total"],
+        _COUNT_BOLD,
     )
     ws.text(basements_row, 1, "Total Basements", _TOTAL_LABEL)
     for col, column_name in ((4, "sepp"), (5, "dcp")):
@@ -1025,14 +1098,14 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
 
     # -- the storey table ------------------------------------------------------------------
     ws.formula(t, c_level, "A3", sheet.option, _OPTION)
-    ws.merge(f"{_col(c_level)}{t}", f"{_col(c_nsa + 3)}{t}")
+    ws.merge(f"{_col(c_level)}{t}", f"{_col(c_nsa + uses)}{t}")
     for start, title in (
         (c_bea, "BEA"),
         (c_gfa, "GFA"),
         (c_nsa, "NSA"),
     ):
         ws.text(t + 1, start, title, _HEAD_CENTRE)
-        ws.merge(f"{_col(start)}{t + 1}", f"{_col(start + 3)}{t + 1}")
+        ws.merge(f"{_col(start)}{t + 1}", f"{_col(start + uses)}{t + 1}")
     ws.text(t + 1, c_mix, "Unit Mix", _HEAD_CENTRE)
     ws.merge(f"{_col(c_mix)}{t + 1}", f"{_col(c_mix + n_market)}{t + 1}")
     ws.text(t + 1, c_adg, "ADG", _HEAD_CENTRE)
@@ -1042,8 +1115,9 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
     ws.text(t + 1, c_diff, "Difference", _HEAD)
     for col, head in ((c_level, "Level"), (c_f2f, "F to F"), (c_height, "Height")):
         ws.text(t + 2, col, head, _HEAD)
+    use_heads = (*(_SHORT[use] for use in USES), "Total")
     for start in (c_bea, c_gfa, c_nsa):
-        for i, head in enumerate(("Resi", "Comm", "Retail", "Total")):
+        for i, head in enumerate(use_heads):
             ws.text(t + 2, start + i, head, _HEAD)
     for i, unit in enumerate(market):
         ws.text(t + 2, c_mix + i, _short(unit.name), _HEAD)
@@ -1089,7 +1163,11 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
             (c_nsa, sum(level.bea(u) * e.gfa(u) * e.nla(u) for u in USES)),
         ):
             ws.formula(
-                row, start + 3, f"SUM({_col(start)}{row}:{_col(start + 2)}{row})", value, _AREA
+                row,
+                start + uses,
+                f"SUM({_col(start)}{row}:{_col(start + uses - 1)}{row})",
+                value,
+                _AREA,
             )
         for j in range(n_market):
             ws.blank(row, c_mix + j, _IN_COUNT)
@@ -1176,7 +1254,7 @@ def _option_sheet(raw: xlsx.Sheet, sheet: Feasibility, note: str) -> None:
 
     # The summary under the table: target, proposed, difference by use; the
     # mix proposed against the target; the ADG shares.
-    for i, head in enumerate(("Resi", "Comm", "Retail", "Total")):
+    for i, head in enumerate(use_heads):
         ws.text(summary_head, c_gfa + i, head, _HEAD)
     for i, unit in enumerate(market):
         ws.text(summary_head, c_mix + i, _short(unit.name), _HEAD)
@@ -1299,7 +1377,6 @@ def feasibility_to_dict(sheet: Feasibility) -> dict[str, Any]:
             "affordable": [asdict(r) for r in sheet.parking.affordable],
             "visitors": asdict(sheet.parking.visitors),
             "commercial": asdict(sheet.parking.commercial),
-            "retail": asdict(sheet.parking.retail),
             "sqm_per_space": sheet.parking.sqm_per_space,
             "basement_site_ratio": sheet.parking.basement_site_ratio,
         },
@@ -1324,8 +1401,27 @@ def _mix_from(data: Mapping[str, Any], fallback: Sequence[UnitType]) -> Mix:
     return Mix(types, float(data.get("common_m2", 0.0)), float(data.get("tolerance_m2", 0.0)))
 
 
+def _permissible_from(data: Mapping[str, Any]) -> Permissible:
+    """The permissible FSR as saved. An option saved while retail was a use
+    of its own has a retail FSR: it is commercial's now, added to it (D159)."""
+    commercial, retail = data.get("commercial"), data.get("retail")
+    if retail is not None:
+        commercial = (commercial or 0.0) + retail
+    return Permissible(data.get("residential"), commercial)
+
+
+def _efficiencies_from(data: Mapping[str, Any]) -> Efficiencies:
+    """The efficiencies as saved, those of a use the sheet no longer has --
+    an older option's retail -- left out: its floor is commercial now, and
+    takes commercial's (D159)."""
+    known = {item.name for item in fields(Efficiencies)}
+    return Efficiencies(**{key: value for key, value in data.items() if key in known})
+
+
 def feasibility_from_dict(data: Mapping[str, Any]) -> Feasibility:
-    """A sheet back from ``feasibility_to_dict``."""
+    """A sheet back from ``feasibility_to_dict``, or from the data of an
+    option saved while retail was a use of its own, its retail floor read
+    as commercial."""
     parking = data.get("parking", {})
 
     def rates(item: Any) -> UnitRates:
@@ -1341,14 +1437,13 @@ def feasibility_from_dict(data: Mapping[str, Any]) -> Feasibility:
                 float(lv["bottom_m"]),
                 float(lv["floor_to_floor_m"]),
                 float(lv.get("residential_m2", 0.0)),
-                float(lv.get("commercial_m2", 0.0)),
-                float(lv.get("retail_m2", 0.0)),
+                float(lv.get("commercial_m2", 0.0)) + float(lv.get("retail_m2", 0.0)),
             )
             for lv in data.get("levels", [])
         ),
         site_area_m2=data.get("site_area_m2"),
-        permissible=Permissible(**data.get("permissible", {})),
-        efficiencies=Efficiencies(**data.get("efficiencies", {})),
+        permissible=_permissible_from(data.get("permissible", {})),
+        efficiencies=_efficiencies_from(data.get("efficiencies", {})),
         market=market,
         affordable=affordable,
         affordable_share=float(data.get("affordable_share", 0.0)),
@@ -1357,7 +1452,6 @@ def feasibility_from_dict(data: Mapping[str, Any]) -> Feasibility:
             affordable=tuple(rates(r) for r in parking.get("affordable", [])),
             visitors=rates(parking.get("visitors", {"sepp": 0.1, "dcp": 0.0})),
             commercial=rates(parking.get("commercial", {"sepp": 1 / 100, "dcp": 1 / 400})),
-            retail=rates(parking.get("retail", {"sepp": 1 / 30, "dcp": 1 / 400})),
             sqm_per_space=float(parking.get("sqm_per_space", 40.0)),
             basement_site_ratio=float(parking.get("basement_site_ratio", 0.4)),
         ),
