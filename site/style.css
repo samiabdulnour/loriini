@@ -160,10 +160,11 @@ nav.main a[aria-current="page"] { box-shadow: 0 1px 0 currentColor; }
 
 .wrap > header.top { padding-left: 0; padding-right: 0; }
 
-.download-box { border: 1px solid var(--line); padding: 1.4rem; margin-top: 2rem; }
+.downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
+.download-box { border: 1px solid var(--line); padding: 1.4rem; }
 .download-box dl { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1.4rem; margin: 1.4rem 0 0; font-size: var(--s); }
 .download-box dt { color: var(--muted); }
-.download-box dd { margin: 0; word-break: break-all; }
+.download-box dd { margin: 0; overflow-wrap: anywhere; }
 
 footer { border-top: 1px solid var(--line); padding: 2rem 0 3rem; color: var(--muted); font-size: var(--s); }
 footer .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; }

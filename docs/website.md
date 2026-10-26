@@ -47,16 +47,24 @@ them.
 
 ## Deploying it
 
-From the repository's root, signed in to Fly. The current build is the
-`Loriini_AC26_Win` artifact of the newest successful *Archicad add-on*
-workflow run; download it from the run's page and put it in
-`site/download/Loriini_AC26_Win.zip`, then update the version, date, size
-and SHA-256 under *Download* on the page:
+From the repository's root, signed in to Fly. The current builds are the
+`Loriini_Win` artifact of the newest successful *Archicad add-on* workflow
+run and the `Loriini_Mac` artifact of the *Archicad add-on (macOS)* run for
+the same commit. `Loriini_Win` downloads as a zip of the folder itself:
+put it in `site/download/Loriini_Win.zip` as it is. `Loriini_Mac` downloads
+as a zip holding `Loriini_Mac.zip`, ditto's zip that keeps the program's
+links and execute bits: take that inner zip out and put it in
+`site/download/Loriini_Mac.zip`. Then update the version, date, size and
+SHA-256 in each box under *Download* on the page:
 
 ```
-sha256sum site/download/Loriini_AC26_Win.zip
+sha256sum site/download/Loriini_Win.zip site/download/Loriini_Mac.zip
 fly deploy . --config deploy/site/fly.toml --dockerfile deploy/site/Dockerfile --ha=false
 ```
+
+`/download/Loriini_AC26_Win.zip`, the Windows build's name from when it
+held the Archicad 26 add-on alone, redirects to `Loriini_Win.zip` (nginx's
+`default.conf`), so links to it keep working.
 
 The first deploy made the app with `fly apps create loriini-site`. The
 domain, `loriini.app`, is at Namecheap: A and AAAA records for `@` and `www`
@@ -66,15 +74,17 @@ The mailbox the keys come from, `sami@loriini.app`, is Namecheap's Private
 Email (`mail.privateemail.com`, port 587, STARTTLS), set on the service with
 `fly secrets set`.
 
-Once the site serves the build, tell the licence service where it is, so a
-recall's notice can point there:
+Once the site serves the builds, tell the licence service where the
+download page is, so a recall's notice can point there; the page offers
+both. The Windows zip's old address, which it may still hold, redirects to
+the Windows build meanwhile.
 
 ```
-uv run python scripts/licence.py set download=https://loriini.app/download/Loriini_AC26_Win.zip
+uv run python scripts/licence.py set download=https://loriini.app/download
 ```
 
 ## What it costs
 
 A shared machine that stops when idle, started by the next visitor: cents a
-month. The 65 MB download is inside the image, so a visitor's download comes
-from Fly's edge in Sydney.
+month. The two downloads, some 190 MB, are inside the image, so a visitor's
+download comes from Fly's edge in Sydney.
