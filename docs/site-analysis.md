@@ -250,8 +250,9 @@ the left end of the long boundary on a squared one -- and `--square-to-site`
 turns the site so its longest boundary runs along +X. The turn is written
 into Project Location as the project's north, so the sun studies stay right;
 the corner moves only the origin, and the north is kept. Both are on the
-window's Site page as each panel's *Origin* and *North*. A boundary already
-drawn in the file still wins: with a fit, neither is applied.
+window's Site page as each panel's *Origin* and *North*. On the command
+line a boundary already drawn in the file still wins: with a fit, neither
+is applied. The window does not fit (D158).
 
 ## The data
 

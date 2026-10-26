@@ -3243,23 +3243,26 @@ def test_the_site_can_be_set_on_a_corner_and_turned_level_from_the_page(
     assert saved["site_sheet_north"] == "Long boundary level"
 
 
-def test_the_drawn_boundary_and_the_model_levels_are_chosen_on_the_page(
+def test_every_site_run_is_placed_by_its_panel_and_never_fitted_to_a_drawn_boundary(
     hidden_window: Any,
 ) -> None:
-    """Both used to be command-line only, so from the window a north-up
-    survey on a boundary layer always turned the context back to north up,
-    and the model always stood on the site's ground. The defaults send
-    nothing; a typed RL goes through as the datum, a trailing 'm' and all.
-    The boundary is shared by every panel's run; the levels are the 3D
-    context's own, so only its run hears them."""
+    """D158. The fit to a boundary drawn in the file overrode each panel's
+    Origin and North without saying so on the page, so the window has no
+    such option and tells every run not to fit. The model levels are the 3D
+    context's own, so only its run hears them; a typed RL goes through as
+    the datum, a trailing 'm' and all."""
     hidden_window.do_facade.set(False)
     hidden_window.do_site_model.set(True)
     hidden_window.site_address.insert(0, "22A O'Connell Street, Parramatta")
     (site,) = hidden_window.jobs()
-    assert "--fit-layer" not in site.args and "--datum" not in site.args
+    assert flag(site.args, "--fit-layer") == ["none"]
+    assert "--datum" not in site.args
+    assert not hasattr(hidden_window, "site_fit")
+    # Nor a run folder to pick: the command keeps its own, one per address.
+    assert "--out" not in site.args
+    assert not hasattr(hidden_window, "site_out")
 
     hidden_window.do_site_context.set(True)
-    hidden_window.site_fit.set("Ignore it: use the project's north")
     hidden_window.site_levels.set("Project zero is sea level (AHD)")
     model, context = hidden_window.jobs()
     assert flag(model.args, "--fit-layer") == flag(context.args, "--fit-layer") == ["none"]
@@ -3271,7 +3274,7 @@ def test_the_drawn_boundary_and_the_model_levels_are_chosen_on_the_page(
     assert flag(model.args, "--datum") == ["5.85"]
 
     saved = hidden_window.settings()
-    assert saved["site_fit"] == "Ignore it: use the project's north"
+    assert "site_fit" not in saved
     assert saved["site_levels"] == "5.85 m"
 
 
@@ -3669,23 +3672,64 @@ def test_the_future_context_is_stood_by_the_3d_run_alone(hidden_window: Any) -> 
     assert not any("--future" in job.args for job in runs)
 
 
-def test_the_site_sheets_own_scale_reaches_its_run_and_blank_fits_the_site(
+def test_the_site_sheets_own_scale_reaches_its_run_and_fit_the_site_sends_none(
     hidden_window: Any,
 ) -> None:
-    """The site sheet has a scale of its own now (D157), apart from the
-    context sheet's. Blank still leaves the run to fit the site, so nothing
-    is sent and the sheets panel says so."""
+    """The site sheet has a scale of its own (D157), picked from a list
+    (D158): 'Fit the site' leaves the run to fit it, so nothing is sent and
+    the sheets panel says so; a scale picked is sent as its denominator."""
+    assert not str(hidden_window.site_sheet_scale.cget("state")) == "normal", "no typing"
+    assert hidden_window.site_sheet_scale.get() == window.FIT_THE_SITE
     _site_panels_only(hidden_window, hidden_window.do_site_site)
     (site,) = hidden_window.jobs()
     assert "--site-scale" not in site.args
     assert "--scale" not in site.args, "the context sheet's scale is the context run's"
     assert [sheet.scale for sheet in hidden_window.planned()] == ["to fit"]
 
-    hidden_window.site_sheet_scale.insert(0, "500")
+    hidden_window.site_sheet_scale.set("1:500")
     (site,) = hidden_window.jobs()
     assert flag(site.args, "--site-scale") == ["500"]
     assert "--scale" not in site.args
     assert [sheet.scale for sheet in hidden_window.planned()] == ["1:500"]
+
+
+def test_the_context_scale_is_picked_from_a_list_and_sent_as_its_denominator(
+    hidden_window: Any,
+) -> None:
+    assert tuple(hidden_window.site_scale.cget("values")) == window.CONTEXT_SCALES
+    assert hidden_window.site_scale.get() == "1:3000"
+    _site_panels_only(hidden_window, hidden_window.do_site_context)
+    hidden_window.site_scale.set("1:2000")
+    (context,) = hidden_window.jobs()
+    assert flag(context.args, "--scale") == ["2000"]
+    assert [sheet.scale for sheet in hidden_window.planned()] == ["1:2000"]
+
+
+def test_a_saved_choice_in_a_list_that_cannot_be_typed_in_comes_back(
+    hidden_window: Any,
+) -> None:
+    """A read-only list ignores delete and insert, which is how saved
+    settings were put back, so every saved style, origin and scale was lost
+    on the next opening. It is set now, and only to a value it offers."""
+    hidden_window.apply(
+        {
+            "site_scale": "1:2000",
+            "site_sheet_scale": "1:500",
+            "site_theme": "Kingfisher",
+            "site_sheet_origin": "Bottom-left corner",
+            "site_model_north": "Long boundary level",
+        }
+    )
+    assert hidden_window.site_scale.get() == "1:2000"
+    assert hidden_window.site_sheet_scale.get() == "1:500"
+    assert hidden_window.site_theme.get() == "Kingfisher"
+    assert hidden_window.site_sheet_origin.get() == "Bottom-left corner"
+    assert hidden_window.site_model_north.get() == "Long boundary level"
+
+    # One the list does not offer -- an older file's typed "3000" -- keeps
+    # what the page has rather than becoming a value it cannot run.
+    hidden_window.apply({"site_scale": "3000"})
+    assert hidden_window.site_scale.get() == "1:2000"
 
 
 def test_run_asks_for_the_address_whichever_site_panel_is_on(

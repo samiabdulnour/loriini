@@ -102,6 +102,7 @@ from sun_study.core.solar import UnknownTimezoneError, resolve_timezone, solar_p
 from sun_study.licence import credential
 from sun_study.rules.days import ASSESSMENT_DAYS, day_name, parse_day
 from sun_study.site import theme as site_theme
+from sun_study.site.pipeline import SITE_SCALES
 
 PAD = theme.PAD
 #: Kept as a name because a dozen widgets still pass it directly. The value
@@ -132,18 +133,20 @@ ORIGIN_WORDS: dict[str, str] = {
 #: ``ORIGIN_WORDS``, each a point of the site put at the project origin.
 PROJECT_LOCATION = "Project location"
 
+#: The context sheet's scales, picked from rather than typed (D158): the
+#: A1 map field at each, from a tight urban block to a station a long way
+#: off. 1:3000 is the default.
+CONTEXT_SCALES = ("1:1000", "1:1500", "1:2000", "1:2500", "1:3000", "1:4000", "1:5000")
+#: And the site sheet's: fitted to the site, the default, or one of the
+#: scales the run fits it from, held whatever the site's size.
+FIT_THE_SITE = "Fit the site"
+SITE_SHEET_SCALES = (FIT_THE_SITE, *(f"1:{scale}" for scale in SITE_SCALES))
+
 #: Whether the site is turned so its long boundary runs level; the first is
 #: the default.
 TURN_WORDS: dict[str, bool] = {
     "To the project's north": False,
     "Long boundary level": True,
-}
-
-#: Whether the context is fitted to a site boundary drawn in the file, and
-#: the ``--fit-layer`` each sends; the first is the default.
-FIT_WORDS: dict[str, str] = {
-    "Fit the context to it": "auto",
-    "Ignore it: use the project's north": "none",
 }
 
 #: The house styles the sheets are drawn in, named as site-analyst.com's
@@ -213,9 +216,6 @@ STAND_IN_PLACE = (-33.8688, 151.2093)
 #: Archicad is not waited on for ever.
 ARCHICAD_WAIT_MIN = 60
 
-#: Where a site run keeps what it fetched when no folder is given, as the
-#: Run folder's hint says it: spelt with this machine's own separator.
-SITE_RUNS_FOLDER = Path("Documents") / "Loriini" / "site-analysis"
 
 #: Short month names, for the date on a sheet.
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
@@ -5348,7 +5348,7 @@ class Window:
 
         The address and what the outputs share come first: where the data
         comes from, the Summary of Controls, whether the project's location
-        is set, the drawn boundary and the run folder. Then a panel per
+        is set. Then a panel per
         output, each with its own switch, as the solar analysis has one per
         study: the Context Analysis sheet, the Site Analysis sheet and the 3D
         context with its future. Each is placed and turned in its own panel,
@@ -5441,31 +5441,6 @@ class Window:
                 ),
             ),
         )
-        self.site_fit, row = self._combo(
-            frame,
-            row,
-            "Drawn boundary",
-            "Whether the outputs sit on a site boundary drawn in the file.",
-            "A layer whose name mentions a boundary is looked for in the file. "
-            "'Fit the context to it' turns and moves the fetched site onto what "
-            "is drawn there, so every output lines up with the survey the model "
-            "was drawn on -- and takes that drawing's place and turn over each "
-            "panel's origin and north. 'Ignore it' places each output as its "
-            "panel says: the choice when the layer holds a survey placed north "
-            "up in a project whose north is turned.",
-        )
-        self.site_fit.configure(values=list(FIT_WORDS), state="readonly")
-        self.site_fit.set(next(iter(FIT_WORDS)))
-        self.site_out, row = self._folder_row(
-            frame,
-            row,
-            "Run folder",
-            f"Where what was fetched is saved. Blank is {SITE_RUNS_FOLDER}.",
-            "Every run writes the data it fetched as JSON here, and the aerial "
-            "photo under the sheets as JPEG tiles with world files. A saved "
-            "run can be redrawn without the internet: "
-            "sun-study site --from <this folder>.",
-        )
 
         # -- the Context Analysis sheet -----------------------------------------
         frame, row = self._site_panel(
@@ -5505,16 +5480,17 @@ class Window:
         self.site_theme.configure(values=list(CONTEXT_STYLES), state="readonly")
         self.site_theme.set(site_theme.theme(site_theme.DEFAULT_THEME).label)
         row = self._styles_link(frame, row)
-        self.site_scale, row = self._entry(
+        self.site_scale, row = self._combo(
             frame,
             row,
             "Scale",
-            "3000",
-            "Denominator of the context sheet's scale. 1:3000 by default.",
+            "The context sheet's scale. 1:3000 by default.",
             "Sets how much neighbourhood is fetched: the A1 map field at this "
             "scale, centred on the site. 1:2000 for a tight urban site, 1:4000 "
             "where the station is a long way off.",
         )
+        self.site_scale.configure(values=list(CONTEXT_SCALES), state="readonly")
+        self.site_scale.set("1:3000")
 
         # -- the Site Analysis sheet --------------------------------------------
         frame, row = self._site_panel(
@@ -5554,17 +5530,17 @@ class Window:
         self.site_site_theme.configure(values=list(SITE_STYLES), state="readonly")
         self.site_site_theme.set(site_theme.site_theme(site_theme.DEFAULT_SITE_THEME).label)
         row = self._styles_link(frame, row)
-        self.site_sheet_scale, row = self._entry(
+        self.site_sheet_scale, row = self._combo(
             frame,
             row,
             "Scale",
-            "",
-            "Denominator of the site sheet's scale. Blank fits the site.",
-            "Blank, the run picks whichever of 1:200 to 1:750 the boundary fits "
-            "the A1 map field at. A number holds the sheet at that scale "
-            "whatever the site's size: 500 for a set of sheets that should all "
-            "read alike.",
+            "The site sheet's scale. 'Fit the site' by default.",
+            "'Fit the site' picks whichever of 1:200 to 1:750 the boundary fits "
+            "the A1 map field at. A scale holds the sheet at it whatever the "
+            "site's size: 1:500 for a set of sheets that should all read alike.",
         )
+        self.site_sheet_scale.configure(values=list(SITE_SHEET_SCALES), state="readonly")
+        self.site_sheet_scale.set(FIT_THE_SITE)
 
         # -- the 3D context -----------------------------------------------------
         frame, row = self._site_panel(
@@ -7374,9 +7350,7 @@ class Window:
             "site_sheet_scale": self.site_sheet_scale,
             "site_model_origin": self.site_model_origin,
             "site_model_north": self.site_model_north,
-            "site_fit": self.site_fit,
             "site_levels": self.site_levels,
-            "site_out": self.site_out,
             "site_radius": self.site_radius,
             "adg_subset": self.adg_subset,
             "layer_prefix": self.prefix_solar,
@@ -7472,9 +7446,17 @@ class Window:
         """
         for name, box in self._fields().items():
             value = saved.get(name)
-            if isinstance(value, str):
-                box.delete(0, "end")
-                box.insert(0, value)
+            if not isinstance(value, str):
+                continue
+            if isinstance(box, ttk.Combobox) and str(box.cget("state")) == "readonly":
+                # A read-only list ignores delete and insert, so every saved
+                # style, origin and scale was dropped on the floor. It is set,
+                # and only to a value it offers.
+                if value in tuple(box.cget("values") or ()):
+                    box.set(value)
+                continue
+            box.delete(0, "end")
+            box.insert(0, value)
         for name, state in self._ticks().items():
             ticked = saved.get(name)
             if isinstance(ticked, bool):
@@ -8494,7 +8476,7 @@ class Window:
         # fields the run reads, or the command's own default where the window
         # sends none; the plan sheets and the model sheet are the layout
         # module's default and the communal plans are placed at 1:300.
-        context_scale = f"1:{self.site_scale.get().strip() or '3000'}"
+        context_scale = self.site_scale.get() or "1:3000"
         eye_scale = f"1:{self.eye_scale.get().strip() or '500'}"
         plan_scale, communal_scale, shadow_scale = "1:200", "1:300", "1:1000"
 
@@ -8502,10 +8484,14 @@ class Window:
         # context sheet is at the scale its panel says; the site sheet at its
         # own, or fitted to the site from a list of scales the run chooses
         # from, which nothing here can know; the summary is a table.
-        sheet_scale = self.site_sheet_scale.get().strip()
+        sheet_scale = self.site_sheet_scale.get()
         for job, which, scale in (
             (SITE_CONTEXT_JOB, "Context Analysis", context_scale),
-            (SITE_SHEET_JOB, "Site Analysis", f"1:{sheet_scale}" if sheet_scale else "to fit"),
+            (
+                SITE_SHEET_JOB,
+                "Site Analysis",
+                "to fit" if sheet_scale in ("", FIT_THE_SITE) else sheet_scale,
+            ),
             (SITE_CONTROLS_JOB, "Summary of Controls", ""),
         ):
             if job in queued:
@@ -9262,10 +9248,10 @@ class Window:
             *self._prefix_flag(self.prefix_site),
             *self._flag("--context-prefix", self.prefix_context),
         ]
-        if FIT_WORDS.get(self.site_fit.get(), "auto") != "auto":
-            shared += ["--fit-layer", FIT_WORDS[self.site_fit.get()]]
-        if self.site_out.get().strip():
-            shared += ["--out", self.site_out.get().strip()]
+        # Placed by each panel's Origin and North and by nothing else
+        # (D158): the fit to a boundary drawn in the file overrode both
+        # unseen, which on the page read as the panels not working.
+        shared += ["--fit-layer", "none"]
         # Its sheets go on the master the others' do. Without it the
         # command, having nobody to ask, stops at the first sheet.
         if self.master.get():
@@ -9310,8 +9296,8 @@ class Window:
             )
         if self.do_site_context.get():
             args = only("context")
-            if self.site_scale.get().strip():
-                args += ["--scale", self.site_scale.get().strip()]
+            if self.site_scale.get():
+                args += ["--scale", self.site_scale.get().removeprefix("1:")]
             style = _style_id(self.site_theme.get(), site=False)
             if style not in ("", site_theme.DEFAULT_THEME):
                 args += ["--theme", style]
@@ -9320,8 +9306,8 @@ class Window:
             )
         if self.do_site_site.get():
             args = only("site")
-            if self.site_sheet_scale.get().strip():
-                args += ["--site-scale", self.site_sheet_scale.get().strip()]
+            if self.site_sheet_scale.get() not in ("", FIT_THE_SITE):
+                args += ["--site-scale", self.site_sheet_scale.get().removeprefix("1:")]
             style = _style_id(self.site_site_theme.get(), site=True)
             if style not in ("", site_theme.DEFAULT_SITE_THEME):
                 args += ["--site-theme", style]

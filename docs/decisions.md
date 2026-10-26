@@ -6293,3 +6293,32 @@ where there were two fields, 500 m and 100 m.
 *What this does not change:* the command line's one-run `site`, which still
 draws every output it is asked for in one frame; the sheets, the styles and
 the model themselves.
+
+### D158 — The window does not fit to a drawn boundary
+
+Asked 26 October 2026, after the *Drawn boundary* row was explained:
+*"please, remove this option for now. its missleading"*.
+
+The row turned and moved every output onto a boundary drawn in the file
+when a layer's name mentioned one, and in doing so overrode each panel's
+*Origin* and *North* (D157) without the page saying so; and when the
+layer was empty, or a worksheet was in front, it quietly did nothing. So
+it is gone from the window, and the window sends every site run
+`--fit-layer none`: what the panels say is where the outputs go. Leaving
+the command's own default, which fits, would have kept the override and
+only hidden the row that admitted to it. The command line keeps
+`--fit-layer` as it was, for when the fit comes back with a clearer name.
+
+The *Run folder* row went with it, asked the same day: *"also remove run
+folder. that is not necessary to pick"*. A run keeps what it fetched in
+`Documents\Loriini\site-analysis`, one folder per address, which is what a
+blank row always sent; the command line keeps `--out`.
+
+And the two sheets' scales are lists, asked the same day: *"for scale, put
+there arrow with options. no type in"*. The context sheet's runs 1:1000 to
+1:5000, 1:3000 the default; the site sheet's is *Fit the site*, the default,
+or one of the scales the run fits it from, 1:200 to 1:750. Making them lists
+showed what a list could not do: a read-only list ignores the delete and
+insert that put saved settings back, so the sheets' styles had never come
+back on reopening. A saved value is now set on such a list, and only one it
+offers.

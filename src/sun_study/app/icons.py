@@ -396,7 +396,6 @@ BY_LABEL: dict[str, str] = {
     # panel's placement and radius.
     "Outputs": "sheets",
     "Radius (m)": "radius",
-    "Run folder": "run_folder",
     "Origin": "origin",
     "North": "site",
     # Solar analysis, the plans the apartments are drawn on
