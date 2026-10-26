@@ -38,8 +38,11 @@ the sheet's scale.
 
 ## Running it
 
-From the window: the **Site analysis** tab, an address, the three sheets
-ticked, Run. From the command line:
+From the window: the **Site analysis** page, an address in its first
+panel, the panels wanted switched on -- Context Analysis, Site Analysis,
+3D context, each placed and turned in its own panel, with Controls and
+Location in the first -- and Run. Each panel is a run of its own (D157).
+From the command line:
 
 ```
 sun-study site "26-30 Campsie St, Campsie NSW 2194" --port 19723
@@ -247,8 +250,9 @@ the left end of the long boundary on a squared one -- and `--square-to-site`
 turns the site so its longest boundary runs along +X. The turn is written
 into Project Location as the project's north, so the sun studies stay right;
 the corner moves only the origin, and the north is kept. Both are on the
-window's Site page beside *Site lands at*. A boundary already drawn in the
-file still wins: with a fit, neither is applied.
+window's Site page as each panel's *Origin* and *North*. On the command
+line a boundary already drawn in the file still wins: with a fit, neither
+is applied. The window does not fit (D158).
 
 ## The data
 
@@ -373,7 +377,7 @@ No Overrides.
 
 ## The context model
 
-`--model` (the **3D model** tick in the window) builds the neighbourhood the
+`--model` (the **3D context** panel in the window) builds the neighbourhood the
 shadow diagrams and sun views cast against, in the floor plan, every
 element with an `SA ...` element ID, on three layers in the office's site
 group -- one per kind, so a view can show any of them without the others:
@@ -543,7 +547,8 @@ most trees: across inner Sydney 37 of 24,638 OSM trees carry a crown size.
 
 ## The future context
 
-`--future` (the **Future Context** tick in the window) shows the street as
+`--future` (**Future context** in the window's 3D context panel, reaching
+as far as its radius) shows the street as
 the controls would let it be, not as it stands: each existing building near
 the site, kept on its own footprint, raised to the storeys the LEP's
 height-of-building control allows where it stands. Never lowered -- a

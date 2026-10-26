@@ -17,22 +17,25 @@ The Yield page asks two questions, and shows only the rows the answers need
 **Slabs** -- which slabs are the massing, and how each one's use is told:
 
 - **Everything showing** (the usual answer). Every slab on a layer that is
-  showing, its use told by the level it stands on: the *Retail levels* are
-  retail, the *Commercial levels* commercial, every other level
-  residential. The run says so in yellow, because a structural floor slab
-  on a showing layer is counted too.
+  showing, its use told by the level it stands on: the *Commercial levels*
+  are commercial, every other level residential. The run says so in
+  yellow, because a structural floor slab on a showing layer is counted
+  too.
 - **Chosen layers.** The slabs on the *Layers* chosen, the use told by level
   the same way. An option modelled on one layer -- a podium with a tower on
   it, `01 | Massing - Main Building.3D OPT1` -- is read this way. The run
   prints which level took which use.
-- **Layer per use.** The slabs on the *Residential*, *Commercial* and
-  *Retail layers* are that kind of floor, whatever level they stand on. A
-  layer named for two things is refused; a slab on a layer named for
-  nothing is not counted, and the run lists those layers so a forgotten one
-  is seen.
+- **Layer per use.** The slabs on the *Residential* and *Commercial
+  layers* are that kind of floor, whatever level they stand on. A layer
+  named for two things is refused; a slab on a layer named for nothing is
+  not counted, and the run lists those layers so a forgotten one is seen.
 - **Layer per option.** Each of the *Option layers* is one whole option, a
   sheet and a workbook page each, named after its OPT number, the use told
   by level.
+
+There are two uses, residential and commercial. Commercial is every floor
+that is not homes -- shops, offices, a podium's showroom alike -- so a layer
+or a level of shops is named as commercial (D159).
 
 A row the answer does not show sends nothing, so a layer left in it cannot
 change what is counted. The command line still takes any of these together
@@ -72,9 +75,8 @@ floor-to-floor is the rise to the level above; the top level's is its own
 slab's thickness when the slabs are storey-thick, and otherwise the rise
 below it.
 
-The *Retail levels* and *Commercial levels* are ticked on the Yield page
-from the levels a massing can have, or typed on the command line as the run
-names them: `Ground`, `Level 01`, `L2`, `3`, `B 01`. Every option in a run
+The *Commercial levels* are ticked on the Yield page from the levels a
+massing can have, or typed on the command line as the run names them: `Ground`, `Level 01`, `L2`, `3`, `B 01`. Every option in a run
 stands in one grid of levels, so a tower option with no ground floor of its
 own still starts above the podium option's ground.
 
@@ -86,15 +88,23 @@ as the curve it is. That is its **BEA**, the built envelope area. From it,
 by the template's *Building Efficiencies*, which the run follows to the
 letter and keeps as its defaults:
 
-| | Residential | Commercial | Retail |
-|---|---|---|---|
-| BEA to GFA | 0.725 | 0.85 | 0.95 |
-| GFA to NLA | 0.85 | 0.9 | 0.9 |
+| | Residential | Commercial |
+|---|---|---|
+| BEA to GFA | 0.725 | 0.85 |
+| GFA to NLA | 0.85 | 0.9 |
+
+The template has a third column, retail, at 0.95 and 0.9, with its own
+parking rate and its own permissible FSR. The office asked on 26 October
+2026 for the shops to be commercial floor, at the commercial rates, against
+one commercial FSR (D159), so the sheet, the workbook and the run have the
+two uses; a workbook written before reads its options back with their
+retail floor and retail FSR added to the commercial.
 
 - **GFA** is the BEA by *BEA to GFA*; **NLA** is the GFA by *GFA to NLA*.
 - **FSR** is each use's GFA over the site, against the permissible FSR the
   sheet splits by use, and the difference. The permissible is typed per use
-  (*Permissible FSR, residential* and the others, `--fsr-residential`); left
+  (*Permissible FSR, residential* and *commercial*, `--fsr-residential` and
+  `--fsr-commercial`); left
   blank, the LEP's one FSR is read at the address and written on the
   residential row with a note, to be split in the workbook.
 - **Units.** The residential GFA over the *average GFA* of a unit: the
@@ -105,8 +115,8 @@ letter and keeps as its defaults:
   round -- 44.1 units is what it says -- and nor does the run. The units
   the *permissible* residential GFA would hold stand beside them.
 - **Parking.** Each type's units by its spaces per unit under the SEPP and
-  the DCP, the visitors over every unit, the commercial and retail GFA by a
-  space per so many square metres; the total, and the **basements** it
+  the DCP, the visitors over every unit, the commercial GFA by a space per
+  so many square metres; the total, and the **basements** it
   takes at so many square metres a space over the share of the site a
   basement may cover.
 - **Storeys.** The levels with residential floor on them, and the levels
@@ -117,14 +127,20 @@ The mix the sheet opens with is the template's: Studio, 1-bed, 2-bed,
 m² NLA (the affordable 3-bed at 95), an average NLA of 72.5 m². The parking
 rates are the template's too: 0.5, 0.5, 1, 1.5 and 1.5 spaces a unit under
 the SEPP, 0.5, 0.5, 1, 1 and 1 under the DCP, 0.1 a unit for visitors, one
-space per 100 m² of commercial GFA and per 30 m² of retail under the SEPP
-and per 400 m² under the DCP, 40 m² a space, a basement over 40 per cent of
-the site. Every one is a setting, on the Yield page or the command line,
-and every one is an input cell in the workbook.
+space per 100 m² of commercial GFA under the SEPP and per 400 m² under the
+DCP, 40 m² a space, a basement over 40 per cent of the site. Every one is a
+setting, on the Yield page or the command line, and every one is an input
+cell in the workbook.
 
-The template's own *Option 01* is reproduced exactly by these defaults from
-its storey table and its site: 18,813.75 m² of residential GFA, 220.575
-units at 44.1, 154.4 and 22.1, 333.0 parking spaces and 4.97 basements.
+The template's own *Option 01* -- fourteen tower floors over a commercial
+level and a ground floor of shops -- comes out of these defaults, from its
+storey table and its site, as the template has it on the residential side:
+18,813.75 m² of residential GFA, 220.575 units at 44.1, 154.4 and 22.1, and
+their 231.6 parking spaces. Its 2,800 m² of shops are commercial at 0.85,
+so the commercial GFA is 3,655 m² (4,300 of BEA), the total 22,468.75 m², an
+FSR of 3.35 against the 3.4 permissible, and the parking 268.2 spaces and
+4.0 basements under the SEPP -- where the template, at its retail rates,
+had 22,748.75 m², 333.0 spaces and 4.97 basements.
 
 ## What comes out
 
@@ -147,12 +163,16 @@ its style table, its theme, its column widths and row heights, its green
 bars and boxed blocks, carried over cell for cell from the template by
 `scripts/extract_feasibility_style.py` into `report/feasibility_style.py`,
 to be run again when the office changes the template -- the site in C6, the
-permissible FSR in C10:C12, the proposed GFA in D17:D19, the unit mixes in
-rows 29 to 43, the parking from row 60, the efficiencies in C86:E88, and
-the storey table from J113 -- with the levels' BEA by use in red as the
+permissible FSR in C10:C11, the proposed GFA in D16:D17, the unit mixes in
+rows 27 to 41, the parking from row 58, the efficiencies in C83:E84, and
+the storey table from J113, with the levels' BEA by use in red as the
 template has its inputs, and every other figure a formula over them, so a
 what-if on an efficiency, a share, a rate or a level's use is typed into
-Excel rather than rerun. The columns the template fills by hand -- the
+Excel rather than rerun. Where the template has a row or a column for
+retail -- in the FSR, the GFA, the parking, the efficiencies and the
+storey table's BEA, GFA and NSA -- the workbook closes it up, and every
+cell keeps the look of the template cell it stands for. The columns the
+template fills by hand -- the
 units per level, the ADG cross-ventilation and solar counts -- are left
 empty for the office to fill. One sheet per option: a run adds its option
 beside the ones already in the workbook (it keeps each option's data on a
@@ -173,19 +193,19 @@ From a command line, the Darlinghurst options on 8 October 2026:
 ```
 sun-study yield --option "Option 01" ^
   --massing-layer "01 | Massing - Main Building.3D OPT1" ^
-  --retail-level Ground --commercial-level "Level 01" ^
+  --commercial-level Ground --commercial-level "Level 01" ^
   --address "91-109 Riley St, Darlinghurst NSW 2010" ^
   --xlsx "Preliminary Yield Analysis.xlsx" --master-layout "DA A1 - VERTICAL - No Scale"
 sun-study yield --option "Option 02" ^
   --massing-layer "01 | Massing - Main Building.3D OPT2" ^
-  --retail-level Ground --commercial-level "Level 01" ^
+  --commercial-level Ground --commercial-level "Level 01" ^
   --address "91-109 Riley St, Darlinghurst NSW 2010" ^
   --xlsx "Preliminary Yield Analysis.xlsx" --master-layout "DA A1 - VERTICAL - No Scale"
 ```
 
-`--residential-layer`, `--commercial-layer` and `--retail-layer` name a
-layer per use instead; `--fsr-residential`, `--fsr-commercial` and
-`--fsr-retail` split the permissible FSR; `--unit` and `--affordable-unit`
+`--residential-layer` and `--commercial-layer` name a layer per use
+instead; `--fsr-residential` and `--fsr-commercial` split the permissible
+FSR; `--unit` and `--affordable-unit`
 set the mixes, `--affordable-share` the split, `--common-area` and
 `--size-tolerance` the allowances on the average; `--parking-rate`,
 `--affordable-parking-rate`, `--sqm-per-space` and `--basement-site-ratio`
@@ -198,7 +218,7 @@ Each option in the project is usually its own layer. Name them all with
 `--option-layer` -- or tick them in *Option layers* on the Yield page -- and
 one run reads the slabs once and makes every option: a sheet in the
 workbook and a layout each, with the site, the permissible FSR, the
-efficiencies and the levels named retail and commercial shared between
+efficiencies and the levels named commercial shared between
 them, and a line per option at the foot of the log comparing GFA, FSR,
 units and parking. An option is named after its layer's OPT number
 (`...3D OPT1` is *Option 01*), or as `Option 02=<layer>`:
@@ -206,7 +226,7 @@ units and parking. An option is named after its layer's OPT number
 ```
 sun-study yield --option-layer "01 | Massing - Main Building.3D OPT1" ^
   --option-layer "01 | Massing - Main Building.3D OPT2" ^
-  --retail-level Ground --commercial-level "Level 01" ^
+  --commercial-level Ground --commercial-level "Level 01" ^
   --address "91-109 Riley St, Darlinghurst NSW 2010" ^
   --xlsx "Preliminary Yield Analysis.xlsx" --master-layout "DA A1 - VERTICAL - No Scale"
 ```
@@ -225,9 +245,9 @@ Yield Analysis*) and goes to the tables folder, or to the path typed under
    as the office would name them, and that the ground is the right level:
    a massing whose ground floor sits well below the project's ground storey
    is still the ground, being the level nearest it.
-3. **The use by level.** That the levels named retail and commercial are
-   the ones meant; a level moved from one use to another is also one number
-   moved between columns in the workbook's storey table.
+3. **The use by level.** That the levels named commercial are the ones
+   meant; a level moved from one use to another is also one number moved
+   between columns in the workbook's storey table.
 4. **The view beside the table.** That it is placed, and framed right of
    the table, on the office's own master.
 

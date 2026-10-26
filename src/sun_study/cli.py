@@ -320,7 +320,6 @@ from sun_study.rules.area_yield import (
     Permissible,
     checked_mix,
     feasibility,
-    level_name,
     parse_level,
     parse_rates,
     parse_unit,
@@ -8896,6 +8895,17 @@ def site_analysis(
             help="Metres from the site's boundary a building is still its future context.",
         ),
     ] = future_context.DEFAULT_REACH_M,
+    future_slabs: Annotated[
+        bool,
+        typer.Option(
+            "--future-slabs/--no-future-slabs",
+            help=(
+                "With --future: stand the raised neighbours as slabs in the model. "
+                "--no-future-slabs draws them on the site sheet only, for a run "
+                "beside another that stands them in its own place."
+            ),
+        ),
+    ] = True,
     datum: Annotated[str, typer.Option("--datum", help=context_model.DATUM_HELP)] = "project",
     theme: Annotated[
         str,
@@ -9412,7 +9422,7 @@ def site_analysis(
             except ArchicadError as error:
                 typer.secho(f"  the model was not made: {error}", fg=typer.colors.RED, err=True)
 
-    if future and future_report is not None and model_bundle is not None:
+    if future and future_slabs and future_report is not None and model_bundle is not None:
         typer.echo("standing the future context in the model...")
         try:
             stood = future_context.model_future(
@@ -9477,13 +9487,10 @@ def area_yield(
         typer.Option(
             "--commercial-layer",
             "--non-residential-layer",
-            help="A layer whose slabs are commercial floor: offices, a podium. Repeat for more.",
-        ),
-    ] = None,
-    retail_layer: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--retail-layer", help="A layer whose slabs are retail floor. Repeat for more."
+            help=(
+                "A layer whose slabs are commercial floor: shops, offices, a podium -- every "
+                "floor that is not homes. Repeat for more."
+            ),
         ),
     ] = None,
     massing_layer: Annotated[
@@ -9492,8 +9499,8 @@ def area_yield(
             "--massing-layer",
             help=(
                 "A layer whose slabs are the whole massing, the use of each told by its level: "
-                "the levels named --retail-level are retail, --commercial-level commercial, "
-                "the rest residential. Repeat for more."
+                "the levels named --commercial-level are commercial, the rest residential. "
+                "Repeat for more."
             ),
         ),
     ] = None,
@@ -9509,21 +9516,14 @@ def area_yield(
             ),
         ),
     ] = None,
-    retail_level: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--retail-level",
-            help=(
-                "A level whose massing-layer slabs are retail: 'Ground', 'Level 01', 'B 01'. "
-                "Repeat for more."
-            ),
-        ),
-    ] = None,
     commercial_level: Annotated[
         list[str] | None,
         typer.Option(
             "--commercial-level",
-            help="A level whose massing-layer slabs are commercial. Repeat for more.",
+            help=(
+                "A level whose massing-layer slabs are commercial, shops or offices: 'Ground', "
+                "'Level 01', 'B 01'. Repeat for more."
+            ),
         ),
     ] = None,
     renovation_filter: Annotated[
@@ -9551,16 +9551,14 @@ def area_yield(
         float, typer.Option("--gfa-residential", help="BEA to GFA, residential.")
     ] = 0.725,
     gfa_commercial: Annotated[
-        float, typer.Option("--gfa-commercial", help="BEA to GFA, commercial.")
+        float, typer.Option("--gfa-commercial", help="BEA to GFA, commercial: shops and offices.")
     ] = 0.85,
-    gfa_retail: Annotated[float, typer.Option("--gfa-retail", help="BEA to GFA, retail.")] = 0.95,
     nla_residential: Annotated[
         float, typer.Option("--nla-residential", help="GFA to NLA, residential.")
     ] = 0.85,
     nla_commercial: Annotated[
-        float, typer.Option("--nla-commercial", help="GFA to NLA, commercial.")
+        float, typer.Option("--nla-commercial", help="GFA to NLA, commercial: shops and offices.")
     ] = 0.90,
-    nla_retail: Annotated[float, typer.Option("--nla-retail", help="GFA to NLA, retail.")] = 0.90,
     unit: Annotated[
         list[str] | None,
         typer.Option(
@@ -9632,10 +9630,10 @@ def area_yield(
     ] = None,
     fsr_commercial: Annotated[
         float | None,
-        typer.Option("--fsr-commercial", help="The permissible FSR for commercial floor."),
-    ] = None,
-    fsr_retail: Annotated[
-        float | None, typer.Option("--fsr-retail", help="The permissible FSR for retail floor.")
+        typer.Option(
+            "--fsr-commercial",
+            help="The permissible FSR for commercial floor, the shops and the offices together.",
+        ),
     ] = None,
     target_fsr: Annotated[
         float | None,
@@ -9698,16 +9696,16 @@ def area_yield(
     holes and all, and gathered into levels by their height; each use's BEA
     goes to GFA and NLA by the sheet's efficiencies, over the site to an FSR
     against the permissible, and the residential GFA over the mix's average
-    unit to the units, the parking and the basements. With no layer named,
-    every slab on a layer that is showing counts, as residential. Printed,
-    drawn on a sheet of its own, and written as a live workbook, one sheet
-    per option.
+    unit to the units, the parking and the basements. Two uses, residential
+    and commercial: shops are commercial floor, at the commercial rates
+    (D159). With no layer named, every slab on a layer that is showing
+    counts, as residential. Printed, drawn on a sheet of its own, and written
+    as a live workbook, one sheet per option.
     """
     banner()
     naming.set_prefix(layer_prefix, default=naming.YIELD_PREFIX)
     residential = [name for name in residential_layer or [] if name.strip()]
     commercial = [name for name in commercial_layer or [] if name.strip()]
-    retail = [name for name in retail_layer or [] if name.strip()]
     massing = [name for name in massing_layer or [] if name.strip()]
     options = [option_from_layer(text) for text in option_layer or [] if text.strip()]
     try:
@@ -9724,7 +9722,7 @@ def area_yield(
         checked_mix(market.types)
         checked_mix(affordable.types)
         efficiencies = Efficiencies(
-            gfa_residential, gfa_commercial, gfa_retail, nla_residential, nla_commercial, nla_retail
+            gfa_residential, gfa_commercial, nla_residential, nla_commercial
         )
         rates = ParkingRates(
             sqm_per_space=sqm_per_space, basement_site_ratio=basement_site_ratio
@@ -9734,14 +9732,7 @@ def area_yield(
             dict(parse_rates(text) for text in parking_rate or []),
             dict(parse_rates(text) for text in affordable_parking_rate or []),
         )
-        retail_levels = [parse_level(text) for text in retail_level or []]
         commercial_levels = [parse_level(text) for text in commercial_level or []]
-        both = sorted(set(retail_levels) & set(commercial_levels))
-        if both:
-            raise ValueError(
-                f"{level_name(both[0])} is named as both retail and commercial; "
-                "a level can only be one."
-            )
         names = [name.casefold() for name, _layer in options]
         if len(set(names)) != len(names):
             raise ValueError(
@@ -9755,7 +9746,7 @@ def area_yield(
     def say(line: str) -> None:
         typer.echo(line)
 
-    permissible_given = any(v is not None for v in (fsr_residential, fsr_commercial, fsr_retail))
+    permissible_given = any(v is not None for v in (fsr_residential, fsr_commercial))
     if address and (site_area is None or not (permissible_given or target_fsr is not None)):
         typer.echo(f"reading the site and its controls at {address}...")
         try:
@@ -9774,7 +9765,7 @@ def area_yield(
                 typer.echo(f"  FSR control {target_fsr:g}:1")
     notes_: list[str] = []
     if permissible_given:
-        permissible = Permissible(fsr_residential, fsr_commercial, fsr_retail)
+        permissible = Permissible(fsr_residential, fsr_commercial)
     elif target_fsr is not None:
         permissible = Permissible(residential=target_fsr)
         notes_.append(
@@ -9801,7 +9792,7 @@ def area_yield(
         reading = read_slabs(
             connection,
             renovation=renovation_filter,
-            shown_layers_only=not (residential or commercial or retail or massing or options),
+            shown_layers_only=not (residential or commercial or massing or options),
             statuses=wanted_statuses[renovation_status],
         )
     except ArchicadError as error:
@@ -9811,12 +9802,12 @@ def area_yield(
     # The options this run makes: one per --option-layer, each a massing
     # layer of its own with the use told by level; or the one option the
     # other flags describe. The slabs are read once for all of them.
-    runs: list[tuple[str, list[str], list[str], list[str], list[str]]] = (
-        [(name, [], [], [], [layer]) for name, layer in options]
+    runs: list[tuple[str, list[str], list[str], list[str]]] = (
+        [(name, [], [], [layer]) for name, layer in options]
         if options
-        else [(option, residential, commercial, retail, massing)]
+        else [(option, residential, commercial, massing)]
     )
-    everything = not (residential or commercial or retail or massing or options)
+    everything = not (residential or commercial or massing or options)
     status_words = {"new": "new", "existing-and-new": "existing or new"}
     typer.echo(
         f"read {_slabs(len(reading.slabs))}"
@@ -9846,7 +9837,7 @@ def area_yield(
     if everything:
         typer.secho(
             "  No layer named: every slab showing is counted as massing, residential unless "
-            "its level is named retail or commercial.",
+            "its level is named commercial.",
             fg=typer.colors.YELLOW,
         )
     if reading.ground_m is None:
@@ -9861,15 +9852,13 @@ def area_yield(
         if " ".join(slab.layer.split()).casefold() in option_layers
     ]
     results: list[tuple[Feasibility, list[str]]] = []
-    for name, res_layers, com_layers, ret_layers, mass_layers in runs:
+    for name, res_layers, com_layers, mass_layers in runs:
         try:
             assignment = floors_from(
                 reading.slabs,
                 res_layers,
                 com_layers,
-                ret_layers,
                 mass_layers,
-                retail_levels=retail_levels,
                 commercial_levels=commercial_levels,
                 ground_m=reading.ground_m,
                 others_m=grid,
@@ -9931,12 +9920,11 @@ def area_yield(
 
         typer.echo("")
         typer.echo(f"  {result.option}")
-        typer.echo("  Level             F to F     Resi BEA     Comm BEA   Retail BEA")
+        typer.echo("  Level             F to F     Resi BEA     Comm BEA")
         for level in reversed(result.levels):
             typer.echo(
                 f"  {level.name:<16}{level.floor_to_floor_m:>8.2f}"
                 f"{level.residential_m2:>13.2f}{level.commercial_m2:>13.2f}"
-                f"{level.retail_m2:>13.2f}"
             )
         typer.echo("")
         for line in area_text_lines(result):

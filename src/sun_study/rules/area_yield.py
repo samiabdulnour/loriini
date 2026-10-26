@@ -10,11 +10,11 @@ letter:
 
 * **BEA**, the built envelope area: the slabs themselves, to their outside
   edge -- a massing slab is drawn to the building's outside face -- by
-  level and by use: residential, commercial, retail.
-* **GFA**, gross floor area: the BEA by *BEA to GFA*, 0.725 for residential,
-  0.85 for commercial and 0.95 for retail.
-* **NLA**, net lettable (saleable) area: the GFA by *GFA to NLA*, 0.85, 0.9
-  and 0.9.
+  level and by use: residential and commercial.
+* **GFA**, gross floor area: the BEA by *BEA to GFA*, 0.725 for residential
+  and 0.85 for commercial.
+* **NLA**, net lettable (saleable) area: the GFA by *GFA to NLA*, 0.85 and
+  0.9.
 * **FSR**: each use's GFA over the site, against the permissible FSR the
   sheet splits by use, and the difference.
 * **Units**: the residential GFA over the *average GFA* of a unit -- the
@@ -23,13 +23,23 @@ letter:
   mix, market and affordable apart. The sheet does not round: 44.1 units is
   what it says, and so does this.
 * **Parking**: the units by a rate per type (SEPP and DCP columns), the
-  visitors, the commercial and retail GFA by their rates, and the basements
-  that parking needs at so many square metres a space over the share of the
-  site the basement may take.
+  visitors, the commercial GFA by its rate, and the basements that parking
+  needs at so many square metres a space over the share of the site the
+  basement may take.
 
 Every one of those numbers is the practice's, not the tool's, and every one
 is a setting; the workbook the sheet is written to keeps them as input cells
 so a what-if is typed into Excel.
+
+Two uses, not three
+-------------------
+The template splits the floor that is not homes into commercial and retail,
+each with its own efficiencies, parking rate and permissible FSR. The office
+asked on 26 October 2026 for one: a shop is commercial floor, at the
+commercial rates -- 0.85 and 0.9, a space per 100 m² of GFA under the SEPP
+and per 400 m² under the DCP -- against one permissible FSR (D159). An
+option saved while retail stood apart reads back with its retail floor
+added to its commercial (``report.area_table``).
 
 Levels
 ------
@@ -58,7 +68,6 @@ __all__ = [
     "DEFAULT_MIX",
     "LABELS",
     "RESIDENTIAL",
-    "RETAIL",
     "USES",
     "Efficiencies",
     "Feasibility",
@@ -82,12 +91,12 @@ __all__ = [
 ]
 
 RESIDENTIAL: Final = "residential"
+#: Every floor that is not a home: offices and shops alike (D159).
 COMMERCIAL: Final = "commercial"
-RETAIL: Final = "retail"
-Use = Literal["residential", "commercial", "retail"]
-USES: tuple[Use, ...] = (RESIDENTIAL, COMMERCIAL, RETAIL)
+Use = Literal["residential", "commercial"]
+USES: tuple[Use, ...] = (RESIDENTIAL, COMMERCIAL)
 #: The uses as the sheet writes them.
-LABELS: Mapping[str, str] = {RESIDENTIAL: "Residential", COMMERCIAL: "Commercial", RETAIL: "Retail"}
+LABELS: Mapping[str, str] = {RESIDENTIAL: "Residential", COMMERCIAL: "Commercial"}
 
 #: How far the mix's shares may be from a hundred per cent between them and
 #: still be read as a hundred: shares typed to one decimal, five of them.
@@ -107,23 +116,20 @@ STOREY_THICK_M = 1.0
 @dataclass(frozen=True)
 class Efficiencies:
     """*Building Efficiencies* on the office's sheet: BEA to GFA and GFA to
-    NLA, one of each per use."""
+    NLA, one of each per use. The shops take commercial's; the template's
+    retail 0.95 is not kept (D159)."""
 
     gfa_residential: float = 0.725
     gfa_commercial: float = 0.85
-    gfa_retail: float = 0.95
     nla_residential: float = 0.85
     nla_commercial: float = 0.90
-    nla_retail: float = 0.90
 
     def __post_init__(self) -> None:
         for label, value in (
             ("BEA to GFA (Residential)", self.gfa_residential),
             ("BEA to GFA (Commercial)", self.gfa_commercial),
-            ("BEA to GFA (Retail)", self.gfa_retail),
             ("GFA to NLA (Residential)", self.nla_residential),
             ("GFA to NLA (Commercial)", self.nla_commercial),
-            ("GFA to NLA (Retail)", self.nla_retail),
         ):
             if not (0.0 < value <= 1.0) or math.isnan(value):
                 raise ValueError(
@@ -133,19 +139,11 @@ class Efficiencies:
 
     def gfa(self, use: str) -> float:
         """BEA to GFA, for this use."""
-        return {
-            RESIDENTIAL: self.gfa_residential,
-            COMMERCIAL: self.gfa_commercial,
-            RETAIL: self.gfa_retail,
-        }[use]
+        return {RESIDENTIAL: self.gfa_residential, COMMERCIAL: self.gfa_commercial}[use]
 
     def nla(self, use: str) -> float:
         """GFA to NLA, for this use."""
-        return {
-            RESIDENTIAL: self.nla_residential,
-            COMMERCIAL: self.nla_commercial,
-            RETAIL: self.nla_retail,
-        }[use]
+        return {RESIDENTIAL: self.nla_residential, COMMERCIAL: self.nla_commercial}[use]
 
 
 # -- the unit mix --------------------------------------------------------------------
@@ -334,9 +332,8 @@ class ParkingRates:
     visitors: UnitRates = UnitRates(0.1, 0.0)
     """Spaces per unit, over every unit."""
     commercial: UnitRates = UnitRates(1 / 100, 1 / 400)
-    """Spaces per m² of commercial GFA."""
-    retail: UnitRates = UnitRates(1 / 30, 1 / 400)
-    """Spaces per m² of retail GFA."""
+    """Spaces per m² of commercial GFA, the shops' with it; the template's
+    retail space per 30 m² is not kept (D159)."""
     sqm_per_space: float = 40.0
     basement_site_ratio: float = 0.4
     """The share of the site a basement level may take."""
@@ -416,22 +413,17 @@ class Level:
     floor_to_floor_m: float
     residential_m2: float = 0.0
     commercial_m2: float = 0.0
-    retail_m2: float = 0.0
 
     @property
     def name(self) -> str:
         return level_name(self.index)
 
     def bea(self, use: str) -> float:
-        return {
-            RESIDENTIAL: self.residential_m2,
-            COMMERCIAL: self.commercial_m2,
-            RETAIL: self.retail_m2,
-        }[use]
+        return {RESIDENTIAL: self.residential_m2, COMMERCIAL: self.commercial_m2}[use]
 
     @property
     def total_m2(self) -> float:
-        return self.residential_m2 + self.commercial_m2 + self.retail_m2
+        return self.residential_m2 + self.commercial_m2
 
 
 def level_name(index: int) -> str:
@@ -514,9 +506,7 @@ def levels_from(
         by_use = dict.fromkeys(USES, 0.0)
         for floor in members:
             by_use[floor.use] += floor.area_m2
-        levels.append(
-            Level(index, bottom, rise, by_use[RESIDENTIAL], by_use[COMMERCIAL], by_use[RETAIL])
-        )
+        levels.append(Level(index, bottom, rise, by_use[RESIDENTIAL], by_use[COMMERCIAL]))
     return tuple(levels)
 
 
@@ -526,33 +516,25 @@ def levels_from(
 @dataclass(frozen=True)
 class Permissible:
     """The permissible FSR, split by use as the sheet has it. A use left
-    ``None`` has no control written against it."""
+    ``None`` has no control written against it. The commercial is one figure
+    for the offices and the shops together (D159)."""
 
     residential: float | None = None
     commercial: float | None = None
-    retail: float | None = None
 
     def __post_init__(self) -> None:
-        for label, value in (
-            ("residential", self.residential),
-            ("commercial", self.commercial),
-            ("retail", self.retail),
-        ):
+        for label, value in (("residential", self.residential), ("commercial", self.commercial)):
             if value is not None and (value < 0 or math.isnan(value)):
                 raise ValueError(
                     f"The permissible {label} FSR cannot be below nothing ({value:g})."
                 )
 
     def fsr(self, use: str) -> float | None:
-        return {RESIDENTIAL: self.residential, COMMERCIAL: self.commercial, RETAIL: self.retail}[
-            use
-        ]
+        return {RESIDENTIAL: self.residential, COMMERCIAL: self.commercial}[use]
 
     @property
     def total(self) -> float | None:
-        given = [
-            value for value in (self.residential, self.commercial, self.retail) if value is not None
-        ]
+        given = [value for value in (self.residential, self.commercial) if value is not None]
         return sum(given) if given else None
 
     @property
@@ -691,8 +673,7 @@ class Feasibility:
 
     def parking_spaces(self, column: Literal["sepp", "dcp"]) -> dict[str, float]:
         """The sheet's parking rows for one column: each market and
-        affordable type, the visitors, the commercial and the retail, and
-        the totals."""
+        affordable type, the visitors, the commercial, and the totals."""
 
         def rate(rates: UnitRates) -> float:
             return rates.sepp if column == "sepp" else rates.dcp
@@ -713,8 +694,7 @@ class Feasibility:
         residential += out["visitors"]
         out["residential"] = residential
         out["commercial"] = self.gfa(COMMERCIAL) * rate(self.parking.commercial)
-        out["retail"] = self.gfa(RETAIL) * rate(self.parking.retail)
-        out["total"] = residential + out["commercial"] + out["retail"]
+        out["total"] = residential + out["commercial"]
         return out
 
     def basements(self, column: Literal["sepp", "dcp"]) -> float | None:

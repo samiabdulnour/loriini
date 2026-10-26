@@ -11,8 +11,8 @@ Beside the table the office's sheet has the massing, in an axonometric
 coloured by use. That picture is the project's own: a 3D view the office
 sets up once, with the graphic override that colours the massing. Named, it
 is placed on the sheet beside the table and framed to the rest of the page;
-the legend's colours are the three the massing is coloured in, which the
-override should match. Unnamed, the sheet is the table, and the view can be
+the legend's colours are the two the massing is coloured in, one a use,
+which the override should match. Unnamed, the sheet is the table, and the view can be
 dragged onto it from the View Map.
 """
 
@@ -44,7 +44,7 @@ from sun_study.archicad.site_analysis import (
 from sun_study.archicad.sun_eyes import TITLE_BLOCK_MM, arrange_drawings
 from sun_study.archicad.views import _by_name
 from sun_study.report.area_table import TITLE, notes, rows
-from sun_study.rules.area_yield import COMMERCIAL, LABELS, RESIDENTIAL, RETAIL, Feasibility
+from sun_study.rules.area_yield import COMMERCIAL, LABELS, RESIDENTIAL, Feasibility
 
 __all__ = [
     "AREA_WORD",
@@ -59,12 +59,11 @@ __all__ = [
 #: What the sheet is called, after the prefix and before the option's name.
 AREA_WORD = "Yield Analysis"
 
-#: The legend's colours, one a use: the office's yellow for the homes, its
-#: lilac for the commercial floors, and a blush for the shops.
+#: The legend's colours, one a use: the office's yellow for the homes and its
+#: lilac for the commercial floors, the shops among them (D159).
 COLOURS: dict[str, str] = {
     RESIDENTIAL: "#FFF4A8",
     COMMERCIAL: "#B894F2",
-    RETAIL: "#F6B8C8",
 }
 
 #: Paper millimetres from the sheet's usable corner to the table's.

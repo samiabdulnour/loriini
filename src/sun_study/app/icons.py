@@ -392,16 +392,12 @@ BY_LABEL: dict[str, str] = {
     "Scale": "scale",
     # Site tools
     "Address": "address",
-    # The two rows of site outputs: the drawings, and what goes into the
-    # project itself.
-    "Project": "model",
-    "Context scale": "scale",
-    "Site lands at": "site",
-    "Model radius (m)": "radius",
-    "Future reach (m)": "radius",
-    "Run folder": "run_folder",
-    "Origin at": "origin",
-    "Site turned": "site",
+    # The site page: the outputs row of its first panel, and each output
+    # panel's placement and radius.
+    "Outputs": "sheets",
+    "Radius (m)": "radius",
+    "Origin": "origin",
+    "North": "site",
     # Solar analysis, the plans the apartments are drawn on
     "Plans": "plans_both",
     "Shadow pen": "pen_set",
@@ -411,20 +407,15 @@ BY_LABEL: dict[str, str] = {
     "Option layers": "combination",
     "Residential layers": "yield",
     "Commercial layers": "yield",
-    "Retail layers": "yield",
     "Layers": "model",
-    "Retail levels": "storey_datum",
     "Commercial levels": "storey_datum",
     "Site area (m²)": "site",
     "Permissible FSR, residential": "table",
     "Permissible FSR, commercial": "table",
-    "Permissible FSR, retail": "table",
     "BEA to GFA, residential": "table",
     "BEA to GFA, commercial": "table",
-    "BEA to GFA, retail": "table",
     "GFA to NLA, residential": "table",
     "GFA to NLA, commercial": "table",
-    "GFA to NLA, retail": "table",
     "Affordable share (%)": "table",
     "Basement site ratio": "table",
     "m² per parking space": "table",

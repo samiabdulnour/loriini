@@ -2,9 +2,13 @@
 into levels, and the office's feasibility sheet worked from them.
 
 The office's template is the fixture. Its *Option 01* -- a 6,704 m² site,
-fourteen tower floors of 1,850 m² over a commercial level and a retail
-ground floor -- is reproduced here to the cent: its GFA by use, its FSR,
-its 220.575 units, its 333.02 parking spaces and its 4.97 basements.
+fourteen tower floors of 1,850 m² over a commercial level and a ground
+floor of shops -- was reproduced to the cent while the template's retail
+was a use of its own. The shops are commercial floor now, at the
+commercial rates (D159), so the figures below are the template's massing
+worked by hand at those rates: the residential side -- its GFA, its
+220.575 units, their parking -- as the template has it, and the shops'
+2,800 m² at commercial's 0.85, 0.9 and space per 100 m².
 """
 
 from __future__ import annotations
@@ -18,8 +22,9 @@ from sun_study.rules.area_yield import (
     AFFORDABLE_MIX,
     COMMERCIAL,
     DEFAULT_MIX,
+    LABELS,
     RESIDENTIAL,
-    RETAIL,
+    USES,
     Efficiencies,
     Feasibility,
     Floor,
@@ -160,8 +165,8 @@ def test_levels_are_named_as_the_sheet_names_them() -> None:
 
 def test_a_levels_rise_is_to_the_one_above_and_the_tops_is_its_own_slab() -> None:
     floors = [
-        Floor(RETAIL, 1500.0, 8.61, 4.3),
-        Floor(COMMERCIAL, 1500.0, 13.11, 3.0),
+        Floor(COMMERCIAL, 1500.0, 8.61, 4.3),
+        Floor(COMMERCIAL, 1200.0, 13.11, 3.0),
         Floor(RESIDENTIAL, 900.0, 16.31, 3.0),
         Floor(RESIDENTIAL, 300.0, 16.35, 3.0),
     ]
@@ -169,7 +174,8 @@ def test_a_levels_rise_is_to_the_one_above_and_the_tops_is_its_own_slab() -> Non
     assert [level.name for level in levels] == ["Ground Floor", "Level 01", "Level 02"]
     assert [level.floor_to_floor_m for level in levels] == pytest.approx([4.5, 3.2, 3.0])
     assert levels[2].residential_m2 == pytest.approx(1200.0), "two slabs on one level add up"
-    assert (levels[0].retail_m2, levels[1].commercial_m2) == (1500.0, 1500.0)
+    assert (levels[0].commercial_m2, levels[1].commercial_m2) == (1500.0, 1200.0)
+    assert levels[0].total_m2 == 1500.0 and levels[2].total_m2 == pytest.approx(1200.0)
     # Thin slabs with air between: the top one takes the rise below it.
     thin = levels_from([Floor(RESIDENTIAL, 100.0, 0.0, 0.2), Floor(RESIDENTIAL, 100.0, 3.1, 0.2)])
     assert [level.floor_to_floor_m for level in thin] == pytest.approx([3.1, 3.1])
@@ -181,11 +187,11 @@ SITE = 6704.0
 
 
 def template_floors() -> list[Floor]:
-    """The template's storey table: a 5 m retail ground floor with 50 m² of
-    residential lobby, a 3.8 m commercial level, two empty levels, and
-    fourteen 3.2 m tower floors of 1,850 m²."""
+    """The template's storey table: a 5 m ground floor of shops -- commercial
+    floor -- with 50 m² of residential lobby, a 3.8 m commercial level, two
+    empty levels, and fourteen 3.2 m tower floors of 1,850 m²."""
     floors = [
-        Floor(RETAIL, 2800.0, 0.0, 5.0),
+        Floor(COMMERCIAL, 2800.0, 0.0, 5.0),
         Floor(RESIDENTIAL, 50.0, 0.0, 5.0),
         Floor(COMMERCIAL, 1500.0, 5.0, 3.8),
         Floor(RESIDENTIAL, 0.0, 8.8, 3.8),
@@ -199,35 +205,59 @@ def template_floors() -> list[Floor]:
 
 
 def template() -> Feasibility:
+    """The template's Option 01, its permissible commercial 0.2 and retail
+    0.4 one commercial 0.6: the total is still its 3.4."""
     return feasibility(
         template_floors(),
         site_area_m2=SITE,
-        permissible=Permissible(2.8, 0.2, 0.4),
+        permissible=Permissible(2.8, 0.6),
         source=["BEA : 19 slabs"],
     )
 
 
+def test_shops_and_offices_are_one_use_at_the_commercial_rates() -> None:
+    """Retail is not a use of its own (D159): a floor of shops is commercial
+    floor, at commercial's 0.85 and 0.9 and a space per 100 m² of GFA under
+    the SEPP and per 400 m² under the DCP."""
+    assert USES == (RESIDENTIAL, COMMERCIAL)
+    assert LABELS == {RESIDENTIAL: "Residential", COMMERCIAL: "Commercial"}
+    efficiencies = Efficiencies()
+    assert (efficiencies.gfa(COMMERCIAL), efficiencies.nla(COMMERCIAL)) == (0.85, 0.90)
+    assert ParkingRates().commercial == UnitRates(1 / 100, 1 / 400)
+    shops = feasibility([Floor(COMMERCIAL, 1000.0)])
+    assert shops.gfa(COMMERCIAL) == pytest.approx(850.0)
+    spaces = shops.parking_spaces("sepp")
+    assert spaces["commercial"] == spaces["total"] == pytest.approx(8.5)
+    assert "retail" not in spaces, "no parking row of its own"
+
+
 def test_the_templates_areas_come_out_of_its_bea() -> None:
+    """Commercial BEA 2,800 of shops + 1,500 of offices = 4,300; at 0.85 that
+    is 3,655 m² of GFA, at 0.9 3,289.5 of NLA. The residential is the
+    template's: 50 + 14 x 1,850 = 25,950 at 0.725 is 18,813.75, at 0.85
+    15,991.6875. Total GFA 18,813.75 + 3,655 = 22,468.75."""
     sheet = template()
     assert sheet.bea(RESIDENTIAL) == pytest.approx(25950.0)
-    assert (sheet.bea(COMMERCIAL), sheet.bea(RETAIL)) == (1500.0, 2800.0)
+    assert sheet.bea(COMMERCIAL) == pytest.approx(4300.0)
+    assert sheet.total_bea_m2 == pytest.approx(30250.0)
     assert sheet.gfa(RESIDENTIAL) == pytest.approx(18813.75)
-    assert sheet.gfa(COMMERCIAL) == pytest.approx(1275.0)
-    assert sheet.gfa(RETAIL) == pytest.approx(2660.0)
-    assert sheet.total_gfa_m2 == pytest.approx(22748.75)
+    assert sheet.gfa(COMMERCIAL) == pytest.approx(3655.0)
+    assert sheet.total_gfa_m2 == pytest.approx(22468.75)
     assert sheet.nla(RESIDENTIAL) == pytest.approx(15991.6875)
-    assert sheet.nla(COMMERCIAL) == pytest.approx(1147.5)
-    assert sheet.nla(RETAIL) == pytest.approx(2394.0)
+    assert sheet.nla(COMMERCIAL) == pytest.approx(3289.5)
 
 
 def test_the_templates_fsr_is_against_the_permissible_by_use() -> None:
+    """Over the 6,704 m² site: 18,813.75 is 2.8063, 3,655 is 0.5452, the
+    total 22,468.75 is 3.3515. Permissible 2.8 and 0.6 allow 18,771.2 and
+    4,022.4, together 22,793.6 as the template's 3.4 did."""
     sheet = template()
     assert sheet.fsr(RESIDENTIAL) == pytest.approx(2.80634696)
-    assert sheet.fsr(COMMERCIAL) == pytest.approx(0.19018496)
-    assert sheet.fsr(RETAIL) == pytest.approx(0.39677804)
-    assert sheet.total_fsr == pytest.approx(3.39330996)
+    assert sheet.fsr(COMMERCIAL) == pytest.approx(0.54519690)
+    assert sheet.total_fsr == pytest.approx(3.35154385)
     assert sheet.permissible.total == pytest.approx(3.4)
     assert sheet.permissible_gfa(RESIDENTIAL) == pytest.approx(18771.2)
+    assert sheet.permissible_gfa(COMMERCIAL) == pytest.approx(4022.4)
     assert sheet.total_permissible_gfa_m2 == pytest.approx(22793.6)
 
 
@@ -242,6 +272,11 @@ def test_the_templates_units_are_not_rounded() -> None:
 
 
 def test_the_templates_parking_and_basements() -> None:
+    """The residential parking is the template's, 231.60375 and 198.5175.
+    The commercial 3,655 m² of GFA at a space per 100 m² is 36.55 under the
+    SEPP, at one per 400 m² 9.1375 under the DCP: 268.15375 and 207.655 in
+    all. At 40 m² a space over 40 % of the site, 2,681.6 m², that is 4.00
+    and 3.10 basements."""
     sheet = template()
     sepp, dcp = sheet.parking_spaces("sepp"), sheet.parking_spaces("dcp")
     assert sepp["market 1-bed"] == pytest.approx(22.0575)
@@ -249,12 +284,14 @@ def test_the_templates_parking_and_basements() -> None:
     assert dcp["market 3-bed"] == pytest.approx(22.0575)
     assert sepp["visitors"] == pytest.approx(22.0575) and dcp["visitors"] == 0.0
     assert sepp["residential"] == pytest.approx(231.60375)
-    assert (sepp["commercial"], sepp["retail"]) == pytest.approx((12.75, 88.6666667))
-    assert (dcp["commercial"], dcp["retail"]) == pytest.approx((3.1875, 6.65))
-    assert sepp["total"] == pytest.approx(333.0204167)
-    assert dcp["total"] == pytest.approx(208.355)
-    assert sheet.basements("sepp") == pytest.approx(4.96748832)
-    assert sheet.basements("dcp") == pytest.approx(3.10792064)
+    assert dcp["residential"] == pytest.approx(198.5175)
+    assert (sepp["commercial"], dcp["commercial"]) == pytest.approx((36.55, 9.1375))
+    assert "retail" not in sepp and "retail" not in dcp
+    assert sepp["total"] == pytest.approx(268.15375)
+    assert dcp["total"] == pytest.approx(207.655)
+    assert sheet.basements("sepp") == pytest.approx(268.15375 * 40 / 2681.6)
+    assert sheet.basements("sepp") == pytest.approx(3.99990677)
+    assert sheet.basements("dcp") == pytest.approx(3.09747912)
 
 
 def test_the_storeys_are_counted_from_the_levels() -> None:
@@ -302,8 +339,8 @@ def test_a_setting_that_cannot_be_right_is_said(kwargs: dict[str, object], messa
 def test_an_efficiency_outside_nothing_to_one_is_refused() -> None:
     with pytest.raises(ValueError, match=r"BEA to GFA \(Residential\)"):
         Efficiencies(gfa_residential=1.2)
-    with pytest.raises(ValueError, match="permissible retail FSR"):
-        Permissible(retail=-1.0)
+    with pytest.raises(ValueError, match="permissible commercial FSR"):
+        Permissible(commercial=-1.0)
 
 
 def test_parking_rates_are_the_sheets_unless_named() -> None:

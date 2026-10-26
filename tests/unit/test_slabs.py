@@ -10,7 +10,7 @@ import pytest
 
 from sun_study.archicad.slabs import BY_LEVEL, MassingSlab, floors_from, read_slabs, ring_from
 from sun_study.core.plan_area import Ring
-from sun_study.rules.area_yield import COMMERCIAL, RESIDENTIAL, RETAIL
+from sun_study.rules.area_yield import COMMERCIAL, RESIDENTIAL
 from tests.unit.test_archicad_adapter import connect
 
 
@@ -51,7 +51,7 @@ def project(rows: list[dict[str, Any]], ground: str = "Ground") -> tuple[Any, An
             "GetAttributesByType": {
                 "attributes": [
                     {"index": 1, "name": "05 | Mass.Residential "},
-                    {"index": 2, "name": "05 | Mass.Retail"},
+                    {"index": 2, "name": "05 | Mass.Podium"},
                     {"index": 3, "name": "03 | Site Context.Buildings"},
                     {"index": 4, "name": "01 | Floor.Structural"},
                 ]
@@ -84,7 +84,7 @@ def test_the_slabs_come_with_their_storey_layer_holes_and_height() -> None:
                 2,
                 0,
                 SQUARE,
-                id="Retail",
+                id="Podium",
                 zCoordinate=12.91,
                 offsetFromTop=0.0,
                 thickness=4.3,
@@ -99,7 +99,7 @@ def test_the_slabs_come_with_their_storey_layer_holes_and_height() -> None:
     assert (first.storey, first.level_m) == ("Level 1", 4.5)
     assert first.area_m2 == pytest.approx(200.0 - 16.0), "the core is not floor"
     assert (first.bottom_m, first.thickness_m) == (4.5, 0.0), "no height given: the storey's"
-    assert (second.storey, second.element_id) == ("Ground", "Retail")
+    assert (second.storey, second.element_id) == ("Ground", "Podium")
     assert second.bottom_m == pytest.approx(12.91 - 4.3), "the top less the thickness"
     assert second.thickness_m == 4.3
     assert reading.ground_m == 0.0, "the storey called Ground"
@@ -157,26 +157,27 @@ def slab(layer: str, side: float, bottom: float = 0.0, thickness: float = 3.0) -
 
 
 def test_the_layer_says_the_use_and_a_layer_named_for_nothing_is_passed_over() -> None:
+    """The shops' layer and the offices' are both named as commercial: one
+    use, at one set of rates (D159)."""
     slabs = [
         slab("05 | Mass.Residential ", 10.0, 3.0),
-        slab("05 | Mass.Retail", 5.0, 0.0),
+        slab("05 | Mass.Shops", 5.0, 0.0),
         slab("05 | Mass.Office", 6.0, 6.0),
         slab("01 | Floor.Structural", 30.0),
     ]
     made = floors_from(
         slabs,
         ["05 | mass.residential"],
-        ["05 | Mass.Office", "05 | Mass.Podium"],
-        ["05 | Mass.Retail"],
+        ["05 | Mass.Shops", "05 | Mass.Office", "05 | Mass.Podium"],
     )
     assert [(f.use, f.area_m2, f.bottom_m) for f in made.floors] == [
         (RESIDENTIAL, 100.0, 3.0),
-        (RETAIL, 25.0, 0.0),
+        (COMMERCIAL, 25.0, 0.0),
         (COMMERCIAL, 36.0, 6.0),
     ]
     assert made.passed_over == {"01 | Floor.Structural": 1}
     assert made.missing == ("05 | Mass.Podium",), "a named layer nothing stands on is said"
-    assert made.by_layer["05 | Mass.Retail"] == (RETAIL, 1, 25.0)
+    assert made.by_layer["05 | Mass.Shops"] == (COMMERCIAL, 1, 25.0)
     assert not made.levels_used, "no massing layer, no level told a use"
 
 
@@ -188,11 +189,9 @@ def test_a_massing_layers_slabs_take_their_use_from_their_level() -> None:
         slab("OPT1", 10.0, 18.91, 3.0),
         slab("OPT1", 10.0, 21.91, 3.0),
     ]
-    made = floors_from(
-        stack, massing=["opt1"], retail_levels=[0], commercial_levels=[1, 2], ground_m=10.11
-    )
+    made = floors_from(stack, massing=["opt1"], commercial_levels=[0, 1, 2], ground_m=10.11)
     assert [f.use for f in made.floors] == [
-        RETAIL,
+        COMMERCIAL,
         COMMERCIAL,
         COMMERCIAL,
         RESIDENTIAL,
@@ -200,7 +199,7 @@ def test_a_massing_layers_slabs_take_their_use_from_their_level() -> None:
     ]
     assert made.by_layer["OPT1"] == (BY_LEVEL, 5, 1400.0)
     assert made.levels_used == {
-        "Ground Floor": RETAIL,
+        "Ground Floor": COMMERCIAL,
         "Level 01": COMMERCIAL,
         "Level 02": COMMERCIAL,
         "Level 03": RESIDENTIAL,
@@ -210,26 +209,28 @@ def test_a_massing_layers_slabs_take_their_use_from_their_level() -> None:
 
 def test_another_options_slabs_keep_the_levels_lined_up() -> None:
     tower = [slab("OPT2", 10.0, 12.91, 3.0), slab("OPT2", 10.0, 15.91, 3.0)]
-    alone = floors_from(tower, massing=["OPT2"], retail_levels=[0], ground_m=10.11)
-    assert [f.use for f in alone.floors] == [RETAIL, RESIDENTIAL], "its lowest read as the ground"
+    alone = floors_from(tower, massing=["OPT2"], commercial_levels=[0], ground_m=10.11)
+    assert [f.use for f in alone.floors] == [COMMERCIAL, RESIDENTIAL], (
+        "its lowest read as the ground"
+    )
     together = floors_from(
-        tower, massing=["OPT2"], retail_levels=[0], ground_m=10.11, others_m=[8.61]
+        tower, massing=["OPT2"], commercial_levels=[0], ground_m=10.11, others_m=[8.61]
     )
     assert [f.use for f in together.floors] == [RESIDENTIAL, RESIDENTIAL]
     assert list(together.levels_used) == ["Level 01", "Level 02"]
 
 
 def test_with_no_layer_named_everything_showing_is_massing() -> None:
-    made = floors_from([slab("A", 10.0, 0.0), slab("B", 10.0, 3.0)], retail_levels=[0])
-    assert [f.use for f in made.floors] == [RETAIL, RESIDENTIAL]
+    made = floors_from([slab("A", 10.0, 0.0), slab("B", 10.0, 3.0)], commercial_levels=[0])
+    assert [f.use for f in made.floors] == [COMMERCIAL, RESIDENTIAL]
     assert not made.passed_over
 
 
 def test_one_layer_cannot_be_two_things() -> None:
     with pytest.raises(ValueError, match="both residential and commercial"):
         floors_from([], ["05 | Mass"], [" 05 |  mass "])
-    with pytest.raises(ValueError, match="both retail and massing"):
-        floors_from([], retail=["05 | Mass"], massing=["05 | Mass"])
+    with pytest.raises(ValueError, match="both commercial and massing"):
+        floors_from([], commercial=["05 | Mass"], massing=["05 | Mass"])
 
 
 def test_slabs_are_chosen_by_their_own_renovation_status() -> None:
