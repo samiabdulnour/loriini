@@ -144,7 +144,6 @@ from sun_study.archicad.series import (
 )
 from sun_study.archicad.shadow_plans import (
     COMBINED_LABEL,
-    DEFAULT_SHADOW_FILL,
     EXISTING_LABEL,
     PLAN_SCALE,
     SET_WORD,
@@ -164,9 +163,6 @@ from sun_study.archicad.shadow_plans import (
     site_context_layers,
     stack_labels,
     stack_order,
-)
-from sun_study.archicad.shadow_plans import (
-    DEFAULT_COMBINATION as SHADOW_PLAN_COMBINATION,
 )
 from sun_study.archicad.shadows import (
     BASELINE_RAMP,
@@ -3975,10 +3971,11 @@ def massing(
             help=(
                 "Leads the name of every layer, layer combination, surface, "
                 "view and layout this run creates, so the output files itself "
-                "inside the office's own numbering: '14 |' gives "
-                "'14 | Solar Analysis.Results'. Defaults to the solar "
-                "analysis's own number, 14 | -- the shadow diagram, the sun "
-                "views and the site analysis each file under their own. It is "
+                "where a reader expects it: 'Solar |' gives "
+                "'Solar | Solar Analysis.Results'. Defaults to the solar "
+                "analysis's own, 'Solar |' -- the shadow diagram, the sun "
+                "views and the site analysis each file under their own; an "
+                "office that numbers its groups gives its number. It is "
                 "also how a rerun finds its own sheets to replace, so changing "
                 "it leaves the last run's behind for you to delete by hand, "
                 "and an empty one is refused."
@@ -5842,10 +5839,11 @@ def archicad_run(
             help=(
                 "Leads the name of every layer, layer combination, surface, "
                 "view and layout this run creates, so the output files itself "
-                "inside the office's own numbering: '14 |' gives "
-                "'14 | Solar Analysis.Results'. Defaults to the solar "
-                "analysis's own number, 14 | -- the shadow diagram, the sun "
-                "views and the site analysis each file under their own. It is "
+                "where a reader expects it: 'Solar |' gives "
+                "'Solar | Solar Analysis.Results'. Defaults to the solar "
+                "analysis's own, 'Solar |' -- the shadow diagram, the sun "
+                "views and the site analysis each file under their own; an "
+                "office that numbers its groups gives its number. It is "
                 "also how a rerun finds its own sheets to replace, so changing "
                 "it leaves the last run's behind for you to delete by hand, "
                 "and an empty one is refused."
@@ -5903,10 +5901,11 @@ def archicad_run(
                 "Layout Book subset the clock-time sheets are filed under, so "
                 "they sit with the practice's own drawings of that kind rather "
                 "than at the root of the book. Named, never created: the book "
-                "is the office's structure. Empty leaves them at the root."
+                "is the office's structure. Empty, the default, leaves them at "
+                "the root."
             ),
         ),
-    ] = "SHADOW DIAGRAMS",
+    ] = "",
     plan_combination: Annotated[
         str,
         typer.Option(
@@ -5926,11 +5925,11 @@ def archicad_run(
             "--adg-subset",
             help=(
                 "Layout Book subset for the sheets that are not a time of day "
-                "-- the banded plan, the two-hour plan. Empty leaves them at "
-                "the root."
+                "-- the banded plan, the two-hour plan. Empty, the default, "
+                "leaves them at the root."
             ),
         ),
-    ] = "ADG DIAGRAMS",
+    ] = "",
     series_worksheet: Annotated[
         str | None,
         typer.Option(
@@ -6659,7 +6658,7 @@ def _shadow_source_rules(
 ) -> tuple[ShadowSourceRule, ...]:
     """Parse ``--shadow-source`` and ``--shadow-scenario`` into legend rows.
 
-    ``"Future Context=03 | Site Context.Future buildings"`` -- the legend row's
+    ``"Future Context=Site Context.Future buildings"`` -- the legend row's
     own words on the left, and on the right whatever finds its geometry: a
     layer name, or a prefix of an Element ID. Either is tried, because which
     of the two a practice has filled in is not something to assume. On the
@@ -6687,7 +6686,7 @@ def _shadow_source_rules(
             if not label.strip() or not prefixes.strip():
                 raise typer.BadParameter(
                     f"{text!r} is not LABEL=SELECTOR. Write it as "
-                    f'"Future Context=03 | Site Context.Future buildings" -- the '
+                    f'"Future Context=Site Context.Future buildings" -- the '
                     f"legend row on the left, and on the right the layer name or "
                     f"Element ID prefix that finds its geometry."
                 )
@@ -6906,8 +6905,8 @@ def shadows(
             "--layer-prefix",
             help=(
                 "What every layer, view and sheet the shadow diagram makes is "
-                "named under. Defaults to 15 |, the shadow diagram's own "
-                "number, so it stands apart from the apartment results on 14 |."
+                "named under. Defaults to 'Shadow |', the shadow diagram's own, "
+                "so it stands apart from the apartment results under 'Solar |'."
             ),
         ),
     ] = None,
@@ -7580,13 +7579,19 @@ def sun_eye_views(
         str,
         typer.Option(
             "--base-combination",
-            help="The layer combination the sun eye set starts from; zones are then hidden.",
+            help=(
+                "The layer combination the sun eye set starts from; zones are then "
+                "hidden. Empty, the default, starts from the plan as it stands."
+            ),
         ),
-    ] = "04 | Shadow Diagrams",
+    ] = "",
     override: Annotated[
         str,
-        typer.Option("--override", help="Graphic override combination that paints the glazing."),
-    ] = "Sun Eye Views",
+        typer.Option(
+            "--override",
+            help="Graphic override combination that paints the glazing. None by default.",
+        ),
+    ] = "",
     renovation_filter: Annotated[
         str | None,
         typer.Option(
@@ -7597,9 +7602,7 @@ def sun_eye_views(
             ),
         ),
     ] = None,
-    model_view_options: Annotated[
-        str | None, typer.Option("--model-view-options")
-    ] = "DA General Arrangement",
+    model_view_options: Annotated[str | None, typer.Option("--model-view-options")] = None,
     pen_set: Annotated[str | None, typer.Option("--pen-set")] = None,
     d3_style: Annotated[
         str | None, typer.Option("--3d-style", help="3D style for the views of the window.")
@@ -7633,7 +7636,7 @@ def sun_eye_views(
             "--layer-prefix",
             help=(
                 "What every view, document and sheet is named under. Defaults "
-                "to 16 |, the sun views' own number."
+                "to 'Sun View |', the sun views' own."
             ),
         ),
     ] = None,
@@ -7746,9 +7749,9 @@ def sun_eye_views(
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
+    started = repr(base_combination) if base_combination else "the plan as it stands"
     typer.echo(
-        f"  layer combination {combination!r}: {base_combination!r} with "
-        f"{len(hidden)} zone layers hidden"
+        f"  layer combination {combination!r}: {started} with {len(hidden)} zone layers hidden"
     )
 
     guid = renovation_filter or planned_renovation_filter(connection)
@@ -7854,10 +7857,12 @@ def shadow_plan_documents(
             "--layer-combination",
             help=(
                 "What the plans show, and so what casts and catches the shadows: "
-                "the ground has to be in it, or the shadows fall on nothing."
+                "the ground has to be in it, or the shadows fall on nothing. "
+                "Needed: there is no default, since which combination that is "
+                "is the project's own."
             ),
         ),
-    ] = SHADOW_PLAN_COMBINATION,
+    ] = "",
     require_layer: Annotated[
         list[str] | None,
         typer.Option(
@@ -7980,9 +7985,8 @@ def shadow_plan_documents(
         typer.Option(
             "--shadow-fill",
             help=(
-                "Fill type the shadows are drawn in, by name. Left out, the office's '50 %' "
-                "when the project has it, as its own shadow documents are drawn; 'none' keeps "
-                "the project's 3D Document default."
+                "Fill type the shadows are drawn in, by name. Left out, or 'none', the "
+                "shadows keep the project's own 3D Document fill."
             ),
         ),
     ] = None,
@@ -8028,7 +8032,7 @@ def shadow_plan_documents(
             "--layer-prefix",
             help=(
                 "What every document, view and sheet is named under. Defaults to "
-                "15 |, the shadow diagram's own number."
+                "'Shadow |', the shadow diagram's own."
             ),
         ),
     ] = None,
@@ -8054,6 +8058,15 @@ def shadow_plan_documents(
     """
     banner()
     naming.set_prefix(layer_prefix, default=naming.SHADOW_PREFIX)
+    if not layer_combination.strip():
+        # No office default to fall back on (D156): the plans are pinned to
+        # this combination, and which one shows the ground under the
+        # buildings is the project's to say.
+        raise typer.BadParameter(
+            "Name the layer combination the plans show -- the one with the "
+            "buildings and the ground under them on.",
+            param_hint="--layer-combination",
+        )
     clock = Stopwatch()
     proposals = _proposal_layers(proposed or [])
     legend = _legend_rows(shadow_source or [], shadow_scenario or [], existing or [], proposals)
@@ -8126,15 +8139,7 @@ def shadow_plan_documents(
                 f"through the existing shadow -- name a solid with --shadow-fill",
                 fg=typer.colors.YELLOW,
             )
-    elif shadow_fill is None:
-        # The office draws its shadow documents in "50 %" (read off the
-        # Kogarah file, 8 October 2026); a project's 3D Document default was
-        # a brick hatch on the mark-up pen, which showed as no shadow at all.
-        index = site_drawing.attribute_index(connection, "Fill", (DEFAULT_SHADOW_FILL,))
-        if index is not None:
-            fill["fillIndex"] = index
-            typer.echo(f"  shadows drawn in the {DEFAULT_SHADOW_FILL!r} fill")
-    elif shadow_fill.strip().casefold() != "none":
+    elif shadow_fill is not None and shadow_fill.strip().casefold() != "none":
         index = site_drawing.attribute_index(connection, "Fill", (shadow_fill,))
         if index is None:
             typer.secho(
@@ -8962,7 +8967,7 @@ def site_analysis(
             "--layer-prefix",
             help=(
                 "What every layer, worksheet and view is named under. Defaults "
-                "to 17 |, the site analysis's own number."
+                "to 'Site |', the site analysis's own."
             ),
         ),
     ] = None,
@@ -8972,13 +8977,14 @@ def site_analysis(
             "--context-prefix",
             help=(
                 "The office's own site group, the number in front of "
-                "'Site Context.Terrain', '.Roads' and '.Buildings'. The "
+                "'Site Context.Terrain', '.Roads' and '.Buildings', if it has "
+                "one. The "
                 "neighbours and the ground under them go there, one layer per "
                 "kind, rather than on a layer of this tool's own, so a "
                 "colleague finds them where neighbours live. A layer the "
                 "template already has is used, not duplicated; point this at a "
                 "group the project does not have and the layers are made. "
-                "Defaults to 03 |."
+                "None by default: 'Site Context.Buildings' on its own."
             ),
         ),
     ] = None,
@@ -9681,7 +9687,7 @@ def area_yield(
     layer_prefix: Annotated[
         str | None,
         typer.Option(
-            "--layer-prefix", help="Files the sheet in the Layout Book. '18 |' by default."
+            "--layer-prefix", help="Files the sheet in the Layout Book. 'Yield |' by default."
         ),
     ] = None,
 ) -> None:

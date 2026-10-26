@@ -214,8 +214,8 @@ class HttpTransport:
                 f"Archicad did not answer within {self.timeout_seconds:g}s. A large "
                 f"IFC export can legitimately take longer, so this is not proof "
                 f"that the export failed: give it longer with --timeout, in "
-                f"seconds -- or, in the window, 'Archicad wait (min)' under "
-                f"Advanced. If it stops at double the wait too, the thing to "
+                f"seconds; the window waits an hour. If it stops at double the "
+                f"wait too, the thing to "
                 f"look at is Archicad itself: a dialog waiting to be clicked "
                 f"stops it answering at any timeout."
             ) from exc

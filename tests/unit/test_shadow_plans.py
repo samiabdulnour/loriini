@@ -88,7 +88,7 @@ class PlanTransport:
         if command == "GetCurrentWindowType":
             return {"currentWindowType": "FloorPlan"}
         if command == "GetAttributesByType":
-            # A project with no fill called "50 %": the shadows keep the pen
+            # A project with no fill to find by name: the shadows keep the pen
             # asked for and nothing else.
             return {"attributes": []}
         if command == "GetNavigatorItemTree":
@@ -211,7 +211,9 @@ def _plans(hours: list[int]) -> list[ShadowPlan]:
 
 def test_every_document_looks_straight_down_with_its_own_sun_and_shadows_on() -> None:
     transport = PlanTransport()
-    settings = ShadowPlanSettings(shadow_fill={"fillIndex": 65, "fillPen": 3})
+    settings = ShadowPlanSettings(
+        "04 | Shadow Diagrams", shadow_fill={"fillIndex": 65, "fillPen": 3}
+    )
 
     made, said = make_shadow_plans(
         ArchicadConnection(transport), _plans([9, 12, 15]), settings=settings
@@ -249,7 +251,7 @@ def test_a_rerun_re_sets_what_it_finds_and_copies_the_shadow_switch() -> None:
     transport = PlanTransport(existing=(plans[0].name(),))
 
     made, said = make_shadow_plans(
-        ArchicadConnection(transport), plans, settings=ShadowPlanSettings()
+        ArchicadConnection(transport), plans, settings=ShadowPlanSettings("04 | Shadow Diagrams")
     )
 
     assert [c["name"] for c in transport.asked("CreateDocumentFrom3D")] == [plans[1].name()]
@@ -267,7 +269,7 @@ def test_a_rerun_that_made_nothing_says_the_shadows_are_as_they_were() -> None:
     transport = PlanTransport(existing=tuple(plan.name() for plan in plans))
 
     made, said = make_shadow_plans(
-        ArchicadConnection(transport), plans, settings=ShadowPlanSettings()
+        ArchicadConnection(transport), plans, settings=ShadowPlanSettings("04 | Shadow Diagrams")
     )
 
     assert not transport.asked("CreateDocumentFrom3D")
@@ -281,7 +283,7 @@ def test_an_add_on_without_the_re_set_keeps_the_documents_and_says_so() -> None:
     transport = PlanTransport(existing=(plans[0].name(),), has_set_command=False)
 
     made, said = make_shadow_plans(
-        ArchicadConnection(transport), plans, settings=ShadowPlanSettings()
+        ArchicadConnection(transport), plans, settings=ShadowPlanSettings("04 | Shadow Diagrams")
     )
 
     assert made[0].reused and made[0].effects is None
@@ -292,7 +294,11 @@ def test_an_add_on_that_cannot_turn_the_shadows_on_is_said_plainly() -> None:
     transport = PlanTransport()
     transport.refuse_create = True
     with pytest.raises(ArchicadError, match="install the current build"):
-        make_shadow_plans(ArchicadConnection(transport), _plans([9]), settings=ShadowPlanSettings())
+        make_shadow_plans(
+            ArchicadConnection(transport),
+            _plans([9]),
+            settings=ShadowPlanSettings("04 | Shadow Diagrams"),
+        )
 
 
 # -- the sheets ------------------------------------------------------------------------
@@ -394,6 +400,8 @@ def test_the_command_draws_the_hours_the_sun_is_up_and_mends_what_it_made(
             "3",
             "--label",
             "Proposed",
+            "--layer-combination",
+            "04 | Shadow Diagrams",
             # The combination is taken as it is: what it hides is the live
             # project's business, and the scripted one has no layers to read.
             "--no-site-context",
@@ -405,6 +413,10 @@ def test_the_command_draws_the_hours_the_sun_is_up_and_mends_what_it_made(
     created = transport.asked("CreateDocumentFrom3D")
     assert [c["sun"]["hour"] for c in created] == [9, 12]
     assert all(c["shadowFill"] == {"fillPen": 3} for c in created)
+    pinned = transport.asked("SetViewSettings")[-1]["navigatorItemIdsWithViewSettings"]
+    assert [p["viewSettings"]["layerCombination"] for p in pinned] == [
+        "04 | Shadow Diagrams"
+    ] * 2, "the plans show the combination the run was given"
     assert all("Proposed" in c["name"] for c in created)
     assert order == ["unfilter", "mend"], "the filter off before, and mended after"
     ((placed, kwargs),) = sheets
@@ -414,13 +426,39 @@ def test_the_command_draws_the_hours_the_sun_is_up_and_mends_what_it_made(
     assert "timing: the whole run took" in result.output
 
 
+def test_the_command_asks_for_the_combination_before_it_touches_archicad(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """There is no office combination to fall back on (D156): which one shows
+    the ground under the buildings is the project's to say. A run that names
+    none is a usage error, said before Archicad is asked anything, rather than
+    plans pinned to a combination the project may not have."""
+    from typer.testing import CliRunner
+
+    from sun_study import cli
+
+    connected: list[object] = []
+    monkeypatch.setattr(cli, "_connect", lambda *a, **k: connected.append(a))
+    monkeypatch.setattr(naming, "_prefix", naming.prefix())
+
+    result = CliRunner().invoke(
+        cli.app, ["shadow-plans", "--shadow-date", "06-21", "--shadow-hour", "9,12"]
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "--layer-combination" in result.output
+    assert connected == [], "it asked Archicad before saying what was missing"
+
+
 def test_the_context_the_site_tools_drew_is_shown_when_the_combination_hides_it() -> None:
     """Redfern, 8 October 2026: the office's combination hid every layer the
     site tools had drawn the context on, and the plans held the proposal's
     slab on a blank page. What the project has and the combination hides is
     what the plans switch on; a layer the project lacks is nobody's."""
     wanted = site_context_layers()
-    assert [w.split(" | ")[1] for w in wanted] == [
+    # Under the office's site group when it has one, the template's words alone
+    # when it has none (D156).
+    assert [w.removeprefix(naming.context_prefix()).lstrip() for w in wanted] == [
         "Site Context.Terrain",
         "Site Context.Roads",
         "Site Context.Buildings",
@@ -519,7 +557,7 @@ def test_a_stack_makes_a_set_per_row_and_lets_the_lower_ones_show_through() -> N
     pen, every set's surfaces filled in the transparent pen: the shadows are
     drawn, in the row's pen, and nothing else is (D142)."""
     transport = PlanTransport()
-    settings = ShadowPlanSettings(shadow_fill={"fillIndex": 1})
+    settings = ShadowPlanSettings("04 | Shadow Diagrams", shadow_fill={"fillIndex": 1})
 
     stack, said = make_shadow_plan_stack(
         ArchicadConnection(transport),
@@ -572,7 +610,7 @@ def test_a_rerun_of_a_stack_re_sets_the_surfaces_too() -> None:
     make_shadow_plan_stack(
         ArchicadConnection(transport),
         _plans([9]),
-        settings=ShadowPlanSettings(),
+        settings=ShadowPlanSettings("04 | Shadow Diagrams"),
         members=[PlanSet("PROPOSED", "P", 94), PlanSet("EXISTING", "X", 93)],
     )
     lowest, upper = transport.asked("SetDocumentFrom3D")
@@ -588,7 +626,7 @@ def test_a_row_already_there_takes_the_shadow_switch_from_a_row_made_this_run() 
     _, said = make_shadow_plan_stack(
         ArchicadConnection(transport),
         _plans([9]),
-        settings=ShadowPlanSettings(),
+        settings=ShadowPlanSettings("04 | Shadow Diagrams"),
         members=[PlanSet("TOD", "T", 95), PlanSet("EXISTING", "X", 93)],
     )
     (reset,) = transport.asked("SetDocumentFrom3D")
@@ -889,8 +927,9 @@ def test_the_stacked_command_takes_the_shadow_diagrams_legend(
     assert kwargs["window"].centre == (0.0, 40.0)
     assert kwargs["pen_table_index"] == 42
     assert kwargs["legend"][0] == ("EXISTING NEIGHBOURING BUILDINGS", (235, 235, 235))
+    # D156: the row's own words, not one council's controls.
     assert [words for words, _ in kwargs["legend"]][2:] == [
-        "CURRENT LEP 2023 BUILDING HEIGHT LIMIT",
+        "TOD BUILDING ENVELOPE",
         "PROPOSED BUILDING ENVELOPE",
     ]
     ((name, source, colours),) = cli_module()._PEN_SETS_MADE

@@ -16,7 +16,7 @@ the window's centre lands in the middle of the cell, not the model origin.
 **The colours were the project's, not the legend's.** A 3D Document's shadow
 can only be a pen, and a pen is whatever the pen table says. The nearest pen
 to the legend's pale grey in the sample project's table was a pale green.
-So the run makes its own pen set, ``15 | Shadow Plans``, a copy of the one
+So the run makes its own pen set, ``Shadow | Shadow Plans``, a copy of the one
 the drawings print in with each row's pen -- the nearest one, so anything
 else drawn in it hardly moves -- set to the legend's exact colour
 (``legend_pen_set``), and each drawing on the sheet is told to print in it,

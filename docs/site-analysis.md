@@ -18,17 +18,17 @@ office works, at true ground scale, in the project's own frame.
 
 ## What it makes
 
-Everything under the tool's prefix (`14 |` unless told otherwise), so it can
+Everything under the tool's prefix (`Solar |` unless told otherwise), so it can
 be found, switched off or purged as a group.
 
 | | |
 |---|---|
-| `14 \| Context Analysis` worksheet | LEP zoning wash coloured by the office's categories; schools, hospitals, child care and retail coloured by what they are and labelled by name; heritage items; the rail corridor; cadastre; on the paper styles (Flamingo, Kingfisher) OSM building footprints white over it, the lot and texture lines cut under each roof (D155); roads with names on a double-headed arrow (a lane gets a plain label); railway, tram and bus routes; `T`, `L` and `B` roundels for stations and stops; 5 and 10 minute walking catchments; the site on top; a legend of what is on the map |
-| `14 \| Site Analysis` worksheet | the boundary with a circle at each survey corner, `SB` dimensions per edge and `RL` levels per corner, read across the slope between the contours; the fall arrow, `FALL` and `AREA`; contours with their levels -- the City of Sydney's 1 m ones where its area covers the sheet, the state's 2 m ones elsewhere, and the legend says which; neighbours as number, storeys and zone; trees the size of their canopy, dashed where nobody recorded one; poles, lamps, hydrants; driveways as access triangles; kerbside parking bands; one-way and lane arrows; noise zigzags along main roads and rail; utilities where OSM has them; OSM building footprints; the sun path with winter and summer discs; prevailing wind banners; a legend |
-| `14 \| Summary of Controls` **layout** | the planning-controls table, drawn straight onto a sheet of its own on the A1 master: address, lots, cadastral area; LEP zone, height, FSR and the GFA it allows, minimum lot size, heritage; council DCP rows ruled up empty; the ADG figures worked for this site area. No worksheet, no view, no layer of its own |
-| `14 \| Context Analysis.*`, `14 \| Site Analysis.*` layers | five per sheet (aerial, fills, lines, labels, sheet), every fill with an element ID naming its legend entry |
-| `14 \| Context Analysis`, `14 \| Site Analysis` **layouts** | each worksheet's view on a sheet of its own, the map field centred on the site beside the title block, and the sheet's **legend drawn on the layout** in the column to the right of the map, above the title block -- not in the worksheet. Without a layout (`--no-layout`, or no master to put one on) the legend stays in the worksheet beside the map, so it is never on neither |
-| `14 \| Site Analysis` view folder | a view of each worksheet at its sheet's scale -- 1:3000 for the context sheet, whichever of 1:200 to 1:750 fits the site for the site sheet -- with a layer combination showing that drawing's layers |
+| `Solar \| Context Analysis` worksheet | LEP zoning wash coloured by the office's categories; schools, hospitals, child care and retail coloured by what they are and labelled by name; heritage items; the rail corridor; cadastre; on the paper styles (Flamingo, Kingfisher) OSM building footprints white over it, the lot and texture lines cut under each roof (D155); roads with names on a double-headed arrow (a lane gets a plain label); railway, tram and bus routes; `T`, `L` and `B` roundels for stations and stops; 5 and 10 minute walking catchments; the site on top; a legend of what is on the map |
+| `Solar \| Site Analysis` worksheet | the boundary with a circle at each survey corner, `SB` dimensions per edge and `RL` levels per corner, read across the slope between the contours; the fall arrow, `FALL` and `AREA`; contours with their levels -- the City of Sydney's 1 m ones where its area covers the sheet, the state's 2 m ones elsewhere, and the legend says which; neighbours as number, storeys and zone; trees the size of their canopy, dashed where nobody recorded one; poles, lamps, hydrants; driveways as access triangles; kerbside parking bands; one-way and lane arrows; noise zigzags along main roads and rail; utilities where OSM has them; OSM building footprints; the sun path with winter and summer discs; prevailing wind banners; a legend |
+| `Solar \| Summary of Controls` **layout** | the planning-controls table, drawn straight onto a sheet of its own on the A1 master: address, lots, cadastral area; LEP zone, height, FSR and the GFA it allows, minimum lot size, heritage; council DCP rows ruled up empty; the ADG figures worked for this site area. No worksheet, no view, no layer of its own |
+| `Solar \| Context Analysis.*`, `Solar \| Site Analysis.*` layers | five per sheet (aerial, fills, lines, labels, sheet), every fill with an element ID naming its legend entry |
+| `Solar \| Context Analysis`, `Solar \| Site Analysis` **layouts** | each worksheet's view on a sheet of its own, the map field centred on the site beside the title block, and the sheet's **legend drawn on the layout** in the column to the right of the map, above the title block -- not in the worksheet. Without a layout (`--no-layout`, or no master to put one on) the legend stays in the worksheet beside the map, so it is never on neither |
+| `Solar \| Site Analysis` view folder | a view of each worksheet at its sheet's scale -- 1:3000 for the context sheet, whichever of 1:200 to 1:750 fits the site for the site sheet -- with a layer combination showing that drawing's layers |
 | `<run folder>/data/*.json` | everything fetched, so the sheets can be redrawn without the internet, or into another project |
 
 Texts are millimetres on paper and keep that size in any view, so the sheet
@@ -138,7 +138,7 @@ take a *pen*, and the nearest pen of an office's table is rarely the colour
 meant: measured on the first run, every theme's pens were off, by up to 54
 colour-difference units (Heron's slate fall arrow came out a light blue). So
 each sheet makes a **pen table of its own**, named for the sheet
-(`17 | Context Analysis`, `17 | Site Analysis`): the model's active table with
+(`Site | Context Analysis`, `Site | Site Analysis`): the model's active table with
 every colour that sheet draws a pen in written exactly into its top pens,
 255 downward, the most used first. The sheet's view is set to it, so the
 view and the layout show the colours meant; the worksheet opened on its own
@@ -199,7 +199,7 @@ no sight lines, no kerbs and no `HOB` per neighbour.
 ## Where the site lands
 
 **The boundary drawn in the file wins.** When a layer named for a boundary
-(`03 | Site Boundaries`, say; `--fit-layer` names another) holds anything --
+(`Site Boundaries`, say; `--fit-layer` names another) holds anything --
 corner markers, a polyline, a fill -- the fetched lot is turned and moved to
 sit on it: the turn is the difference between the longest sides of the two
 convex hulls, the shift the difference of their centroids, and the residual
@@ -329,7 +329,7 @@ came up, and each is recorded in `docs/addon.md`.
 the same session current, whichever add-on asks -- Tapir's `ChangeWindow`,
 the add-on's `SetCurrentDatabase`, both `APIERR_BADDATABASE`. Opening the
 worksheet by hand is what makes it current, and the run is built around
-that: it creates the worksheet, prints *waiting for '14 | Context Analysis'
+that: it creates the worksheet, prints *waiting for 'Solar | Context Analysis'
 to become current*, and polls every two seconds for `--wait-minutes` (five by
 default). Double-click the worksheet under Worksheets in the Project Map and
 leave it as the front tab; the run draws the moment it sees it. On a later

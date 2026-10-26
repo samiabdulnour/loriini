@@ -6186,3 +6186,60 @@ catchments, the stops and the labels -- stays over them, as it should.
 
 *What this does not change:* the aerial styles, the site sheet's
 buildings, or the model.
+
+### D156 — No office's presets in the app: tool words for prefixes, no picked names, the wait an hour and off the page
+
+Asked 26 October 2026, with the General page on screen: *"also i need to
+strip every company preset from the app ... and remove archicad connection
+bracket entirely. as we dont export ifc that way anymore. keep there 1 hour
+archicad wait thing, hidden"*. Asked which presets: the layer prefixes,
+the built-in view and subset names, the window's guesses by an office's
+words, and the shadow legend's project notes -- not the yield sheet's
+figures.
+
+**The prefixes are words.** `14 |` to `18 |` and `03 |` were one office's
+numbers, chosen to sit after its groups `00 |` to `13 |`; in anybody else's
+project they filed the study among groups it had nothing to do with. They
+could not simply be emptied: the prefix is how a rerun finds its own views
+and layouts to delete (D93), and an empty one matches everything in the
+project, so a name a person typed -- a layout called *Shadow Diagram 1* --
+would be cleared with the run's. So each tool's default is its own word
+and a bar: `Solar |`, `Shadow |`, `Sun View |`, `Site |`, `Yield |`. The
+clean-up is unchanged and as narrow as before; the empty prefix is still
+refused. An office that numbers its groups types its number in the
+General page, as before. The context group, which nothing searches by, has
+no default at all: the neighbours go on `Site Context.Buildings`, `.Terrain`
+and `.Roads`, under a group only when one is given.
+
+**No built-in names.** The sun views' base combination (`04 | Shadow
+Diagrams`), override (`Sun Eye Views`) and model view options (`DA General
+Arrangement`), the plans' subsets (`SHADOW DIAGRAMS`, `ADG DIAGRAMS`) and the
+shadow plans' `50 %` fill are gone from the window and the command line. A
+blank means none: the plan as it stands, no override, the sheets at the root
+of the Layout Book, the project's own 3D Document fill. The one that cannot
+mean none is the shadow plans' combination, which the views are pinned to:
+it is asked for, by the command (`--layer-combination` is needed) and by
+Run, as the master layout is.
+
+**No guesses by name.** The window picked layers, combinations, subsets and
+a schedule out of the project by an office's words -- `Zone.Unit`, `IFC
+ARCH`, `SHADOW`, `ADG`, `COS solar`, `Sun Eye`, `PLAN`, `Wall.External` --
+and, failing those, the first name in the list. Both are gone: a box the
+person has not filled stays blank. What stays is a pick from the project's
+content: the apartments' layer is the one its apartment-sized zones are on,
+as the zone names already were picked by size.
+
+**The legend's notes are generic.** The TOD and SEARs rows said *Current LEP
+2023* and *Canterbury Bankstown LEP* building height limits, one project's
+controls, on the page and on the drawn legend. They read *TOD building
+envelope* and *SEARs building envelope* now, as the ADG and proposed rows do.
+
+**The wait is an hour, and not on the page.** The *Archicad connection* card
+held one field, minutes to wait on a command, which existed for the IFC
+export; the studies no longer export that way. The card is gone and every
+run is sent `--timeout 3600`. A saved setting for it is ignored.
+
+*What this does not change:* the command line's own `--timeout` default, the
+yield sheet's figures, the site sheets' styles, or a project already drawn
+under the old numbers -- its layers stay where they are, and a run under the
+new prefix leaves them alone, as any change of prefix does.

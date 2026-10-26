@@ -222,9 +222,10 @@ class SunEyeSettings:
     """
 
     layer_combination: str
-    graphic_override: str = "Sun Eye Views"
+    graphic_override: str = ""
+    """None by default (D156): the office's was "Sun Eye Views"."""
     renovation_filter_guid: str | None = None
-    model_view_options: str | None = "DA General Arrangement"
+    model_view_options: str | None = None
     pen_set: str | None = None
     d3_style: str | None = "OpenGL Shading with Contours with Shadows"
     document_scale: float = DOCUMENT_SCALE
@@ -238,10 +239,11 @@ class SunEyeSettings:
         """
         settings: dict[str, Any] = {
             "layerCombination": self.layer_combination,
-            "graphicOverrideCombination": self.graphic_override,
             "rotation": 0,
             "structureDisplay": "EntireStructure",
         }
+        if self.graphic_override:
+            settings["graphicOverrideCombination"] = self.graphic_override
         if self.renovation_filter_guid:
             settings["renovationFilterGuid"] = {"guid": self.renovation_filter_guid}
         if self.model_view_options:

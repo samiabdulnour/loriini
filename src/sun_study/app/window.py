@@ -96,8 +96,6 @@ from sun_study.app import (
 )
 from sun_study.app.runner import Run
 from sun_study.archicad import naming
-from sun_study.archicad.connection import DEFAULT_TIMEOUT_SECONDS
-from sun_study.archicad.shadow_plans import DEFAULT_COMBINATION as SHADOW_PLAN_COMBINATION
 from sun_study.archicad.sheeting import cells_for, parse_sheet_mode, sheet_chunks, sheet_title
 from sun_study.cli import DEFAULT_SHADOW_HOURS
 from sun_study.core.solar import UnknownTimezoneError, resolve_timezone, solar_position
@@ -203,6 +201,12 @@ TIMEZONE = "Australia/Sydney"
 #: Where the sheets panel puts the sun before a project says where it is:
 #: Sydney, Archicad's own preset, as latitude and longitude.
 STAND_IN_PLACE = (-33.8688, 151.2093)
+#: How long a run waits on one Archicad command, in minutes. Not on the page
+#: any more (D156): the field was for the IFC export, which on a big project
+#: ran to minutes, and the studies no longer export that way. An hour is
+#: still sent, so a genuinely slow command is waited on and a stuck
+#: Archicad is not waited on for ever.
+ARCHICAD_WAIT_MIN = 60
 
 #: Where a site run keeps what it fetched when no folder is given, as the
 #: Run folder's hint says it: spelt with this machine's own separator.
@@ -210,11 +214,6 @@ SITE_RUNS_FOLDER = Path("Documents") / "Loriini" / "site-analysis"
 
 #: Short month names, for the date on a sheet.
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-
-#: Layer name fragments that mark the envelope a facade study measures. A
-#: guess, offered rather than applied: the picker is filled with them and the
-#: list stays editable, because the next project names its slabs differently.
-SKIN_WORDS = ("Wall.External", "Floor.", "Balustrade", "Screens")
 
 #: What each study is called, in the one place all three callers read it
 #: from: the line above Run that says what is queued, the ``──`` rule the log
@@ -889,7 +888,7 @@ SHADOW_LEGEND_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
         "TOD",
         "scenario",
         "TOD envelope",
-        "Current LEP 2023 building height limit.",
+        "The envelope the TOD controls allow.",
         "The palest blue. A scenario: cast against every grey row and against "
         "no other blue one, so the blues overlap on the sheet — which is the "
         "comparison.",
@@ -898,7 +897,7 @@ SHADOW_LEGEND_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
         "SEARS",
         "scenario",
         "SEARs envelope",
-        "Canterbury Bankstown LEP building height limit.",
+        "The envelope the SEARs ask to be tested.",
         "The middle blue. Compared, not accumulated: putting this under a grey "
         "row instead tests it against itself and reads as a much smaller "
         "shadow.",
@@ -3772,8 +3771,7 @@ class Window:
     SECTION_BLURB: ClassVar[dict[str, str]] = {
         GENERAL: (
             "The sheet every output lands on: the master and its title block, "
-            "the layer prefixes that file the results, the Archicad connection "
-            "and where the tables go."
+            "the layer prefixes that file the results, and where the tables go."
         ),
         SITE: (
             "An address in; the Context and Site Analysis sheets, the Summary of "
@@ -4366,13 +4364,12 @@ class Window:
         # by different people, and under a single number the layer list ran
         # them together with only the group word to tell them apart.
         shared_detail = (
-            "So the output files itself inside the office's own numbering: on "
-            "a project whose layer groups run 00 to 13, '14 |' gives "
-            "'14 | Solar Analysis.Results' and it sorts where a reader expects. "
-            "It is also how a rerun finds its own sheets to replace, so changing "
-            "it leaves the last run's behind to be deleted by hand, and it "
-            "cannot be emptied — an empty prefix matches every layout in the "
-            "project."
+            "So the output is filed where a reader expects it: 'Solar |' "
+            "gives 'Solar | Solar Analysis.Results'. An office that numbers "
+            "its layer groups types its own number in. It is also how a rerun "
+            "finds its own sheets to replace, so changing it leaves the last "
+            "run's behind to be deleted by hand, and it cannot be emptied — an "
+            "empty prefix matches every layout in the project."
         )
         self.prefix_solar, row = self._entry(
             frame,
@@ -4411,33 +4408,15 @@ class Window:
             row,
             "Layer group — context model",
             naming.CONTEXT_PREFIX,
-            "The office's own group, where the neighbours already live.",
-            "Not one of this tool's numbers: the fetched neighbours and the "
-            "ground under them are the neighbourhood, not the study, so they "
-            "go in the site group the template already has — '03 | Site "
-            "Context.3D' on the reference project, under '03 ---- SITE' with "
-            "the boundaries and the survey mesh. A layer that is already there "
-            "is used rather than duplicated; give a group the project does not "
-            "have, '50 |', and the layers are made there instead. Only the "
-            "number is yours to choose — the wording after it is the "
-            "template's.",
+            "Your template's site group, if it keeps the neighbours in one.",
+            "Blank, the fetched neighbours and the ground under them go on "
+            "'Site Context.Buildings', '.Terrain' and '.Roads'. Give the group "
+            "your template files its site in and they go there instead, in "
+            "front of the same words; a layer that is already there is used "
+            "rather than duplicated. Only the group is yours to choose — the "
+            "wording after it is fixed.",
         )
-        frame, row = self._panel(outer, 2, title="Archicad connection"), 0
-        self.wait_min, row = self._entry(
-            frame,
-            row,
-            "Archicad wait (min)",
-            "30",
-            "How long to let Archicad think about one command before giving up.",
-            "Only the IFC export comes anywhere near it, and on a big project "
-            "that export is minutes rather than seconds -- 455 MB on one "
-            "mixed-use job. Too short and the run stops partway with 'Archicad "
-            "did not answer', having already done the slow part, and leaves "
-            "the project holding the study's layer state. Raising it costs "
-            "nothing on a run that works; it only decides how long a genuinely "
-            "stuck Archicad is waited on.",
-        )
-        frame, row = self._panel(outer, 3, title="Tables"), 0
+        frame, row = self._panel(outer, 2, title="Tables"), 0
         self.tables, row = self._folder_row(
             frame,
             row,
@@ -5206,10 +5185,9 @@ class Window:
             "The layer combination the plans show: what casts shadow and what catches it.",
             "Everything showing casts a shadow and catches one, so the ground "
             "has to be in it -- a plan with no terrain or site slab under the "
-            "buildings has nothing for the shadows to fall on. The office's "
-            "shadow diagram combination is the usual answer.",
+            "buildings has nothing for the shadows to fall on. Nothing is "
+            "picked for you: Run asks when it is blank.",
         )
-        self.shadow_plan_combination.set(SHADOW_PLAN_COMBINATION)
         self.shadow_plan_label, row = self._entry(
             frame,
             row,
@@ -5314,11 +5292,6 @@ class Window:
             "measured from the zones themselves: zones are bodies in 3D and "
             "sit inside the glazing the diagram is meant to show through.",
         )
-        # What the command itself defaults to, until the project is read and
-        # offers its own; typed values still go through on an older add-on
-        # that cannot list overrides.
-        self.eye_override.set("Sun Eye Views")
-        self.eye_base_combination.set("04 | Shadow Diagrams")
         self.eye_scale, row = self._entry(
             frame,
             row,
@@ -7349,7 +7322,6 @@ class Window:
             "sun_view_layer_prefix": self.prefix_sun,
             "site_layer_prefix": self.prefix_site,
             "context_site_group": self.prefix_context,
-            "archicad_wait_minutes": self.wait_min,
             "skin_grid": self.grid_m,
             "yield_option": self.yield_option,
             "yield_slabs": self.yield_slabs,
@@ -7696,7 +7668,14 @@ class Window:
         )
         self._only_what_this_project_has()
         choices = self._zone_layer_choices()
-        self._fill(self.apartments, choices, ("Zone.Unit", "Zone."))
+        # Picked by what is on a layer, never by what it is called (D156):
+        # the layer carrying apartment-sized zones, as the zone names below
+        # are picked by their size.
+        self._fill(
+            self.apartments,
+            choices,
+            tuple(kind.layer for kind in found.zone_kinds if kind.dwelling),
+        )
         # The balconies are usually on the apartments' own layer -- one
         # project keeps 15 units, 20 balconies and the storage on
         # "06 | Zone.Units" -- so that is the first candidate, and a layer
@@ -7706,7 +7685,7 @@ class Window:
             choices,
             (self.apartments.get(), *(kind.layer for kind in found.zone_kinds if kind.open_space)),
         )
-        self._fill(self.communal, choices, ("Zone.", "Calc."))
+        self._fill(self.communal, choices, ())
         self._offer_zone_names()
         # Offered, never picked: which title block a study is issued on is the
         # person's to say, and Run asks when it is blank (asked 17 October
@@ -7718,13 +7697,15 @@ class Window:
         if not found.located:
             self.site_anchor.set("Project origin")
             self.site_origin.set("Bottom-left corner")
-        self._fill(self.combination, found.combinations, ("IFC ARCH", "IFC"))
+        # The project's lists, and no names picked out of them by an office's
+        # words (D156): a blank is the person's to fill, and the commands
+        # treat a blank as "none" -- the sheets at the root of the book, the
+        # drawn table rather than a schedule.
+        self._fill(self.combination, found.combinations, ())
         self._offer_plan_combination(found.combinations)
-        self._fill(self.shadow_subset, found.subsets, ("SHADOW",))
-        self._fill(self.adg_subset, found.subsets, ("ADG",))
-        # "None" first: a project without the office's scheme gets the drawn
-        # table, where the first schedule in the list would be a guess.
-        self._fill(self.cos_schedule, (NO_SCHEDULE, *found.schedules), ("COS solar",))
+        self._fill(self.shadow_subset, found.subsets, ())
+        self._fill(self.adg_subset, found.subsets, ())
+        self._fill(self.cos_schedule, (NO_SCHEDULE, *found.schedules), (NO_SCHEDULE,))
         # Blank first, and no preference: a blank keeps each view's own pen
         # set, which is what the command does, and the office's set is a
         # choice rather than a guess.
@@ -7733,14 +7714,11 @@ class Window:
         # command's own default holds, where the first name in the list would
         # be a guess -- and a view given the wrong override shows plain glass.
         if found.overrides:
-            self._fill(self.eye_override, ("", *found.overrides), ("Sun Eye",))
-        self._fill(self.eye_base_combination, found.combinations, ("Shadow Diagram", "Shadow"))
-        self._fill(self.shadow_plan_combination, found.combinations, ("Shadow Diagram", "Shadow"))
+            self._fill(self.eye_override, ("", *found.overrides), ())
+        self._fill(self.eye_base_combination, ("", *found.combinations), ())
+        self._fill(self.shadow_plan_combination, found.combinations, ())
         self._fill(self.shadow_plan_pen_set, ("", *found.pen_sets), ())
-        self._fill(self.shadow_study_subset, found.subsets, ("SHADOW",))
-        if not self.subject.get():
-            skin = [name for name in found.layers if any(w in name for w in SKIN_WORDS)]
-            self.subject.insert(0, ", ".join(skin))
+        self._fill(self.shadow_study_subset, found.subsets, ())
         self._offer_height_cut()
 
     def _offer_height_cut(self) -> None:
@@ -7852,14 +7830,8 @@ class Window:
         own = f"{self.prefix_solar.get().strip() or naming.DEFAULT_PREFIX} "
         values = [name for name in combinations if not name.startswith(own)]
         self.plan_combination.config(values=["", *values])
-        if self.plan_combination.get() in values:
-            return
-        for want in ("PLAN", "GA ", "GENERAL ARRANGEMENT"):
-            match = next((v for v in values if want.casefold() in v.casefold()), None)
-            if match is not None:
-                self.plan_combination.set(match)
-                return
-        self.plan_combination.set("")
+        if self.plan_combination.get() not in values:
+            self.plan_combination.set("")
 
     def _fill(
         self,
@@ -7869,24 +7841,24 @@ class Window:
         *,
         guess: bool = True,
     ) -> None:
-        """Offer these, and pick the likeliest -- without overriding a choice.
+        """Offer these, and pick one only on evidence -- without overriding a choice.
 
-        Preferences are ordered fragments rather than exact names, because the
-        thing being guessed at is an office's own naming. ``guess=False``
-        offers them and picks nothing: a choice left blank is asked for.
+        ``prefer`` is what the project itself points to, read off its content
+        (the layer its apartment-sized zones are on), as ordered fragments.
+        Nothing matching, nothing is picked: the first name in the list was a
+        guess, and an office's words were another (D156). ``guess=False``
+        offers them and picks nothing even then.
         """
         box.config(values=list(values))
         if not values or box.get() in values:
             return
-        if not guess:
-            box.set("")
-            return
-        for want in prefer:
-            match = next((v for v in values if want.casefold() in v.casefold()), None)
-            if match is not None:
-                box.set(match)
-                return
-        box.set(values[0])
+        if guess:
+            for want in prefer:
+                match = next((v for v in values if want.casefold() in v.casefold()), None)
+                if match is not None:
+                    box.set(match)
+                    return
+        box.set("")
 
     # -- running ---------------------------------------------------------------
     def _kinds_on(self, layer: str) -> list[probe.ZoneKind]:
@@ -7967,14 +7939,11 @@ class Window:
             self._write(f"Not Zones on {layer}, so left out: {_some(dropped)}")
 
     def _zone_defaults(self) -> list[str]:
-        """Zone layers worth forcing into the export, narrowest first.
-
-        A project's zone layers are the ones named for zones. Everything else
-        that happens to carry a Zone -- annotation, area calculations -- is
-        somebody's schedule, not the building.
+        """Zone layers worth forcing into the export: every layer the project
+        carries Zones on. Narrowing them to the ones named for zones read an
+        office's naming into the project (D156).
         """
-        named = [name for name in self.options.zone_layers if "Zone." in name]
-        return named or list(self.options.zone_layers)
+        return list(self.options.zone_layers)
 
     #: What each choice row draws, keyed on the label it sits beside: the
     #: value the field holds, the icon on the tile, and what the tile says on
@@ -8372,22 +8341,9 @@ class Window:
         return [part.strip() for part in entry.get().split(",") if part.strip()]
 
     def _wait_seconds(self) -> str:
-        """The Archicad wait, in the seconds the command line wants.
-
-        Minutes on screen because that is the unit the number is thought about
-        in -- an export takes minutes -- and seconds on the command line
-        because that is what ``--timeout`` takes. Anything unreadable falls
-        back to the command line's own default rather than refusing to run: a
-        mistyped wait should not stop a study, and the default is right for
-        every project but the largest.
-        """
-        try:
-            minutes = float(self.wait_min.get().strip())
-        except ValueError:
-            return f"{DEFAULT_TIMEOUT_SECONDS:g}"
-        if minutes <= 0:
-            return f"{DEFAULT_TIMEOUT_SECONDS:g}"
-        return f"{minutes * 60.0:g}"
+        """The Archicad wait, ``ARCHICAD_WAIT_MIN``, in the seconds
+        ``--timeout`` takes."""
+        return f"{ARCHICAD_WAIT_MIN * 60.0:g}"
 
     def _flag(self, name: str, box: ttk.Entry) -> list[str]:
         """One option and its box, or nothing when the box is empty.
@@ -9357,6 +9313,14 @@ class Window:
             self._write("Site analysis is ticked but has no address. Type one in its section.")
             return
         if any(tick.get() for _name, tick, _section in self._studies()) and not self._have_master():
+            return
+        if self.do_shadow_plans.get() and not self.shadow_plan_combination.get().strip():
+            # No office combination to fall back on (D156): the plans are
+            # pinned to this one, so it is asked for rather than guessed.
+            self._write(
+                "Shadow plans need a layer combination: pick the one with the "
+                "buildings and the ground under them, in the Shadow diagram section."
+            )
             return
         queued = self.jobs()
         if not queued:

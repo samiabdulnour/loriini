@@ -80,7 +80,7 @@ Per project, all of it already in the manual except where noted.
       Doors matter — in the reference model 110 of 252 livable openings were `SD2.x_L`
       sliding doors, which for an apartment is usually *the* living-room glazing.
 - [ ] **Overhangs** modelled on `01 | Floor Overhang.Shadow Calcs`.
-- [ ] **Context** on `03 | Site Contexts.3D`.
+- [ ] **Context** on `Site Context.Buildings`.
 - [ ] **Zones classified.** Any classification system will do; Archicad attaches custom
       properties through classification, so an unclassified zone silently refuses to
       accept a result.
@@ -173,20 +173,21 @@ with no apartments.
 
 `--draw` puts the answer on the floor plan: one coloured fill per apartment, taken from
 the Zone's own outline and placed on the Zone's own storey, plus a legend. It all goes on
-one layer (`14 | Sun Study.Results` by default), and re-running deletes the previous set
+one layer (`Solar | Sun Study.Results` by default), and re-running deletes the previous set
 before drawing the new one.
 
-`--layer-prefix` is the `14 |` in that name, and leads every layer, layer combination,
-surface, view and layout the run creates, so the output files itself inside the office's
-own numbering — `14` because the reference project's layer groups end at `13`. It is
+`--layer-prefix` is the `Solar |` in that name, and leads every layer, layer combination,
+surface, view and layout the run creates, so the output is filed where a reader expects
+it; an office that numbers its layer groups gives its own number instead (D156). It is
 also how a rerun finds its own sheets to replace, so a run given a different prefix from
 the last one leaves the last one's behind to be deleted by hand, and an empty one is
 refused rather than accepted.
 
-Each tool has its own number by default, so the four drawings do not share a run of the
-layer list (D93): the solar analysis `14 |`, the shadow diagram `15 |`, the sun views
-`16 |`, the site analysis `17 |`. `--layer-prefix` overrides whichever tool is being
-run, and the window has one box per tool in General.
+Each tool has its own prefix by default, so the four drawings do not share a run of the
+layer list (D93): the solar analysis `Solar |`, the shadow diagram `Shadow |`, the sun
+views `Sun View |`, the site analysis `Site |` -- words rather than one office's numbers
+(D156). `--layer-prefix` overrides whichever tool is being run, and the window has one
+box per tool in General.
 
 Colours are **pen indices**, because that is what `CreateHatches` takes — so the run
 reads the project's own pen table and gives each band the pen closest to the reference
@@ -381,15 +382,15 @@ What it makes, all under the tool's prefix:
 
 | | |
 |---|---|
-| `14 \| Sun Views` | one view of the 3D window per hour, 9am to 3pm on the assessment day, aimed along the sun |
-| `14 \| Sun View 21 Jun 09:00` ... | seven 3D Documents in the Project Map, each with its own projection and sun |
-| `14 \| Sun View Documents` | a view of each document at 1:500 |
-| `14 \| Sun Views 09:00-12:00`, `13:00-15:00` layouts | the documents on two sheets, a morning and an afternoon, on one grid (`--sheets two`) |
-| `14 \| Sun Views` layer combination | `04 \| Shadow Diagrams` with every zone-carrying layer hidden |
+| `Sun View \| Sun Views` | one view of the 3D window per hour, 9am to 3pm on the assessment day, aimed along the sun |
+| `Sun View \| Sun View 21 Jun 09:00` ... | seven 3D Documents in the Project Map, each with its own projection and sun |
+| `Sun View \| Sun View Documents` | a view of each document at 1:500 |
+| `Sun View \| Sun Views 09:00-12:00`, `13:00-15:00` layouts | the documents on two sheets, a morning and an afternoon, on one grid (`--sheets two`) |
+| `Sun View \| Sun Views` layer combination | `--base-combination`, or the plan as it stands, with every zone-carrying layer hidden |
 
-Every view is pinned to the `Sun Eye Views` graphic override, the planned
-renovation filter, `DA General Arrangement` model view options and the pen set
-given. Each of those is an option if a project differs; the date and hours come
+Every view is pinned to the planned renovation filter, and to the graphic
+override, model view options and pen set given -- none of them by default
+(D156). Each of those is an option if a project differs; the date and hours come
 from the ruleset's assessment window.
 
 The drawings are placed by Tapir and then arranged by the add-on: a grid of
@@ -455,7 +456,7 @@ are Archicad's and stay live:
 
 | Column | Where it comes from |
 |---|---|
-| Layer | the hour's layer, `14 \| Sun Study Communal 09:00` -- sorts the rows |
+| Layer | the hour's layer, `Solar \| Sun Study Communal 09:00` -- sorts the rows |
 | Time | `9 AM`, written onto every sunlit fill of the hour |
 | Area | Archicad's own, summed over the fills (Σ in the scheme) |
 | Percentage | `68.8%`, the hour's share, written onto the same fills |
@@ -487,7 +488,7 @@ otherwise. `--date winter|equinox|summer` (or any `MM-DD`) on `run`,
 window's General tab -- runs the same study on 21 September or 21
 December. The figures are then not the ADG's criterion, and the run says
 so in yellow; every layer, view, sheet and property it makes carries the
-day (`14 | Solar Analysis 21 Dec.Results`, the property group `Solar
+day (`Solar | Solar Analysis 21 Dec.Results`, the property group `Solar
 Analysis 21 Dec`), so it stands beside the midwinter set rather than over
 it. The shadow diagram keeps its own list of days (`--shadow-date`, all
 three by default) and takes the same words.
