@@ -150,6 +150,10 @@ class Theme:
     lots: Literal["faint", "white"] = "faint"
     """The cadastre: a faint hairline in the cadastre ink, or a white line."""
     lot_width_mm: float = 0.13
+    buildings: Literal["white", "none"] = "none"
+    """The neighbours' footprints: white fills over the cadastre, edged in
+    its ink, as site-analyst.com's paper sheets draw them; or none, where
+    the photograph shows the roofs (D155)."""
     streets: Literal["white", "lines", "none"] = "lines"
     """The roads: white strips over the tints (the paper styles), the centre
     lines in the road ink, or nothing (the aerial shows them)."""
@@ -438,6 +442,7 @@ THEMES: tuple[Theme, ...] = (
         rail_line="dotted",
         ground="paper",
         lots="faint",
+        buildings="white",
         streets="white",
         street_labels="plain",
         places="numbers",
@@ -473,6 +478,7 @@ THEMES: tuple[Theme, ...] = (
         ground="paper",
         lots="white",
         lot_width_mm=0.45,
+        buildings="white",
         streets="white",
         street_labels="plain",
         places="numbers",

@@ -578,6 +578,7 @@ LAYER_GROUPS: dict[str, dict[str, str]] = {
         "Heritage": "Land Use",
         "Site": "Land Use",
         "Streets": "Land Use",
+        "Buildings": "Land Use",
         "Cadastre": "Lines",
         "Roads": "Lines",
         "Bus routes": "Lines",
@@ -1761,6 +1762,109 @@ def _clipped(rings: Sequence[Sequence[Point]], window: Sequence[Point]) -> list[
     return out
 
 
+#: Metres to a cell of the grid ``_cut_under`` finds its polygons through.
+CUT_CELL_M = 50.0
+#: The shortest stretch ``_cut_under`` keeps: a millimetre of ground.
+CUT_SLIVER_M = 0.001
+
+
+def _cut_under(lines: Sequence[Line], polygons: Sequence[Sequence[Sequence[Point]]]) -> list[Line]:
+    """``lines`` with every stretch that runs inside one of ``polygons`` taken
+    out, each polygon an outer ring and its holes.
+
+    How a white fill covers what is under it. Archicad draws every polyline
+    over every fill whatever order they are made in -- a fill's display order
+    is 6 and a polyline's 9 -- so a building drawn white over the cadastre
+    had each lot line and each texture line of its zone drawn across its roof
+    (D155). Cutting the lines is what leaves the roof white; what is drawn
+    after the buildings, the transport and the labels, is not passed here.
+    """
+    if not polygons:
+        return list(lines)
+    boxes: list[tuple[float, float, float, float]] = []
+    grid: dict[tuple[int, int], list[int]] = {}
+    for index, rings in enumerate(polygons):
+        xs = [x for ring in rings for x, _ in ring]
+        ys = [y for ring in rings for _, y in ring]
+        box = (min(xs), min(ys), max(xs), max(ys))
+        boxes.append(box)
+        for i in range(math.floor(box[0] / CUT_CELL_M), math.floor(box[2] / CUT_CELL_M) + 1):
+            for j in range(math.floor(box[1] / CUT_CELL_M), math.floor(box[3] / CUT_CELL_M) + 1):
+                grid.setdefault((i, j), []).append(index)
+
+    def inside(x: float, y: float, rings: Sequence[Sequence[Point]]) -> bool:
+        return sum(point_in_ring(x, y, ring) for ring in rings) % 2 == 1
+
+    def covered(a: Point, b: Point) -> list[tuple[float, float]]:
+        """The stretches of ``a``-``b`` inside a polygon, as fractions of it."""
+        lo_x, hi_x = min(a[0], b[0]), max(a[0], b[0])
+        lo_y, hi_y = min(a[1], b[1]), max(a[1], b[1])
+        near: set[int] = set()
+        for i in range(math.floor(lo_x / CUT_CELL_M), math.floor(hi_x / CUT_CELL_M) + 1):
+            for j in range(math.floor(lo_y / CUT_CELL_M), math.floor(hi_y / CUT_CELL_M) + 1):
+                near.update(grid.get((i, j), ()))
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        spans: list[tuple[float, float]] = []
+        for index in near:
+            x0, y0, x1, y1 = boxes[index]
+            if x1 < lo_x or x0 > hi_x or y1 < lo_y or y0 > hi_y:
+                continue
+            rings = polygons[index]
+            cuts = [0.0, 1.0]
+            for ring in rings:
+                for p, q in zip(ring, [*ring[1:], ring[0]], strict=True):
+                    ex, ey = q[0] - p[0], q[1] - p[1]
+                    denominator = dx * ey - dy * ex
+                    if abs(denominator) < 1e-12:
+                        continue
+                    t = ((p[0] - a[0]) * ey - (p[1] - a[1]) * ex) / denominator
+                    u = ((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / denominator
+                    if 0.0 < t < 1.0 and 0.0 <= u <= 1.0:
+                        cuts.append(t)
+            cuts.sort()
+            for t0, t1 in pairwise(cuts):
+                if t1 - t0 < 1e-9:
+                    continue
+                middle = (t0 + t1) / 2
+                if inside(a[0] + dx * middle, a[1] + dy * middle, rings):
+                    spans.append((t0, t1))
+        return spans
+
+    out: list[Line] = []
+
+    def keep(line: Line, piece: list[Point]) -> None:
+        """The piece, without a point on top of the one before it, if any of
+        it is left: a cut that lands a hair from a corner leaves a stretch of
+        no length, and Archicad refuses the polyline it would make."""
+        points: list[Point] = []
+        for point in piece:
+            if not points or math.dist(points[-1], point) >= CUT_SLIVER_M:
+                points.append(point)
+        if len(points) >= 2:
+            out.append(replace(line, points=points))
+
+    for line in lines:
+        piece: list[Point] = []
+        for a, b in pairwise(line.points):
+            spans = sorted(covered(a, b))
+            t = 0.0
+            for t0, t1 in spans:
+                if t0 > t:
+                    start = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+                    if not piece:
+                        piece.append(start)
+                    piece.append((a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0))
+                keep(line, piece)
+                piece = []
+                t = max(t, t1)
+            if t < 1.0:
+                if not piece:
+                    piece.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+                piece.append(b)
+        keep(line, piece)
+    return out
+
+
 def _loops(ring: Sequence[Point]) -> list[list[Point]]:
     """A ring that comes back through a point it has already passed, split
     there into the loops it is made of; a loop with no area dropped. Cutting
@@ -2269,6 +2373,33 @@ def context_drawing(
                 weight_mm=t.lot_width_mm,
             )
 
+    # The neighbours, white over the cadastre and edged in its ink, as the
+    # paper sheets of site-analyst.com draw them (D155), cut to the field as
+    # the zoning is; courtyards stay open. A fill cannot cover a line in
+    # Archicad, so every line drawn so far -- the lots, and the textures of
+    # the tints -- is cut where it runs under a roof instead.
+    roofs: list[list[list[Point]]] = []
+    if t.buildings == "white":
+        for building in bundle.buildings:
+            if len(building.ring) < 3:
+                continue
+            rings = _clipped(
+                [frame.ring(building.ring), *(frame.ring(hole) for hole in building.holes)],
+                field,
+            )
+            if not rings:
+                continue
+            drawing.fill(
+                "Buildings",
+                rings,
+                "#ffffff",
+                contour=t.cadastre,
+                weight_mm=t.lot_width_mm,
+                element_id="SA BUILDING",
+            )
+            roofs.append(rings)
+        drawing.lines[:] = _cut_under(drawing.lines, roofs)
+
     if streets == "lines":
         for road in bundle.roads:
             drawing.line("Roads", frame.ring(road.coords), colour=t.road, weight_mm=0.18)
@@ -2299,6 +2430,8 @@ def context_drawing(
         for cat in t.categories
         if cat.id in present and cat.id != "site"
     ]
+    if roofs:
+        rows.append(Row("fill", "#ffffff", t.cadastre, "BUILDING FOOTPRINTS (OSM)"))
     numbered = t.places == "numbers"
     solid = t.roundel == "solid"
     roundel_kind = "disc" if solid else "ring"

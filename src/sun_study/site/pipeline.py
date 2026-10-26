@@ -148,6 +148,10 @@ class ContextBundle:
     institutions: tuple[Institution, ...] = ()
     bus: osm.BusData = field(default_factory=osm.BusData)
     isochrones: tuple[transport.Isochrone, ...] = ()
+    buildings: tuple[osm.Building, ...] = ()
+    """OpenStreetMap's footprints over the sheet, drawn white over the
+    cadastre by the themes on paper (D155). The site sheet's source, so the
+    two sheets show the same buildings and credit the same people."""
     aerial: Aerial | None = None
     stops_from_tfnsw: bool = False
     """Whether ``bus.stops`` came from the Transport for NSW register or from
@@ -182,7 +186,8 @@ class ContextBundle:
         if self.aerial is not None and self.aerial.tiles:
             used.append(sources.IMAGERY)
         osm_stops = bool(self.bus.stops) and not self.stops_from_tfnsw
-        if osm_stops or self.bus.routes or self.bus.tram_stops or self.bus.tram_routes:
+        transit = osm_stops or self.bus.routes or self.bus.tram_stops or self.bus.tram_routes
+        if transit or self.buildings:
             used.append(sources.OSM)
         if self.isochrones:
             # Valhalla routes over OpenStreetMap, so a catchment credits both
@@ -217,6 +222,7 @@ class ContextBundle:
             "institutions": [i.as_dict() for i in self.institutions],
             "bus": self.bus.as_dict(),
             "isochrones": [i.as_dict() for i in self.isochrones],
+            "buildings": [b.as_dict() for b in self.buildings],
             "aerial": self.aerial.as_dict() if self.aerial else None,
             "stops_from_tfnsw": self.stops_from_tfnsw,
             "warnings": list(self.warnings),
@@ -248,6 +254,8 @@ class ContextBundle:
             isochrones=tuple(
                 transport.Isochrone.from_dict(i) for i in data.get("isochrones") or []
             ),
+            # A bundle saved before D155 has none, and draws as it did.
+            buildings=tuple(osm.Building.from_dict(b) for b in data.get("buildings") or []),
             aerial=Aerial.from_dict(data["aerial"]) if data.get("aerial") else None,
             # A bundle saved before the flag existed reads as OpenStreetMap's
             # stops, which is what a run without a key fetched -- and a run
@@ -530,6 +538,7 @@ def run_context(
             "bus/tram data (OSM)", lambda: osm.bus_data(extent, log=say), osm.BusData()
         )
         f_iso = soft.submit("isochrones", lambda: transport.isochrones(lon, lat), [])
+        f_buildings = soft.submit("buildings (OSM)", lambda: osm.buildings(extent, log=say), ())
         f_aerial: Future[Aerial | None] | None = None
         if with_aerial and out_dir is not None:
             f_aerial = soft.submit(
@@ -607,6 +616,7 @@ def run_context(
             institutions=tuple(institutions),
             bus=bus,
             isochrones=tuple(catchments),
+            buildings=soft.take(f_buildings),
             aerial=soft.take(f_aerial) if f_aerial is not None else None,
             stops_from_tfnsw=stops_from_tfnsw,
         )
@@ -619,7 +629,8 @@ def run_context(
         f"roads:{len(bundle.roads)} "
         f"stations:{len(bundle.stations)} parks:{len(bundle.park_points)} "
         f"complexes:{len(complexes)} institutions:{len(institutions)} "
-        f"bus stops:{len(bundle.bus.stops)} isochrones:{len(bundle.isochrones)}"
+        f"bus stops:{len(bundle.bus.stops)} isochrones:{len(bundle.isochrones)} "
+        f"buildings:{len(bundle.buildings)}"
     )
     if out_dir is not None:
         say(f"  saved {save(bundle, out_dir / 'data' / 'context.json')}")

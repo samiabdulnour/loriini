@@ -6152,3 +6152,37 @@ to a file.
 *What this does not change:* the Mac's face, the sizes, the drawings
 inside the miniatures, or Tk's drawing on Windows, which does not smooth
 its edges as the Mac's does.
+
+### D155 — The context sheet draws the buildings, white over the cadastre, on paper
+
+Asked 26 October 2026, looking at the first context sheet drawn on Windows:
+*"there are building fills missing in context analysis. is it possible to
+get them? there should be white fills over caddaster"*.
+
+**They were never there.** The context bundle fetched the lots, the
+zoning, the roads and the transport, and no buildings; only the site sheet
+fetched footprints. site-analyst.com's paper sheets, which Flamingo and
+Kingfisher are ported from (D152), draw every building white. So the
+context bundle now carries OpenStreetMap's footprints over the sheet's
+extent -- the site sheet's source, so the two sheets agree and the credit
+is one already on them -- and a bundle saved before this reads as having
+none.
+
+**White over the cadastre, on paper.** A theme's new `buildings` is `white`
+for Flamingo and Kingfisher and `none` for Heron and Canary, whose aerial
+already shows the roofs. Each building is a white fill edged in the
+cadastre's own ink and weight, on the sheet's Land Use layer, cut to the
+map field as the zoning is, its courtyards left open; the legend gains
+*BUILDING FOOTPRINTS (OSM)*.
+
+**A fill cannot cover a line.** Archicad draws every polyline over every
+fill whatever order they are made in -- a fill's display order is 6, a
+polyline's 9 (Tapir's notes in `ElementCommands.cpp`) -- so a white roof
+would have had its lot lines and its zone's texture lines drawn across it.
+Rather than move thousands of elements up the display order, the lines
+drawn before the buildings are cut where they run under a roof
+(`_cut_under`), and what is drawn after -- the railway, the bus routes, the
+catchments, the stops and the labels -- stays over them, as it should.
+
+*What this does not change:* the aerial styles, the site sheet's
+buildings, or the model.
