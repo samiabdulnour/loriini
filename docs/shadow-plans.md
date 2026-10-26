@@ -25,16 +25,16 @@ documents as the record, the fills as the argument.
 For every day and hour asked -- the shadow diagram's own days and hours, so
 the two routes draw the same instants under the same names:
 
-- **a 3D Document**, `15 | Shadow Plan 21 Jun 09:00`, reference `SP0621-0900`,
+- **a 3D Document**, `Shadow | Shadow Plan 21 Jun 09:00`, reference `SP0621-0900`,
   looking straight down with the project's +Y up the page (the add-on snaps a
   straight-down camera to the plan's orientation), its sun set to that date
   and hour so Archicad computes it, and its vectorial sun shadows switched on
   as it is made, in the fill asked for;
-- **a view of it** in the View Map folder `15 | Shadow Plans`, pinned to the
+- **a view of it** in the View Map folder `Shadow | Shadow Plans`, pinned to the
   layer combination, the renovation filter (by default the one most of the
   project's views carry, its planned state), the pen set and the scale --
   1:1000, as the fills' sheets are;
-- **sheets by day**, `15 | Shadow Plans - JUNE 21`, split as the Sheets row
+- **sheets by day**, `Shadow | Shadow Plans - JUNE 21`, split as the Sheets row
   in General says, each drawing captioned as the fills' are -- `JUNE 21 -9AM`
   -- with its origin at the centre of its cell and its frame clipped to it.
 
@@ -46,12 +46,12 @@ document after, since a document keeps the filter it was made under (D98).
 casts a shadow and catches one; with no terrain mesh or site slab under the
 buildings, the shadows have nothing to fall on and the plan shows roofs on a
 blank page. The first live run (Redfern, 8 October 2026) showed exactly that:
-the office's `04 | Shadow Diagrams` hides the layers the site tools draw the
+the office's `Shadow Diagrams` hides the layers the site tools draw the
 context on, so the documents held the proposal's slab and nothing else. So
 the run looks: when the project has the site tools' context layers --
-`03 | Site Context.Terrain`, `.Roads`, `.Buildings`, `.Future buildings` --
+`Site Context.Terrain`, `.Roads`, `.Buildings`, `.Future buildings` --
 and the combination hides any of them, the plans pin a combination of their
-own, `15 | Shadow Plans`, which is the named one with those switched on, and
+own, `Shadow | Shadow Plans`, which is the named one with those switched on, and
 the log says so. `--no-site-context` leaves the combination alone;
 `--require-layer` adds any other layer the same way.
 
@@ -70,9 +70,9 @@ the same words -- and every row of an hour laid in one cell of one sheet.
 Archicad casts every shadow; nothing is measured or traced.
 
 ```
-sun-study shadow-plans --layer-combination "04 | Shadow Diagrams" ^
-  --shadow-source "EXISTING=03 | Site Context.Buildings" ^
-  --shadow-source "FUTURE=03 | Site Context.Future" ^
+sun-study shadow-plans --layer-combination "Shadow Diagrams" ^
+  --shadow-source "EXISTING=Site Context.Buildings" ^
+  --shadow-source "FUTURE=Site Context.Future" ^
   --shadow-scenario "TOD=20 | Massing.TOD" ^
   --shadow-scenario "PROPOSED=20 | Massing.Envelope,20 | Massing.Podium"
 ```
@@ -100,12 +100,12 @@ fills and the documents of one project are drawn from one legend.
 
 A run then makes, from the base combination:
 
-- **a layer combination per row**, `15 | Shadow Plans EXISTING`: a source
+- **a layer combination per row**, `Shadow | Shadow Plans EXISTING`: a source
   shows its own layers and every earlier source's, a scenario every source's
   and its own, and each hides the other rows' layers. The ground and the rest
   keep the state the base gives them, and the site context the plain mode
   switches on is switched on here the same way;
-- **a document per row and hour**, `15 | Shadow Plan EXISTING 21 Jun 09:00`,
+- **a document per row and hour**, `Shadow | Shadow Plan EXISTING 21 Jun 09:00`,
   its shadows solid in the row's pen (`Solid Fill` when the project has it,
   `--shadow-fill` otherwise), and its **uncut surfaces filled in the
   transparent pen**: filled, because Archicad draws a document's shadows on
@@ -115,7 +115,7 @@ A run then makes, from the base combination:
   materials' own colours, Archicad draws a shadow as the material shaded
   darker and ignores the shadow's pen. The pens are matched by colour
   against the project's pen table, as the fills' rows are;
-- **one combined sheet set**, `15 | Shadow Plans Combined - JUNE 21`, dealt
+- **one combined sheet set**, `Shadow | Shadow Plans Combined - JUNE 21`, dealt
   as a labelled set's is, with **every row's drawing in each cell**, their
   origins at the cell's centre and clipped to it, laid bottom to top as the
   scenarios in the order named and then the sources from the last to the
@@ -135,7 +135,7 @@ A run then makes, from the base combination:
   scale at which the window fits a cell of the master, and the cells are
   dealt by the window's shape -- three hours of a square site are two by two,
   not three tall strips. On the sample project, 421 m square on an A1: 1:2000;
-- **the legend's colours, exactly**: the run makes its own pen set, `15 |
+- **the legend's colours, exactly**: the run makes its own pen set, `Shadow |
   Shadow Plans`, a copy of the one the drawings print in (the model's active
   table, or `--pen-set`) with each row's pen -- the nearest it has -- set to
   the legend's colour, and every drawing on the sheet prints in it. A drawing
@@ -188,12 +188,12 @@ The older comparison remains: run the set twice, under two layer
 combinations, with a **set name** for each --
 
 ```
-sun-study shadow-plans --layer-combination "04 | Shadow - Existing" --label Existing
-sun-study shadow-plans --layer-combination "04 | Shadow - Proposed" --label Proposed
+sun-study shadow-plans --layer-combination "Shadow - Existing" --label Existing
+sun-study shadow-plans --layer-combination "Shadow - Proposed" --label Proposed
 ```
 
--- and the Project Map and the Layout Book hold both, `15 | Shadow Plans
-Existing - JUNE 21` beside `15 | Shadow Plans Proposed - JUNE 21`, to be read
+-- and the Project Map and the Layout Book hold both, `Shadow | Shadow Plans
+Existing - JUNE 21` beside `Shadow | Shadow Plans Proposed - JUNE 21`, to be read
 against each other.
 
 ## Running it
@@ -209,7 +209,7 @@ From a command line:
 
 ```
 sun-study shadow-plans --shadow-date 06-21 --shadow-hour 9,10,11,12,13,14,15 ^
-  --layer-combination "04 | Shadow Diagrams" --shadow-pen 3 --subset "SHADOW DIAGRAMS"
+  --layer-combination "Shadow Diagrams" --shadow-pen 3 --subset "SHADOW DIAGRAMS"
 ```
 
 `--shadow-fill "Solid Fill"`, `--shadow-background-pen` and

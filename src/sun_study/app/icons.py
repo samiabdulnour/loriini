@@ -347,7 +347,6 @@ BY_LABEL: dict[str, str] = {
     "Layer prefix — sun views": "prefix",
     "Layer prefix — site analysis": "prefix",
     "Layer group — context model": "group",
-    "Archicad wait (min)": "wait",
     "Tables": "table",
     "Measure from storey": "storey_datum",
     "...to storey": "storey_datum",

@@ -258,7 +258,7 @@ class ShadowArguments(SheetedArguments):
         default_factory=dict,
         description=(
             "The shadow that already stands, one legend row each: the row's short name to "
-            "the layers that hold it, e.g. {'EXISTING': ['03 | Site Context.Buildings']}. "
+            "the layers that hold it, e.g. {'EXISTING': ['Site Context.Buildings']}. "
             "Rows accumulate: each is charged only for ground the earlier ones left lit."
         ),
     )
@@ -326,7 +326,7 @@ class ShadowPlanArguments(SheetedArguments):
         description=(
             "The stacked mode, named as for shadow_diagrams: the shadow that already "
             "stands, one legend row each, the row's short name to its layers, e.g. "
-            "{'EXISTING': ['03 | Site Context.Buildings'], 'FUTURE': ['03 | Site "
+            "{'EXISTING': ['Site Context.Buildings'], 'FUTURE': ['Site "
             "Context.Future']}. Rows accumulate. Every row of an hour is stacked in one "
             "drawing on a combined sheet, each in its legend colour. Not with existing or "
             "proposals."
@@ -344,7 +344,7 @@ class ShadowPlanArguments(SheetedArguments):
         default=None,
         description=(
             "The short way to a two-row stack: the layers that hold what already stands -- "
-            "the neighbouring buildings, e.g. ['03 | Site Context.Buildings']. The ground "
+            "the neighbouring buildings, e.g. ['Site Context.Buildings']. The ground "
             "and the rest come from the layer combination. project_options lists the layers."
         ),
     )

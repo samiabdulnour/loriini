@@ -38,12 +38,14 @@ def restored() -> Iterator[None]:
     naming.set_context_prefix(context_before)
 
 
-def test_the_default_is_the_reference_projects_next_free_group() -> None:
-    """``14`` because that project's layer groups run 00 to 13. Right there,
-    a guess anywhere else, which is the whole reason for the flag."""
-    assert naming.prefix() == "14 |"
-    assert naming.layer("Results") == "14 | Solar Analysis.Results"
-    assert naming.named("Solar Analysis 09:00") == "14 | Solar Analysis 09:00"
+def test_the_default_is_the_solar_analysis_word_and_not_an_offices_number() -> None:
+    """``14 |`` was one office's next free group, and in anybody else's project
+    it filed the study among groups it had nothing to do with. A word says what
+    the layer is wherever it lands (D156); an office that numbers its groups
+    types its number in with the flag."""
+    assert naming.prefix() == naming.SOLAR_PREFIX == "Solar |"
+    assert naming.layer("Results") == "Solar | Solar Analysis.Results"
+    assert naming.named("Solar Analysis 09:00") == "Solar | Solar Analysis 09:00"
 
 
 def test_a_chosen_prefix_reaches_every_kind_of_name() -> None:
@@ -67,7 +69,7 @@ def test_an_empty_prefix_is_refused_because_it_matches_everything() -> None:
     for attempt in ("", "   ", "\t"):
         with pytest.raises(ValueError, match="cannot be empty"):
             naming.set_prefix(attempt)
-    assert naming.prefix() == "14 |"
+    assert naming.prefix() == naming.SOLAR_PREFIX
 
 
 def test_whitespace_is_collapsed_because_a_copied_name_brings_it_along() -> None:
@@ -128,19 +130,20 @@ def test_no_module_builds_a_name_at_import_time() -> None:
     )
 
 
-def test_a_tool_that_says_nothing_gets_its_own_number() -> None:
-    """The four drawings file under four numbers, and the command says which
+def test_a_tool_that_says_nothing_gets_its_own_word() -> None:
+    """The four drawings file under four prefixes, and the command says which
     it is. Before this they shared one, and the layer list ran them together
-    with only the group word after the number telling them apart."""
-    assert naming.set_prefix(None, default=naming.SHADOW_PREFIX) == "15 |"
-    assert naming.layer("9AM", naming.SHADOW_WORD) == "15 | Shadow Diagram.9AM"
+    with only the group word after the prefix telling them apart. Each is the
+    tool's own word now rather than an office's number (D156)."""
+    assert naming.set_prefix(None, default=naming.SHADOW_PREFIX) == "Shadow |"
+    assert naming.layer("9AM", naming.SHADOW_WORD) == "Shadow | Shadow Diagram.9AM"
 
-    assert naming.set_prefix(None, default=naming.SUN_VIEW_PREFIX) == "16 |"
-    assert naming.set_prefix(None, default=naming.SITE_PREFIX) == "17 |"
+    assert naming.set_prefix(None, default=naming.SUN_VIEW_PREFIX) == "Sun View |"
+    assert naming.set_prefix(None, default=naming.SITE_PREFIX) == "Site |"
 
-    # The solar analysis keeps the number it has always had, so nothing
-    # anybody has already drawn moves.
-    assert naming.SOLAR_PREFIX == naming.DEFAULT_PREFIX == "14 |"
+    # The solar analysis's is the module default, so a call that names no
+    # tool lands where the solar analysis always has.
+    assert naming.SOLAR_PREFIX == naming.DEFAULT_PREFIX == "Solar |"
 
 
 def test_the_run_beats_the_tools_own_number() -> None:
@@ -180,7 +183,7 @@ def test_the_four_numbers_are_four() -> None:
 
 def test_every_command_that_sets_the_prefix_says_which_tool_it_is() -> None:
     """A command that calls ``set_prefix`` without its own number falls back
-    to whatever the module default is -- which is the solar analysis's 14 --
+    to whatever the module default is -- which is the solar analysis's own --
     and files its drawing on top of another tool's layers.
 
     Walked rather than trusted, for the same reason as the import-time check
@@ -208,16 +211,18 @@ def test_every_command_that_sets_the_prefix_says_which_tool_it_is() -> None:
     )
 
 
-def test_the_context_goes_in_the_offices_own_site_group() -> None:
-    """Not one of the tool's four numbers. The neighbours and the ground under
-    them are the neighbourhood, not the study, and the template already has a
-    group for them -- on the reference project, under '03 ---- SITE' beside
-    the boundaries and the survey mesh."""
-    assert naming.terrain_layer() == "03 | Site Context.Terrain"
-    assert naming.roads_layer() == "03 | Site Context.Roads"
-    assert naming.buildings_layer() == "03 | Site Context.Buildings"
+def test_with_no_site_group_the_context_is_the_templates_words_alone() -> None:
+    """Not one of the tool's four prefixes, and by default not any office's
+    number either (D156). The neighbours and the ground under them are the
+    neighbourhood, not the study; until an office says which of its groups
+    they live in, the layers are the template's wording with nothing in front
+    -- and no stray leading space where a number would have been."""
+    assert naming.context_prefix() == naming.CONTEXT_PREFIX == ""
+    assert naming.terrain_layer() == "Site Context.Terrain"
+    assert naming.roads_layer() == "Site Context.Roads"
+    assert naming.buildings_layer() == "Site Context.Buildings"
     assert naming.context_layer() == naming.buildings_layer(), "the context is what casts"
-    assert naming.future_layer() == "03 | Site Context.Future buildings"
+    assert naming.future_layer() == "Site Context.Future buildings"
 
 
 def test_another_offices_site_group_moves_both_of_them() -> None:
@@ -245,10 +250,16 @@ def test_the_site_group_is_not_the_tools_own_number() -> None:
     assert naming.layer("9AM", naming.SHADOW_WORD).startswith("15 |"), "the study did not move"
 
 
-def test_an_empty_site_group_is_refused() -> None:
-    """'| Site Context.3D' is not a layer name anybody meant to type."""
-    with pytest.raises(ValueError, match="cannot be empty"):
-        naming.set_context_prefix("  ")
+def test_an_empty_site_group_gives_the_templates_words_alone() -> None:
+    """Unlike a tool prefix, nothing is deleted by the site group, so clearing
+    it is allowed (D156): the layers fall back to the template's wording, not
+    to '| Site Context.Buildings' or a name with a space in front."""
+    naming.set_context_prefix("03 |")
+    assert naming.buildings_layer() == "03 | Site Context.Buildings"
+
+    assert naming.set_context_prefix("  ") == ""
+    assert naming.buildings_layer() == "Site Context.Buildings"
+    assert naming.terrain_layer() == "Site Context.Terrain"
 
 
 def test_the_clean_up_steps_off_a_layout_before_deleting_layouts() -> None:

@@ -88,7 +88,6 @@ from sun_study.core.solar import solar_position
 
 __all__ = [
     "COMBINED_LABEL",
-    "DEFAULT_COMBINATION",
     "EXISTING_LABEL",
     "LEGEND_TITLE",
     "OVERHEAD_DEG",
@@ -138,15 +137,12 @@ STACK_SHADOW_FILLS: tuple[str, ...] = ("Solid Fill", "100 %", "Solid")
 #: on an A1 is about half the page each way, so four hours fit on a sheet.
 PLAN_SCALE = 1000.0
 
-#: The office's own layer combination for its shadow diagrams, which the sun
-#: views start from too.
-DEFAULT_COMBINATION = "04 | Shadow Diagrams"
-
-#: The fill the office draws its shadow documents in, read off the Kogarah
-#: file on 8 October 2026 (fill 200, "50 %", on nine of its hour documents).
-#: A project's own 3D Document default was "zz Fire Brick" on the mark-up
-#: pen, which on the first live plans showed as no shadow at all.
-DEFAULT_SHADOW_FILL = "50 %"
+#: There is no default layer combination and no default shadow fill (D156).
+#: Both were one office's -- "04 | Shadow Diagrams", and the "50 %" fill read
+#: off its Kogarah file -- and in another project the one is missing and the
+#: other a guess. The plans are pinned to the combination the run is given,
+#: and the shadows keep the project's own 3D Document fill unless a run
+#: names one.
 
 
 def site_context_layers() -> tuple[str, ...]:
@@ -218,7 +214,7 @@ class ShadowPlan:
         return f"SP{self.when:%m%d-%H%M}"
 
     def name(self, set_label: str = "") -> str:
-        """``15 | Shadow Plan 21 Jun 09:00``, or with the set's name in it."""
+        """``Shadow | Shadow Plan 21 Jun 09:00``, or with the set's name in it."""
         word = f"{PLAN_WORD} {set_label}".strip() if set_label else PLAN_WORD
         return naming.named(f"{word} {self.stamp}")
 
@@ -270,7 +266,7 @@ def shadow_plans(
 class ShadowPlanSettings:
     """What a shadow plan's view is pinned to, and the fill its shadows take."""
 
-    layer_combination: str = DEFAULT_COMBINATION
+    layer_combination: str
     renovation_filter_guid: str | None = None
     model_view_options: str | None = None
     pen_set: str | None = None
@@ -502,7 +498,7 @@ def _document_item(
 
 
 def _sheet_stem(set_label: str) -> str:
-    """``15 | Shadow Plans - ``, or with the set's name in it."""
+    """``Shadow | Shadow Plans - ``, or with the set's name in it."""
     word = f"{SET_WORD} {set_label}".strip() if set_label else SET_WORD
     return naming.named(f"{word} - ")
 
@@ -512,7 +508,7 @@ def plan_sheet_groups(
 ) -> tuple[list[tuple[str, list[tuple[str, str]]]], int]:
     """The documents dealt onto sheets, a day at a time, and the cells a sheet has.
 
-    A sheet is a day, as for the fills: *15 | Shadow Plans - JUNE 21*, or
+    A sheet is a day, as for the fills: *Shadow | Shadow Plans - JUNE 21*, or
     ``(1 of 2)`` after it when the day's hours are split, or the hour after it
     when a sheet holds one. Each drawing is captioned as the fills' are,
     ``JUNE 21 -9AM``. The cell count is the fullest sheet's, so every sheet of
@@ -783,7 +779,7 @@ def stack_sheet_groups(
 
     ``(layout name, [[(navigator id, drawing name), ...] per cell])``, each
     cell's list bottom to top. The sheets are dealt as a labelled set's are,
-    by the lowest set's hours, and named *15 | Shadow Plans Combined - JUNE
+    by the lowest set's hours, and named *Shadow | Shadow Plans Combined - JUNE
     21*. The top drawing of a cell is named for the hour alone, ``JUNE 21
     -9AM``, as the one title the cell shows (D148); each drawing under it for
     the hour and its set, ``JUNE 21 -9AM TOD``, since a sheet finds its

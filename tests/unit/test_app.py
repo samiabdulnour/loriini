@@ -100,14 +100,39 @@ def flag(args: list[str], name: str) -> list[str]:
     return [value for before, value in pairwise(args) if before == name]
 
 
-def test_the_project_fills_in_what_nobody_should_have_to_type(hidden_window: Any) -> None:
-    """The point of the window. Each of these is a property of the project,
-    and a person typing one is the commonest way a run measures the wrong
-    thing."""
+def test_the_project_fills_in_what_its_contents_say_and_offers_the_rest(
+    hidden_window: Any,
+) -> None:
+    """The point of the window: a person typing a layer name is the commonest
+    way a run measures the wrong thing. But only what the project's contents
+    show is picked -- the layer its apartment-sized zones are on. The
+    combination and the subsets were picked by one office's words ('IFC',
+    'SHADOW', 'ADG'); now they are offered and left blank, which the commands
+    read as none (D156)."""
     assert hidden_window.apartments.get() == "06 | Zone.Units"
-    assert hidden_window.combination.get() == "12 | IFC ARCH. EXPORT"
-    assert hidden_window.shadow_subset.get() == "SHADOW DIAGRAMS"
-    assert hidden_window.adg_subset.get() == "ADG DIAGRAMS"
+    assert hidden_window.combination.get() == ""
+    assert tuple(hidden_window.combination.cget("values")) == (
+        "01 | Plans - DA",
+        "12 | IFC ARCH. EXPORT",
+    )
+    for subset in (hidden_window.shadow_subset, hidden_window.adg_subset):
+        assert subset.get() == ""
+        assert tuple(subset.cget("values")) == ("ADG DIAGRAMS", "PLANS", "SHADOW DIAGRAMS")
+
+    # By size, not by name: dwellings on a layer no 'Zone.' word would find.
+    hidden_window.options = replace(
+        hidden_window.options,
+        zone_layers=("05 | Dims/Notes.DA", "07 | Residential.Apartments"),
+        zone_kinds=(
+            probe.ZoneKind(layer="05 | Dims/Notes.DA", label="SC", count=6, area_m2=2.5),
+            probe.ZoneKind(
+                layer="07 | Residential.Apartments", label="G08", count=15, area_m2=74.0
+            ),
+        ),
+    )
+    hidden_window.apartments.set("")
+    hidden_window._offer()
+    assert hidden_window.apartments.get() == "07 | Residential.Apartments"
 
 
 def test_the_master_layout_is_offered_and_never_picked(hidden_window: Any) -> None:
@@ -141,17 +166,24 @@ def test_the_facade_run_forces_the_zone_layers_into_the_export(hidden_window: An
     hidden_window.do_facade.set(True)  # off in the basic preset
     (facade,) = hidden_window.jobs()
     assert facade.args[0] == "massing"
-    assert flag(facade.args, "--require-layer") == ["06 | Zone.Balcony", "06 | Zone.Units"]
+    assert flag(facade.args, "--require-layer") == [
+        "05 | Dims/Notes.DA",
+        "06 | Zone.Balcony",
+        "06 | Zone.Units",
+    ]
 
 
-def test_an_annotation_layer_that_happens_to_hold_a_zone_is_not_exported(
+def test_a_layer_that_holds_a_zone_is_exported_whatever_it_is_called(
     hidden_window: Any,
 ) -> None:
-    """``05 | Dims/Notes.DA`` carries 37 Zones on the reference project. They
-    are somebody's schedule, not the building."""
+    """The zone layers used to be narrowed to the ones with 'Zone.' in the
+    name, which is one office's spelling (D156). Every layer the project
+    carries a Zone on is forced in, ``05 | Dims/Notes.DA`` included: which of
+    them is the building is not something a layer's name can say."""
     hidden_window.do_facade.set(True)  # off in the basic preset
     (facade,) = hidden_window.jobs()
-    assert "05 | Dims/Notes.DA" not in flag(facade.args, "--require-layer")
+    assert flag(facade.args, "--require-layer") == list(hidden_window.options.zone_layers)
+    assert "05 | Dims/Notes.DA" in flag(facade.args, "--require-layer")
 
 
 def test_the_floors_tick_is_what_puts_the_decks_in(hidden_window: Any) -> None:
@@ -166,18 +198,27 @@ def test_the_floors_tick_is_what_puts_the_decks_in(hidden_window: Any) -> None:
     assert "--no-model-flat" in without.args and "--model-flat" not in without.args
 
 
-def test_the_plans_run_files_its_sheets_where_the_practice_keeps_them(
+def test_the_plans_sheets_go_at_the_root_until_a_subset_is_picked(
     hidden_window: Any,
 ) -> None:
+    """No subset is picked by an office's words (D156): blank sends nothing,
+    and the command files the sheets at the root of the book. The subsets the
+    person picks from the project's own list are where they go."""
     hidden_window.do_facade.set(False)
     hidden_window.do_plans.set(True)
     (plans,) = hidden_window.jobs()
 
     assert plans.args[0] == "archicad-run"
     assert "--draw" in plans.args and "--sheet" in plans.args
+    assert "--layout-subset" not in plans.args
+    assert "--adg-subset" not in plans.args
+    assert flag(plans.args, "--plan-instant") == ["09:00", "12:00", "15:00"]
+
+    hidden_window.shadow_subset.set("SHADOW DIAGRAMS")
+    hidden_window.adg_subset.set("ADG DIAGRAMS")
+    (plans,) = hidden_window.jobs()
     assert flag(plans.args, "--layout-subset") == ["SHADOW DIAGRAMS"]
     assert flag(plans.args, "--adg-subset") == ["ADG DIAGRAMS"]
-    assert flag(plans.args, "--plan-instant") == ["09:00", "12:00", "15:00"]
 
 
 def test_the_chosen_archicad_is_the_one_the_study_runs_against(hidden_window: Any) -> None:
@@ -520,12 +561,20 @@ def test_the_neighbours_shade_every_solar_study_not_only_the_communal_one(
     assert "05 | Dims/Notes.DA" in flag(plans, "--require-layer"), "forced visible, for all three"
 
 
-def test_the_plans_are_drawn_over_the_offices_own_plan_combination(hidden_window: Any) -> None:
+def test_the_plans_are_drawn_over_the_plan_combination_the_person_picks(
+    hidden_window: Any,
+) -> None:
     """The plan a reader expects under the sunlight, not the model the study
-    reads. Offered from the project, a plan-like one picked, and passed to
-    both plan studies under the names their commands use."""
-    assert hidden_window.plan_combination.get() == "01 | Plans - DA"
+    reads. Offered from the project and picked by the person -- not guessed
+    from words like 'PLAN' or 'GA', which were one office's (D156) -- and
+    passed to both plan studies under the names their commands use."""
+    assert hidden_window.plan_combination.get() == "", "nothing picked by its name"
     assert "" in hidden_window.plan_combination.cget("values"), "blank: the model's"
+    assert "01 | Plans - DA" in hidden_window.plan_combination.cget("values")
+
+    hidden_window.plan_combination.set("01 | Plans - DA")
+    hidden_window._offer()
+    assert hidden_window.plan_combination.get() == "01 | Plans - DA", "kept across a Refresh"
 
     hidden_window.communal.set("06 | Zone.Balcony")
     hidden_window.do_plans.set(True)
@@ -545,16 +594,18 @@ def test_the_plans_are_drawn_over_the_offices_own_plan_combination(hidden_window
 def test_the_tools_own_combination_is_never_offered_as_the_plan(hidden_window: Any) -> None:
     """It regenerates those every run: a base that is its own output is the
     drift a base exists to stop."""
+    own = f"{naming.SOLAR_PREFIX} Sun Study Plan"
     hidden_window.options = replace(
         hidden_window.options,
-        combinations=("14 | Sun Study Plan", "12 | IFC ARCH. EXPORT", "02 | GA Plans"),
+        combinations=(own, "12 | IFC ARCH. EXPORT", "02 | GA Plans"),
     )
     hidden_window.plan_combination.set("")
     hidden_window._offer()
 
     offered = hidden_window.plan_combination.cget("values")
-    assert "14 | Sun Study Plan" not in offered
-    assert hidden_window.plan_combination.get() == "02 | GA Plans"
+    assert own not in offered
+    assert tuple(offered) == ("", "12 | IFC ARCH. EXPORT", "02 | GA Plans")
+    assert hidden_window.plan_combination.get() == "", "offered, not picked"
 
 
 def test_no_table_is_written_unless_a_folder_is_named(hidden_window: Any) -> None:
@@ -1902,40 +1953,30 @@ def test_both_runs_are_told_the_same_layer_prefix(hidden_window: Any) -> None:
     hidden_window.do_plans.set(True)
     facade, plans = hidden_window.jobs()
 
-    assert flag(facade.args, "--layer-prefix") == ["14 |"]
-    assert flag(plans.args, "--layer-prefix") == ["14 |"]
+    assert flag(facade.args, "--layer-prefix") == [naming.SOLAR_PREFIX]
+    assert flag(plans.args, "--layer-prefix") == [naming.SOLAR_PREFIX]
 
 
-def test_the_archicad_wait_reaches_both_runs_in_seconds(hidden_window: Any) -> None:
-    """Minutes on screen, seconds on the command line.
+def test_the_wait_is_an_hour_and_not_on_the_page(hidden_window: Any) -> None:
+    """The wait field was for the IFC export, which on a big project ran to
+    minutes, and the studies no longer export that way (D156). Every run is
+    still told how long to wait on one command -- an hour, so a genuinely
+    slow command is waited on and a stuck Archicad is not waited on for ever
+    -- and a settings file saved while the field was there still opens."""
+    assert not hasattr(hidden_window, "wait_min")
+    assert "Archicad wait (min)" not in every_text(hidden_window.root)
+    hidden_window.apply({"archicad_wait_minutes": "45"})
+    assert "archicad_wait_minutes" not in hidden_window.settings()
 
-    The field exists because five minutes was not enough for a 455 MB export
-    and there was no way to say so from the window -- the run stopped partway,
-    having already done the slow part.
-    """
-    hidden_window.do_facade.set(True)  # off in the basic preset
-    hidden_window.do_plans.set(True)
-    hidden_window.wait_min.delete(0, "end")
-    hidden_window.wait_min.insert(0, "45")
-    facade, plans = hidden_window.jobs()
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(True)
+    hidden_window.site_address.insert(0, "212 Bondi Rd, Bondi")
+    hidden_window.communal.set("06 | Zone.Balcony")
+    jobs = hidden_window.jobs()
 
-    assert flag(facade.args, "--timeout") == ["2700"]
-    assert flag(plans.args, "--timeout") == ["2700"]
-
-
-@pytest.mark.parametrize("typed", ["", "   ", "half an hour", "0", "-5"])
-def test_a_wait_that_is_not_a_number_falls_back_rather_than_stopping_the_study(
-    hidden_window: Any, typed: str
-) -> None:
-    """A mistyped wait is not a reason to refuse a run. The command line's own
-    default is right for every project but the largest, so it is what an
-    unreadable field means."""
-    hidden_window.do_facade.set(True)  # off in the basic preset
-    hidden_window.wait_min.delete(0, "end")
-    hidden_window.wait_min.insert(0, typed)
-    (facade,) = hidden_window.jobs()
-
-    assert flag(facade.args, "--timeout") == ["1800"]
+    assert len(jobs) > 1
+    for job in jobs:
+        assert flag(job.args, "--timeout") == ["3600"], job.label
 
 
 def test_reading_the_project_does_not_wait_the_exports_wait() -> None:
@@ -1946,8 +1987,9 @@ def test_reading_the_project_does_not_wait_the_exports_wait() -> None:
 
 
 def test_another_offices_numbering_reaches_the_command_line(hidden_window: Any) -> None:
-    """``14`` is right for a project whose layer groups end at 13. The next
-    office numbers differently, which is the whole reason for the field."""
+    """The default is the tool's own word, 'Solar |'. An office that numbers
+    its layer groups types its own number in, which is the whole reason for
+    the field."""
     hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.prefix_solar.delete(0, "end")
     hidden_window.prefix_solar.insert(0, "ZZ |")
@@ -1961,9 +2003,8 @@ def test_each_tool_files_its_work_under_its_own_number(hidden_window: Any) -> No
     apartment results, the shadow sheets, the sun views and the site analysis
     together, and only the group word after the number told them apart.
 
-    The solar analysis keeps 14 so nothing already drawn moves; the rest step
-    up from it. Read off the argv rather than the boxes, because the argv is
-    what Archicad ends up being told.
+    Each tool's default is its own word (D156). Read off the argv rather than
+    the boxes, because the argv is what Archicad ends up being told.
     """
     hidden_window.do_facade.set(True)
     hidden_window.do_plans.set(True)
@@ -2459,10 +2500,9 @@ def settings_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 
 def test_what_was_saved_is_what_opens(hidden_window: Any, settings_file: Path) -> None:
-    """The point of the whole thing: the layer prefix, the living-room suffix
-    and the Archicad wait are properties of the practice, not of the job, and
-    retyping them every time is both tedious and a way to get one subtly
-    wrong."""
+    """The point of the whole thing: the layer prefix and the living-room
+    suffix are properties of the practice, not of the job, and retyping them
+    every time is both tedious and a way to get one subtly wrong."""
     hidden_window.prefix_solar.delete(0, "end")
     hidden_window.prefix_solar.insert(0, "14 |")
     hidden_window.livable.insert(0, "_L")
@@ -2488,8 +2528,9 @@ def test_a_window_opened_afterwards_is_already_filled_in(
     file the first one wrote."""
     hidden_window.do_facade.set(True)  # off in the basic preset
     hidden_window.livable.insert(0, "_L")
-    hidden_window.wait_min.delete(0, "end")
-    hidden_window.wait_min.insert(0, "45")
+    # An office that numbers its layer groups types its number in once.
+    hidden_window.prefix_solar.delete(0, "end")
+    hidden_window.prefix_solar.insert(0, "14 |")
     hidden_window._remember()
 
     # Never shown, like the window it reopens: what is read back is the
@@ -2499,8 +2540,8 @@ def test_a_window_opened_afterwards_is_already_filled_in(
     reopened = window.Window(top)  # type: ignore[arg-type]
 
     assert reopened.livable.get() == "_L"
-    assert reopened.wait_min.get() == "45"
-    assert flag(reopened.jobs()[0].args, "--timeout") == ["2700"], "and it reaches the run"
+    assert reopened.prefix_solar.get() == "14 |"
+    assert flag(reopened.jobs()[0].args, "--layer-prefix") == ["14 |"], "and it reaches the run"
 
 
 def test_the_port_is_not_a_preference(hidden_window: Any) -> None:
@@ -3051,6 +3092,12 @@ def test_the_sun_eye_run_sends_what_is_filled_in_and_nothing_else(hidden_window:
     assert job.args[job.args.index("--pen-set") + 1] == "00 FA Pens"
     assert job.args[job.args.index("--scale") + 1] == "500"
     assert job.args[job.args.index("--sheets") + 1] == "two"
+    # No override and no base picked for the person (D156): blank sends
+    # nothing, and the command keeps the plan as it stands.
+    assert "--override" not in job.args
+    assert "--base-combination" not in job.args
+    hidden_window.eye_override.set("Sun Eye Views")
+    (job,) = hidden_window.jobs()
     assert job.args[job.args.index("--override") + 1] == "Sun Eye Views"
     # The hours open lit at the ruleset's window, and lit exactly so they
     # send nothing: the ruleset's own window stands, not a copy of it.
@@ -3066,23 +3113,33 @@ def test_the_sun_eye_run_sends_what_is_filled_in_and_nothing_else(hidden_window:
     assert "--hour" in job.args
 
 
-def test_the_sun_eye_override_and_layers_are_picked_from_the_project(
+def test_the_sun_eye_override_and_layers_are_offered_from_the_project_and_none_picked(
     hidden_window: Any,
 ) -> None:
     """Both lists are the open project's own: the overrides through the
     add-on, which is the only thing that can list them, and the layer
-    combinations through Tapir."""
+    combinations through Tapir. Blank first in both, and blank is what they
+    open on: 'Sun Eye Views' and '04 | Shadow Diagrams' were one office's
+    names, not anything a project says about itself (D156)."""
     assert list(hidden_window.eye_override.cget("values")) == [
         "",
         "Clean",
         "Sun Eye Views",
         "Zone Colours",
     ]
-    assert hidden_window.eye_override.get() == "Sun Eye Views"
-    assert "12 | IFC ARCH. EXPORT" in hidden_window.eye_base_combination.cget("values")
-    assert hidden_window.eye_base_combination.get() in hidden_window.eye_base_combination.cget(
-        "values"
-    )
+    assert hidden_window.eye_override.get() == ""
+    assert list(hidden_window.eye_base_combination.cget("values")) == [
+        "",
+        "01 | Plans - DA",
+        "12 | IFC ARCH. EXPORT",
+    ]
+    assert hidden_window.eye_base_combination.get() == ""
+
+    hidden_window.eye_override.set("Sun Eye Views")
+    hidden_window.eye_base_combination.set("01 | Plans - DA")
+    hidden_window._offer()
+    assert hidden_window.eye_override.get() == "Sun Eye Views", "a choice survives a Refresh"
+    assert hidden_window.eye_base_combination.get() == "01 | Plans - DA"
 
 
 def test_the_sun_eye_settings_survive_a_save(hidden_window: Any) -> None:
@@ -4108,6 +4165,14 @@ def test_the_shadow_plans_draw_the_diagrams_days_and_hours_as_documents(
         lit.set(name in ("winter", "summer"))
     hidden_window.shadow_plan_label.insert(0, "Proposed")
     hidden_window.shadow_plan_pen.insert(0, "3")
+    # The project's own list, and none of it picked by a name (D156): the
+    # person says which combination shows the ground under the buildings.
+    assert hidden_window.shadow_plan_combination.get() == ""
+    assert tuple(hidden_window.shadow_plan_combination.cget("values")) == (
+        "01 | Plans - DA",
+        "12 | IFC ARCH. EXPORT",
+    )
+    hidden_window.shadow_plan_combination.set("01 | Plans - DA")
 
     (job,) = hidden_window.jobs()
 
@@ -4115,11 +4180,7 @@ def test_the_shadow_plans_draw_the_diagrams_days_and_hours_as_documents(
     assert job.args[:3] == ["shadow-plans", "--timezone", "Australia/Sydney"]
     assert flag(job.args, "--shadow-date") == ["06-21,12-21"]
     assert flag(job.args, "--shadow-hour") == [hidden_window.shadow_hours.get().strip()]
-    # The project's own list: this one has no shadow diagram combination.
-    assert flag(job.args, "--layer-combination") == [hidden_window.shadow_plan_combination.get()]
-    assert hidden_window.shadow_plan_combination.get() in (
-        hidden_window.shadow_plan_combination.cget("values")
-    )
+    assert flag(job.args, "--layer-combination") == ["01 | Plans - DA"]
     assert flag(job.args, "--label") == ["Proposed"]
     assert flag(job.args, "--shadow-pen") == ["3"]
     assert "--pen-set" not in job.args, "a blank keeps each view's own"
@@ -4131,6 +4192,31 @@ def test_the_shadow_plans_draw_the_diagrams_days_and_hours_as_documents(
     saved = hidden_window.settings()
     assert saved["study_shadow_plans"] is True
     assert saved["shadow_plan_label"] == "Proposed"
+
+
+def test_run_asks_for_the_shadow_plans_combination_rather_than_guessing_one(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """There is no office combination to fall back on (D156), and the plans
+    are pinned to the one given. Blank, Run says so and starts nothing -- in
+    the window, where somebody can pick one, not several steps into the
+    command. Picked, the same press goes ahead."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadow_plans.set(True)
+    hidden_window.master.set("A4")  # so Run has no master to ask for
+    started: list[str] = []
+    monkeypatch.setattr(hidden_window, "_next", lambda: started.append("run"))
+    monkeypatch.setattr(hidden_window, "_start_log", lambda _studies: None)
+
+    hidden_window._start()
+
+    assert started == [], "nothing was run"
+    assert "Shadow plans need a layer combination" in hidden_window.lines[-1]
+
+    hidden_window.shadow_plan_combination.set("01 | Plans - DA")
+    hidden_window._start()
+    assert started == ["run"]
 
 
 def test_the_shadow_plans_take_the_diagrams_legend_rows_and_stack_them(
@@ -4388,25 +4474,32 @@ def test_the_communal_schedule_goes_with_the_hourly_plans_and_only_when_chosen(
     assert "--zone-schedule" not in communal.args
 
 
-def test_the_offices_cos_schedule_is_offered_first_and_nothing_else_is_guessed(
+def test_the_drawn_table_is_offered_first_and_no_schedule_is_picked_by_its_name(
     hidden_window: Any,
 ) -> None:
-    """Picked where the project has it; the drawn table where it does not,
-    rather than whichever schedule sorts first; and a "None" chosen by hand
-    survives a Refresh."""
-    offered = (window.NO_SCHEDULE, "Areas COS solar", "Areas COS solar 2hr")
+    """A schedule with 'COS solar' in its name used to be picked wherever a
+    project had one -- one office's name for its scheme (D156). Now the drawn
+    table is what opens, whatever schedules the project has, rather than one
+    picked by its name or whichever sorts first; and a choice made by hand,
+    a schedule or "None", survives a Refresh."""
+    hidden_window.options = replace(
+        hidden_window.options, schedules=("Areas COS solar", "Areas COS solar 2hr")
+    )
     hidden_window.cos_schedule.set("")
-    hidden_window._fill(hidden_window.cos_schedule, offered, ("COS solar",))
-    assert hidden_window.cos_schedule.get() == "Areas COS solar"
-
-    hidden_window.cos_schedule.set(window.NO_SCHEDULE)
-    hidden_window._fill(hidden_window.cos_schedule, offered, ("COS solar",))
+    hidden_window._offer()
+    assert tuple(hidden_window.cos_schedule.cget("values")) == (
+        window.NO_SCHEDULE,
+        "Areas COS solar",
+        "Areas COS solar 2hr",
+    )
     assert hidden_window.cos_schedule.get() == window.NO_SCHEDULE
 
-    hidden_window.cos_schedule.set("")
-    hidden_window._fill(
-        hidden_window.cos_schedule, (window.NO_SCHEDULE, "Areas GFA"), ("COS solar",)
-    )
+    hidden_window.cos_schedule.set("Areas COS solar")
+    hidden_window._offer()
+    assert hidden_window.cos_schedule.get() == "Areas COS solar", "a choice survives a Refresh"
+
+    hidden_window.cos_schedule.set(window.NO_SCHEDULE)
+    hidden_window._offer()
     assert hidden_window.cos_schedule.get() == window.NO_SCHEDULE
 
     hidden_window.communal.set("06 | Zone.Balcony")

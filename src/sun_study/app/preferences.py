@@ -3,9 +3,8 @@
 Half the fields in the window are a property of the *project* and are read
 back out of Archicad every time it opens -- the layer that carries the
 apartments, the masters, the subsets. The rest are a property of the
-*practice*: the layer prefix that files the output inside the office's own
-numbering, the living-room suffix, the Archicad wait a big job needs, which
-studies this person ever runs. Those are the same on every project and every
+*practice*: the layer prefixes the output is filed under, the living-room
+suffix, which studies this person ever runs. Those are the same on every project and every
 day, and retyping them is both tedious and a way to get one of them subtly
 wrong.
 

@@ -157,8 +157,8 @@ module bits claim — `-2130313081` is offset 135, in the gap between `APIERR_BA
 One command is slow and the rest are not. `IFCFileOperation` on a real project is
 minutes: 455 MB on `2614_Kogarah`, which walked straight through the five-minute wait
 the tool started with. The default is now **30 minutes**
-(`DEFAULT_TIMEOUT_SECONDS`), raised or lowered with `--timeout` in seconds, or from
-the window with *Archicad wait (min)* under General.
+(`DEFAULT_TIMEOUT_SECONDS`), raised or lowered with `--timeout` in seconds. The
+window sends an hour and no longer shows the setting (D156).
 
 Two things to know when it does time out:
 

@@ -128,7 +128,7 @@ units at 44.1, 154.4 and 22.1, 333.0 parking spaces and 4.97 basements.
 
 ## What comes out
 
-**The Yield Analysis sheet**, `18 | Yield Analysis - Option 01` in the
+**The Yield Analysis sheet**, `Yield | Yield Analysis - Option 01` in the
 Layout Book, on the master chosen in General: the title and the option's
 name, the site, the FSR and GFA by use against the permissible, the unit
 mix, the storeys, the parking, the notes that say which efficiencies the

@@ -88,6 +88,7 @@ def test_the_sun_is_handed_to_archicad_as_a_date() -> None:
 def test_view_settings_differ_between_window_and_document() -> None:
     settings = SunEyeSettings(
         layer_combination=f"{SS} Sun Views",
+        graphic_override="Sun Eye Views",
         renovation_filter_guid="38FD3426-70C5-9C4D-ACA5-877D4A623A36",
         pen_set="00 FA Pens",
     )
@@ -103,6 +104,21 @@ def test_view_settings_differ_between_window_and_document() -> None:
     assert "d3styleName" not in of_document
     assert of_document["drawingScale"] == int(DOCUMENT_SCALE)
     assert of_document["layerCombination"] == of_window["layerCombination"]
+
+
+def test_a_blank_override_is_left_out_of_the_view_settings() -> None:
+    """No office's override is assumed (D156): "Sun Eye Views" was one
+    practice's combination. Nobody naming one means the view is not pinned to
+    any, rather than to a combination called nothing; the model view options
+    are the project's own in the same way."""
+    settings = SunEyeSettings(layer_combination=f"{SS} Sun Views")
+    assert settings.graphic_override == ""
+
+    for of_document in (False, True):
+        view = settings.for_view(of_document=of_document)
+        assert "graphicOverrideCombination" not in view
+        assert "modelViewOptions" not in view
+        assert view["layerCombination"] == f"{SS} Sun Views"
 
 
 def test_each_view_is_aimed_before_it_is_saved() -> None:
@@ -136,7 +152,7 @@ def test_each_view_is_aimed_before_it_is_saved() -> None:
         }
     }
     eyes = sun_eyes(KOGARAH, date=MIDWINTER, hours=[9, 15], timezone="Australia/Sydney")
-    settings = SunEyeSettings(layer_combination=f"{SS} Sun Views")
+    settings = SunEyeSettings(layer_combination=f"{SS} Sun Views", graphic_override="Sun Eye Views")
 
     made = make_sun_eye_views(connection, eyes, settings=settings)
 

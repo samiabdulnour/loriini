@@ -40,9 +40,16 @@ re-entrant and nothing needs to be.
 
 from __future__ import annotations
 
-#: What the prefix is when nobody says otherwise. Right for the reference
-#: project, whose layer groups end at 13.
-DEFAULT_PREFIX = "14 |"
+#: What the prefix is when nobody says otherwise: the solar analysis's own.
+#:
+#: Each tool's default is its own word and a bar, not a number (D156). The
+#: numbers were one office's: ``14 |`` to ``18 |`` sat after the reference
+#: project's groups ``00 |`` to ``13 |``, and in anybody else's project they
+#: filed the study among groups it had nothing to do with. A word says what
+#: the layer is wherever it lands, keeps the ``group |`` shape a layer list
+#: sorts by, and is still a start no hand-made name has, which is what the
+#: clean-up needs. An office that numbers its groups types its number in.
+DEFAULT_PREFIX = "Solar |"
 
 #: And one number per tool, because the four of them are four drawings read by
 #: different people. Filing them all under ``14 |`` put the apartment results,
@@ -51,21 +58,19 @@ DEFAULT_PREFIX = "14 |"
 #: after the number -- and a colleague looking for the shadow sheets had to
 #: know to read past ``14 |`` to find them.
 #:
-#: The solar analysis keeps ``14 |`` so nothing anybody has already drawn
-#: moves; the other three step up from it. Each is only a *default*:
-#: ``--layer-prefix`` still wins, and an office whose own groups run past 17
-#: says so once per tool rather than being argued with.
+#: Each is only a *default*: ``--layer-prefix`` still wins, and an office
+#: that files the study under its own numbers says so once per tool.
 #:
 #: They are deliberately separate constants rather than a dict keyed by
 #: command name. The command names are the CLI's business and change with it;
 #: what a number means -- "this is the shadow diagram's" -- does not.
 SOLAR_PREFIX = DEFAULT_PREFIX
-SHADOW_PREFIX = "15 |"
-SUN_VIEW_PREFIX = "16 |"
-SITE_PREFIX = "17 |"
+SHADOW_PREFIX = "Shadow |"
+SUN_VIEW_PREFIX = "Sun View |"
+SITE_PREFIX = "Site |"
 #: The area calculation's sheet (roadmap R3): a layout and nothing on a
-#: layer, so the number only files the sheet in the Layout Book.
-YIELD_PREFIX = "18 |"
+#: layer, so the prefix only files the sheet in the Layout Book.
+YIELD_PREFIX = "Yield |"
 
 #: And one number that is *not* the tool's, which is why it is kept apart from
 #: the four above. The context a study stands in -- the neighbours and the
@@ -82,8 +87,10 @@ YIELD_PREFIX = "18 |"
 #: layers are made there instead; that is the same call either way.
 #:
 #: The part after the number is the template's own wording and is not settable.
-#: The number is, because it is the one thing that differs between offices.
-CONTEXT_PREFIX = "03 |"
+#: The number is, because it is the one thing that differs between offices,
+#: and by default there is none (D156): ``Site Context.Buildings`` on its
+#: own, until an office says which of its groups the neighbours live in.
+CONTEXT_PREFIX = ""
 
 #: What the context parts are called under it. ``Future buildings`` is the
 #: spelling the shadow tool's own worked example already uses, so a legend row
@@ -201,22 +208,15 @@ def set_context_prefix(value: str | None) -> str:
     """Choose the site group the context is filed under. Returns what was set.
 
     ``None`` leaves it alone, the same shape as ``set_prefix``, so an optional
-    flag passes straight through. Empty is refused for a different reason than
-    an empty tool prefix: nothing here searches by it, but ``| Site
-    Context.3D`` is not a layer name anybody meant to type.
+    flag passes straight through. Empty is allowed, unlike a tool prefix:
+    nothing searches by this one, and without it the layers are the
+    template's wording alone, ``Site Context.Buildings`` (D156).
     """
     global _context_prefix
     if value is None:
         return _context_prefix
-    chosen = " ".join(value.split())
-    if not chosen:
-        raise ValueError(
-            "The context prefix cannot be empty: it is the office's own site "
-            "group, the number in front of 'Site Context.Buildings'. Use the group "
-            f"the template keeps the neighbours in, such as {CONTEXT_PREFIX!r}."
-        )
-    _context_prefix = chosen
-    return chosen
+    _context_prefix = " ".join(value.split())
+    return _context_prefix
 
 
 def context_prefix() -> str:
@@ -224,19 +224,24 @@ def context_prefix() -> str:
     return _context_prefix
 
 
+def _in_context_group(part: str) -> str:
+    """``part`` under the site group, or on its own when there is none."""
+    return f"{_context_prefix} {part}" if _context_prefix else part
+
+
 def terrain_layer() -> str:
     """Where the ground mesh goes."""
-    return f"{_context_prefix} {TERRAIN_PART}"
+    return _in_context_group(TERRAIN_PART)
 
 
 def roads_layer() -> str:
     """Where the kerbed street blocks go, which the roads run between."""
-    return f"{_context_prefix} {ROADS_PART}"
+    return _in_context_group(ROADS_PART)
 
 
 def buildings_layer() -> str:
     """Where the neighbouring buildings go."""
-    return f"{_context_prefix} {BUILDINGS_PART}"
+    return _in_context_group(BUILDINGS_PART)
 
 
 def context_layer() -> str:
@@ -255,7 +260,7 @@ def future_layer() -> str:
     neighbour is a question a saved view answers -- with, without -- and not
     something the model asserts is there.
     """
-    return f"{_context_prefix} {FUTURE_PART}"
+    return _in_context_group(FUTURE_PART)
 
 
 def group(word: str = GROUP_WORD) -> str:
@@ -263,14 +268,14 @@ def group(word: str = GROUP_WORD) -> str:
 
     Layers are named ``group.part`` on the reference project -- ``01 |
     Wall.External``, ``06 | Zone.Units`` -- so the study's follow:
-    ``14 | Solar Analysis.Results``.
+    ``Solar | Solar Analysis.Results``.
 
     ``word`` says which study, because the tool makes two that are read by
     different people for different reasons. It defaults to the solar analysis
     because most of the tool is that; the shadow drawings pass
     ``SHADOW_WORD``.
 
-    On a day other than the ruleset's the group carries it -- ``14 | Solar
+    On a day other than the ruleset's the group carries it -- ``Solar | Solar
     Analysis 21 Dec.Results`` -- so both days' layers stand side by side.
     """
     return _stamped(f"{_prefix} {word}")

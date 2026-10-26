@@ -118,12 +118,13 @@ def test_a_run_on_another_day_stamps_every_name_it_makes() -> None:
     already says the day, as a sun view named for its instant does, is not
     told twice."""
     assert naming.set_day("21 Dec") == "21 Dec"
+    prefix = naming.SOLAR_PREFIX
 
-    assert naming.group() == "14 | Solar Analysis 21 Dec"
-    assert naming.layer("Results") == "14 | Solar Analysis 21 Dec.Results"
-    assert default_layer_name() == "14 | Solar Analysis 21 Dec.Results"
-    assert naming.named("Sun Views") == "14 | Sun Views 21 Dec"
-    assert naming.named("Sun View 21 Dec 09:00") == "14 | Sun View 21 Dec 09:00"
+    assert naming.group() == f"{prefix} Solar Analysis 21 Dec"
+    assert naming.layer("Results") == f"{prefix} Solar Analysis 21 Dec.Results"
+    assert default_layer_name() == f"{prefix} Solar Analysis 21 Dec.Results"
+    assert naming.named("Sun Views") == f"{prefix} Sun Views 21 Dec"
+    assert naming.named("Sun View 21 Dec 09:00") == f"{prefix} Sun View 21 Dec 09:00"
     assert property_group_name() == "Solar Analysis 21 Dec"
 
 
@@ -132,7 +133,7 @@ def test_the_rulesets_own_day_leaves_every_name_as_it_always_was() -> None:
     the option must not move them."""
     naming.set_day("")
     assert naming.day() == ""
-    assert naming.layer("Results") == "14 | Solar Analysis.Results"
+    assert naming.layer("Results") == f"{naming.SOLAR_PREFIX} Solar Analysis.Results"
     assert property_group_name() == PROPERTY_GROUP_NAME
     assert naming.set_day(None) == ""
 

@@ -93,7 +93,12 @@ def test_a_short_sheet_takes_the_first_cells_of_the_fuller_sheets_grid() -> None
     # Which is why the builders ask for the grid of the fuller sheet.
 
 
-def test_shadow_sheets_are_named_for_the_day_the_part_or_the_hour() -> None:
+def test_shadow_sheets_are_named_for_the_day_the_part_or_the_hour(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An office's own number, chosen; put back after, so the tests that follow
+    # see the default rather than this one (D156 made the two differ).
+    monkeypatch.setattr(naming, "_prefix", naming.prefix())
     naming.set_prefix("14 |")
     assert sheet_name("JUNE 21", 1, 1) == "14 | Shadow Diagrams - JUNE 21"
     assert sheet_name("JUNE 21", 2, 2, ["1PM", "2PM", "3PM"]) == (
