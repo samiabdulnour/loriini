@@ -19,24 +19,28 @@ from sun_study.archicad.site_analysis import (
     CREDIT_MM,
     Drawing,
     Frame,
+    Line,
     _aerial,
     _buffered,
     _clipped,
+    _cut_under,
     _loops,
     _strips,
     context_drawing,
     frame_for,
     site_drawing,
 )
-from sun_study.site import curate, marks, theme
-from sun_study.site.geo import ring_area
+from sun_study.site import curate, marks, osm, theme
+from sun_study.site.geo import point_in_ring, ring_area
 from sun_study.site.imagery import Aerial, Tile, toned
+from sun_study.site.pipeline import ContextBundle
 from tests.unit.test_site_analysis import (
     KOGARAH,
     LAT,
     LON,
     context_bundle,
     site_bundle,
+    square,
 )
 
 
@@ -143,6 +147,105 @@ def test_kingfisher_draws_the_cadastre_white_and_the_site_magenta() -> None:
     assert lots and all(line.colour == "#ffffff" for line in lots)
     site = next(f for f in drawing.fills if f.element_id == "SA SITE")
     assert site.contour == "#c2367c" and not site.wash
+
+
+def _off(x: float, y: float, a: tuple[float, float], b: tuple[float, float]) -> float:
+    """How far the point is from the segment ``a``-``b``."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    t = max(0.0, min(1.0, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy or 1.0)))
+    return math.hypot(x - a[0] - dx * t, y - a[1] - dy * t)
+
+
+def _with_a_building_over_a_lot_line() -> ContextBundle:
+    """The test bundle with one house standing across its lot's west edge,
+    so a lot line runs under the roof."""
+    bundle = context_bundle()
+    west = LON + 0.001 - (20.0 / (111_320.0 * math.cos(math.radians(LAT)))) / 2
+    bundle.buildings = (osm.Building(west, LAT, tuple(square(west, LAT, 8.0))),)
+    return bundle
+
+
+def test_flamingo_draws_the_buildings_white_over_the_cadastre() -> None:
+    """D155. White, edged in the cadastre's ink, and nothing drawn before them
+    -- the lot lines, the tints' textures -- runs across a roof: a fill cannot
+    cover a line in Archicad, so those lines are cut instead."""
+    drawing = context_drawing(_with_a_building_over_a_lot_line(), frame(), theme="flamingo")
+    (roof,) = [f for f in drawing.fills if f.element_id == "SA BUILDING"]
+    flamingo = theme.theme("flamingo")
+    assert roof.colour == "#ffffff" and roof.contour == flamingo.cadastre
+    assert roof.layer.endswith(".Land Use")
+    ring = roof.rings[0]
+
+    def under_the_roof(x: float, y: float) -> bool:
+        """Inside it, and more than a centimetre in from its edge."""
+        if not point_in_ring(x, y, ring):
+            return False
+        return all(_off(x, y, a, b) > 0.01 for a, b in pairwise([*ring, ring[0]]))
+
+    lot_lines = [
+        line
+        for line in drawing.lines
+        if line.colour == flamingo.cadastre and line.weight_mm == flamingo.lot_width_mm
+    ]
+    assert lot_lines, "the cadastre is still drawn"
+    for line in drawing.lines:
+        for (ax, ay), (bx, by) in pairwise(line.points):
+            for step in range(51):
+                x, y = ax + (bx - ax) * step / 50, ay + (by - ay) * step / 50
+                assert not under_the_roof(x, y), f"a {line.colour} line on the roof"
+    assert any(t.text == "BUILDING FOOTPRINTS (OSM)" for t in drawing.texts)
+
+
+def test_a_theme_on_the_aerial_leaves_the_roofs_to_the_photograph() -> None:
+    drawing = context_drawing(_with_a_building_over_a_lot_line(), frame(), theme="heron")
+    assert not [f for f in drawing.fills if f.element_id == "SA BUILDING"]
+    assert not any(t.text == "BUILDING FOOTPRINTS (OSM)" for t in drawing.texts)
+
+
+def test_a_line_under_a_roof_is_cut_and_a_courtyard_keeps_its_stretch() -> None:
+    roof = [
+        [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)],
+        [(4.0, 4.0), (6.0, 4.0), (6.0, 6.0), (4.0, 6.0)],
+    ]
+    lines = [
+        Line("L", [(-5.0, 2.0), (15.0, 2.0)]),
+        Line("L", [(-5.0, 5.0), (15.0, 5.0)]),
+        Line("L", [(-5.0, 8.0), (2.0, 8.0), (2.0, 15.0)]),
+        Line("L", [(-5.0, 20.0), (15.0, 20.0)]),
+    ]
+    pieces = sorted(
+        [tuple((round(x, 6), round(y, 6)) for x, y in line.points)]
+        for line in _cut_under(lines, [roof])
+    )
+    assert pieces == sorted(
+        [
+            [((-5.0, 2.0), (0.0, 2.0))],
+            [((10.0, 2.0), (15.0, 2.0))],
+            [((-5.0, 5.0), (0.0, 5.0))],
+            [((4.0, 5.0), (6.0, 5.0))],
+            [((10.0, 5.0), (15.0, 5.0))],
+            [((-5.0, 8.0), (0.0, 8.0))],
+            [((2.0, 10.0), (2.0, 15.0))],
+            [((-5.0, 20.0), (15.0, 20.0))],
+        ]
+    )
+
+
+def test_a_cut_leaves_no_sliver_archicad_would_refuse() -> None:
+    """Half a millimetre of line before a roof is not kept: on the Redfern
+    sheet 754 such slivers, some of no length at all, made Archicad refuse
+    the polylines and stop the run."""
+    roof = [[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]]
+    (piece,) = _cut_under([Line("L", [(-0.0005, 2.0), (15.0, 2.0)])], [roof])
+    assert piece.points == [pytest.approx((10.0, 2.0)), pytest.approx((15.0, 2.0))]
+
+
+def test_a_context_bundle_keeps_its_buildings_and_an_older_one_has_none() -> None:
+    bundle = _with_a_building_over_a_lot_line()
+    data = bundle.as_dict()
+    assert ContextBundle.from_dict(data).buildings == bundle.buildings
+    del data["buildings"]
+    assert ContextBundle.from_dict(data).buildings == ()
 
 
 def test_heron_tones_the_aerial_grey_and_letters_in_white(tmp_path: Path) -> None:
