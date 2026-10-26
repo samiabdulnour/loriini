@@ -1066,6 +1066,15 @@ def _texts(paper: Any) -> list[str]:
     ]
 
 
+def _text_items(paper: Any, text: str) -> list[int]:
+    """The text items on a canvas that say exactly ``text``."""
+    return [
+        item
+        for item in paper.find_all()
+        if str(paper.type(item)) == "text" and paper.itemcget(item, "text") == text
+    ]
+
+
 #: A whole-day plan, and a layout carrying four hours of a study: the two
 #: shapes of sheet the panel draws, at the day the panel has as a heading.
 WHOLE_DAY_SHEET = window.Sheet(
@@ -1115,6 +1124,32 @@ def test_a_sheet_says_only_what_the_panel_does_not_say_beside_it(hidden_window: 
     assert "09:00-12:00   (1 of 2)" in texts, "the hours, and which of the pair"
     assert not any("21 Jun" in text or "drawings" in text or "°" in text for text in texts), texts
     assert texts.count("09:00") == 1, "each cell's own hour, once"
+
+
+def test_a_cells_hour_clears_the_drawing_above_it(hidden_window: Any) -> None:
+    """The room under a cell is measured from the type. A fixed 13 mm was
+    shorter than a line of eight points on Windows, and every hour sat on
+    the bottom of its drawing."""
+    paper: Any = tk.Canvas(hidden_window.root)
+    window.draw_sheet(paper, FOUR_HOUR_SHEET, window.Dock.SHEET_W, window.Dock.SHEET_H)
+    sheet, edge = paper.find_all()[0], paper.find_withtag("edge")[0]
+    (hour,) = _text_items(paper, "09:00")
+    under = set(paper.find_overlapping(*paper.bbox(hour))) - {sheet, edge, hour}
+    assert not under, [paper.type(item) for item in under]
+
+
+def test_a_sheet_number_sits_inside_its_chip(hidden_window: Any) -> None:
+    """The chip is as wide as its number and the padding. A fixed 34 mm was
+    narrower than "SD.01" on Windows, and the number ran into its edges."""
+    paper: Any = tk.Canvas(hidden_window.root)
+    window.draw_sheet(paper, FOUR_HOUR_SHEET, window.Dock.SHEET_W, window.Dock.SHEET_H)
+    (chip,) = paper.find_withtag("chip")
+    (number,) = _text_items(paper, "SD.01")
+    chip_left, _, chip_right, _ = paper.bbox(chip)
+    # A text item's box is a pixel or so wider than its letters.
+    number_left, _, number_right, _ = paper.bbox(number)
+    assert chip_left + window.CHIP_PAD - 2 <= number_left
+    assert number_right <= chip_right - window.CHIP_PAD + 2
 
 
 def test_the_blue_edge_rims_the_whole_sheet(hidden_window: Any) -> None:
@@ -1719,6 +1754,38 @@ def test_a_project_that_will_not_answer_is_reported_not_raised(
 
     assert found.reachable is False
     assert found.problems and "19999" in found.problems[0]
+
+
+def test_a_project_never_saved_is_read_not_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A new file has no name, only ``isUntitled``. The window took the blank
+    name for a project it could not read and dropped every list it had read."""
+    from sun_study.archicad.connection import ArchicadError
+
+    class NewFile:
+        tapir_version = "1.5.8"
+        database = None
+
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def run_tapir(self, command: str, parameters: object = None) -> object:
+            if command == "GetProjectInfo":
+                return {"isUntitled": True, "isTeamwork": False}
+            if command == "GetAttributesByType":
+                return {"attributes": [{"name": "A1 Master"}]}
+            raise ArchicadError(f"{command} is not faked")
+
+        def __getattr__(self, name: str) -> Any:
+            def refuse(*_args: object, **_kwargs: object) -> None:
+                raise ArchicadError(f"{name} is not faked")
+
+            return refuse
+
+    monkeypatch.setattr(probe, "ArchicadConnection", NewFile)
+    found = probe.options(19723)
+
+    assert found.project == "Untitled"
+    assert found.reachable is True
 
 
 def test_the_child_is_told_to_be_the_command_line_and_not_to_buffer() -> None:

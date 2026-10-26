@@ -53,6 +53,7 @@ from sun_study import ADDON_FILE
 __all__ = [
     "DEFAULT_TIMEOUT_SECONDS",
     "PORT_RANGE",
+    "UNTITLED",
     "ArchicadConnection",
     "ArchicadError",
     "ArchicadNotRunningError",
@@ -62,6 +63,7 @@ __all__ = [
     "TapirUnavailableError",
     "Transport",
     "find_instances",
+    "project_name",
     "where_archicad_actually_is",
 ]
 
@@ -87,6 +89,12 @@ NOT_REGISTERED_CODE = 4010
 #: This project's own add-on, in ``archicad-addon/``: the commands no JSON
 #: command exists for at all, beside Tapir's under ``TAPIR_NAMESPACE``.
 LORIINI_NAMESPACE = "Loriini"
+
+#: A project never saved, named as Archicad's title bar names it.
+#: ``GetProjectInfo`` gives one no name at all, only ``isUntitled``, and a
+#: blank name reads as "no project open": the window refused a new file it had
+#: read in full -- 135 layers, 55 masters -- as "could not read the project".
+UNTITLED = "Untitled"
 
 #: What to do about a missing or too-old add-on, said once so every message
 #: gives the same advice.
@@ -227,7 +235,8 @@ class Instance:
 
     port: int
     project: str = ""
-    """The open project's name, blank if it could not be read."""
+    """The open project's name, ``UNTITLED`` for one never saved, blank if it
+    could not be read."""
 
     def describe(self) -> str:
         return f"port {self.port}" + (f" -- {self.project}" if self.project else "")
@@ -289,9 +298,17 @@ def _project_name(probe: HttpTransport) -> str:
         inner = (response.get("result") or {}).get("addOnCommandResponse") or {}
         if not isinstance(inner, dict) or "error" in inner:
             continue
-        name = inner.get("projectName") or inner.get("projectPath") or ""
-        return str(name) if isinstance(name, str) else ""
+        return project_name(inner)
     return ""
+
+
+def project_name(info: dict[str, Any]) -> str:
+    """The name in a ``GetProjectInfo`` answer: ``UNTITLED`` for a project
+    never saved, blank when there is none to give."""
+    name = info.get("projectName") or info.get("projectPath") or ""
+    if isinstance(name, str) and name:
+        return name
+    return UNTITLED if info.get("isUntitled") is True else ""
 
 
 #: Archicad refuses every API call while a modal dialog is open, and answers

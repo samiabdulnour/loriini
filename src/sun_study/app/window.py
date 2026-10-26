@@ -2065,6 +2065,10 @@ def _untimed_note(sheet: Sheet) -> str:
 #: read at a glance across the panel, and three sizes in three greys at 300
 #: px read as clutter, not as a hierarchy.
 SHEET_TEXT = 8
+#: Pixels between a cell's hour and the drawing over it.
+LABEL_GAP = 3
+#: Pixels either side of a sheet number inside its chip.
+CHIP_PAD = 5
 
 
 def draw_sheet(
@@ -2142,6 +2146,11 @@ def draw_sheet(
     # empty is a faint dashed frame, because the short second sheet of a pair
     # really does have a hole in it.
     field = (10.0, 10.0, left - 5.0, 166.0)
+    # The room under a cell for its hour: the hour's own line and a gap,
+    # measured, and not a figure in millimetres. The sheet scales with the
+    # panel and the type does not, and on Windows, where eight points are
+    # eleven pixels, the 13 mm this was left the hour touching the drawing.
+    under_mm = max(13.0, (face.metrics("linespace") + LABEL_GAP) / scale)
     if sheet.cells <= 1:
         frames = [field]
     else:
@@ -2169,7 +2178,7 @@ def draw_sheet(
                 anchor="s",
                 fill=theme.HINT,
             )
-            frame_mm = (frame_mm[0], frame_mm[1], frame_mm[2], frame_mm[3] - 13.0)
+            frame_mm = (frame_mm[0], frame_mm[1], frame_mm[2], frame_mm[3] - under_mm)
         frame = (x(frame_mm[0]), x(frame_mm[1]), x(frame_mm[2]), x(frame_mm[3]))
         _draw_drawing(paper, sheet.study, drawing, frame)
 
@@ -2205,11 +2214,15 @@ def draw_sheet(
     # "NTS", as a drawing set says it, for a sheet that has no scale.
     words(middle, first, sheet.scale or "NTS", anchor="s", fill=theme.HINT)
     caps = x(second) - _cap_drop(face)
+    # As wide as the number and its padding, within the block: a fixed 34 mm
+    # was narrower than "SD.01" on Windows, and the number ran into its edges.
+    reach = min(face.measure(sheet.number) / 2 + CHIP_PAD, x(block_mm / 2) - 2)
+    reach = max(x(17), reach)
     _rounded(
         paper,
-        x(middle - 17),
+        x(middle) - reach,
         caps - x(7.5),
-        x(middle + 17),
+        x(middle) + reach,
         caps + x(7.5),
         x(5),
         fill=theme.ACCENT_TINT,
