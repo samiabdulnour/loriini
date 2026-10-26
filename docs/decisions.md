@@ -6243,3 +6243,53 @@ run is sent `--timeout 3600`. A saved setting for it is ignored.
 yield sheet's figures, the site sheets' styles, or a project already drawn
 under the old numbers -- its layers stay where they are, and a run under the
 new prefix leaves them alone, as any change of prefix does.
+
+### D157 — The site page in four panels, each placed on its own and run on its own
+
+Asked 26 October 2026, with the Site analysis page on screen: *"can we
+sort of structure the site analysis into windows as its done in solar
+analysis? basic window where you can select controls sheet and location,
+Context window where you can select the origin, north, theme, scale. site
+analysis window where you can select north, theme, scale etc. and 3d
+context - where will be option to add future context, origin, north radius
+( will be same radius for future)"*. Asked whether origin and north should
+be one setting for all, which keeps every output lined up, or one per
+panel: *per panel, as asked*.
+
+**Four panels, as the solar analysis has.** *Address* holds what the
+outputs share: the address, where the data comes from, *Controls* (the
+Summary of Controls) and *Location*, the drawn boundary and the run folder.
+Then a panel per output, each headed by its own switch and the sheets it is
+worth: *Context Analysis* (origin, north, style, scale), *Site Analysis*
+(origin, north, style, and a scale of its own -- blank still fits the site)
+and *3D context* (future context, origin, north, one radius, model levels).
+Each is a study of its own in the window's list, so the sidebar, the run
+line and the sheets panel count them apart; the sidebar's switch turns on
+the Context Analysis, its lead. *Site lands at* and *Origin at* became one
+*Origin*: *Project location*, or a point of the site at the project origin.
+
+**One run per panel.** The command places everything one run draws in one
+frame, so a panel placed its own way is a run of its own -- the window sends
+one `site` command per lit panel, each with only its own output on. What
+that costs is a geocode and a fetch per run; what it buys is a site sheet
+turned to its long boundary beside a model on the project's north.
+
+**One location, written once.** The project has one location and one north,
+and every run that places the site at the origin, or finds the location on a
+city preset, would write its own. So only the first run may: the 3D context
+when it is on -- the model has to line up with the building -- then the
+Context Analysis, then the Site Analysis; it runs first, so a later panel
+placed by *Project location* finds the location it wrote, and every other run
+is sent `--keep-location`. The north is written by that run alone, and only
+when its own panel turns the site.
+
+**The future context is the 3D context's.** It stands its slabs in the 3D
+context's frame. The Site Analysis run draws the same envelopes dashed on its
+sheet in its own frame and stands nothing: the command takes
+`--no-future-slabs` for that, so two runs do not stand the future twice in
+two places. One radius serves the model and the future's reach, as asked,
+where there were two fields, 500 m and 100 m.
+
+*What this does not change:* the command line's one-run `site`, which still
+draws every output it is asked for in one frame; the sheets, the styles and
+the model themselves.

@@ -150,11 +150,18 @@ def test_the_master_layout_is_offered_and_never_picked(hidden_window: Any) -> No
 def test_a_project_never_located_puts_the_site_on_its_origin_at_a_corner(
     hidden_window: Any,
 ) -> None:
-    """Nothing in an unlocated project for the site to line up with, so it
-    goes on the project origin, at a corner of the lot as a model is set out."""
-    hidden_window.do_site.set(True)
+    """Nothing in an unlocated project for the site to line up with, so every
+    panel puts its output on the project origin, at a corner of the lot as a
+    model is set out -- each panel has an origin of its own now (D157)."""
+    origins = (
+        hidden_window.site_context_origin,
+        hidden_window.site_sheet_origin,
+        hidden_window.site_model_origin,
+    )
+    assert [origin.get() for origin in origins] == ["Bottom-left corner"] * 3
+    hidden_window.do_site_context.set(True)
     hidden_window.site_address.insert(0, "26-30 Campsie St, Campsie NSW 2194")
-    (site,) = [job for job in hidden_window.jobs() if job.label == window.SITE_JOB]
+    (site,) = [job for job in hidden_window.jobs() if job.label == window.SITE_CONTEXT_JOB]
     assert flag(site.args, "--anchor") == ["site"]
     assert flag(site.args, "--origin-at") == ["bottom-left"]
 
@@ -990,7 +997,8 @@ def test_every_sheet_says_the_scale_the_run_places_it_at(hidden_window: Any) -> 
 def test_the_facade_study_is_a_model_and_not_a_sheet(hidden_window: Any) -> None:
     """The window never asks for the model-views sheet, so what the facade
     study makes is the coloured skin in 3D and nothing on paper. The panel
-    said one sheet; it now shows the geometry, one per day."""
+    said one sheet; it now shows the geometry, one per day, and its header
+    counts the models alone rather than "0 sheets" in front of them."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
     hidden_window.do_facade.set(True)
@@ -1007,7 +1015,7 @@ def test_the_facade_study_is_a_model_and_not_a_sheet(hidden_window: Any) -> None
     ]
     assert not any("--model-views" in job.args for job in hidden_window.jobs())
     _box, says = hidden_window.study_boxes[window.FACADE_JOB]
-    assert says.cget("text") == "0 sheets, 2 models"
+    assert says.cget("text") == "2 models"
     assert hidden_window.dock.tally.cget("text") == "0"
 
 
@@ -1079,10 +1087,16 @@ def test_the_context_sheet_is_centred_on_the_site_and_its_walk(hidden_window: An
 def test_a_model_is_shown_as_geometry_and_not_counted_as_a_sheet(hidden_window: Any) -> None:
     """The site study's context model and future model are geometry on their
     own layers, not layouts. The panel shows them as what they are -- no
-    paper -- and the count on the strip stays the count of sheets."""
+    paper -- and the count on the strip stays the count of sheets. One radius
+    serves the model and the future's reach (D157), so both say it."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
-    hidden_window.do_site.set(True)
+    for sheet_tick in (
+        hidden_window.do_site_context,
+        hidden_window.do_site_site,
+        hidden_window.do_site_summary,
+    ):
+        sheet_tick.set(True)
     hidden_window.site_address.insert(0, "1 Example Street")
     hidden_window.site_radius.delete(0, "end")
     hidden_window.site_radius.insert(0, "300")
@@ -1096,16 +1110,35 @@ def test_a_model_is_shown_as_geometry_and_not_counted_as_a_sheet(hidden_window: 
     models = [sheet for sheet in made if not sheet.paper]
     assert [(m.kind, m.day) for m in models] == [
         (window.CONTEXT_MODEL, "300 m"),
-        (window.FUTURE_MODEL, "100 m reach"),
+        (window.FUTURE_MODEL, "300 m reach"),
     ]
     assert all(m.number == "" for m in models), "not numbered as sheets"
+    assert all(m.job == window.SITE_MODEL_JOB for m in models), "both the 3D context's"
     assert hidden_window.dock.tally.cget("text") == "3", "three sheets, and the models are not"
-    _box, says = hidden_window.study_boxes[window.SITE_JOB]
-    assert says.cget("text") == "3 sheets, 2 models"
+    _box, says = hidden_window.study_boxes[window.SITE_MODEL_JOB]
+    assert says.cget("text") == "2 models"
 
     paper = tk.Canvas(hidden_window.root)
     window.draw_model(paper, models[0], 300, 212)
     assert paper.find_withtag("edge"), "and it still takes the blue edge under the pointer"
+
+
+def test_the_3d_context_panel_counts_its_models_and_no_sheets(hidden_window: Any) -> None:
+    """The 3D context makes geometry and no paper, so its header counts the
+    models alone. "0 sheets, 1 model" read as a panel that made nothing
+    before it said what it did make."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.site_address.insert(0, "1 Example Street")
+    hidden_window.do_site_model.set(True)
+    hidden_window._sync()
+    _box, says = hidden_window.study_boxes[window.SITE_MODEL_JOB]
+    assert says.cget("text") == "1 model"
+
+    hidden_window.do_site_future.set(True)
+    hidden_window._sync()
+    assert says.cget("text") == "2 models", "the future context is a model of its own"
+    assert "sheet" not in says.cget("text")
 
 
 def _texts(paper: Any) -> list[str]:
@@ -1255,18 +1288,18 @@ def test_a_sheet_is_lettered_in_one_style_on_shared_lines(hidden_window: Any) ->
 
 
 def test_each_site_sheet_follows_its_own_tick(hidden_window: Any) -> None:
-    """Three sheets, three ticks, and the command gets --no-summary when the
-    summary is unticked -- so the panel must drop it too."""
+    """Three sheets, three switches, and the site sheet's run gets
+    --no-context and --no-summary while those are off -- so the panel must
+    drop them too."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
-    hidden_window.do_site.set(True)
     hidden_window.site_address.insert(0, "1 Example Street")
-    hidden_window.do_site_summary.set(False)
-    hidden_window.do_site_context.set(False)
+    hidden_window.do_site_site.set(True)
 
     assert [sheet.kind for sheet in hidden_window.planned()] == ["Site Analysis"]
-    args = hidden_window.jobs()[0].args
-    assert "--no-summary" in args and "--no-context" in args and "--site" in args
+    (site,) = hidden_window.jobs()
+    assert site.label == window.SITE_SHEET_JOB
+    assert "--no-summary" in site.args and "--no-context" in site.args and "--site" in site.args
 
 
 def test_the_pen_set_is_chosen_from_the_projects_own_and_blank_is_kept(
@@ -2010,7 +2043,8 @@ def test_each_tool_files_its_work_under_its_own_number(hidden_window: Any) -> No
     hidden_window.do_plans.set(True)
     hidden_window.do_shadows.set(True)
     hidden_window.do_sun_eyes.set(True)
-    hidden_window.do_site.set(True)
+    hidden_window.do_site_context.set(True)
+    hidden_window.do_site_model.set(True)
     hidden_window.site_address.insert(0, "212 Bondi Rd, Bondi")
 
     under = {job.label: flag(job.args, "--layer-prefix") for job in hidden_window.jobs()}
@@ -2019,7 +2053,8 @@ def test_each_tool_files_its_work_under_its_own_number(hidden_window: Any) -> No
     assert under[window.PLANS_JOB] == [naming.SOLAR_PREFIX]
     assert under[window.SHADOW_JOB] == [naming.SHADOW_PREFIX]
     assert under[window.SUN_EYE_JOB] == [naming.SUN_VIEW_PREFIX]
-    assert under[window.SITE_JOB] == [naming.SITE_PREFIX]
+    assert under[window.SITE_CONTEXT_JOB] == [naming.SITE_PREFIX]
+    assert under[window.SITE_MODEL_JOB] == [naming.SITE_PREFIX], "each site run, not the first"
     assert len({naming.SHADOW_PREFIX, naming.SUN_VIEW_PREFIX, naming.SITE_PREFIX}) == 3, (
         "three tools sharing a number is the thing this is here to prevent"
     )
@@ -2056,8 +2091,11 @@ def test_the_site_group_reaches_only_the_command_that_makes_the_context(
 ) -> None:
     """The office's site group is not one of the tool's four numbers, and only
     the site command creates the context that goes in it. Passing it to the
-    others would be an option they do not have."""
-    hidden_window.do_site.set(True)
+    others would be an option they do not have. Every site run hears it: the
+    3D context stands the neighbours in that group, and a sheet's run may be
+    the one that does when the panels run apart (D157)."""
+    hidden_window.do_site_context.set(True)
+    hidden_window.do_site_model.set(True)
     hidden_window.do_shadows.set(True)
     hidden_window.site_address.insert(0, "212 Bondi Rd, Bondi")
     hidden_window.prefix_context.delete(0, "end")
@@ -2065,11 +2103,12 @@ def test_the_site_group_reaches_only_the_command_that_makes_the_context(
 
     by_tool = {job.label: job.args for job in hidden_window.jobs()}
 
-    assert flag(by_tool[window.SITE_JOB], "--context-prefix") == ["50 |"]
+    for site_run in (window.SITE_CONTEXT_JOB, window.SITE_MODEL_JOB):
+        assert flag(by_tool[site_run], "--context-prefix") == ["50 |"], site_run
+        assert flag(by_tool[site_run], "--layer-prefix") == [naming.SITE_PREFIX], (
+            "and the site analysis is still filed under its own number"
+        )
     assert "--context-prefix" not in by_tool[window.SHADOW_JOB]
-    assert flag(by_tool[window.SITE_JOB], "--layer-prefix") == [naming.SITE_PREFIX], (
-        "and the site analysis is still filed under its own number"
-    )
 
 
 def test_a_zone_is_offered_under_both_of_the_names_archicad_gives_it(
@@ -3152,18 +3191,17 @@ def test_the_sun_eye_settings_survive_a_save(hidden_window: Any) -> None:
 
 
 def test_the_site_analysis_runs_from_an_address_and_names_its_sheets(hidden_window: Any) -> None:
-    """The one study that reads nothing off the project: an address in, the
-    sheets ticked, and the anchor said in words on the page and as a keyword
-    on the command line."""
+    """The one study that reads nothing off the project: an address in, a
+    panel switched on, and its origin said in words on the page and as a
+    keyword on the command line."""
     hidden_window.do_facade.set(False)
-    hidden_window.do_site.set(True)
+    hidden_window.do_site_context.set(True)
     hidden_window.site_address.insert(0, "26-30 Campsie St, Campsie NSW 2194")
-    hidden_window.do_site_summary.set(False)
-    hidden_window.site_anchor.set("Project origin")
+    hidden_window.site_context_origin.set("Site centre")
     (site,) = hidden_window.jobs()
-    assert site.label == window.SITE_JOB
+    assert site.label == window.SITE_CONTEXT_JOB
     assert site.args[:2] == ["site", "26-30 Campsie St, Campsie NSW 2194"]
-    assert "--context" in site.args and "--site" in site.args and "--no-summary" in site.args
+    assert "--context" in site.args and "--no-site" in site.args and "--no-summary" in site.args
     assert flag(site.args, "--anchor") == ["site"]
     assert flag(site.args, "--scale") == ["3000"]
     assert flag(site.args, "--port") == ["19723"]
@@ -3174,32 +3212,35 @@ def test_the_site_analysis_runs_from_an_address_and_names_its_sheets(hidden_wind
     assert "--model" not in site.args and "--keep-location" not in site.args
     hidden_window.do_site_model.set(True)
     hidden_window.do_site_location.set(False)
-    (site,) = hidden_window.jobs()
-    assert "--model" in site.args and "--keep-location" in site.args
+    model, context = hidden_window.jobs()
+    assert model.label == window.SITE_MODEL_JOB and "--model" in model.args
+    assert "--model" not in context.args, "the model is a run of its own"
+    assert "--keep-location" in model.args and "--keep-location" in context.args
 
 
 def test_the_site_can_be_set_on_a_corner_and_turned_level_from_the_page(
     hidden_window: Any,
 ) -> None:
-    """Two words on the page, two flags on the command line, and neither
-    sent unless the site is placed at the project origin, where they mean
-    something."""
+    """Two words on the panel, two flags on the command line, and neither
+    sent while the panel trusts the project's location, where the project
+    already says where the site is and which way it faces. The north is kept
+    on the page for when the origin comes back to a point of the site."""
     hidden_window.do_facade.set(False)
-    hidden_window.do_site.set(True)
+    hidden_window.do_site_site.set(True)
     hidden_window.site_address.insert(0, "59 Great Buckingham St, Redfern NSW 2016")
-    hidden_window.site_anchor.set("Project origin")
-    hidden_window.site_origin.set("Bottom-left corner")
-    hidden_window.site_turn.set("Long boundary level")
+    hidden_window.site_sheet_origin.set("Bottom-left corner")
+    hidden_window.site_sheet_north.set("Long boundary level")
     (site,) = hidden_window.jobs()
     assert flag(site.args, "--anchor") == ["site"]
     assert flag(site.args, "--origin-at") == ["bottom-left"]
     assert "--square-to-site" in site.args
-    hidden_window.site_anchor.set("Project location")
+    hidden_window.site_sheet_origin.set("Project location")
     (site,) = hidden_window.jobs()
+    assert flag(site.args, "--anchor") == ["location"]
     assert "--origin-at" not in site.args and "--square-to-site" not in site.args
     saved = hidden_window.settings()
-    assert saved["site_origin"] == "Bottom-left corner"
-    assert saved["site_turn"] == "Long boundary level"
+    assert saved["site_sheet_origin"] == "Project location"
+    assert saved["site_sheet_north"] == "Long boundary level"
 
 
 def test_the_drawn_boundary_and_the_model_levels_are_chosen_on_the_page(
@@ -3208,22 +3249,26 @@ def test_the_drawn_boundary_and_the_model_levels_are_chosen_on_the_page(
     """Both used to be command-line only, so from the window a north-up
     survey on a boundary layer always turned the context back to north up,
     and the model always stood on the site's ground. The defaults send
-    nothing; a typed RL goes through as the datum, a trailing 'm' and all."""
+    nothing; a typed RL goes through as the datum, a trailing 'm' and all.
+    The boundary is shared by every panel's run; the levels are the 3D
+    context's own, so only its run hears them."""
     hidden_window.do_facade.set(False)
-    hidden_window.do_site.set(True)
+    hidden_window.do_site_model.set(True)
     hidden_window.site_address.insert(0, "22A O'Connell Street, Parramatta")
     (site,) = hidden_window.jobs()
     assert "--fit-layer" not in site.args and "--datum" not in site.args
 
+    hidden_window.do_site_context.set(True)
     hidden_window.site_fit.set("Ignore it: use the project's north")
     hidden_window.site_levels.set("Project zero is sea level (AHD)")
-    (site,) = hidden_window.jobs()
-    assert flag(site.args, "--fit-layer") == ["none"]
-    assert flag(site.args, "--datum") == ["sea"]
+    model, context = hidden_window.jobs()
+    assert flag(model.args, "--fit-layer") == flag(context.args, "--fit-layer") == ["none"]
+    assert flag(model.args, "--datum") == ["sea"]
+    assert "--datum" not in context.args, "a sheet has no levels to place"
 
     hidden_window.site_levels.set("5.85 m")
-    (site,) = hidden_window.jobs()
-    assert flag(site.args, "--datum") == ["5.85"]
+    model, _context = hidden_window.jobs()
+    assert flag(model.args, "--datum") == ["5.85"]
 
     saved = hidden_window.settings()
     assert saved["site_fit"] == "Ignore it: use the project's north"
@@ -3231,13 +3276,27 @@ def test_the_drawn_boundary_and_the_model_levels_are_chosen_on_the_page(
 
 
 def test_the_site_analysis_waits_for_an_address(hidden_window: Any) -> None:
-    """Ticked with nothing typed, there is no job: the address is the study."""
+    """Every panel switched on with nothing typed, and there is no job: the
+    address is the study, for each of its four runs alike."""
     hidden_window.do_facade.set(False)
-    hidden_window.do_site.set(True)
+    for site_tick in (
+        hidden_window.do_site_context,
+        hidden_window.do_site_site,
+        hidden_window.do_site_model,
+        hidden_window.do_site_summary,
+    ):
+        site_tick.set(True)
     assert hidden_window.jobs() == []
-    assert "study_site" in hidden_window.settings()
-    # The sample project was never located, so the site goes on its origin.
-    assert hidden_window.settings()["site_anchor"] == "Project origin"
+    saved = hidden_window.settings()
+    assert {"site_context", "site_site", "site_model", "site_summary"} <= set(saved)
+    assert "study_site" not in saved, "one switch per panel now, and no master tick"
+    # The sample project was never located, so each panel puts the site on its origin.
+    assert (
+        saved["site_context_origin"]
+        == saved["site_sheet_origin"]
+        == saved["site_model_origin"]
+        == "Bottom-left corner"
+    )
 
 
 def test_a_lit_day_reaches_the_three_solar_studies_and_no_other_page(
@@ -3290,28 +3349,35 @@ def test_the_sun_views_and_the_shadows_run_on_their_own_days(hidden_window: Any)
 
 
 def test_the_site_outputs_are_buttons_over_the_same_ticks(hidden_window: Any) -> None:
-    """Six lines of small print became two rows of buttons, worded short,
-    over the very same variables -- so a preset that ticked the context
-    model still lights the button, and pressing the button is the tick."""
+    """What is not a panel of its own is a button, worded short, over the very
+    same variable -- so a preset that ticked the future context still lights
+    the button, and pressing the button is the tick. The two sheets and the
+    model moved into panels headed by their own switches (D157); the
+    controls table and the location stay buttons in the Address panel, and
+    the future context is one in the 3D context's."""
     buttons = hidden_window.site_buttons
     assert list(buttons) == [
-        "Context Analysis sheet",
-        "Site Analysis sheet",
         "Summary of Controls layout",
-        "Future Context (what the controls allow next door)",
-        "Context Model in 3D (terrain, blocks, neighbours)",
         "Set the project location from the address",
+        "Future Context (what the controls allow next door)",
     ]
-    assert buttons["Context Model in 3D (terrain, blocks, neighbours)"].cget("text") == "3D context"
+    assert [button.cget("text") for button in buttons.values()] == [
+        "Controls",
+        "Location",
+        "Future context",
+    ]
     assert not any(button.cget("image") for button in buttons.values()), "words, not drawings"
 
-    assert hidden_window.do_site_model.get() is False
-    buttons["Context Model in 3D (terrain, blocks, neighbours)"].invoke()
-    assert hidden_window.do_site_model.get() is True
-    hidden_window.apply({"site_model": False})
-    assert str(buttons["Context Model in 3D (terrain, blocks, neighbours)"].cget("style")) == (
-        "Tile.TButton"
-    ), "a preset that unticks it unlights it"
+    future = buttons["Future Context (what the controls allow next door)"]
+    assert hidden_window.do_site_future.get() is False
+    future.invoke()
+    assert hidden_window.do_site_future.get() is True
+    hidden_window.apply({"site_future": False})
+    assert str(future.cget("style")) == "Tile.TButton", "a preset that unticks it unlights it"
+
+    assert hidden_window.do_site_summary.get() is False
+    buttons["Summary of Controls layout"].invoke()
+    assert hidden_window.do_site_summary.get() is True, "the button is the Controls study's tick"
 
 
 def test_the_shadow_storey_is_picked_by_name_and_sent_by_index(hidden_window: Any) -> None:
@@ -3391,36 +3457,259 @@ def test_a_custom_day_runs_as_well_as_the_ticks_and_is_judged_by_the_command(
 def test_the_future_context_tick_reaches_the_site_command_with_its_settings(
     hidden_window: Any,
 ) -> None:
-    """The reach is the one thing a designer changes; the zones stay put."""
-    hidden_window.do_site.set(True)
+    """The reach is the one thing a designer changes; the zones stay put. One
+    radius serves the model and the future's reach, as asked (D157), where
+    there used to be two fields."""
     hidden_window.site_address.insert(0, "1 Test St, Kogarah NSW")
+    hidden_window.do_site_model.set(True)
     hidden_window.do_site_future.set(True)
-    hidden_window.site_future_reach.delete(0, "end")
-    hidden_window.site_future_reach.insert(0, "80")
+    hidden_window.site_radius.delete(0, "end")
+    hidden_window.site_radius.insert(0, "80")
 
-    site = next(job for job in hidden_window.jobs() if job.args[0] == "site")
-    assert "--future" in site.args
-    assert flag(site.args, "--future-reach") == ["80"]
-    assert "--future-setback" not in site.args, "the raised buildings are not set back"
-    assert flag(site.args, "--model-radius") == ["500"], "the model's square is what it reads"
-    assert "--model" not in site.args
+    (model,) = [job for job in hidden_window.jobs() if job.label == window.SITE_MODEL_JOB]
+    assert "--future" in model.args and "--model" in model.args
+    assert flag(model.args, "--future-reach") == ["80"]
+    assert flag(model.args, "--model-radius") == ["80"], "the model's square is the same radius"
+    assert "--future-setback" not in model.args, "the raised buildings are not set back"
 
     hidden_window.do_site_future.set(False)
-    site = next(job for job in hidden_window.jobs() if job.args[0] == "site")
-    assert "--future" not in site.args
+    (model,) = [job for job in hidden_window.jobs() if job.label == window.SITE_MODEL_JOB]
+    assert "--future" not in model.args and "--future-reach" not in model.args
 
 
 def test_the_site_command_puts_its_sheets_on_the_chosen_master(hidden_window: Any) -> None:
     """Left off, the site run drew its worksheets and stopped at the first
-    sheet asking which master (23 October 2026)."""
-    hidden_window.do_site.set(True)
+    sheet asking which master (23 October 2026). Every panel's run gets it,
+    since each one may be the run that draws a sheet."""
+    for site_tick in (
+        hidden_window.do_site_context,
+        hidden_window.do_site_site,
+        hidden_window.do_site_model,
+        hidden_window.do_site_summary,
+    ):
+        site_tick.set(True)
     hidden_window.site_address.insert(0, "1 Test St, Kogarah NSW")
-    site = next(job for job in hidden_window.jobs() if job.args[0] == "site")
-    assert "--master-layout" not in site.args
+    runs = [job for job in hidden_window.jobs() if job.args[0] == "site"]
+    assert len(runs) == 4
+    assert not any("--master-layout" in job.args for job in runs)
 
     hidden_window.master.set("A1 Landscape Titleblock")
-    site = next(job for job in hidden_window.jobs() if job.args[0] == "site")
-    assert flag(site.args, "--master-layout") == ["A1 Landscape Titleblock"]
+    runs = [job for job in hidden_window.jobs() if job.args[0] == "site"]
+    assert [flag(job.args, "--master-layout") for job in runs] == [["A1 Landscape Titleblock"]] * 4
+
+
+#: The flags that say which of the site command's outputs a run makes.
+SITE_OUTPUTS = frozenset(
+    {"--context", "--no-context", "--site", "--no-site", "--summary", "--no-summary", "--model"}
+)
+
+
+def _site_panels_only(hidden_window: Any, *ticks: tk.BooleanVar) -> None:
+    """Every study off, then only these site panels on, at an address."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.site_address.insert(0, "1 Example Street")
+    for tick in ticks:
+        tick.set(True)
+
+
+def test_each_lit_panel_is_a_run_of_its_own_with_only_its_own_output_on(
+    hidden_window: Any,
+) -> None:
+    """The command places everything one run draws in one frame, so a panel
+    placed its own way is a run of its own (D157), and a run that drew the
+    others' outputs too would draw them in the wrong frame. The 3D context
+    goes first: the model has to line up with the building."""
+    _site_panels_only(
+        hidden_window,
+        hidden_window.do_site_summary,
+        hidden_window.do_site_site,
+        hidden_window.do_site_context,
+        hidden_window.do_site_model,
+    )
+
+    runs = hidden_window.jobs()
+
+    assert [job.label for job in runs] == [
+        window.SITE_MODEL_JOB,
+        window.SITE_CONTEXT_JOB,
+        window.SITE_SHEET_JOB,
+        window.SITE_CONTROLS_JOB,
+    ]
+    assert all(job.args[:2] == ["site", "1 Example Street"] for job in runs)
+    outputs = [[word for word in job.args if word in SITE_OUTPUTS] for job in runs]
+    assert outputs == [
+        ["--no-context", "--no-site", "--no-summary", "--model"],
+        ["--context", "--no-site", "--no-summary"],
+        ["--no-context", "--site", "--no-summary"],
+        ["--no-context", "--no-site", "--summary"],
+    ]
+    assert [sheet.job for sheet in hidden_window.planned() if sheet.paper] == [
+        window.SITE_CONTEXT_JOB,
+        window.SITE_SHEET_JOB,
+        window.SITE_CONTROLS_JOB,
+    ], "and each sheet is counted under the panel that makes it"
+
+
+def test_only_the_first_run_writes_the_project_location(hidden_window: Any) -> None:
+    """The project has one location and one north, and every run placed at
+    the origin would write its own (D157). So the first run writes it and
+    every later one is told to keep it -- it goes first so that a later panel
+    placed by the project's location finds the one it wrote. With Location
+    off, none writes it; the controls table places nothing, so never does."""
+    _site_panels_only(
+        hidden_window,
+        hidden_window.do_site_context,
+        hidden_window.do_site_site,
+        hidden_window.do_site_summary,
+    )
+    first, *later = hidden_window.jobs()
+    assert first.label == window.SITE_CONTEXT_JOB
+    assert "--keep-location" not in first.args
+    assert [("--keep-location" in job.args) for job in later] == [True, True]
+
+    hidden_window.do_site_model.set(True)
+    first, *later = hidden_window.jobs()
+    assert first.label == window.SITE_MODEL_JOB, "the model leads when it is on"
+    assert "--keep-location" not in first.args
+    assert all("--keep-location" in job.args for job in later)
+
+    hidden_window.do_site_location.set(False)
+    assert all("--keep-location" in job.args for job in hidden_window.jobs())
+
+    hidden_window.do_site_location.set(True)
+    for panel in (
+        hidden_window.do_site_context,
+        hidden_window.do_site_site,
+        hidden_window.do_site_model,
+    ):
+        panel.set(False)
+    (controls,) = hidden_window.jobs()
+    assert controls.label == window.SITE_CONTROLS_JOB
+    assert "--keep-location" in controls.args, "a table does not say where the project is"
+
+
+def test_each_panels_own_origin_and_north_reach_only_its_own_run(hidden_window: Any) -> None:
+    """Origin and north are one per panel, as asked (D157): a site sheet
+    turned to its long boundary beside a model on the project's north, and a
+    context sheet where the project's own location puts it."""
+    _site_panels_only(
+        hidden_window,
+        hidden_window.do_site_model,
+        hidden_window.do_site_context,
+        hidden_window.do_site_site,
+    )
+    hidden_window.site_context_origin.set("Project location")
+    hidden_window.site_context_north.set("Long boundary level")
+    hidden_window.site_sheet_origin.set("Bottom-left corner")
+    hidden_window.site_sheet_north.set("Long boundary level")
+    hidden_window.site_model_origin.set("Site centre")
+    hidden_window.site_model_north.set("To the project's north")
+
+    by_run = {job.label: job.args for job in hidden_window.jobs()}
+
+    context = by_run[window.SITE_CONTEXT_JOB]
+    assert flag(context, "--anchor") == ["location"]
+    assert "--origin-at" not in context and "--square-to-site" not in context, (
+        "the project already says where the site is and which way it faces"
+    )
+    site = by_run[window.SITE_SHEET_JOB]
+    assert flag(site, "--anchor") == ["site"]
+    assert flag(site, "--origin-at") == ["bottom-left"]
+    assert "--square-to-site" in site
+    model = by_run[window.SITE_MODEL_JOB]
+    assert flag(model, "--anchor") == ["site"]
+    assert "--origin-at" not in model, "the centre is the command's own default"
+    assert "--square-to-site" not in model
+
+
+def test_a_blank_radius_is_the_500_m_the_panel_shows_for_the_model_and_the_future(
+    hidden_window: Any,
+) -> None:
+    """Left to the command, a blank radius was a 500 m model and a 100 m reach,
+    where the sheets panel said 500 m for both."""
+    hidden_window.site_address.delete(0, "end")
+    hidden_window.site_address.insert(0, "1 Test St, Kogarah NSW")
+    hidden_window.do_site_model.set(True)
+    hidden_window.do_site_future.set(True)
+    hidden_window.site_radius.delete(0, "end")
+    (run,) = [job for job in hidden_window.jobs() if job.label == window.SITE_MODEL_JOB]
+    assert flag(run.args, "--model-radius") == ["500"]
+    assert flag(run.args, "--future-reach") == ["500"]
+
+
+def test_the_future_context_is_stood_by_the_3d_run_alone(hidden_window: Any) -> None:
+    """The slabs stand in the 3D context's frame. The site sheet's run draws
+    the same envelopes dashed in its own frame and stands nothing, or two
+    runs would stand the future twice in two places (D157). One radius
+    serves the model and the reach in both. And the future is the 3D
+    context's: with that panel off, no run works it out at all."""
+    _site_panels_only(
+        hidden_window,
+        hidden_window.do_site_model,
+        hidden_window.do_site_site,
+        hidden_window.do_site_future,
+    )
+    hidden_window.site_radius.delete(0, "end")
+    hidden_window.site_radius.insert(0, "250")
+
+    by_run = {job.label: job.args for job in hidden_window.jobs()}
+
+    model, site = by_run[window.SITE_MODEL_JOB], by_run[window.SITE_SHEET_JOB]
+    assert "--future" in model and "--no-future-slabs" not in model
+    assert "--future" in site and "--no-future-slabs" in site
+    assert flag(model, "--future-reach") == flag(site, "--future-reach") == ["250"]
+    assert flag(site, "--model-radius") == ["250"], "worked out over the model's own square"
+    assert "--model" not in site
+
+    hidden_window.do_site_model.set(False)
+    hidden_window.do_site_context.set(True)
+    runs = hidden_window.jobs()
+    assert [job.label for job in runs] == [window.SITE_CONTEXT_JOB, window.SITE_SHEET_JOB]
+    assert not any("--future" in job.args for job in runs)
+
+
+def test_the_site_sheets_own_scale_reaches_its_run_and_blank_fits_the_site(
+    hidden_window: Any,
+) -> None:
+    """The site sheet has a scale of its own now (D157), apart from the
+    context sheet's. Blank still leaves the run to fit the site, so nothing
+    is sent and the sheets panel says so."""
+    _site_panels_only(hidden_window, hidden_window.do_site_site)
+    (site,) = hidden_window.jobs()
+    assert "--site-scale" not in site.args
+    assert "--scale" not in site.args, "the context sheet's scale is the context run's"
+    assert [sheet.scale for sheet in hidden_window.planned()] == ["to fit"]
+
+    hidden_window.site_sheet_scale.insert(0, "500")
+    (site,) = hidden_window.jobs()
+    assert flag(site.args, "--site-scale") == ["500"]
+    assert "--scale" not in site.args
+    assert [sheet.scale for sheet in hidden_window.planned()] == ["1:500"]
+
+
+def test_run_asks_for_the_address_whichever_site_panel_is_on(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The master tick that used to guard this is gone, so each of the four
+    panels guards it: Controls alone, with no address, says so on Run rather
+    than starting nothing in silence."""
+    hidden_window.master.set("A4")  # so Run has no master to ask for
+    started: list[str] = []
+    monkeypatch.setattr(hidden_window, "_next", lambda: started.append("run"))
+    monkeypatch.setattr(hidden_window, "_start_log", lambda _studies: None)
+    for site_tick in (
+        hidden_window.do_site_context,
+        hidden_window.do_site_site,
+        hidden_window.do_site_model,
+        hidden_window.do_site_summary,
+    ):
+        for _name, tick, _where in hidden_window._studies():
+            tick.set(False)
+        site_tick.set(True)
+        hidden_window._start()
+        assert started == [], "nothing was run"
+        assert "no address" in hidden_window.lines[-1]
 
 
 def test_a_zone_layer_can_be_any_layer_the_project_has(hidden_window: Any) -> None:
@@ -3702,7 +3991,9 @@ def test_a_coarseness_nobody_offered_is_kept_rather_than_rounded(
         ("communal", "study_communal", window.Window.DIAGRAMS),
         ("shadow", "study_shadows", window.Window.SHADOWS),
         ("views", "study_sun_eyes", window.Window.EYE),
-        ("site", "study_site", window.Window.SITE),
+        # The site page's lead: the sidebar's switch and the palette button
+        # both turn on the Context Analysis (D157).
+        ("site", "site_context", window.Window.SITE),
     ],
 )
 def test_a_palette_button_ticks_its_study_and_opens_its_section(
@@ -3761,8 +4052,13 @@ def test_every_study_heads_a_box_that_says_what_its_tick_is_worth(hidden_window:
     """A page was a flat run of rows with a rule between the groups, which is
     what made it read as a form. Each study is a box now, headed by its own
     tick, and the header says what that tick costs in sheets -- the same
-    figure the panel down the side draws, said where the decision is made."""
-    assert set(hidden_window.study_boxes) == {name for name, _t, _w in hidden_window._studies()}
+    figure the panel down the side draws, said where the decision is made.
+    All but the Controls: one table and nothing to set, so it is a button in
+    the site page's Address panel rather than a box of its own (D157)."""
+    assert set(hidden_window.study_boxes) == {
+        name for name, _t, _w in hidden_window._studies() if name != window.SITE_CONTROLS_JOB
+    }
+    assert "Summary of Controls layout" in hidden_window.site_buttons
 
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
@@ -3818,7 +4114,12 @@ def test_a_site_sheet_is_not_at_an_hour_of_the_day(hidden_window: Any) -> None:
     not make."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
-    hidden_window.do_site.set(True)
+    for sheet_tick in (
+        hidden_window.do_site_context,
+        hidden_window.do_site_site,
+        hidden_window.do_site_summary,
+    ):
+        sheet_tick.set(True)
 
     sheets = hidden_window.planned()
 

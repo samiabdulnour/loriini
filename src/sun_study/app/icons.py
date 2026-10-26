@@ -392,16 +392,13 @@ BY_LABEL: dict[str, str] = {
     "Scale": "scale",
     # Site tools
     "Address": "address",
-    # The two rows of site outputs: the drawings, and what goes into the
-    # project itself.
-    "Project": "model",
-    "Context scale": "scale",
-    "Site lands at": "site",
-    "Model radius (m)": "radius",
-    "Future reach (m)": "radius",
+    # The site page: the outputs row of its first panel, and each output
+    # panel's placement and radius.
+    "Outputs": "sheets",
+    "Radius (m)": "radius",
     "Run folder": "run_folder",
-    "Origin at": "origin",
-    "Site turned": "site",
+    "Origin": "origin",
+    "North": "site",
     # Solar analysis, the plans the apartments are drawn on
     "Plans": "plans_both",
     "Shadow pen": "pen_set",

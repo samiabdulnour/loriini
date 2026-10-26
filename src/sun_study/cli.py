@@ -8896,6 +8896,17 @@ def site_analysis(
             help="Metres from the site's boundary a building is still its future context.",
         ),
     ] = future_context.DEFAULT_REACH_M,
+    future_slabs: Annotated[
+        bool,
+        typer.Option(
+            "--future-slabs/--no-future-slabs",
+            help=(
+                "With --future: stand the raised neighbours as slabs in the model. "
+                "--no-future-slabs draws them on the site sheet only, for a run "
+                "beside another that stands them in its own place."
+            ),
+        ),
+    ] = True,
     datum: Annotated[str, typer.Option("--datum", help=context_model.DATUM_HELP)] = "project",
     theme: Annotated[
         str,
@@ -9412,7 +9423,7 @@ def site_analysis(
             except ArchicadError as error:
                 typer.secho(f"  the model was not made: {error}", fg=typer.colors.RED, err=True)
 
-    if future and future_report is not None and model_bundle is not None:
+    if future and future_slabs and future_report is not None and model_bundle is not None:
         typer.echo("standing the future context in the model...")
         try:
             stood = future_context.model_future(

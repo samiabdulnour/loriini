@@ -1853,6 +1853,90 @@ def test_anchoring_the_site_at_the_origin_locates_the_project_by_default() -> No
     assert "at_origin" in inner, "the anchor does not locate the project by default: " + inner
 
 
+@pytest.mark.parametrize(
+    ("asked", "stood"),
+    [((), 1), (("--no-future-slabs",), 0)],
+    ids=["slabs", "no-slabs"],
+)
+def test_a_run_told_no_future_slabs_draws_the_envelopes_and_stands_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, asked: tuple[str, ...], stood: int
+) -> None:
+    """The window's site sheet run works the future context out to draw it
+    dashed, and leaves the slabs to the 3D context's run (D157): two runs
+    standing them would put the future in the model twice, in two frames.
+    --no-future-slabs is how it says so; without it the run stands them as
+    it always did. Run through the command, with the fetching, Archicad and
+    the drawing faked, since the branch sits after all three."""
+    from types import SimpleNamespace
+
+    from typer.testing import CliRunner
+
+    from sun_study import cli
+    from sun_study.archicad import future_context
+    from sun_study.archicad import site_analysis as sheets
+    from sun_study.site import pipeline
+
+    bundle = SimpleNamespace(
+        centre_lonlat=(151.13, -33.96), furniture=SimpleNamespace(buildings=("a neighbour",))
+    )
+    worked_out = SimpleNamespace(envelopes=("an envelope",), describe=lambda: "one envelope")
+    drawn: list[Any] = []
+    slabs: list[Any] = []
+
+    def draw_site(*_args: Any, future: Any, **_kwargs: Any) -> Any:
+        drawn.append(future)
+        return SimpleNamespace(describe=lambda: "drawn", notes=())
+
+    def model_future(*_args: Any, found: Any, **_kwargs: Any) -> Any:
+        slabs.append(found)
+        return SimpleNamespace(describe=lambda: "stood")
+
+    monkeypatch.setattr(cli, "_connect", lambda *a, **k: object())
+    monkeypatch.setattr(cli, "_say_which_worksheets_are_missing", lambda *a, **k: None)
+    monkeypatch.setattr(cli, "read_geo_location", lambda connection: KOGARAH)
+    monkeypatch.setattr(pipeline, "run_site", lambda *a, **k: bundle)
+    monkeypatch.setattr(pipeline, "run_model", lambda *a, **k: bundle)
+    monkeypatch.setattr(future_context, "future_envelopes", lambda *a, **k: worked_out)
+    monkeypatch.setattr(sheets, "draw_site", draw_site)
+    monkeypatch.setattr(future_context, "model_future", model_future)
+    # The command files its layers under the site's own prefix, which is
+    # process-wide: put back, or every later test names its layers "Site |".
+    before, context_before = naming.prefix(), naming.context_prefix()
+    try:
+        result = CliRunner().invoke(
+            cli.app,
+            [
+                "site",
+                "1 Test St, Kogarah NSW",
+                "--no-context",
+                "--site",
+                "--no-summary",
+                "--future",
+                *asked,
+                "--model-radius",
+                "250",
+                "--future-reach",
+                "250",
+                "--anchor",
+                "site",
+                "--origin-at",
+                "centre",
+                "--fit-layer",
+                "none",
+                "--keep-location",
+                "--out",
+                str(tmp_path),
+            ],
+        )
+    finally:
+        naming.set_prefix(before)
+        naming.set_context_prefix(context_before)
+
+    assert result.exit_code == 0, result.output
+    assert drawn == [("an envelope",)], "the envelopes reach the site sheet either way"
+    assert slabs == [worked_out] * stood, "and stood from the same envelopes, when asked"
+
+
 def test_locating_a_project_writes_the_grid_and_leaves_north_alone() -> None:
     """The survey point matters as much as the latitude: a project located by
     longitude alone georeferences to nothing an engineer can use. North is not

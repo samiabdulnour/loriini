@@ -127,6 +127,11 @@ ORIGIN_WORDS: dict[str, str] = {
     "Top-right corner": "top-right",
 }
 
+#: The first choice of a site panel's Origin: the site where the project's
+#: own location says it is (``--anchor location``). The others are
+#: ``ORIGIN_WORDS``, each a point of the site put at the project origin.
+PROJECT_LOCATION = "Project location"
+
 #: Whether the site is turned so its long boundary runs level; the first is
 #: the default.
 TURN_WORDS: dict[str, bool] = {
@@ -249,7 +254,14 @@ SHADOW_JOB = "shadow diagram"
 #: model too large for Loriini's own caster.
 SHADOW_PLAN_JOB = "shadow plans"
 SUN_EYE_JOB = "sun views"
-SITE_JOB = "site tools"
+#: The site analysis's four outputs, each a study of its own with its own
+#: panel and its own run (D157): the two sheets, the controls table, and
+#: the 3D context with its future.
+SITE_CONTEXT_JOB = "site analysis: context"
+SITE_SHEET_JOB = "site analysis: site"
+SITE_CONTROLS_JOB = "site analysis: controls"
+SITE_MODEL_JOB = "site analysis: 3D context"
+SITE_JOBS = (SITE_MODEL_JOB, SITE_CONTEXT_JOB, SITE_SHEET_JOB, SITE_CONTROLS_JOB)
 #: The yield analysis (roadmap R3): the office's feasibility sheet from the
 #: massing slabs, an option a sheet of its own.
 YIELD_JOB = "area and yield"
@@ -267,7 +279,10 @@ CHIPS: dict[str, tuple[str, str]] = {
     SHADOW_JOB: ("Shadow diagram", "shadow"),
     SHADOW_PLAN_JOB: ("Shadow plans", "shadow"),
     SUN_EYE_JOB: ("Sun views", "views"),
-    SITE_JOB: ("Site analysis", "site_analysis"),
+    SITE_CONTEXT_JOB: ("Context", "site_analysis"),
+    SITE_SHEET_JOB: ("Site", "site_analysis"),
+    SITE_CONTROLS_JOB: ("Controls", "subset"),
+    SITE_MODEL_JOB: ("3D context", "model"),
     YIELD_JOB: ("Yield", "yield"),
 }
 
@@ -3752,7 +3767,11 @@ class Window:
     #: The study a page's switch in the sidebar turns on, on a page that has
     #: more than one. The apartments are what Solar analysis is opened for,
     #: and the hourly diagram is what Shadow diagram is.
-    LEADS: ClassVar[dict[str, str]] = {DIAGRAMS: PLANS_JOB, SHADOWS: SHADOW_JOB}
+    LEADS: ClassVar[dict[str, str]] = {
+        DIAGRAMS: PLANS_JOB,
+        SHADOWS: SHADOW_JOB,
+        SITE: SITE_CONTEXT_JOB,
+    }
     #: How wide the sidebar is.
     SIDE_WIDTH = 236
     #: The project picker's width in characters: never narrower than this,
@@ -5325,52 +5344,43 @@ class Window:
         )
 
     def _site(self, frame: ttk.Frame) -> None:
-        """Site and context analysis from an address, drawn into worksheets.
+        """Site and context analysis from an address, in four panels (D157).
 
-        The one section that reads nothing off the project: its input is a
-        street address, and everything else comes from NSW open data. What it
-        offers is which of the three sheets to make and where the site lands
-        in the project frame; the scale of the context sheet is the only
-        number, because the site sheet chooses its own to fit the site.
+        The address and what the outputs share come first: where the data
+        comes from, the Summary of Controls, whether the project's location
+        is set, the drawn boundary and the run folder. Then a panel per
+        output, each with its own switch, as the solar analysis has one per
+        study: the Context Analysis sheet, the Site Analysis sheet and the 3D
+        context with its future. Each is placed and turned in its own panel,
+        and each is a run of its own (``_site_jobs``), so a sheet can be
+        turned to its long boundary while the model stays on the project's
+        north. Nothing here reads the project: everything after the address
+        comes from NSW open data.
         """
-        row = 0
-        self.do_site = tk.BooleanVar(value=False)
-        # The study's own box. Everything from here to the end of the block
-        # is built inside it, by the simple means of pointing ``frame`` at it:
-        # the rows beneath neither know nor care.
-        frame, row = self._panel(frame, row), 0
-        box = ttk.Checkbutton(
-            frame,
-            text="Site analysis",
-            variable=self.do_site,
-            command=self._sync,
-            style="Study.TCheckbutton",
-            **icons.study_options("Site analysis"),
-        )
-        self._head(frame, box, SITE_JOB)
-        Tooltip(
-            box,
-            "Fetches the neighbourhood from NSW open data -- and the City of "
-            "Sydney's, inside its area -- for the address below "
-            "and makes whichever of the outputs are lit: the Context "
-            "Analysis and Site Analysis sheets, the Summary of Controls on a "
-            "layout, and the Context Model in 3D. Needs the Loriini add-on "
-            "and an internet connection. NSW addresses only.",
-        )
-        row += 1
+        outer = frame
+        self.do_site_context = tk.BooleanVar(value=False)
+        self.do_site_site = tk.BooleanVar(value=False)
+        self.do_site_summary = tk.BooleanVar(value=False)
+        self.do_site_model = tk.BooleanVar(value=False)
+        self.do_site_future = tk.BooleanVar(value=False)
+        self.do_site_location = tk.BooleanVar(value=True)
+        self.site_buttons: dict[str, ttk.Button] = {}
+
+        # -- the address, and what every output shares -------------------------
+        frame, row = self._panel(outer, 0, title="Address"), 0
         self._caption(
             frame,
             row,
-            "Type the address, light the outputs, press Run. A few minutes: the "
-            "public data services are slow and are asked for everything at once.",
+            "Type the address, switch on the panels below, press Run. A few minutes: "
+            "the public data services are slow.",
         )
         row += 1
         # The only section drawn from data nobody here owns, so it is the only
-        # one that carries this. It opens the same box the About button at the top does,
-        # scrolled to the registers -- the question ("where did this line come
-        # from, and what do I have to put on the sheet") occurs on this page,
-        # and an answer two clicks away on another one is an answer nobody
-        # finds until a drawing has already gone out without its credit.
+        # one that carries this. It opens the same box the About button at the
+        # top does, scrolled to the registers -- the question ("where did this
+        # line come from, and what do I have to put on the sheet") occurs on
+        # this page, and an answer two clicks away on another one is an answer
+        # nobody finds until a drawing has already gone out without its credit.
         where_from = ttk.Button(
             frame,
             text="Where this data comes from",
@@ -5399,161 +5409,138 @@ class Window:
             "another suburb is refused rather than drawn. A unit number is "
             "taken as its building; a ranged number as every lot in the range.",
         )
-
-        self.do_site_context = tk.BooleanVar(value=True)
-        self.do_site_site = tk.BooleanVar(value=True)
-        self.do_site_summary = tk.BooleanVar(value=True)
-        self.do_site_model = tk.BooleanVar(value=False)
-        self.do_site_future = tk.BooleanVar(value=False)
-        self.do_site_location = tk.BooleanVar(value=True)
-        # The outputs are the point of the page, and six ticks with a
-        # sentence each read as the small print under the address. Two rows
-        # of buttons instead, worded in one or two words each, with the
-        # sentence in the tooltip where it costs no room: the sheets on one
-        # row, what is done to the project on the other.
-        self.site_buttons: dict[str, ttk.Button] = {}
-        for label, hint, outputs in (
-            (
-                "Sheets",
-                "Which of the three drawings to make. Lit is made.",
-                (
-                    (
-                        self.do_site_context,
-                        "Context",
-                        "Context Analysis sheet",
-                        "Land use wash by LEP zone, schools and hospitals coloured by what "
-                        "they are, heritage items, rail, bus stops and routes, stations, "
-                        "5 and 10 minute walking catchments, place and street names, "
-                        "and the site -- the DA 003 sheet, at the scale below.",
-                    ),
-                    (
-                        self.do_site_site,
-                        "Site",
-                        "Site Analysis sheet",
-                        "The boundary with its dimensions and corner levels, the fall, "
-                        "contours -- the City of Sydney's 1 m ones where its area "
-                        "covers the sheet, the state's 2 m ones elsewhere -- neighbours "
-                        "with storeys and zone, trees drawn the size of their canopy "
-                        "(as the council's inventory records it, inside the City of "
-                        "Sydney), poles, hydrants, driveways, kerbside parking, one-way "
-                        "streets, noise sources, sun path and prevailing winds -- the "
-                        "DA 004 sheet, at whichever of 1:200 to 1:750 fits the site.",
-                    ),
-                    (
-                        self.do_site_summary,
-                        "Controls",
-                        "Summary of Controls layout",
-                        "The planning-controls table, drawn straight onto a layout of "
-                        "its own: zone, height of building, FSR and the gross floor area "
-                        "it allows, minimum lot size, heritage, and the ADG figures "
-                        "worked out for this site area. Council DCP rows are ruled up "
-                        "empty; they are not open data.",
-                    ),
-                ),
-            ),
-            (
-                "Project",
-                "What is put into the project itself, beyond the sheets. Lit is done.",
-                (
-                    (
-                        self.do_site_future,
-                        "Future context",
-                        "Future Context (what the controls allow next door)",
-                        "Each existing building near the site, on land zoned for flats, "
-                        "kept on its own footprint and raised to the storeys the LEP's "
-                        "height control allows where it stands -- never lowered, so one "
-                        "already over its control is left as it is. Drawn dashed in "
-                        "magenta on the Site Analysis sheet with its storeys written "
-                        "in, and stood as slabs on 'Site Context.Future buildings' -- a "
-                        "layer of its own, so a shadow diagram can be cast with the "
-                        "neighbours as they are or as they could be. The control is the "
-                        "LEP's: the register carries it, and a council's DCP is not "
-                        "open data.",
-                    ),
-                    (
-                        self.do_site_model,
-                        "3D context",
-                        "Context Model in 3D (terrain, blocks, neighbours)",
-                        "The terrain as one mesh from the contours -- the City of "
-                        "Sydney's 1 m ones inside its area, the state's 2 m outside, "
-                        "every one kept near the site and fewer towards the edge -- "
-                        "every street block as a kerbed mesh with the roads left "
-                        "between, and one slab per neighbouring building as tall as "
-                        "its storeys say -- or as the LEP height control allows, and "
-                        "said to be assumed. Three "
-                        "layers in the site group, one per kind -- 'Site "
-                        "Context.Terrain', '.Roads' and '.Buildings' -- so a view can "
-                        "show any of them without the others. The site's own buildings "
-                        "are left out.",
-                    ),
-                    (
-                        self.do_site_location,
-                        "Location",
-                        "Set the project location from the address",
-                        "Puts Options > Project Location at the site's centre, with the "
-                        "survey point on the MGA2020 grid, so the sun studies and the "
-                        "IFC exports know where the project is. Only when the site is "
-                        "placed at the project origin, and only if the location is still "
-                        "a city preset; north is kept as it is.",
-                    ),
-                ),
-            ),
-        ):
-            name = ttk.Label(frame, text=label, anchor="e")
-            name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
-            buttons = Toggles(frame, on_change=self._sync)
-            buttons.grid(row=row, column=1, sticky="w", pady=(6, 0))
-            self.toggle_rows.append(buttons)
-            Tooltip(name, hint, title=label)
-            for variable, short, full, detail in outputs:
-                # The button wears the drawing its long label always had.
-                button = buttons.add(variable, short, icons.BY_OUTPUT[short])
-                Tooltip(button, detail, title=full)
-                self.site_buttons[full] = button
-            row += 1
-        self.site_ticks = [
-            self.do_site_context,
-            self.do_site_site,
-            self.do_site_summary,
-            self.do_site_future,
-            self.do_site_model,
-            self.do_site_location,
-        ]
-
-        self.site_scale, row = self._entry(
+        row = self._site_toggles(
             frame,
             row,
-            "Context scale",
-            "3000",
-            "Denominator of the context sheet's scale. 1:3000 on the office's A1 sheets.",
-            "Sets how much neighbourhood is fetched: the A1 map field at this "
-            "scale, centred on the site. 1:2000 for a tight urban site, 1:4000 "
-            "where the station is a long way off. The site sheet ignores this "
-            "and picks the scale its boundary fits at.",
+            "Outputs",
+            "The controls table, and whether the project is told where it is. Lit is done.",
+            (
+                (
+                    self.do_site_summary,
+                    "Controls",
+                    "Summary of Controls layout",
+                    "The planning-controls table, drawn straight onto a layout of "
+                    "its own: zone, height of building, FSR and the gross floor area "
+                    "it allows, minimum lot size, heritage, and the ADG figures "
+                    "worked out for this site area. Council DCP rows are ruled up "
+                    "empty; they are not open data.",
+                ),
+                (
+                    self.do_site_location,
+                    "Location",
+                    "Set the project location from the address",
+                    "Puts Options > Project Location at the site, with the survey "
+                    "point on the MGA2020 grid, so the sun studies know where the "
+                    "project is -- and, where a panel turns its output to the long "
+                    "boundary, the project's north to match. Done once, by the "
+                    "first panel that runs: the 3D context when it is on, the "
+                    "Context Analysis otherwise, then the Site Analysis. The other "
+                    "panels keep the location that one leaves. Only when that "
+                    "panel places the site at the project origin, or the location "
+                    "is still a city preset.",
+                ),
+            ),
+        )
+        self.site_fit, row = self._combo(
+            frame,
+            row,
+            "Drawn boundary",
+            "Whether the outputs sit on a site boundary drawn in the file.",
+            "A layer whose name mentions a boundary is looked for in the file. "
+            "'Fit the context to it' turns and moves the fetched site onto what "
+            "is drawn there, so every output lines up with the survey the model "
+            "was drawn on -- and takes that drawing's place and turn over each "
+            "panel's origin and north. 'Ignore it' places each output as its "
+            "panel says: the choice when the layer holds a survey placed north "
+            "up in a project whose north is turned.",
+        )
+        self.site_fit.configure(values=list(FIT_WORDS), state="readonly")
+        self.site_fit.set(next(iter(FIT_WORDS)))
+        self.site_out, row = self._folder_row(
+            frame,
+            row,
+            "Run folder",
+            f"Where what was fetched is saved. Blank is {SITE_RUNS_FOLDER}.",
+            "Every run writes the data it fetched as JSON here, and the aerial "
+            "photo under the sheets as JPEG tiles with world files. A saved "
+            "run can be redrawn without the internet: "
+            "sun-study site --from <this folder>.",
+        )
+
+        # -- the Context Analysis sheet -----------------------------------------
+        frame, row = self._site_panel(
+            outer,
+            1,
+            self.do_site_context,
+            "Context Analysis",
+            SITE_CONTEXT_JOB,
+            "Land use, transport, walking catchments and names around the site.",
+            "Land use wash by LEP zone, schools and hospitals coloured by what "
+            "they are, heritage items, rail, bus stops and routes, stations, "
+            "5 and 10 minute walking catchments, place and street names, the "
+            "neighbours' footprints on the paper styles, and the site -- the DA "
+            "003 sheet, at the scale below.",
+        )
+        self.site_context_origin, self.site_context_north, row = self._site_placement(
+            frame, row, "the context sheet"
         )
         # The house style each sheet is drawn in: site-analyst.com's four, and
-        # only those (D152). Two rows, because the two sheets take different
-        # styles -- a context sheet on paper beside a site sheet on the
-        # photograph is how the office's packages have it.
+        # only those (D152), a row in each sheet's panel -- a context sheet on
+        # paper beside a site sheet on the photograph is how the office's
+        # packages have it.
         self.site_theme, row = self._combo(
             frame,
             row,
-            "Context style",
+            "Style",
             "The context sheet's style, one of site-analyst.com's four. Flamingo by default.",
             "Flamingo sits on plain paper: four tints with textures, every "
-            "street white, green street names. Kingfisher is the masterplan "
-            "palette, pale zone grounds and a white cadastre. Heron is the "
-            "office sheet over a grey aerial, white lots and lettering. Canary "
-            "is Heron with the zoning in the NSW ePlanning colours, keyed by "
-            "zone code. All four are site-analyst.com's, named as it names them; "
-            "the link under these rows opens it.",
+            "street white, the buildings white, green street names. Kingfisher "
+            "is the masterplan palette, pale zone grounds, a white cadastre and "
+            "white buildings. Heron is the office sheet over a grey aerial, "
+            "white lots and lettering. Canary is Heron with the zoning in the "
+            "NSW ePlanning colours, keyed by zone code. All four are "
+            "site-analyst.com's, named as it names them; the link under this "
+            "row opens it.",
         )
         self.site_theme.configure(values=list(CONTEXT_STYLES), state="readonly")
         self.site_theme.set(site_theme.theme(site_theme.DEFAULT_THEME).label)
+        row = self._styles_link(frame, row)
+        self.site_scale, row = self._entry(
+            frame,
+            row,
+            "Scale",
+            "3000",
+            "Denominator of the context sheet's scale. 1:3000 by default.",
+            "Sets how much neighbourhood is fetched: the A1 map field at this "
+            "scale, centred on the site. 1:2000 for a tight urban site, 1:4000 "
+            "where the station is a long way off.",
+        )
+
+        # -- the Site Analysis sheet --------------------------------------------
+        frame, row = self._site_panel(
+            outer,
+            2,
+            self.do_site_site,
+            "Site Analysis",
+            SITE_SHEET_JOB,
+            "The boundary, levels, neighbours, trees, sun path and winds.",
+            "The boundary with its dimensions and corner levels, the fall, "
+            "contours -- the City of Sydney's 1 m ones where its area covers the "
+            "sheet, the state's 2 m ones elsewhere -- neighbours with storeys "
+            "and zone, trees drawn the size of their canopy (as the council's "
+            "inventory records it, inside the City of Sydney), poles, hydrants, "
+            "driveways, kerbside parking, one-way streets, noise sources, sun "
+            "path and prevailing winds -- the DA 004 sheet. With the future "
+            "context on in the 3D context panel, the raised neighbours are drawn "
+            "on it dashed, with their storeys.",
+        )
+        self.site_sheet_origin, self.site_sheet_north, row = self._site_placement(
+            frame, row, "the site sheet"
+        )
         self.site_site_theme, row = self._combo(
             frame,
             row,
-            "Site style",
+            "Style",
             "The site sheet's style, one of site-analyst.com's four. Heron by default.",
             "Heron is the grey aerial with the zones hatched in its palette, the "
             "site in its red, the sun as an open crown and the winds as "
@@ -5562,81 +5549,77 @@ class Window:
             "blue ones. Flamingo is on paper with the office's drawn suns and "
             "winds. Canary is the office's classic sheet: one black circle for "
             "the sun and the winds, the zones in the ePlanning colours. All four "
-            "are site-analyst.com's; the link under these rows opens it.",
+            "are site-analyst.com's; the link under this row opens it.",
         )
         self.site_site_theme.configure(values=list(SITE_STYLES), state="readonly")
         self.site_site_theme.set(site_theme.site_theme(site_theme.DEFAULT_SITE_THEME).label)
-        # Where the styles come from, as a link: a name in a picker is a word
-        # until somebody has seen the sheets it stands for, and the site that
-        # names them shows them (D152).
-        styles_home = ttk.Label(
-            frame, text="The four styles at site-analyst.com", style="Link.TLabel", cursor="hand2"
-        )
-        styles_home.grid(row=row, column=1, sticky="w", pady=(4, 2))
-        styles_home.bind("<Button-1>", lambda _event: self._styles_home())
-        Tooltip(
-            styles_home,
-            "Opens site-analyst.com in the browser: the site the four styles "
-            "come from, named as it names them, with each one shown on a sheet.",
-            title="site-analyst.com",
-        )
-        row += 1
-        self.site_anchor, row = self._tiles(
+        row = self._styles_link(frame, row)
+        self.site_sheet_scale, row = self._entry(
             frame,
             row,
-            "Site lands at",
-            "Where the site goes in the project's frame.",
-            "'Project location' trusts Options > Project Preferences > Project "
-            "Location: the site is placed where the project's own georeferencing "
-            "says it is, turned to the project's north, so it lines up with a "
-            "model that is already there. 'Project origin' puts the site's centre "
-            "at (0, 0) -- for a project that has nothing in it yet, or whose "
-            "location is still the Sydney preset.",
+            "Scale",
+            "",
+            "Denominator of the site sheet's scale. Blank fits the site.",
+            "Blank, the run picks whichever of 1:200 to 1:750 the boundary fits "
+            "the A1 map field at. A number holds the sheet at that scale "
+            "whatever the site's size: 500 for a set of sheets that should all "
+            "read alike.",
         )
-        self.site_anchor.set("Project location")
-        # Where on the site the origin goes, and whether the site is turned
-        # to run level: both only mean something when the site is placed at
-        # the project origin, since with the project location the project
-        # already says where the site is and which way it faces.
-        self.site_origin, row = self._combo(
+
+        # -- the 3D context -----------------------------------------------------
+        frame, row = self._site_panel(
+            outer,
+            3,
+            self.do_site_model,
+            "3D context",
+            SITE_MODEL_JOB,
+            "Terrain, street blocks and the neighbours, as a model.",
+            "The terrain as one mesh from the contours -- the City of Sydney's "
+            "1 m ones inside its area, the state's 2 m outside, every one kept "
+            "near the site and fewer towards the edge -- every street block as a "
+            "kerbed mesh with the roads left between, and one slab per "
+            "neighbouring building as tall as its storeys say -- or as the LEP "
+            "height control allows, and said to be assumed. Three layers in the "
+            "site group, one per kind -- 'Site Context.Terrain', '.Roads' and "
+            "'.Buildings' -- so a view can show any of them without the others. "
+            "The site's own buildings are left out.",
+        )
+        row = self._site_toggles(
             frame,
             row,
-            "Origin at",
-            "Which point of the site is the project origin. Only with 'Project origin'.",
-            "'Site centre' is the address's centroid. A corner puts the project "
-            "origin on that corner of the site, as the plan reads it after any "
-            "turn -- the way a model is usually set out, from a corner of the "
-            "lot rather than from the middle of it.",
+            "Future",
+            "What the controls allow next door, stood in the model beside it.",
+            (
+                (
+                    self.do_site_future,
+                    "Future context",
+                    "Future Context (what the controls allow next door)",
+                    "Each existing building within the radius below, on land zoned "
+                    "for flats, kept on its own footprint and raised to the storeys "
+                    "the LEP's height control allows where it stands -- never "
+                    "lowered, so one already over its control is left as it is. "
+                    "Stood as slabs on 'Site Context.Future buildings' -- a layer of "
+                    "its own, so a shadow diagram can be cast with the neighbours as "
+                    "they are or as they could be -- and drawn dashed on the Site "
+                    "Analysis sheet when that panel is on. The control is the LEP's: "
+                    "the register carries it, and a council's DCP is not open data.",
+                ),
+            ),
         )
-        self.site_origin.configure(values=list(ORIGIN_WORDS), state="readonly")
-        self.site_origin.set(next(iter(ORIGIN_WORDS)))
-        self.site_turn, row = self._combo(
+        self.site_model_origin, self.site_model_north, row = self._site_placement(
+            frame, row, "the model"
+        )
+        self.site_radius, row = self._entry(
             frame,
             row,
-            "Site turned",
-            "Whether the site is turned so its long boundary runs level. With 'Project origin'.",
-            "'To the project's north' keeps the project's north angle, north up "
-            "on a project that has none. 'Long boundary level' turns the site so "
-            "its longest boundary runs across the plan, and writes the project's "
-            "north to match, so the sun studies stay right.",
+            "Radius (m)",
+            "500",
+            "How far round the site the model reaches, and the future context with it.",
+            "A square of this half-width around the site is fetched for the model: "
+            "the contours, every building footprint and the height controls. The "
+            "future context reaches as far from the site's boundary. 500 m is a "
+            "neighbourhood; the fetch and the slabs both grow with the square of it.",
         )
-        self.site_turn.configure(values=list(TURN_WORDS), state="readonly")
-        self.site_turn.set(next(iter(TURN_WORDS)))
-        self.site_fit, row = self._combo(
-            frame,
-            row,
-            "Drawn boundary",
-            "Whether the context sits on a site boundary drawn in the file.",
-            "A layer whose name mentions a boundary is looked for in the file. "
-            "'Fit the context to it' turns and moves the fetched site onto what "
-            "is drawn there, so the context lines up with the survey the model "
-            "was drawn on -- and takes that drawing's turn over the project's "
-            "north. 'Ignore it' places the context by the project's location and "
-            "north alone: the choice when the layer holds a survey placed north "
-            "up in a project whose north is turned.",
-        )
-        self.site_fit.configure(values=list(FIT_WORDS), state="readonly")
-        self.site_fit.set(next(iter(FIT_WORDS)))
         self.site_levels, row = self._combo(
             frame,
             row,
@@ -5652,38 +5635,106 @@ class Window:
         )
         self.site_levels.configure(values=list(LEVEL_WORDS))
         self.site_levels.set(next(iter(LEVEL_WORDS)))
-        self.site_radius, row = self._entry(
+
+    def _site_panel(
+        self,
+        outer: ttk.Frame,
+        at: int,
+        tick: tk.BooleanVar,
+        name: str,
+        job: str,
+        caption: str,
+        detail: str,
+    ) -> tuple[ttk.Frame, int]:
+        """One of the site page's output panels, headed by its own switch."""
+        frame, row = self._panel(outer, at), 0
+        box = ttk.Checkbutton(
+            frame,
+            text=name,
+            variable=tick,
+            command=self._sync,
+            style="Study.TCheckbutton",
+            **icons.study_options("Site analysis"),
+        )
+        self._head(frame, box, job)
+        Tooltip(box, detail)
+        row += 1
+        self._caption(frame, row, caption)
+        return frame, row + 1
+
+    def _site_toggles(
+        self,
+        frame: ttk.Frame,
+        row: int,
+        label: str,
+        hint: str,
+        outputs: Sequence[tuple[tk.BooleanVar, str, str, str]],
+    ) -> int:
+        """A row of lit-or-not buttons, each with its sentence in the tooltip."""
+        name = ttk.Label(frame, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
+        buttons = Toggles(frame, on_change=self._sync)
+        buttons.grid(row=row, column=1, sticky="w", pady=(6, 0))
+        self.toggle_rows.append(buttons)
+        Tooltip(name, hint, title=label)
+        for variable, short, full, detail in outputs:
+            # The button wears the drawing its long label always had.
+            button = buttons.add(variable, short, icons.BY_OUTPUT[short])
+            Tooltip(button, detail, title=full)
+            self.site_buttons[full] = button
+        return row + 1
+
+    def _site_placement(
+        self, frame: ttk.Frame, row: int, what: str
+    ) -> tuple[ttk.Combobox, ttk.Combobox, int]:
+        """A panel's origin and north: where its output lands, which way up."""
+        origin, row = self._combo(
             frame,
             row,
-            "Model radius (m)",
-            "500",
-            "How far each way around the site the 3D model reaches. Blank: the site sheet's.",
-            "A square of this half-width around the site is fetched for the model: "
-            "the contours, every building footprint and the height controls. "
-            "500 m is a neighbourhood; the fetch and the slabs both grow with the "
-            "square of it.",
+            "Origin",
+            f"Where {what} lands: the project's location, or a point of the site at the origin.",
+            "'Project location' trusts Options > Project Preferences > Project "
+            "Location: the site is placed where the project's own georeferencing "
+            "says it is, so it lines up with a model already there. The others put "
+            "that point of the site at the project origin (0, 0) -- the centre, or "
+            "a corner as the plan reads it after any turn, the way a model is "
+            "usually set out -- for a project with nothing in it yet, or one "
+            "still on the Sydney preset.",
         )
-        self.site_future_reach, row = self._entry(
+        origin.configure(values=[PROJECT_LOCATION, *ORIGIN_WORDS], state="readonly")
+        origin.set(PROJECT_LOCATION)
+        north, row = self._combo(
             frame,
             row,
-            "Future reach (m)",
-            "100",
-            "How far from the site's boundary a building is still its future context.",
-            "The buildings across the street and the two lots behind are what "
-            "cast a shadow on the site or take one from it; a hundred metres is "
-            "those. They are read from the model's square, so the reach cannot "
-            "exceed the model radius.",
+            "North",
+            f"Which way {what} faces. Turning applies with a point at the origin.",
+            "'To the project's north' keeps the project's north angle, north up "
+            "on a project that has none. 'Long boundary level' turns the site so "
+            "its longest boundary runs across the plan; the panel that sets the "
+            "project location writes the project's north to match, so the sun "
+            "studies stay right. With 'Project location' the project already says "
+            "which way the site faces, and this is not applied.",
         )
-        self.site_out, row = self._folder_row(
-            frame,
-            row,
-            "Run folder",
-            f"Where what was fetched is saved. Blank is {SITE_RUNS_FOLDER}.",
-            "Every run writes the data it fetched as JSON here, and the aerial "
-            "photo under the sheets as JPEG tiles with world files. A saved "
-            "run can be redrawn without the internet: "
-            "sun-study site --from <this folder>.",
+        north.configure(values=list(TURN_WORDS), state="readonly")
+        north.set(next(iter(TURN_WORDS)))
+        return origin, north, row
+
+    def _styles_link(self, frame: ttk.Frame, row: int) -> int:
+        """Where the styles come from, as a link under a style row (D152): a
+        name in a picker is a word until somebody has seen the sheets it
+        stands for, and the site that names them shows them."""
+        styles_home = ttk.Label(
+            frame, text="The four styles at site-analyst.com", style="Link.TLabel", cursor="hand2"
         )
+        styles_home.grid(row=row, column=1, sticky="w", pady=(4, 2))
+        styles_home.bind("<Button-1>", lambda _event: self._styles_home())
+        Tooltip(
+            styles_home,
+            "Opens site-analyst.com in the browser: the site the four styles "
+            "come from, named as it names them, with each one shown on a sheet.",
+            title="site-analyst.com",
+        )
+        return row + 1
 
     def _yield(self, frame: ttk.Frame) -> None:
         """The yield analysis: the office's feasibility sheet from the massing.
@@ -6947,7 +6998,10 @@ class Window:
             (SHADOW_JOB, self.do_shadows, self.SHADOWS),
             (SHADOW_PLAN_JOB, self.do_shadow_plans, self.SHADOWS),
             (SUN_EYE_JOB, self.do_sun_eyes, self.EYE),
-            (SITE_JOB, self.do_site, self.SITE),
+            (SITE_CONTEXT_JOB, self.do_site_context, self.SITE),
+            (SITE_SHEET_JOB, self.do_site_site, self.SITE),
+            (SITE_MODEL_JOB, self.do_site_model, self.SITE),
+            (SITE_CONTROLS_JOB, self.do_site_summary, self.SITE),
             (YIELD_JOB, self.do_yield, self.YIELD),
         ]
 
@@ -7047,7 +7101,7 @@ class Window:
             "shadow": (self.do_shadows, self.SHADOWS),
             "shadow plans": (self.do_shadow_plans, self.SHADOWS),
             "views": (self.do_sun_eyes, self.EYE),
-            "site": (self.do_site, self.SITE),
+            "site": (self.do_site_context, self.SITE),
         }
         found = wanted.get(asked)
         if found is None:
@@ -7112,9 +7166,14 @@ class Window:
                 self._was_on[name] = on
                 made = sum(1 for sheet in sheets if sheet.job == name and sheet.paper)
                 models = sum(1 for sheet in sheets if sheet.job == name and not sheet.paper)
-                worth = f"{made} sheet" + ("" if made == 1 else "s")
+                # A panel that makes only models -- the 3D context -- says
+                # so, rather than "0 sheets" in front of them.
+                parts: list[str] = []
+                if made or not models:
+                    parts.append(f"{made} sheet" + ("" if made == 1 else "s"))
                 if models:
-                    worth += f", {models} model" + ("" if models == 1 else "s")
+                    parts.append(f"{models} model" + ("" if models == 1 else "s"))
+                worth = ", ".join(parts)
                 says.configure(
                     text=worth if on else "off",
                     style="PanelSays.TLabel" if on else "PanelSaysOff.TLabel",
@@ -7308,14 +7367,17 @@ class Window:
             "site_scale": self.site_scale,
             "site_theme": self.site_theme,
             "site_site_theme": self.site_site_theme,
-            "site_anchor": self.site_anchor,
-            "site_origin": self.site_origin,
-            "site_turn": self.site_turn,
+            "site_context_origin": self.site_context_origin,
+            "site_context_north": self.site_context_north,
+            "site_sheet_origin": self.site_sheet_origin,
+            "site_sheet_north": self.site_sheet_north,
+            "site_sheet_scale": self.site_sheet_scale,
+            "site_model_origin": self.site_model_origin,
+            "site_model_north": self.site_model_north,
             "site_fit": self.site_fit,
             "site_levels": self.site_levels,
             "site_out": self.site_out,
             "site_radius": self.site_radius,
-            "site_future_reach": self.site_future_reach,
             "adg_subset": self.adg_subset,
             "layer_prefix": self.prefix_solar,
             "shadow_layer_prefix": self.prefix_shadow,
@@ -7366,7 +7428,6 @@ class Window:
             "shadow_all_hours": self.do_shadow_all_hours,
             "study_shadow_plans": self.do_shadow_plans,
             "study_sun_eyes": self.do_sun_eyes,
-            "study_site": self.do_site,
             "site_context": self.do_site_context,
             "site_site": self.do_site_site,
             "site_summary": self.do_site_summary,
@@ -7695,8 +7756,12 @@ class Window:
         # the site goes on its origin, at a corner of the lot. A located one
         # keeps whatever the page says.
         if not found.located:
-            self.site_anchor.set("Project origin")
-            self.site_origin.set("Bottom-left corner")
+            for origin in (
+                self.site_context_origin,
+                self.site_sheet_origin,
+                self.site_model_origin,
+            ):
+                origin.set("Bottom-left corner")
         # The project's lists, and no names picked out of them by an office's
         # words (D156): a blank is the person's to fill, and the commands
         # treat a blank as "none" -- the sheets at the root of the book, the
@@ -8433,26 +8498,26 @@ class Window:
         eye_scale = f"1:{self.eye_scale.get().strip() or '500'}"
         plan_scale, communal_scale, shadow_scale = "1:200", "1:300", "1:1000"
 
-        if SITE_JOB in queued:
-            # Not at an hour of any day: these are drawn from the address.
-            # The context sheet is at the scale the tab says; the site sheet
-            # is fitted to the site from a list of scales the run chooses
-            # from, which nothing here can know; the summary is a table.
-            for which, on, scale in (
-                ("Context Analysis", self.do_site_context.get(), context_scale),
-                ("Site Analysis", self.do_site_site.get(), "to fit"),
-                ("Summary of Controls", self.do_site_summary.get(), ""),
-            ):
-                if on:
-                    deal(SITE_JOB, "Site analysis", "site", "ST", which, "", [""], scale=scale)
+        # Not at an hour of any day: these are drawn from the address. The
+        # context sheet is at the scale its panel says; the site sheet at its
+        # own, or fitted to the site from a list of scales the run chooses
+        # from, which nothing here can know; the summary is a table.
+        sheet_scale = self.site_sheet_scale.get().strip()
+        for job, which, scale in (
+            (SITE_CONTEXT_JOB, "Context Analysis", context_scale),
+            (SITE_SHEET_JOB, "Site Analysis", f"1:{sheet_scale}" if sheet_scale else "to fit"),
+            (SITE_CONTROLS_JOB, "Summary of Controls", ""),
+        ):
+            if job in queued:
+                deal(job, "Site analysis", "site", "ST", which, "", [""], scale=scale)
+        if SITE_MODEL_JOB in queued:
             # The models are not sheets and are not numbered as sheets: they
             # are geometry on their own layers, and the panel draws them as
-            # that. The radius and the reach are the fields the run reads.
+            # that. One radius, which the future context reaches too.
             radius = self.site_radius.get().strip() or "500"
-            reach = self.site_future_reach.get().strip() or "100"
             for kind, on, extent in (
-                (CONTEXT_MODEL, self.do_site_model.get(), f"{radius} m"),
-                (FUTURE_MODEL, self.do_site_future.get(), f"{reach} m reach"),
+                (CONTEXT_MODEL, True, f"{radius} m"),
+                (FUTURE_MODEL, self.do_site_future.get(), f"{radius} m reach"),
             ):
                 if on:
                     made.append(
@@ -8463,7 +8528,7 @@ class Window:
                             kind=kind,
                             day=extent,
                             drawings=(Drawing(kind=kind, day="", time=""),),
-                            job=SITE_JOB,
+                            job=SITE_MODEL_JOB,
                             paper=False,
                         )
                     )
@@ -9166,63 +9231,112 @@ class Window:
                     )
                 )
 
-        if self.do_site.get() and self.site_address.get().strip():
-            args = [
-                "site",
-                self.site_address.get().strip(),
-                *common,
-                *self._prefix_flag(self.prefix_site),
-                *self._flag("--context-prefix", self.prefix_context),
-            ]
-            args += ["--context" if self.do_site_context.get() else "--no-context"]
-            args += ["--site" if self.do_site_site.get() else "--no-site"]
-            args += ["--summary" if self.do_site_summary.get() else "--no-summary"]
-            if self.do_site_model.get():
-                args += ["--model"]
-                if self.site_radius.get().strip():
-                    args += ["--model-radius", self.site_radius.get().strip()]
-            if self.do_site_future.get():
-                args += ["--future"]
-                if not self.do_site_model.get() and self.site_radius.get().strip():
-                    args += ["--model-radius", self.site_radius.get().strip()]
-                if self.site_future_reach.get().strip():
-                    args += ["--future-reach", self.site_future_reach.get().strip()]
-            if not self.do_site_location.get():
-                args += ["--keep-location"]
-            if self.site_scale.get().strip():
-                args += ["--scale", self.site_scale.get().strip()]
-            context_style = _style_id(self.site_theme.get(), site=False)
-            if context_style not in ("", site_theme.DEFAULT_THEME):
-                args += ["--theme", context_style]
-            site_style = _style_id(self.site_site_theme.get(), site=True)
-            if site_style not in ("", site_theme.DEFAULT_SITE_THEME):
-                args += ["--site-theme", site_style]
-            # The combobox says it in words; the command takes a keyword.
-            at_origin = "origin" in self.site_anchor.get().lower()
-            args += ["--anchor", "site" if at_origin else "location"]
-            if at_origin:
-                corner = ORIGIN_WORDS.get(self.site_origin.get(), "centre")
-                if corner != "centre":
-                    args += ["--origin-at", corner]
-                if TURN_WORDS.get(self.site_turn.get(), False):
-                    args += ["--square-to-site"]
-            if FIT_WORDS.get(self.site_fit.get(), "auto") != "auto":
-                args += ["--fit-layer", FIT_WORDS[self.site_fit.get()]]
-            levels = self.site_levels.get().strip()
-            datum = LEVEL_WORDS.get(levels, levels.removesuffix("m").strip())
-            if datum and datum != "project":
-                args += ["--datum", datum]
-            if self.site_out.get().strip():
-                args += ["--out", self.site_out.get().strip()]
-            # Its sheets go on the master the others' do. Without it the
-            # command, having nobody to ask, stops at the first sheet.
-            if self.master.get():
-                args += ["--master-layout", self.master.get()]
-            made.append(Job(SITE_JOB, args))
+        made += self._site_jobs(common)
 
         if self.do_yield.get():
             made.append(Job(YIELD_JOB, self._yield_args(common)))
 
+        return made
+
+    def _site_jobs(self, common: list[str]) -> list[Job]:
+        """The site page's runs: one per lit panel, each placed as it says.
+
+        Each panel is a run of its own (D157), so each can put its output at
+        its own origin and turn it its own way. The project has one location
+        and one north, though, so only one run may write them: the first,
+        which is the 3D context when it is on -- the model has to line up
+        with the building -- then the Context Analysis, then the Site
+        Analysis. It runs first so that a later panel placed by the
+        project's location finds the one it wrote; every other run is told
+        ``--keep-location``. The future slabs are stood by the 3D context's
+        run alone: the site sheet's draws their outlines and leaves the model
+        to it (``--no-future-slabs``).
+        """
+        address = self.site_address.get().strip()
+        if not address:
+            return []
+        shared = [
+            "site",
+            address,
+            *common,
+            *self._prefix_flag(self.prefix_site),
+            *self._flag("--context-prefix", self.prefix_context),
+        ]
+        if FIT_WORDS.get(self.site_fit.get(), "auto") != "auto":
+            shared += ["--fit-layer", FIT_WORDS[self.site_fit.get()]]
+        if self.site_out.get().strip():
+            shared += ["--out", self.site_out.get().strip()]
+        # Its sheets go on the master the others' do. Without it the
+        # command, having nobody to ask, stops at the first sheet.
+        if self.master.get():
+            shared += ["--master-layout", self.master.get()]
+
+        def only(output: str) -> list[str]:
+            """The one sheet this run makes, and the others switched off."""
+            return [
+                f"--{name}" if name == output else f"--no-{name}"
+                for name in ("context", "site", "summary")
+            ]
+
+        def placed(origin: ttk.Combobox, north: ttk.Combobox) -> list[str]:
+            """The combobox says it in words; the command takes keywords."""
+            corner = ORIGIN_WORDS.get(origin.get())
+            if corner is None:
+                return ["--anchor", "location"]
+            args = ["--anchor", "site"]
+            if corner != "centre":
+                args += ["--origin-at", corner]
+            if TURN_WORDS.get(north.get(), False):
+                args += ["--square-to-site"]
+            return args
+
+        # Blank is the 500 m the sheets panel shows, sent rather than left to
+        # the command: its own defaults are a 500 m model and a 100 m reach,
+        # and one radius is what the panel promises for both.
+        radius = self.site_radius.get().strip() or "500"
+        reach = ["--model-radius", radius, "--future-reach", radius]
+        future = self.do_site_model.get() and self.do_site_future.get()
+        runs: list[tuple[str, list[str]]] = []
+        if self.do_site_model.get():
+            args = [*only(""), "--model", "--model-radius", radius]
+            if future:
+                args += ["--future", "--future-reach", radius]
+            levels = self.site_levels.get().strip()
+            datum = LEVEL_WORDS.get(levels, levels.removesuffix("m").strip())
+            if datum and datum != "project":
+                args += ["--datum", datum]
+            runs.append(
+                (SITE_MODEL_JOB, args + placed(self.site_model_origin, self.site_model_north))
+            )
+        if self.do_site_context.get():
+            args = only("context")
+            if self.site_scale.get().strip():
+                args += ["--scale", self.site_scale.get().strip()]
+            style = _style_id(self.site_theme.get(), site=False)
+            if style not in ("", site_theme.DEFAULT_THEME):
+                args += ["--theme", style]
+            runs.append(
+                (SITE_CONTEXT_JOB, args + placed(self.site_context_origin, self.site_context_north))
+            )
+        if self.do_site_site.get():
+            args = only("site")
+            if self.site_sheet_scale.get().strip():
+                args += ["--site-scale", self.site_sheet_scale.get().strip()]
+            style = _style_id(self.site_site_theme.get(), site=True)
+            if style not in ("", site_theme.DEFAULT_SITE_THEME):
+                args += ["--site-theme", style]
+            if future:
+                args += ["--future", "--no-future-slabs", *reach]
+            runs.append(
+                (SITE_SHEET_JOB, args + placed(self.site_sheet_origin, self.site_sheet_north))
+            )
+        if self.do_site_summary.get():
+            runs.append((SITE_CONTROLS_JOB, only("summary")))
+
+        made: list[Job] = []
+        for index, (job, args) in enumerate(runs):
+            sets = index == 0 and job != SITE_CONTROLS_JOB and self.do_site_location.get()
+            made.append(Job(job, [*shared, *args, *([] if sets else ["--keep-location"])]))
         return made
 
     def _yield_args(self, common: list[str]) -> list[str]:
@@ -9309,7 +9423,16 @@ class Window:
         if self.options.tapir_missing:
             self._write("The Loriini add-on is not installed in this Archicad.")
             return
-        if self.do_site.get() and not self.site_address.get().strip():
+        site_on = any(
+            tick.get()
+            for tick in (
+                self.do_site_context,
+                self.do_site_site,
+                self.do_site_model,
+                self.do_site_summary,
+            )
+        )
+        if site_on and not self.site_address.get().strip():
             self._write("Site analysis is ticked but has no address. Type one in its section.")
             return
         if any(tick.get() for _name, tick, _section in self._studies()) and not self._have_master():
