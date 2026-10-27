@@ -159,8 +159,8 @@ def test_the_tools_are_listed_with_what_they_take(client: Client) -> None:
         "loriini_help",
         "run_loriini",
         "site_analysis",
-        "shadow_diagrams",
-        "shadow_plans",
+        "shadow_diagram",
+        "shadow_every_hour",
         "sun_views",
         "cos_solar",
     }
@@ -179,7 +179,16 @@ def test_the_tools_are_listed_with_what_they_take(client: Client) -> None:
     assert site["additionalProperties"] is False, "a misspelled option is refused, not ignored"
     assert "port" in site["properties"] and "model_radius_m" in site["properties"]
     assert listed["project_options"]["annotations"]["readOnlyHint"] is True
-    assert listed["shadow_diagrams"]["annotations"]["readOnlyHint"] is False
+    assert listed["shadow_every_hour"]["annotations"]["readOnlyHint"] is False
+    # The documents are the shadow diagram (D144, D160), and the combination
+    # they show is the person's answer, as cos_solar's is.
+    diagram = listed["shadow_diagram"]
+    assert diagram["title"] == "Shadow diagram"
+    assert diagram["inputSchema"]["required"] == ["layer_combination"]
+    assert (
+        "Ask the person" in diagram["inputSchema"]["properties"]["layer_combination"]["description"]
+    )
+    assert "only for that drawing" in listed["shadow_every_hour"]["description"].casefold()
 
 
 def test_what_is_not_a_request_is_answered_as_such(client: Client) -> None:
@@ -415,7 +424,9 @@ def test_the_site_tool_can_set_the_origin_on_a_corner_and_square_the_site() -> N
     assert "--square-to-site" not in tools.site_argv(tools.SiteArguments(address="1 Test St"))
 
 
-def test_the_shadow_diagrams_take_their_rows_days_and_hours() -> None:
+def test_the_every_hour_drawing_takes_its_rows_days_and_hours() -> None:
+    """The fills, for the design's every hour on one drawing and nothing
+    else (D160): never a fill per hour, which the documents draw."""
     argv = tools.shadow_argv(
         tools.ShadowArguments(
             dates=["winter", "equinox", "03-21"],
@@ -424,7 +435,8 @@ def test_the_shadow_diagrams_take_their_rows_days_and_hours() -> None:
             scenarios={"PROPOSED": ["20 | Massing", "21 | Massing.Roof"]},
             terrain_layers=["03 | Site Context.Terrain"],
             storey=0,
-            all_hours=True,
+            colour="blue",
+            grid_m="0.25",
             sheets="two",
             year=2025,
         )
@@ -447,7 +459,13 @@ def test_the_shadow_diagrams_take_their_rows_days_and_hours() -> None:
         "03 | Site Context.Terrain",
         "--export",
         "native",
-        "--shadow-all-hours",
+        "--shadow-all-hours-only",
+        "--draw",
+        "--sheet",
+        "--shadow-grid",
+        "0.25",
+        "--shadow-all-hours-colour",
+        "blue",
         "--shadow-date",
         "06-21,09-21,03-21",
         "--shadow-hour",
@@ -459,12 +477,27 @@ def test_the_shadow_diagrams_take_their_rows_days_and_hours() -> None:
         "--sheets",
         "two",
     ]
+    design = {"PROPOSED": ["20 | Massing"]}
     with pytest.raises(protocol.InvalidArgumentsError, match="not a day"):
-        tools.shadow_argv(tools.ShadowArguments(dates=["someday"]))
+        tools.shadow_argv(tools.ShadowArguments(dates=["someday"], scenarios=design))
     with pytest.raises(protocol.InvalidArgumentsError, match="legend row"):
         tools.shadow_argv(tools.ShadowArguments(sources={"A=B": ["x"]}))
     with pytest.raises(protocol.InvalidArgumentsError, match="names no layers"):
         tools.shadow_argv(tools.ShadowArguments(scenarios={"PROPOSED": []}))
+
+
+def test_the_every_hour_drawing_is_refused_without_a_design() -> None:
+    """With nothing to outline the command would draw a fill per hour -- the
+    diagram the documents draw -- so the tool refuses before anything runs.
+    A source named PROPOSED is the design as well, as the command reads it."""
+    stands = {"EXISTING": ["03 | Site Context.Buildings"]}
+    with pytest.raises(protocol.InvalidArgumentsError, match="needs the design"):
+        tools.shadow_argv(tools.ShadowArguments(sources=stands))
+    argv = tools.shadow_argv(
+        tools.ShadowArguments(sources={**stands, "PROPOSED": ["20 | Massing"]})
+    )
+    assert "--shadow-all-hours-only" in argv
+    assert "--shadow-all-hours-colour" not in argv, "the command's red unless asked"
 
 
 def test_the_sun_views_name_a_day_only_when_it_is_not_the_rulesets_own() -> None:
@@ -495,8 +528,8 @@ def test_the_sun_views_name_a_day_only_when_it_is_not_the_rulesets_own() -> None
     ]
 
 
-def test_the_shadow_plans_take_the_diagrams_days_and_hours() -> None:
-    """Roadmap R1: the same instants as documents, with the set named."""
+def test_the_shadow_diagram_takes_its_days_and_hours() -> None:
+    """Roadmap R1: the instants as documents, with the set named."""
     argv = tools.shadow_plans_argv(
         tools.ShadowPlanArguments(
             dates=["winter", "12-21"],
@@ -515,11 +548,12 @@ def test_the_shadow_plans_take_the_diagrams_days_and_hours() -> None:
     assert "--pen-set" not in argv, "left to the command when not given"
 
 
-def test_the_stacked_shadow_plans_name_the_layers_of_what_stands_and_each_proposal() -> None:
+def test_the_stacked_shadow_diagram_names_the_layers_of_what_stands_and_each_proposal() -> None:
     """One --existing per layer, one --proposed per proposal with its layers
     comma separated, and the pens in order; nothing of it without proposals."""
     argv = tools.shadow_plans_argv(
         tools.ShadowPlanArguments(
+            layer_combination="04 | Shadow Diagrams",
             existing=["03 | Site Context.Buildings"],
             proposals=[["20 | Massing.SEARs"], ["20 | Massing.Envelope", "20 | Massing.Podium"]],
             existing_pen=93,
@@ -531,7 +565,9 @@ def test_the_stacked_shadow_plans_name_the_layers_of_what_stands_and_each_propos
     assert proposed == ["20 | Massing.SEARs", "20 | Massing.Envelope,20 | Massing.Podium"]
     assert argv[argv.index("--existing-pen") + 1] == "93"
     assert [argv[i + 1] for i, word in enumerate(argv) if word == "--proposed-pen"] == ["94", "95"]
-    plain = tools.shadow_plans_argv(tools.ShadowPlanArguments())
+    plain = tools.shadow_plans_argv(
+        tools.ShadowPlanArguments(layer_combination="04 | Shadow Diagrams")
+    )
     assert not {"--existing", "--proposed", "--existing-pen", "--proposed-pen"} & set(plain)
 
 

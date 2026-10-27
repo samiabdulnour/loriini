@@ -6358,3 +6358,110 @@ are dropped, so that floor takes commercial's.
 
 *What this does not change:* the residential figures, the mix, the
 parking per unit, or how a slab is measured.
+
+### D160 — The window's Shadow diagram is the 3D Documents; the fills are its every-hour panel
+
+Asked 27 October 2026, of the window's Shadow diagram page: *"The main route
+is to do shadows via 3d doc, and the separate path is to import fills into
+drawings!"*, and with a screenshot of the page's first panel -- the legend
+rows, the ground, the hours, the every-hour tick, the storey and the subset:
+*"all this should be done by 3d docs, and the small window should be done.
+yeah rebuild"*.
+
+**Why the page was still the other way.** D144 settled the two routes on 25
+October, but in the command line and the drawing code only. The window kept
+the arrangement it was given in September (D123) and carried through the
+Option A redesign (D131): the fills were the page's study, *Shadow diagram*,
+the switch the sidebar and the palette's Shadow button turned on, a fill per
+hour per legend row; the documents were a second panel, *Shadow plans*,
+described as the same hours drawn a second way and the route for a model too
+large for the caster; and the every-hour drawing was a tick that ran beside
+the fills' per-hour diagram, never on its own.
+
+**Decided.** Under the days, one panel both drawings read, then a small
+panel for each, under its own switch. Asked of the first build: *"where do i
+select the massing layer? there should be one genereal, where i select hours
+and layers. and then 2 small options if i go for shadow diagram or every
+hour on one drawing"*.
+
+- **Layers and hours**, set up rather than switched on: the legend rows --
+  the Proposed row is the design's massing -- the hours, and the sheets'
+  subset.
+- **Shadow diagram** is the documents (`shadow-plans`): the layer
+  combination, the pen set, and the set name and shadow pen for a set
+  without the legend. It is the study the sidebar's switch and the
+  palette's Shadow button turn on.
+- **Every hour on one drawing** is the fills (`shadows
+  --shadow-all-hours-only`) and nothing else: the design's massing at every
+  hour, imported as fills into one drawing, a sheet per day fitted to its
+  shadows. It says which row it draws and its layers -- *Proposed: 20 |
+  Massing.Envelope* -- so the massing is found where it is chosen, and asks
+  for its own the three things only Loriini's caster uses -- the ground it
+  lands on, the ground to ignore below, the storey the fills are drawn on --
+  and its colour, red or blue (D147), which the window had not offered.
+
+The fills' per-hour diagram is no longer in the window; the command line
+keeps it.
+
+**Asked before anything runs.** Run asks for the documents' layer
+combination when it is blank (D156), and for the design when the every-hour
+drawing is on and no row being compared has layers. Without a design the
+command used to say so and draw a fill per hour instead -- the diagram the
+documents draw now -- so `--shadow-all-hours-only` without one now stops
+before the cast, with nothing drawn.
+
+**Drawn.** The first build's every-hour run, 27 October, exported the
+model, cast the seven hours, printed their areas and drew nothing: the
+window's fills job had never sent `--draw` and `--sheet`, without which
+`shadows` only measures, and the agent's tool was written the same way. Both
+send them now.
+
+**Older presets.** A preset saved before this has the documents as
+`study_shadow_plans`, and the every-hour tick as `shadow_all_hours`, which
+only ran beside the fills: both are read as the switches they are now. Its
+`study_shadows` asked for the shadow diagram, and turns on the documents. The
+palette's `shadow plans` turns on the documents too.
+
+**The agent too.** Asked the same day, *"update the agent"*: its tools had
+the routes the same way round as the window, `shadow_diagrams` the fills and
+`shadow_plans` the documents, offered for a model too large for the fills.
+They are `shadow_diagram`, the documents, whose layer combination is now
+required and asked of the person as `cos_solar`'s are (D156 left the
+command no default, and the tool still said it had one); and
+`shadow_every_hour`, the fills, which runs `--shadow-all-hours-only` with a
+colour, red or blue, and is refused without a design. The instructions a
+client is shown on connecting say which is which.
+
+*What this does not change:* the documents, the stack, its fit, its pen set
+and its legend (D141 to D143), the every-hour drawing itself (D144, D145,
+D147, D149), or the `shadows` command's other modes.
+
+### D161 — The every-hour drawing's edges are found, its hours are written at the tips, and its grid is chosen
+
+Asked 27 October 2026, of the first every-hour drawing the window drew:
+*"why are some of the times missing. also add option og shadow quality - same
+as we have in sun studies"*.
+
+**The hours.** None was missing from the project: its every-hour layer held
+seven texts. Each was put on the vertex of its hour's outline farthest from
+the middle of all of them, and the long 9 and 3 o'clock shadows pull that
+middle well to the south, so for the short midday hours the farthest vertex
+was the far side of the building, and their labels sat on it rather than on
+the shadows they name. Each instant now records which way its shadows run --
+the sun's horizontal direction turned round, in the model's frame, turned
+into the project's as the rings are -- and the label goes at the vertices
+farthest along it, in the middle of them where the far end is an edge.
+
+**The edges.** The regions have been traced to the true shadow edge since
+D79; the every-hour outlines, added later, were still traced along the cells,
+and came out as a staircase at every hour the sun was not square to the
+grid. They are traced as the regions are, against the design alone, with the
+cell path behind them.
+
+**The grid.** The every-hour panel offers the four steps every solar grid
+offers -- Rough 1 m, Normal 0.5, Detailed 0.25, Finest 0.1 -- sent as
+`--shadow-grid`, Normal to start with where the command's own is 1 m. The
+agent's `shadow_every_hour` takes the same as `grid_m`.
+
+*What this does not change:* the documents, the fills' colours (D147), or the
+sheet's fit (D149).

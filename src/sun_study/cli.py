@@ -7348,6 +7348,16 @@ def _shadow_report(
         scene.orientation.normalised_bearing_deg,
     )
     designed = designed_source([source.spec for source in scene.sources])
+    if only_all_hours and designed is None:
+        # Drawing the hours without it would be a fill per hour, which is
+        # the diagram the 3D Documents draw now, not what was asked (D160).
+        typer.secho(
+            "  --shadow-all-hours-only needs a design to outline: name a PROPOSED row "
+            "or a --shadow-scenario. Nothing drawn.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
     if shadow_all_hours and designed is None:
         typer.secho(
             "  --shadow-all-hours needs a design to outline: name a PROPOSED row or a "

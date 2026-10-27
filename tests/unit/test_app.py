@@ -506,6 +506,7 @@ def test_see_through_glass_goes_to_all_three_solar_studies_and_no_other(
     for tick in (hidden_window.do_facade, hidden_window.do_plans, hidden_window.do_communal):
         tick.set(True)
     hidden_window.do_shadows.set(True)
+    hidden_window.do_shadow_hours.set(True)
 
     assert not any("--see-through-glass" in job.args for job in hidden_window.jobs())
 
@@ -513,6 +514,7 @@ def test_see_through_glass_goes_to_all_three_solar_studies_and_no_other(
     sent = {job.args[0]: flag(job.args, "--see-through-glass") for job in hidden_window.jobs()}
     assert sent["massing"] == ["30"]
     assert sent["archicad-run"] == ["30"]
+    assert sent["shadow-plans"] == []
     assert sent["shadows"] == []
     assert (
         sum(flag(job.args, "--see-through-glass") == ["30"] for job in hidden_window.jobs()) == 3
@@ -3003,10 +3005,11 @@ def test_a_chosen_band_becomes_the_two_storey_flags(hidden_window: Any) -> None:
 
 def test_the_shadow_study_sends_one_flag_per_legend_row_by_layer(hidden_window: Any) -> None:
     """Layers out of the open project, one legend row each, and the native
-    model rather than an IFC or a folder of published views (D113)."""
+    model rather than an IFC or a folder of published views (D113). The
+    every-hour drawing, which Loriini casts, takes the ground as well."""
     rows = {short: box for short, _role, box in hidden_window.shadow_rows}
     hidden_window.do_facade.set(False)
-    hidden_window.do_shadows.set(True)
+    hidden_window.do_shadow_hours.set(True)
     rows["EXISTING"].insert(0, "01 | Wall.External, 01 | Floor.Structural")
     rows["PROPOSED"].insert(0, "06 | Zone.Units")
     hidden_window.terrain_layers.insert(0, "05 | Dims/Notes.DA")
@@ -3030,7 +3033,7 @@ def test_every_study_that_exports_asks_for_the_native_model(hidden_window: Any) 
     hidden_window.do_facade.set(True)
     hidden_window.do_plans.set(True)
     hidden_window.do_communal.set(True)
-    hidden_window.do_shadows.set(True)
+    hidden_window.do_shadow_hours.set(True)
 
     exporting = [job for job in hidden_window.jobs() if job.args[0] != "site"]
 
@@ -3040,15 +3043,32 @@ def test_every_study_that_exports_asks_for_the_native_model(hidden_window: Any) 
 
 
 def test_every_hour_on_one_drawing_is_asked_for_only_when_ticked(hidden_window: Any) -> None:
+    """The shadow diagram is the documents; the fills run only for the
+    every-hour drawing, and then for nothing else (D144, D160)."""
     hidden_window.do_facade.set(False)
     hidden_window.do_shadows.set(True)
     (job,) = hidden_window.jobs()
-    assert "--shadow-all-hours" not in job.args
+    assert job.label == window.SHADOW_JOB
+    assert job.args[0] == "shadow-plans"
 
-    hidden_window.do_shadow_all_hours.set(True)
-    (job,) = hidden_window.jobs()
-    assert "--shadow-all-hours" in job.args
-    assert hidden_window.settings()["shadow_all_hours"] is True
+    hidden_window.do_shadow_hours.set(True)
+    (_documents, job) = hidden_window.jobs()
+    assert job.label == window.SHADOW_HOURS_JOB
+    assert job.args[0] == "shadows"
+    assert "--shadow-all-hours-only" in job.args
+    # Drawn and sheeted: without these the command measures and draws nothing,
+    # which is what the window's fills job had always sent it.
+    assert "--draw" in job.args and "--sheet" in job.args
+    assert flag(job.args, "--shadow-all-hours-colour") == ["red"]
+    # The sun studies' four grid steps, Normal to start with (D161).
+    assert flag(job.args, "--shadow-grid") == ["0.5"]
+    hidden_window.shadow_grid.set("0.1")
+    assert flag(hidden_window.jobs()[1].args, "--shadow-grid") == ["0.1"]
+    assert hidden_window.settings()["shadow_grid"] == "0.1"
+    assert hidden_window.settings()["study_shadow_hours"] is True
+
+    hidden_window.shadow_hours_colour.set("blue")
+    assert flag(hidden_window.jobs()[1].args, "--shadow-all-hours-colour") == ["blue"]
 
 
 def test_the_legend_rows_are_the_legends_own_in_its_order(hidden_window: Any) -> None:
@@ -3074,7 +3094,7 @@ def test_the_adg_envelope_is_compared_like_the_proposal_and_drawn_under_it(
 
     hidden_window.do_shadows.set(True)
     rows["ADG ENVELOPE"][1].insert(0, "01 | Floor.Structural")
-    job = next(job for job in hidden_window.jobs() if job.args[0] == "shadows")
+    job = next(job for job in hidden_window.jobs() if job.args[0] == "shadow-plans")
 
     assert flag(job.args, "--shadow-scenario") == ["ADG ENVELOPE=01 | Floor.Structural"]
 
@@ -3093,7 +3113,7 @@ def test_the_shadow_study_sends_only_what_was_filled_in(hidden_window: Any) -> N
     it is a Favorite with no name, and the run fails on it several minutes in.
     """
     hidden_window.do_facade.set(False)
-    hidden_window.do_shadows.set(True)
+    hidden_window.do_shadow_hours.set(True)
 
     (job,) = hidden_window.jobs()
 
@@ -3110,11 +3130,13 @@ def test_the_shadow_study_runs_after_the_others(hidden_window: Any) -> None:
     hidden_window.do_plans.set(True)
     hidden_window.do_communal.set(True)
     hidden_window.do_shadows.set(True)
+    hidden_window.do_shadow_hours.set(True)
 
     assert [job.args[0] for job in hidden_window.jobs()] == [
         "massing",
         "archicad-run",
         "massing",
+        "shadow-plans",
         "shadows",
     ]
 
@@ -3395,7 +3417,7 @@ def test_the_shadow_storey_is_picked_by_name_and_sent_by_index(hidden_window: An
     assert list(hidden_window.shadow_storey["values"]) == ["AHD", "GROUND", "LEVEL 01"]
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
-    hidden_window.do_shadows.set(True)
+    hidden_window.do_shadow_hours.set(True)
 
     hidden_window.shadow_storey.set("GROUND")
     assert flag(hidden_window.jobs()[0].args, "--shadow-storey") == ["6"]
@@ -3966,7 +3988,7 @@ def test_open_and_queued_are_two_marks_and_never_the_same_one(hidden_window: Any
     assert switch.cget("style") == "SwitchOpen.TCheckbutton" and lit.get() is True
 
     hidden_window.do_shadows.set(False)
-    hidden_window.do_shadow_plans.set(False)
+    hidden_window.do_shadow_hours.set(False)
     hidden_window._sync()
     assert row.cget("style") == "SideRowOpen.TFrame", "open but not queued"
     assert lit.get() is False
@@ -4133,8 +4155,14 @@ def test_a_study_s_rows_are_inside_its_own_box(hidden_window: Any) -> None:
         return False
 
     shadow_box, _ = hidden_window.study_boxes[window.SHADOW_JOB]
+    every_hour_box, _ = hidden_window.study_boxes[window.SHADOW_HOURS_JOB]
     plans_box, _ = hidden_window.study_boxes[window.PLANS_JOB]
-    assert inside(hidden_window.shadow_hours, shadow_box)
+    assert inside(hidden_window.shadow_plan_combination, shadow_box)
+    assert inside(hidden_window.terrain_layers, every_hour_box)
+    # The legend rows and the hours are both drawings', in a panel of their
+    # own above the two switches (D160).
+    for shared in (hidden_window.shadow_hours, hidden_window.shadow_rows[0][2]):
+        assert not inside(shared, shadow_box) and not inside(shared, every_hour_box)
     assert inside(hidden_window.instants, plans_box)
     assert not inside(hidden_window.instants, shadow_box)
     assert not inside(hidden_window.adg_subset, plans_box), "and the page's own rows stay out"
@@ -4494,17 +4522,17 @@ def test_a_run_is_kept_in_a_log_file_and_the_link_opens_it(
     assert opened == [path]
 
 
-# -- shadow plans as 3D Documents (roadmap R1) ------------------------------
+# -- the shadow diagram as 3D Documents (roadmap R1, D144) ------------------
 
 
-def test_the_shadow_plans_draw_the_diagrams_days_and_hours_as_documents(
+def test_the_shadow_diagram_draws_its_days_and_hours_as_documents(
     hidden_window: Any,
 ) -> None:
-    """The same instants, a second way: the diagram's own days and hours go
-    with it, what was filled in is sent, and a blank is left to the command."""
+    """The page's own days and hours go with it, what was filled in is sent,
+    and a blank is left to the command."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
-    hidden_window.do_shadow_plans.set(True)
+    hidden_window.do_shadows.set(True)
     for name, lit in hidden_window.shadow_day_ticks.items():
         lit.set(name in ("winter", "summer"))
     hidden_window.shadow_plan_label.insert(0, "Proposed")
@@ -4520,7 +4548,7 @@ def test_the_shadow_plans_draw_the_diagrams_days_and_hours_as_documents(
 
     (job,) = hidden_window.jobs()
 
-    assert job.label == window.SHADOW_PLAN_JOB
+    assert job.label == window.SHADOW_JOB
     assert job.args[:3] == ["shadow-plans", "--timezone", "Australia/Sydney"]
     assert flag(job.args, "--shadow-date") == ["06-21,12-21"]
     assert flag(job.args, "--shadow-hour") == [hidden_window.shadow_hours.get().strip()]
@@ -4530,24 +4558,25 @@ def test_the_shadow_plans_draw_the_diagrams_days_and_hours_as_documents(
     assert "--pen-set" not in job.args, "a blank keeps each view's own"
 
     sheets = hidden_window.planned()
-    assert {sheet.study for sheet in sheets} == {"Shadow plans"}
+    assert {sheet.study for sheet in sheets} == {"Shadow diagram"}
     assert {sheet.day for sheet in sheets} == {"21 Jun", "21 Dec"}
+    assert {sheet.scale for sheet in sheets} == {"1:1000"}, "a plain set is at 1:1000"
 
     saved = hidden_window.settings()
-    assert saved["study_shadow_plans"] is True
+    assert saved["study_shadows"] is True
     assert saved["shadow_plan_label"] == "Proposed"
 
 
-def test_run_asks_for_the_shadow_plans_combination_rather_than_guessing_one(
+def test_run_asks_for_the_shadow_diagrams_combination_rather_than_guessing_one(
     hidden_window: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """There is no office combination to fall back on (D156), and the plans
-    are pinned to the one given. Blank, Run says so and starts nothing -- in
-    the window, where somebody can pick one, not several steps into the
-    command. Picked, the same press goes ahead."""
+    """There is no office combination to fall back on (D156), and the
+    documents are pinned to the one given. Blank, Run says so and starts
+    nothing -- in the window, where somebody can pick one, not several steps
+    into the command. Picked, the same press goes ahead."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
-    hidden_window.do_shadow_plans.set(True)
+    hidden_window.do_shadows.set(True)
     hidden_window.master.set("A4")  # so Run has no master to ask for
     started: list[str] = []
     monkeypatch.setattr(hidden_window, "_next", lambda: started.append("run"))
@@ -4556,23 +4585,23 @@ def test_run_asks_for_the_shadow_plans_combination_rather_than_guessing_one(
     hidden_window._start()
 
     assert started == [], "nothing was run"
-    assert "Shadow plans need a layer combination" in hidden_window.lines[-1]
+    assert "The shadow diagram needs a layer combination" in hidden_window.lines[-1]
 
     hidden_window.shadow_plan_combination.set("01 | Plans - DA")
     hidden_window._start()
     assert started == ["run"]
 
 
-def test_the_shadow_plans_take_the_diagrams_legend_rows_and_stack_them(
+def test_the_shadow_diagram_stacks_its_legend_rows(
     hidden_window: Any,
 ) -> None:
-    """One legend for both routes (D142): the rows filled on the Shadow
-    diagram page go to the plans as sources and scenarios, which turns on the
-    stacked mode, and the set name and shadow pen, which are for a plain set,
-    are not sent with them."""
+    """The rows filled on the Shadow diagram page go to the documents as
+    sources and scenarios, which turns on the stacked mode (D142), and the
+    set name and shadow pen, which are for a plain set, are not sent with
+    them. A stack is fitted to the whole site, not set at 1:1000 (D143)."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
-    hidden_window.do_shadow_plans.set(True)
+    hidden_window.do_shadows.set(True)
     hidden_window.shadow_plan_label.insert(0, "Proposed")
     hidden_window.shadow_plan_pen.insert(0, "3")
     rows = {short: (role, box) for short, role, box in hidden_window.shadow_rows}
@@ -4588,6 +4617,129 @@ def test_the_shadow_plans_take_the_diagrams_legend_rows_and_stack_them(
         f"{scenario}=20 | Massing.Envelope,20 | Massing.Podium"
     ]
     assert "--label" not in job.args and "--shadow-pen" not in job.args
+    assert {sheet.scale for sheet in hidden_window.planned()} == {"to fit"}
+
+
+def test_the_every_hour_drawing_is_one_sheet_a_day_from_the_same_legend(
+    hidden_window: Any,
+) -> None:
+    """Loriini's fills, kept for the design's every hour on one drawing
+    (D144): the legend's rows say what the design is and what it lands on,
+    the ground and the storey are its own, and a day is one sheet fitted to
+    its shadows, not a sheet per hour."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadow_hours.set(True)
+    for name, lit in hidden_window.shadow_day_ticks.items():
+        lit.set(name in ("winter", "summer"))
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+    rows["EXISTING"].insert(0, "03 | Site Context.Buildings")
+    rows["PROPOSED"].insert(0, "20 | Massing.Envelope")
+    hidden_window.terrain_layers.insert(0, "03 | Site Context.Terrain")
+
+    (job,) = hidden_window.jobs()
+
+    assert job.label == window.SHADOW_HOURS_JOB
+    assert job.args[0] == "shadows"
+    assert "--shadow-all-hours-only" in job.args
+    assert flag(job.args, "--shadow-source") == ["EXISTING=03 | Site Context.Buildings"]
+    assert flag(job.args, "--shadow-scenario") == ["PROPOSED=20 | Massing.Envelope"]
+    assert flag(job.args, "--shadow-terrain") == ["03 | Site Context.Terrain"]
+    assert flag(job.args, "--shadow-date") == ["06-21,12-21"]
+    assert "--layer-combination" not in job.args, "the documents' combination is theirs"
+
+    sheets = hidden_window.planned()
+    assert [(sheet.study, sheet.day, sheet.scale) for sheet in sheets] == [
+        ("Every hour", "21 Jun", "to fit"),
+        ("Every hour", "21 Dec", "to fit"),
+    ]
+
+
+def test_run_asks_for_the_design_before_the_every_hour_drawing(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no row being compared there is no design to outline, and the
+    command would draw a fill per hour instead -- the diagram the documents
+    draw. So Run says so and starts nothing; a row being compared, Proposed
+    or another, is enough."""
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadow_hours.set(True)
+    hidden_window.master.set("A4")  # so Run has no master to ask for
+    started: list[str] = []
+    monkeypatch.setattr(hidden_window, "_next", lambda: started.append("run"))
+    monkeypatch.setattr(hidden_window, "_start_log", lambda _studies: None)
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+    rows["EXISTING"].insert(0, "03 | Site Context.Buildings")
+
+    hidden_window._start()
+
+    assert started == [], "nothing was run"
+    assert "Every hour on one drawing needs the design" in hidden_window.lines[-1]
+    assert hidden_window._designed_row() == ""
+
+    rows["TOD"].insert(0, "20 | Massing.TOD")
+    assert hidden_window._designed_row() == "TOD"
+    rows["PROPOSED"].insert(0, "20 | Massing.Envelope")
+    assert hidden_window._designed_row() == "PROPOSED"
+    hidden_window._start()
+    assert started == ["run"]
+
+
+def test_the_every_hour_panel_says_which_massing_it_draws(hidden_window: Any) -> None:
+    """The massing is chosen once, in Layers and hours, with every other row;
+    the every-hour panel names the row it will draw and its layers, so nobody
+    looks in it for a picker it does not have (D160)."""
+    said = hidden_window.shadow_hours_design
+    hidden_window._sync()
+    assert "choose the Proposed row" in said.cget("text")
+
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+    rows["EXISTING"].insert(0, "03 | Site Context.Buildings")
+    rows["TOD"].insert(0, "20 | Massing.TOD")
+    hidden_window._sync()
+    assert said.cget("text") == "TOD envelope: 20 | Massing.TOD"
+
+    rows["PROPOSED"].insert(0, "20 | Massing.Envelope, 20 | Massing.Podium")
+    hidden_window._sync()
+    assert said.cget("text") == "Proposed: 20 | Massing.Envelope, 20 | Massing.Podium"
+
+
+def test_a_preset_from_when_the_fills_were_the_diagram_opens_as_it_meant(
+    hidden_window: Any,
+) -> None:
+    """Its shadow plans were the documents under their older name, and its
+    every-hour tick ran beside the fills' diagram: both are read as the
+    switches they are now (D160). A preset of this version is left alone."""
+    hidden_window.apply({"study_shadows": False, "study_shadow_plans": True})
+    assert hidden_window.do_shadows.get() is True
+    assert hidden_window.do_shadow_hours.get() is False
+
+    hidden_window.apply({"study_shadows": True, "shadow_all_hours": True})
+    assert hidden_window.do_shadows.get() is True
+    assert hidden_window.do_shadow_hours.get() is True
+
+    hidden_window.apply(
+        {
+            "study_shadows": False,
+            "study_shadow_hours": False,
+            "study_shadow_plans": True,
+            "shadow_all_hours": True,
+        }
+    )
+    assert hidden_window.do_shadows.get() is False
+    assert hidden_window.do_shadow_hours.get() is False
+
+
+def test_the_shadow_pages_switch_turns_on_the_documents(hidden_window: Any) -> None:
+    """The sidebar's switch, and the palette's Shadow button, turn on what
+    the page is for: the documents, not the fills (D144)."""
+    assert window.Window.LEADS[window.Window.SHADOWS] == window.SHADOW_JOB
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    assert hidden_window.ask_for("shadow") is True
+    assert hidden_window.do_shadows.get() is True
+    assert hidden_window.do_shadow_hours.get() is False
 
 
 # -- the run bar, the project bar and the sheets strip, after the design review

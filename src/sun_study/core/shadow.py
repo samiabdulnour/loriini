@@ -240,7 +240,18 @@ class ShadowInstant:
     kind from ``regions``: a region is what a source *adds* to the shadow
     already there, and is cut wherever that shadow was; an outline is the
     source's own shadow, uncut, which is what a drawing of every hour's shadow
-    on one plan has to show. Outer rings and hole rings alike, unfilled.
+    on one plan has to show. Traced to the true shadow edge, as the regions
+    are, when the cast was given an edge tolerance (D79, D161) -- a courtyard
+    then tiled as theirs is; along the cells otherwise, outer rings and hole
+    rings alike.
+    """
+    shadow_direction: tuple[float, float] | None = None
+    """Which way the shadows run on the plan at this instant: the sun's
+    horizontal direction turned round, at unit length, in the model's frame.
+
+    What finds the tip of a shadow, where its hour is written: the vertex
+    farthest along this. ``None`` with the sun down or overhead, and in a
+    series made without it.
     """
 
     @property
@@ -724,33 +735,63 @@ def cast_shadows(
 
     instants: list[ShadowInstant] = []
     alone: BoolArray | None = None
+    own_occluder: Occluder | None = None
     if outline is not None:
         own = next((source for source in sources if source.key == outline), None)
         if own is None:
             raise ValueError(f"No shadow source {outline!r} to outline; the sources are {seen}")
+        own_occluder = Occluder(own.mesh) if own.mesh.triangle_count else None
         alone = (
             _shaded(
                 grid,
-                Occluder(own.mesh),
+                own_occluder,
                 directions,
                 what=f"{own.label or own.key} alone, for the every-hour drawing",
                 say=say,
             )
-            if own.mesh.triangle_count
+            if own_occluder is not None
             else empty
         )
 
+    shape = _lattice_shape(grid) if edge_tolerance_m is not None else None
     for index, (moment, label) in enumerate(zip(moments, labels, strict=True)):
         down = not bool(above_horizon[index])
         outlined: dict[str, tuple[Ring, ...]] = {}
         if outline is not None and alone is not None:
             mask = np.zeros(len(grid), dtype=bool) if down else alone[:, index] & ground
-            outlined[outline] = tuple(
+            # To the true edge, as the regions are (D79): traced along the
+            # cells, the every-hour drawing came out as a staircase at every
+            # hour the sun is not square to the grid (D161). The cell path
+            # stands behind it, as it does behind the regions.
+            outlined[outline] = (
+                _traced_regions(
+                    grid,
+                    shape,
+                    mask,
+                    ground,
+                    own_occluder,
+                    None,
+                    directions[index],
+                    spacing_m,
+                    edge_tolerance_m,
+                )
+                if shape is not None
+                and edge_tolerance_m is not None
+                and own_occluder is not None
+                and mask.any()
+                else None
+            ) or tuple(
                 ring
                 for region in trace_lit_regions(grid.positions, mask, spacing_m)
                 for ring in (region.outer, *region.holes)
             )
-        shape = _lattice_shape(grid) if edge_tolerance_m is not None else None
+        towards_sun = directions[index]
+        across = float(np.hypot(towards_sun[0], towards_sun[1]))
+        runs = (
+            (float(-towards_sun[0] / across), float(-towards_sun[1] / across))
+            if not down and across > 1e-9
+            else None
+        )
         at_this_hour = {
             source.key: (
                 np.zeros(len(grid), dtype=bool) if down else masks[source.key][:, index] & ground
@@ -785,6 +826,7 @@ def cast_shadows(
                 areas_m2={key: float(mask.sum()) * cell_area for key, mask in at_this_hour.items()},
                 below_horizon=down,
                 outlines=outlined,
+                shadow_direction=runs,
             )
         )
 
