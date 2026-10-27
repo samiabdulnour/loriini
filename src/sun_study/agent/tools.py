@@ -289,6 +289,15 @@ class ShadowArguments(SheetedArguments):
     storey: int | None = Field(
         default=None, ge=0, description="The index of the storey the fills are placed on."
     )
+    grid_m: Literal["1", "0.5", "0.25", "0.1"] | None = Field(
+        default=None,
+        description=(
+            "How closely the ground is sampled, in metres: 1, 0.5, 0.25 or 0.1, the same "
+            "steps as every solar grid. Edges are traced to the true shadow line at any "
+            "step; a finer grid catches narrower things at four times the samples a step. "
+            "1 otherwise."
+        ),
+    )
     colour: Literal["red", "blue"] | None = Field(
         default=None,
         description=(
@@ -634,6 +643,7 @@ def shadow_argv(arguments: ShadowArguments) -> list[str]:
         )
     # Drawn and put on its sheet: without these the command only measures.
     argv += ["--export", "native", "--shadow-all-hours-only", "--draw", "--sheet"]
+    argv += _option("--shadow-grid", a.grid_m)
     argv += _option("--shadow-all-hours-colour", a.colour)
     argv += _option("--shadow-terrain-floor", a.terrain_floor_m)
     argv += ["--shadow-date", ",".join(_mmdd(day) for day in a.dates)]

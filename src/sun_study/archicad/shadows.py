@@ -726,8 +726,14 @@ ALL_HOURS_COLOURS: dict[str, tuple[int, int, int]] = {
 ALL_HOURS_LINES: tuple[str, ...] = ("Solid Line", "Solid", "Continuous")
 
 
+#: How far behind the farthest point of a shadow a vertex may lie and still be
+#: its tip, in metres: a shadow's far end is an edge more often than a point,
+#: and the label goes in the middle of that edge rather than at one corner.
+TIP_REACH_M = 0.5
+
+
 def _all_hours_elements(
-    hours: Sequence[tuple[str, Sequence[Ring]]],
+    hours: Sequence[tuple[str, Sequence[Ring], tuple[float, float] | None]],
     layer_index: int,
     storey: int | None,
     pen: int,
@@ -747,20 +753,25 @@ def _all_hours_elements(
     show through the dots, and each is a fill a person can select or measure
     (D145). The ring goes open: the add-on closes it.
 
-    The label sits on the vertex of that hour's outline farthest from the
-    middle of all of them -- the tip of the shadow, which is where the hours
-    fan apart and where a reader looks for which outline is which.
+    The label sits at the tip of that hour's shadow, which is where the
+    hours fan apart and where a reader looks for which outline is which: the
+    vertices farthest along the way the shadow runs, the hour's own
+    direction (D161), and the middle of them when the far end is an edge.
+    Without a direction, the vertex farthest from the middle of every hour
+    -- which, with the long morning and afternoon shadows pulling that middle
+    away, put the short midday hours' labels on the building's far side.
     """
-    everything = [point for _label, rings in hours for ring in rings for point in ring]
+    everything = [point for _label, rings, _runs in hours for ring in rings for point in ring]
     if not everything:
         return [], []
     middle = np.mean(np.asarray(everything, dtype=np.float64), axis=0)
 
     fills: list[dict[str, Any]] = []
     texts: list[dict[str, Any]] = []
-    for label, rings in hours:
+    for label, rings, runs in hours:
         tip: tuple[float, float] | None = None
         reach = -1.0
+        corners: list[tuple[float, float]] = []
         for ring in rings:
             points = list(ring)
             while len(points) > 1 and points[0] == points[-1]:
@@ -783,12 +794,17 @@ def _all_hours_elements(
             if storey is not None:
                 fill["floorIndex"] = storey
             fills.append(fill)
+            corners += points
             for x, y in points:
                 far = float(np.hypot(x - middle[0], y - middle[1]))
                 if far > reach:
                     reach, tip = far, (x, y)
         if tip is None:
             continue
+        if runs is not None:
+            along = np.asarray(corners, dtype=np.float64) @ np.asarray(runs, dtype=np.float64)
+            ends = np.asarray(corners, dtype=np.float64)[along >= along.max() - TIP_REACH_M]
+            tip = (float(ends[:, 0].mean()), float(ends[:, 1].mean()))
         text: dict[str, Any] = {
             "coordinate": {"x": tip[0], "y": tip[1], "z": 0.0},
             "text": label,
@@ -896,6 +912,14 @@ def draw_shadow_series(
             return ring
         moved = transform.apply(np.asarray(ring, dtype=np.float64))
         return tuple((float(x), float(y)) for x, y in moved)
+
+    def turned(runs: tuple[float, float] | None) -> tuple[float, float] | None:
+        """A direction, turned from the export's frame into the project's as
+        the rings are, and not shifted: a direction has no place."""
+        if runs is None or transform is None:
+            return runs
+        x, y = transform.rotation @ np.asarray(runs, dtype=np.float64)
+        return (float(x), float(y))
 
     palette = styles_for(series.sources)
     palette.update(styles or {})
@@ -1041,7 +1065,14 @@ def draw_shadow_series(
         layer = ensure_layer(connection, all_hours_layer_name(day))
         cleared += clear_layer(connection, layer.index)
         outlines, texts = _all_hours_elements(
-            [(i.label, [placed(r) for r in i.outlines.get(all_hours or "", ())]) for i in instants],
+            [
+                (
+                    i.label,
+                    [placed(r) for r in i.outlines.get(all_hours or "", ())],
+                    turned(i.shadow_direction),
+                )
+                for i in instants
+            ],
             layer.index,
             storey_index,
             drawn_pen,

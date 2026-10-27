@@ -973,3 +973,86 @@ def test_the_adg_envelope_wears_its_own_colour_and_not_a_fourth_blue() -> None:
     assert ADG_ENVELOPE_RGB not in SCENARIO_RAMP
     shorts = [short for short, _words, _role, _rgb in LEGEND]
     assert shorts.index("ADG ENVELOPE") == shorts.index("PROPOSED") - 1
+
+
+# -- the every-hour drawing's edges and labels (D161) -----------------------------
+
+
+def _every_hour_cast(edge: float | None) -> Any:
+    """The tower's own shadow at 9, noon and 3 on a winter's day: long to the
+    south-west and south-east, short to the south at noon."""
+    grid = ground_plane_grid(
+        (np.array([0.0, 0.0, 0.0]), np.array([10.0, 10.0, 20.0])),
+        datum_m=0.0,
+        spacing_m=1.0,
+        margin_m=40.0,
+    )
+    sources = default_sources(
+        box((-60.0, 40.0, 0.0), (-59.0, 41.0, 1.0)),
+        box((0.0, 0.0, 0.0), (10.0, 10.0, 20.0)),
+        None,
+    )
+    # The sun to the north-east, north, and north-west, low: the shadows run
+    # south-west, south, and south-east.
+    suns = np.array([[1.0, 1.0, 0.9], [0.0, 1.0, 1.6], [-1.0, 1.0, 0.9]])
+    suns /= np.linalg.norm(suns, axis=1)[:, None]
+    return cast_shadows(
+        grid,
+        sources=sources,
+        sun_vectors=suns,
+        moments=[dt.datetime(2024, 6, 21, hour, tzinfo=dt.UTC) for hour in (9, 12, 15)],
+        labels=["9AM", "12PM", "3PM"],
+        spacing_m=1.0,
+        edge_tolerance_m=edge,
+        outline=ADDITIONAL,
+    )
+
+
+def test_every_hour_records_which_way_its_shadow_runs() -> None:
+    cast = _every_hour_cast(None)
+    runs = [instant.shadow_direction for instant in cast.instants]
+    assert runs[1] == pytest.approx((0.0, -1.0)), "noon's runs due south"
+    assert runs[0] == pytest.approx((-np.sqrt(0.5), -np.sqrt(0.5)))
+    assert runs[2] == pytest.approx((np.sqrt(0.5), -np.sqrt(0.5)))
+
+
+def test_the_every_hour_outline_is_traced_to_the_true_edge() -> None:
+    """Along the cells a diagonal shadow is a staircase; traced, its long
+    sides run at the sun's angle (D79, D161)."""
+
+    def diagonal_edges(cast: Any) -> int:
+        rings = cast.instants[0].outlines[ADDITIONAL]
+        count = 0
+        for ring in rings:
+            points = np.asarray(ring, dtype=np.float64)
+            steps = np.diff(points, axis=0)
+            long = np.hypot(steps[:, 0], steps[:, 1]) > 3.0
+            slanted = (np.abs(steps[:, 0]) > 0.5) & (np.abs(steps[:, 1]) > 0.5)
+            count += int((long & slanted).sum())
+        return count
+
+    assert diagonal_edges(_every_hour_cast(None)) == 0, "the cells: a staircase"
+    assert diagonal_edges(_every_hour_cast(0.001)) >= 2, "both long sides at 45 degrees"
+
+
+def test_each_hour_is_written_at_the_tip_of_its_own_shadow() -> None:
+    """By the way each shadow runs, not by the middle of all of them: with
+    the long 9 and 3 o'clock shadows pulling that middle south, noon's label
+    went to the tower's north side (D161)."""
+    from sun_study.archicad.shadows import _all_hours_elements
+
+    cast = _every_hour_cast(0.001)
+    hours = [(i.label, list(i.outlines[ADDITIONAL]), i.shadow_direction) for i in cast.instants]
+    _fills, texts = _all_hours_elements(hours, 7, None, 45, 2.5)
+    at = {text["text"]: text["coordinate"] for text in texts}
+
+    # The tower stands from 0 to 10 both ways; every tip is south of it.
+    assert at["12PM"]["y"] < -5.0, "noon at its southern tip, not on the tower"
+    assert 0.0 <= at["12PM"]["x"] <= 10.0, "and in the middle of that edge"
+    assert at["9AM"]["x"] < -10.0 and at["9AM"]["y"] < -10.0
+    assert at["3PM"]["x"] > 20.0 and at["3PM"]["y"] < -10.0
+
+    undirected = [(label, rings, None) for label, rings, _runs in hours]
+    _fills, before = _all_hours_elements(undirected, 7, None, 45, 2.5)
+    noon = next(text["coordinate"] for text in before if text["text"] == "12PM")
+    assert noon["y"] > at["12PM"]["y"], "the old rule put noon farther north"

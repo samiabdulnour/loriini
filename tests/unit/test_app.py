@@ -3060,6 +3060,11 @@ def test_every_hour_on_one_drawing_is_asked_for_only_when_ticked(hidden_window: 
     # which is what the window's fills job had always sent it.
     assert "--draw" in job.args and "--sheet" in job.args
     assert flag(job.args, "--shadow-all-hours-colour") == ["red"]
+    # The sun studies' four grid steps, Normal to start with (D161).
+    assert flag(job.args, "--shadow-grid") == ["0.5"]
+    hidden_window.shadow_grid.set("0.1")
+    assert flag(hidden_window.jobs()[1].args, "--shadow-grid") == ["0.1"]
+    assert hidden_window.settings()["shadow_grid"] == "0.1"
     assert hidden_window.settings()["study_shadow_hours"] is True
 
     hidden_window.shadow_hours_colour.set("blue")

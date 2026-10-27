@@ -436,6 +436,7 @@ def test_the_every_hour_drawing_takes_its_rows_days_and_hours() -> None:
             terrain_layers=["03 | Site Context.Terrain"],
             storey=0,
             colour="blue",
+            grid_m="0.25",
             sheets="two",
             year=2025,
         )
@@ -461,6 +462,8 @@ def test_the_every_hour_drawing_takes_its_rows_days_and_hours() -> None:
         "--shadow-all-hours-only",
         "--draw",
         "--sheet",
+        "--shadow-grid",
+        "0.25",
         "--shadow-all-hours-colour",
         "blue",
         "--shadow-date",

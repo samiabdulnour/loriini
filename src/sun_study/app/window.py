@@ -5253,6 +5253,19 @@ class Window:
             "runs on for hundreds of metres. Right arithmetically, and not "
             "what the sheet is asking.",
         )
+        self.shadow_grid, row = self._tiles(
+            frame,
+            row,
+            "Shadow grid",
+            "",
+            "How closely the ground is sampled: the same four steps as every "
+            "solar grid. The edges are traced to the true shadow line at any "
+            "step (D161); a finer grid catches what is narrower than it -- a "
+            "gap between two buildings, a thin balcony's shadow -- at four "
+            "times the samples each step down. Normal suits a building; Finest "
+            "is for a small one, not a whole site.",
+        )
+        self.shadow_grid.set("0.5")
         self.shadow_storey, row = self._combo(
             frame,
             row,
@@ -7368,6 +7381,7 @@ class Window:
             "shadow_plan_pen_set": self.shadow_plan_pen_set,
             "shadow_plan_pen": self.shadow_plan_pen,
             "shadow_hours_colour": self.shadow_hours_colour,
+            "shadow_grid": self.shadow_grid,
             "eye_pen_set": self.eye_pen_set,
             "eye_override": self.eye_override,
             "eye_base_combination": self.eye_base_combination,
@@ -8107,6 +8121,7 @@ class Window:
         },
         "Skin cell": GRID_WORDS,
         "Communal grid": GRID_WORDS,
+        "Shadow grid": GRID_WORDS,
         "Floor grid": GRID_WORDS,
         "Glass": {"off": "Solid", "30": "All glass", "80": "Clear only"},
         "Site lands at": {
@@ -8200,6 +8215,23 @@ class Window:
                 "grid_finest",
                 "Finest — samples every 0.1 m. Over six times the samples of 0.25 m, "
                 "and a run to match.",
+            ),
+        ),
+        # The every-hour drawing's ground (D161). The same four again; the
+        # command's own is 1 m, and Normal is what the window starts on.
+        "Shadow grid": (
+            ("1.0", "grid_rough", "Rough — samples every 1 m. Quick; misses anything narrower."),
+            ("0.5", "grid_normal", "Normal — samples every 0.5 m."),
+            (
+                "0.25",
+                "grid_fine",
+                "Detailed — samples every 0.25 m. Four times the samples of 0.5 m.",
+            ),
+            (
+                "0.1",
+                "grid_finest",
+                "Finest — samples every 0.1 m. Over six times the samples of 0.25 m, "
+                "and a run to match: for a small building, not a whole site.",
             ),
         ),
         # The apartments' floor: the sun patches and the heat map. The same
@@ -9240,6 +9272,8 @@ class Window:
             # the hours, prints the areas and draws nothing, which is what
             # the window's fills job had always sent it.
             args += ["--export", "native", "--shadow-all-hours-only", "--draw", "--sheet"]
+            if self.shadow_grid.get().strip():
+                args += ["--shadow-grid", self.shadow_grid.get().strip()]
             if self.shadow_hours_colour.get():
                 args += ["--shadow-all-hours-colour", self.shadow_hours_colour.get()]
             if self.terrain_floor.get().strip():

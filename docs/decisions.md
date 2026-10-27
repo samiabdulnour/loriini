@@ -6435,3 +6435,33 @@ client is shown on connecting say which is which.
 *What this does not change:* the documents, the stack, its fit, its pen set
 and its legend (D141 to D143), the every-hour drawing itself (D144, D145,
 D147, D149), or the `shadows` command's other modes.
+
+### D161 — The every-hour drawing's edges are found, its hours are written at the tips, and its grid is chosen
+
+Asked 27 October 2026, of the first every-hour drawing the window drew:
+*"why are some of the times missing. also add option og shadow quality - same
+as we have in sun studies"*.
+
+**The hours.** None was missing from the project: its every-hour layer held
+seven texts. Each was put on the vertex of its hour's outline farthest from
+the middle of all of them, and the long 9 and 3 o'clock shadows pull that
+middle well to the south, so for the short midday hours the farthest vertex
+was the far side of the building, and their labels sat on it rather than on
+the shadows they name. Each instant now records which way its shadows run --
+the sun's horizontal direction turned round, in the model's frame, turned
+into the project's as the rings are -- and the label goes at the vertices
+farthest along it, in the middle of them where the far end is an edge.
+
+**The edges.** The regions have been traced to the true shadow edge since
+D79; the every-hour outlines, added later, were still traced along the cells,
+and came out as a staircase at every hour the sun was not square to the
+grid. They are traced as the regions are, against the design alone, with the
+cell path behind them.
+
+**The grid.** The every-hour panel offers the four steps every solar grid
+offers -- Rough 1 m, Normal 0.5, Detailed 0.25, Finest 0.1 -- sent as
+`--shadow-grid`, Normal to start with where the command's own is 1 m. The
+agent's `shadow_every_hour` takes the same as `grid_m`.
+
+*What this does not change:* the documents, the fills' colours (D147), or the
+sheet's fit (D149).
