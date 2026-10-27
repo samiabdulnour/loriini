@@ -6358,3 +6358,53 @@ are dropped, so that floor takes commercial's.
 
 *What this does not change:* the residential figures, the mix, the
 parking per unit, or how a slab is measured.
+
+### D160 — The window's Shadow diagram is the 3D Documents; the fills are its every-hour panel
+
+Asked 27 October 2026, of the window's Shadow diagram page: *"The main route
+is to do shadows via 3d doc, and the separate path is to import fills into
+drawings!"*, and with a screenshot of the page's first panel -- the legend
+rows, the ground, the hours, the every-hour tick, the storey and the subset:
+*"all this should be done by 3d docs, and the small window should be done.
+yeah rebuild"*.
+
+**Why the page was still the other way.** D144 settled the two routes on 25
+October, but in the command line and the drawing code only. The window kept
+the arrangement it was given in September (D123) and carried through the
+Option A redesign (D131): the fills were the page's study, *Shadow diagram*,
+the switch the sidebar and the palette's Shadow button turned on, a fill per
+hour per legend row; the documents were a second panel, *Shadow plans*,
+described as the same hours drawn a second way and the route for a model too
+large for the caster; and the every-hour drawing was a tick that ran beside
+the fills' per-hour diagram, never on its own.
+
+**Decided.** The page's **Shadow diagram** panel is the documents
+(`shadow-plans`): the legend rows, the hours, the layer combination, the pen
+set, the sheets' subset, and the set name and shadow pen for a set without
+the legend. It is the study the sidebar's switch and the palette's Shadow
+button turn on. Under it, **Every hour on one drawing** is the fills
+(`shadows --shadow-all-hours-only`) and nothing else: the design's shadow at
+every hour ticked above, imported as fills into one drawing, a sheet per day
+fitted to its shadows. It takes its design and what it lands on from the
+same legend rows, and asks for its own the three things only Loriini's caster
+uses -- the ground it lands on, the ground to ignore below, the storey the
+fills are drawn on -- and its colour, red or blue (D147), which the window
+had not offered. The fills' per-hour diagram is no longer in the window; the
+command line keeps it.
+
+**Asked before anything runs.** Run asks for the documents' layer
+combination when it is blank (D156), and for the design when the every-hour
+drawing is on and no row being compared has layers. Without a design the
+command used to say so and draw a fill per hour instead -- the diagram the
+documents draw now -- so `--shadow-all-hours-only` without one now stops
+before the cast, with nothing drawn.
+
+**Older presets.** A preset saved before this has the documents as
+`study_shadow_plans`, and the every-hour tick as `shadow_all_hours`, which
+only ran beside the fills: both are read as the switches they are now. Its
+`study_shadows` asked for the shadow diagram, and turns on the documents. The
+palette's `shadow plans` turns on the documents too.
+
+*What this does not change:* the documents, the stack, its fit, its pen set
+and its legend (D141 to D143), the every-hour drawing itself (D144, D145,
+D147, D149), or the `shadows` command's other modes.

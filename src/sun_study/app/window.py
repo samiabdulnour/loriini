@@ -248,11 +248,17 @@ FACADE_MODEL = "Facade model"
 #: cell by cell, beside the sheet that gives each flat its one ADG figure.
 APARTMENT_HEAT_MAP = "Apartments, floor heat map"
 COMMUNAL_JOB = "solar analysis: communal open space"
+#: The shadow diagram: the hours as 3D Documents from overhead, Archicad
+#: casting the shadows, every legend row of an hour stacked in one drawing
+#: (roadmap R1, D144). The ``shadow-plans`` command.
 SHADOW_JOB = "shadow diagram"
-#: The same hours as 3D Documents, with Archicad drawing the shadows
-#: (roadmap R1): the record beside the fills' argument, and the route for a
-#: model too large for Loriini's own caster.
-SHADOW_PLAN_JOB = "shadow plans"
+#: Loriini's own caster, kept for the one drawing the documents cannot make:
+#: the design's shadow at every hour, imported as fills into one drawing
+#: (D144, D160). The ``shadows`` command, every hour and nothing else.
+SHADOW_HOURS_JOB = "shadow diagram: every hour"
+#: The every-hour drawing's two colours, the office's (D147); the first is
+#: the command's own default.
+SHADOW_HOURS_COLOURS = ("red", "blue")
 SUN_EYE_JOB = "sun views"
 #: The site analysis's four outputs, each a study of its own with its own
 #: panel and its own run (D157): the two sheets, the controls table, and
@@ -277,7 +283,7 @@ CHIPS: dict[str, tuple[str, str]] = {
     PLANS_JOB: ("Apartments", "apartments"),
     COMMUNAL_JOB: ("Communal", "communal"),
     SHADOW_JOB: ("Shadow diagram", "shadow"),
-    SHADOW_PLAN_JOB: ("Shadow plans", "shadow"),
+    SHADOW_HOURS_JOB: ("Every hour", "shadow"),
     SUN_EYE_JOB: ("Sun views", "views"),
     SITE_CONTEXT_JOB: ("Context", "site_analysis"),
     SITE_SHEET_JOB: ("Site", "site_analysis"),
@@ -3766,7 +3772,7 @@ class Window:
     )
     #: The study a page's switch in the sidebar turns on, on a page that has
     #: more than one. The apartments are what Solar analysis is opened for,
-    #: and the hourly diagram is what Shadow diagram is.
+    #: and the 3D Documents are what Shadow diagram is (D144).
     LEADS: ClassVar[dict[str, str]] = {
         DIAGRAMS: PLANS_JOB,
         SHADOWS: SHADOW_JOB,
@@ -3808,8 +3814,9 @@ class Window:
             "and communal open space."
         ),
         SHADOWS: (
-            "Shadows cast by each massing, hour by hour, drawn from published "
-            "views — one sheet per hour per day."
+            "3D Documents from overhead with Archicad's own shadows, each massing "
+            "stacked in its legend colour, hour by hour — and the design's every "
+            "hour on one drawing."
         ),
         EYE: (
             "3D documents aimed straight down the sun on the days lit here, and "
@@ -3832,7 +3839,7 @@ class Window:
         MODEL: "What geometry leaves Archicad, and what is kept off the drawings.",
         SITE: "The context and site sheets, and a context model, from an address.",
         DIAGRAMS: "Hours of direct sun on the days below.",
-        SHADOWS: "Shadows cast by each massing, hour by hour.",
+        SHADOWS: "Archicad's own shadows of each massing, hour by hour, stacked.",
         EYE: "3D documents aimed down the sun, dealt onto sheets.",
         YIELD: "The feasibility sheet from the massing slabs, and a live workbook.",
         REFERENCE: "A picture laid over Archicad, to trace or check against.",
@@ -5012,31 +5019,33 @@ class Window:
         )
 
     def _shadows(self, frame: ttk.Frame) -> None:
-        """The shadow diagram: what already stands, and what the proposal adds.
+        """The shadow diagram: 3D Documents from overhead, Archicad's own shadows.
+
+        The route for every diagram that involves the neighbours (D144): a
+        3D Document per legend row and hour, looking straight down with the
+        sun at that hour, the rows of an hour stacked in one drawing so each
+        shows what it adds to the rows above it, in the legend's colours, on
+        a combined sheet per day. Archicad casts every shadow, at any size of
+        model it can display. Roadmap R1; ``docs/shadow-plans.md``.
 
         One row per line of the office's legend, each naming the layers that
-        hold that row's massing, picked out of the open project. The geometry
-        comes from the add-on's own model rather than an IFC, so nothing has
-        to be published first, and each row is drawn in the legend's own
-        colour with no contour.
+        hold that row's massing, picked out of the open project. The rows are
+        fixed because the legend is: three that will be there whatever is
+        approved, which accumulate, and the rest being compared, which
+        overlap. A row left empty is left off the sheet, and the others keep
+        their colours -- they are matched by name, not dealt out by position.
+        With no row chosen the documents are one set under the layer
+        combination, which is what the set name and the shadow pen are for.
 
-        The rows are fixed because the legend is: three that will be there
-        whatever is approved, which accumulate, and three that are being
-        compared, which overlap. A row left empty is left off the sheet, and
-        the others keep their colours -- they are matched by name, not dealt
-        out by position.
-
-        This replaced a page of published views (D113). A view can say more
-        than a layer combination -- a renovation filter, pinned elements --
-        and a project that separates its massings that way has to keep them
-        on their own layers for this page to reach them.
+        Loriini's own caster -- the fills, the route the diagram began on --
+        is the panel under this one, kept for the one drawing the documents
+        cannot make: the design's shadow at every hour on one plan (D160).
         """
-        row = 0
         self.do_shadows = tk.BooleanVar(value=False)
-        # The study's own box, in the page's second row: the days box is
-        # the first. Everything from here to the days box is built inside
-        # it, by the simple means of pointing ``frame`` at it: the rows
-        # beneath neither know nor care.
+        # The study's own box, in the page's second row: the days box is the
+        # first and the every-hour drawing's the third. Everything from here
+        # to the days box is built inside it, by the simple means of pointing
+        # ``frame`` at it: the rows beneath neither know nor care.
         outer = frame
         frame, row = self._panel(outer, 1), 0
         box = ttk.Checkbutton(
@@ -5050,25 +5059,146 @@ class Window:
         self._head(frame, box, SHADOW_JOB)
         Tooltip(
             box,
-            "The shadow the site casts across itself and its neighbours at "
-            "each hour, drawn as fills on the plan in the legend's colours. "
-            "Off by default: it needs a layer chosen for at least one legend "
-            "row.",
+            "The days and hours as 3D Documents looking straight down, each "
+            "with Archicad's sun for that hour and its own vectorial sun "
+            "shadows, placed on sheets by day. With layers chosen for the "
+            "legend rows, a document is made per row and every row of an hour "
+            "is stacked in one drawing on a combined sheet, each row's shadow "
+            "in its legend colour where it adds to the rows above it. With "
+            "none, one set under the layer combination. Needs the current "
+            "add-on, and a floor plan tab in front when it runs.",
         )
         row += 1
         self._caption(
             frame,
             row,
-            "Shadows cast by each massing, hour by hour, one legend row to a set of layers.",
+            "3D Documents from overhead, with Archicad's own shadows: every legend "
+            "row of an hour stacked in one drawing, each in its colour.",
         )
         row += 1
 
         #: The legend, row by row: the name the run is given, whether the row
-        #: accumulates or is compared, and its layer picker. Read by ``jobs``.
+        #: accumulates or is compared, and its layer picker. Read by ``jobs``,
+        #: for the documents and for the every-hour drawing, which takes its
+        #: design from the rows being compared.
         self.shadow_rows: list[tuple[str, str, Chips]] = []
         for short, role, label, hint, detail in SHADOW_LEGEND_ROWS:
             picker, row = self._picker(frame, row, label, hint, detail)
             self.shadow_rows.append((short, role, picker))
+        self.shadow_hours, row = self._ticks_row(
+            frame,
+            row,
+            "Hours",
+            "The whole hours drawn, on each of those days.",
+            "One drawing per hour per day. Nine to three is the assessed "
+            "window; the long shadows at either end are correct and surprise "
+            "people — on 21 June the sun is about 19 degrees up and a shadow "
+            "runs nearly three times the height that casts it. The every-hour "
+            "drawing below draws the same hours.",
+            _hour_choices(clock=False),
+            key=_clock_text,
+            initial=DEFAULT_SHADOW_HOURS,
+        )
+        self.shadow_plan_combination, row = self._combo(
+            frame,
+            row,
+            "Layers",
+            "The layer combination the documents show: what casts shadow and what catches it.",
+            "Everything showing casts a shadow and catches one, so the ground "
+            "has to be in it -- a plan with no terrain or site slab under the "
+            "buildings has nothing for the shadows to fall on. With legend rows, "
+            "each row's combination is made from this one. Nothing is picked "
+            "for you: Run asks when it is blank.",
+        )
+        self.shadow_plan_pen_set, row = self._combo(
+            frame,
+            row,
+            "Pen set",
+            "The project's pen set the documents use. Blank keeps each view's own.",
+            "The practice's drawing pens, so the sheet prints the way the other "
+            "DA drawings do. With legend rows the run copies it, each row's pen "
+            "set to the legend's colour.",
+        )
+        self.shadow_study_subset, row = self._combo(
+            frame,
+            row,
+            "Subset — shadow sheets",
+            "Layout Book subset the shadow sheets go into, the every-hour sheet's too.",
+            "Same rule as the other two: the subset has to exist already, "
+            "because the Layout Book is the office's structure to organise. A "
+            "missing one is reported rather than invented, with the sheets "
+            "left at the root of the book.",
+        )
+        self.shadow_plan_label, row = self._entry(
+            frame,
+            row,
+            "Set name",
+            "",
+            "A word in every document and sheet name, for a set without the legend.",
+            "Without legend rows the documents are one set under the layer "
+            "combination, and a name tells two such sets apart: Existing, "
+            "Proposed. With legend rows each set is named for its row, and "
+            "this is not used. Blank names neither.",
+        )
+        self.shadow_plan_pen, row = self._entry(
+            frame,
+            row,
+            "Shadow pen",
+            "",
+            "The pen the shadows are filled in, for a set without the legend.",
+            "A pen number from the project's pen set. With legend rows each row "
+            "takes the pen nearest its legend colour and this is not used. "
+            "Blank keeps the project's defaults for new 3D Documents.",
+        )
+        # The diagram's own days, the same three buttons the other two sun
+        # studies press, in a box of their own. Above the study, as on the
+        # other two sun pages: the day is the first thing a council names,
+        # and the same card in the same place on every page is found without
+        # looking. The every-hour drawing draws them too.
+        self.shadow_custom_day, _ = self._days_panel(
+            outer, 0, self.shadow_day_ticks, study="shadow diagram", year=False
+        )
+        self._shadow_every_hour(outer, 2)
+
+    def _shadow_every_hour(self, outer: ttk.Frame, at: int) -> None:
+        """The design's shadow at every hour on one drawing: Loriini's fills.
+
+        The one drawing the documents above cannot make, since a document is
+        one hour (D144): the designed building's own shadow at every hour
+        ticked above, each hour a fill labelled by its hour, on the floor
+        plan, with its view and a sheet per day fitted to the shadows (D149).
+        Loriini casts it with its own ray caster and imports the fills into
+        the drawing, so the ground it lands on and the storey it is drawn on
+        are asked here and nowhere else on the page. The design is the
+        legend's Proposed row, or the last row being compared when Proposed
+        is empty; the other rows are what it lands on. ``D160``.
+        """
+        self.do_shadow_hours = tk.BooleanVar(value=False)
+        frame, row = self._panel(outer, at), 0
+        box = ttk.Checkbutton(
+            frame,
+            text="Every hour on one drawing",
+            variable=self.do_shadow_hours,
+            command=self._sync,
+            style="Study.TCheckbutton",
+            **icons.study_options("Shadow diagram"),
+        )
+        self._head(frame, box, SHADOW_HOURS_JOB)
+        Tooltip(
+            box,
+            "The designed building's own shadow at every hour ticked above, on "
+            "one plan: each hour a fill labelled by its hour, with its own view "
+            "and a sheet per day. Cast by Loriini and imported as fills, "
+            "because a 3D Document is one hour. The design is the Proposed "
+            "row, or the last row being compared when Proposed is empty.",
+        )
+        row += 1
+        self._caption(
+            frame,
+            row,
+            "The design's shadow at every hour above, imported as fills into one drawing.",
+        )
+        row += 1
         self.terrain_layers, row = self._picker(
             frame,
             row,
@@ -5091,35 +5221,6 @@ class Window:
             "runs on for hundreds of metres. Right arithmetically, and not "
             "what the sheet is asking.",
         )
-        self.shadow_hours, row = self._ticks_row(
-            frame,
-            row,
-            "Hours",
-            "The whole hours drawn, on each of those days.",
-            "One drawing per hour per day. Nine to three is the assessed "
-            "window; the long shadows at either end are correct and surprise "
-            "people — on 21 June the sun is about 19 degrees up and a shadow "
-            "runs nearly three times the height that casts it.",
-            _hour_choices(clock=False),
-            key=_clock_text,
-            initial=DEFAULT_SHADOW_HOURS,
-        )
-        self.do_shadow_all_hours = tk.BooleanVar(value=False)
-        tick = ttk.Checkbutton(
-            frame,
-            text="Every hour on one drawing",
-            variable=self.do_shadow_all_hours,
-            command=self._sync,
-        )
-        tick.grid(row=row, column=0, columnspan=2, sticky="w", padx=(18, 0), pady=(6, 0))
-        Tooltip(
-            tick,
-            "Also a drawing per day with the designed building's own shadow at "
-            "every hour ticked above, as outlines labelled by hour, with its own "
-            "view and sheet. The designed building is the Proposed row, or the "
-            "last row being tested when Proposed is empty.",
-        )
-        row += 1
         self.shadow_storey, row = self._combo(
             frame,
             row,
@@ -5133,108 +5234,18 @@ class Window:
             "read as nothing drawn at all. A number typed here is still taken "
             "as the storey's index, which is what older settings files hold.",
         )
-        self.shadow_study_subset, row = self._combo(
+        self.shadow_hours_colour, row = self._combo(
             frame,
             row,
-            "Subset — shadow sheets",
-            "Layout Book subset the shadow sheets go into.",
-            "Same rule as the other two: the subset has to exist already, "
-            "because the Layout Book is the office's structure to organise. A "
-            "missing one is reported rather than invented, with the sheets "
-            "left at the root of the book.",
+            "Colour",
+            "Each hour a 25 % drafting fill in the pen nearest it, no outline.",
+            "The office's red, its pen 45, or the nearest blue (D147): dots "
+            "rather than a solid, so the hours over one another all show.",
         )
-        # The diagram's own days, the same three buttons the other two sun
-        # studies press, in a box of their own. They were a row of four
-        # dates inside it, spelled differently from the other pages' days.
-        # Above the study, as on the other two sun pages: the day is the
-        # first thing a council names, and the same card in the same place
-        # on every page is found without looking.
-        self.shadow_custom_day, _ = self._days_panel(
-            outer, 0, self.shadow_day_ticks, study="shadow diagram", year=False
+        self.shadow_hours_colour.configure(
+            values=SHADOW_HOURS_COLOURS, state="readonly", width=self.NUMBER_WIDTH
         )
-        self._shadow_plans(outer, 2)
-
-    def _shadow_plans(self, outer: ttk.Frame, at: int) -> None:
-        """The same hours as 3D Documents, with Archicad drawing the shadows.
-
-        Under the diagram and its days because it draws those days and the
-        hours ticked above: the two are one question answered two ways. The
-        fills are Loriini's -- the split between what stands and what the
-        proposal adds, which is the argument -- and the documents are
-        Archicad's own shadows, exact and at any size of model, which is the
-        record. Roadmap R1; ``docs/shadow-plans.md``.
-        """
-        self.do_shadow_plans = tk.BooleanVar(value=False)
-        frame, row = self._panel(outer, at), 0
-        box = ttk.Checkbutton(
-            frame,
-            text="Shadow plans",
-            variable=self.do_shadow_plans,
-            command=self._sync,
-            style="Study.TCheckbutton",
-            **icons.study_options("Shadow diagram"),
-        )
-        self._head(frame, box, SHADOW_PLAN_JOB)
-        Tooltip(
-            box,
-            "The hours and days above as 3D Documents looking straight down, "
-            "each with Archicad's sun for that hour and its own vectorial sun "
-            "shadows, placed on sheets by day. Archicad casts the shadows, so "
-            "a model too large for the diagram's own caster still draws. With "
-            "layers chosen for the legend rows above, a document is made per "
-            "row and every row of an hour is stacked in one drawing on a "
-            "combined sheet, each row's shadow in its legend colour where it "
-            "adds to the rows above it. With none, one set under the layer "
-            "combination. Needs the current add-on, and a floor plan tab in "
-            "front when it runs.",
-        )
-        row += 1
-        self._caption(
-            frame,
-            row,
-            "The same hours as 3D Documents from overhead: Archicad draws each hour's "
-            "shadows, at any size of model. Given the legend rows above, every row "
-            "of an hour in one drawing, each in its colour.",
-        )
-        row += 1
-        self.shadow_plan_combination, row = self._combo(
-            frame,
-            row,
-            "Layers",
-            "The layer combination the plans show: what casts shadow and what catches it.",
-            "Everything showing casts a shadow and catches one, so the ground "
-            "has to be in it -- a plan with no terrain or site slab under the "
-            "buildings has nothing for the shadows to fall on. Nothing is "
-            "picked for you: Run asks when it is blank.",
-        )
-        self.shadow_plan_label, row = self._entry(
-            frame,
-            row,
-            "Set name",
-            "",
-            "A word in every document and sheet name, for a set without the legend.",
-            "Without legend rows the plans are one set under the layer "
-            "combination, and a name tells two such sets apart: Existing, "
-            "Proposed. With legend rows each set is named for its row, and "
-            "this is not used. Blank names neither.",
-        )
-        self.shadow_plan_pen_set, row = self._combo(
-            frame,
-            row,
-            "Pen set",
-            "The project's pen set the plans use. Blank keeps each view's own.",
-            "The practice's drawing pens, so the sheet prints the way the other DA drawings do.",
-        )
-        self.shadow_plan_pen, row = self._entry(
-            frame,
-            row,
-            "Shadow pen",
-            "",
-            "The pen the shadows are filled in, for a set without the legend.",
-            "A pen number from the project's pen set. With legend rows each row "
-            "takes the pen nearest its legend colour and this is not used. "
-            "Blank keeps the project's defaults for new 3D Documents.",
-        )
+        self.shadow_hours_colour.set(SHADOW_HOURS_COLOURS[0])
 
     def _sun_eyes(self, frame: ttk.Frame) -> None:
         """The sun eye views: the model seen from the sun, one view per hour.
@@ -6940,7 +6951,7 @@ class Window:
             (PLANS_JOB, self.do_plans, self.DIAGRAMS),
             (COMMUNAL_JOB, self.do_communal, self.DIAGRAMS),
             (SHADOW_JOB, self.do_shadows, self.SHADOWS),
-            (SHADOW_PLAN_JOB, self.do_shadow_plans, self.SHADOWS),
+            (SHADOW_HOURS_JOB, self.do_shadow_hours, self.SHADOWS),
             (SUN_EYE_JOB, self.do_sun_eyes, self.EYE),
             (SITE_CONTEXT_JOB, self.do_site_context, self.SITE),
             (SITE_SHEET_JOB, self.do_site_site, self.SITE),
@@ -7043,7 +7054,9 @@ class Window:
             "apartments": (self.do_plans, self.DIAGRAMS),
             "communal": (self.do_communal, self.DIAGRAMS),
             "shadow": (self.do_shadows, self.SHADOWS),
-            "shadow plans": (self.do_shadow_plans, self.SHADOWS),
+            # The documents' older name: they are the shadow diagram now.
+            "shadow plans": (self.do_shadows, self.SHADOWS),
+            "every hour": (self.do_shadow_hours, self.SHADOWS),
             "views": (self.do_sun_eyes, self.EYE),
             "site": (self.do_site_context, self.SITE),
         }
@@ -7300,6 +7313,7 @@ class Window:
             "shadow_plan_label": self.shadow_plan_label,
             "shadow_plan_pen_set": self.shadow_plan_pen_set,
             "shadow_plan_pen": self.shadow_plan_pen,
+            "shadow_hours_colour": self.shadow_hours_colour,
             "eye_pen_set": self.eye_pen_set,
             "eye_override": self.eye_override,
             "eye_base_combination": self.eye_base_combination,
@@ -7362,8 +7376,7 @@ class Window:
             "study_plans": self.do_plans,
             "study_communal": self.do_communal,
             "study_shadows": self.do_shadows,
-            "shadow_all_hours": self.do_shadow_all_hours,
-            "study_shadow_plans": self.do_shadow_plans,
+            "study_shadow_hours": self.do_shadow_hours,
             "study_sun_eyes": self.do_sun_eyes,
             "site_context": self.do_site_context,
             "site_site": self.do_site_site,
@@ -7425,6 +7438,7 @@ class Window:
             if isinstance(ticked, bool):
                 state.set(ticked)
         self._yield_from_older(saved)
+        self._shadows_from_older(saved)
         opened = saved.get(self.OPEN_SECTION)
         if isinstance(opened, str):
             # A title this version does not have -- a file saved before the
@@ -7433,6 +7447,24 @@ class Window:
             # open is the cheapest thing in the file to lose.
             self._show_section(opened)
         self._sync()
+
+    def _shadows_from_older(self, saved: Mapping[str, str | bool]) -> None:
+        """A preset saved while the fills were the shadow diagram, read as
+        what it meant (D160).
+
+        Its ``study_shadows`` asked for the shadow diagram, which is the
+        documents now, and is taken as it stands. Its shadow plans were the
+        documents under their older name, so they switch the diagram on too;
+        and its every-hour tick, which only ran beside the fills' diagram,
+        is the every-hour drawing's own switch. A preset that knows the
+        every-hour switch is this version's, and is left alone.
+        """
+        if "study_shadow_hours" in saved:
+            return
+        if saved.get("study_shadow_plans") is True:
+            self.do_shadows.set(True)
+        if saved.get("study_shadows") is True and saved.get("shadow_all_hours") is True:
+            self.do_shadow_hours.set(True)
 
     def _yield_from_older(self, saved: Mapping[str, str | bool]) -> None:
         """A preset saved before the Slabs and Renovation rows, read as what
@@ -8595,7 +8627,10 @@ class Window:
                 deal(COMMUNAL_JOB, "Solar analysis", "analysis", "SA", COMMUNAL_AREAS, day, [""])
 
         if SHADOW_JOB in queued:
+            # The documents, dealt by day. A stack of legend rows is fitted
+            # to the whole site (D143); a plain set is at the plans' 1:1000.
             hours = self._clocks(self.shadow_hours, DEFAULT_SHADOW_HOURS.split(","))
+            stacked = "to fit" if self._legend_args() else shadow_scale
             for day in self._shadow_days():
                 deal(
                     SHADOW_JOB,
@@ -8606,24 +8641,22 @@ class Window:
                     day,
                     hours,
                     self._sheet_mode("two"),
-                    scale=shadow_scale,
+                    scale=stacked,
                 )
 
-        if SHADOW_PLAN_JOB in queued:
-            # The diagram's days and hours, drawn by Archicad: the same
-            # instants, dealt by day onto sheets of their own.
-            hours = self._clocks(self.shadow_hours, DEFAULT_SHADOW_HOURS.split(","))
+        if SHADOW_HOURS_JOB in queued:
+            # One drawing a day, every hour in it, on a sheet of its own
+            # fitted to its shadows (D149).
             for day in self._shadow_days():
                 deal(
-                    SHADOW_PLAN_JOB,
-                    "Shadow plans",
+                    SHADOW_HOURS_JOB,
+                    "Every hour",
                     "shadow",
-                    "SP",
-                    "Shadow plan",
+                    "SH",
+                    "Every hour",
                     day,
-                    hours,
-                    self._sheet_mode("two"),
-                    scale=shadow_scale,
+                    [""],
+                    scale="to fit",
                 )
 
         if SUN_EYE_JOB in queued:
@@ -8864,6 +8897,22 @@ class Window:
                 args += [flag, f"{short}={','.join(layers)}"]
         return args
 
+    def _designed_row(self) -> str:
+        """The legend row the every-hour drawing outlines, by its short name,
+        or nothing when no row being compared has layers.
+
+        The command's own rule (``designed_source``): the Proposed row, or
+        the last row being compared when Proposed is empty.
+        """
+        compared = [
+            short
+            for short, role, box in self.shadow_rows
+            if role != "baseline" and self._listed(box)
+        ]
+        if "PROPOSED" in compared:
+            return "PROPOSED"
+        return compared[-1] if compared else ""
+
     def jobs(self) -> list[Job]:
         """The command lines the ticked boxes mean. Public, and pure, because
         this is the part worth testing without a window on screen."""
@@ -9085,38 +9134,8 @@ class Window:
                 )
 
         if self.do_shadows.get():
-            args = [
-                "shadows",
-                "--timezone",
-                TIMEZONE,
-                *common,
-                *self._prefix_flag(self.prefix_shadow),
-            ]
-            args += self._legend_args()
-            for name in self._listed(self.terrain_layers):
-                args += ["--shadow-terrain", name]
-            args += ["--export", "native"]
-            if self.do_shadow_all_hours.get():
-                args += ["--shadow-all-hours"]
-            if self.terrain_floor.get().strip():
-                args += ["--shadow-terrain-floor", self.terrain_floor.get().strip()]
-            args += ["--shadow-date", ",".join(self._shadow_days())]
-            if self.shadow_hours.get().strip():
-                args += ["--shadow-hour", self.shadow_hours.get().strip()]
-            if self._shadow_storey_index():
-                args += ["--shadow-storey", self._shadow_storey_index()]
-            args += self._band_args()
-            if self.master.get():
-                args += ["--master-layout", self.master.get()]
-            if self.shadow_study_subset.get():
-                args += ["--shadow-subset", self.shadow_study_subset.get()]
-            args += ["--year", self.year.get().strip() or "2024"]
-            args += self._sheet_args()
-            made.append(Job(SHADOW_JOB, args))
-
-        if self.do_shadow_plans.get():
-            # The diagram's own days and hours, so the two routes draw the
-            # same instants under the same names.
+            # The shadow diagram: the documents, on the diagram's own days
+            # and hours (D144).
             args = [
                 "shadow-plans",
                 "--timezone",
@@ -9126,10 +9145,10 @@ class Window:
                 "--shadow-date",
                 ",".join(self._shadow_days()),
             ]
-            # The diagram's legend rows too, when any is filled: the plans
-            # then make a document per row and stack every row of an hour in
-            # one drawing, each in its legend colour (D142). The set name and
-            # the shadow pen are for the plain set and are not sent with them.
+            # The legend rows, when any is filled: a document per row, and
+            # every row of an hour stacked in one drawing, each in its legend
+            # colour (D142). The set name and the shadow pen are for the
+            # plain set and are not sent with them.
             legend = self._legend_args()
             args += legend
             plain_only = ("--label", "--shadow-pen")
@@ -9146,7 +9165,41 @@ class Window:
                     args += [flag, field.get().strip()]
             args += ["--year", self.year.get().strip() or "2024"]
             args += self._sheet_args()
-            made.append(Job(SHADOW_PLAN_JOB, args))
+            made.append(Job(SHADOW_JOB, args))
+
+        if self.do_shadow_hours.get():
+            # The design's every hour on one drawing, cast by Loriini and
+            # drawn as fills, and nothing else: no fill, view or sheet per
+            # hour, which the documents above draw (D144, D160). The same
+            # legend, which says what the design is and what it lands on.
+            args = [
+                "shadows",
+                "--timezone",
+                TIMEZONE,
+                *common,
+                *self._prefix_flag(self.prefix_shadow),
+            ]
+            args += self._legend_args()
+            for name in self._listed(self.terrain_layers):
+                args += ["--shadow-terrain", name]
+            args += ["--export", "native", "--shadow-all-hours-only"]
+            if self.shadow_hours_colour.get():
+                args += ["--shadow-all-hours-colour", self.shadow_hours_colour.get()]
+            if self.terrain_floor.get().strip():
+                args += ["--shadow-terrain-floor", self.terrain_floor.get().strip()]
+            args += ["--shadow-date", ",".join(self._shadow_days())]
+            if self.shadow_hours.get().strip():
+                args += ["--shadow-hour", self.shadow_hours.get().strip()]
+            if self._shadow_storey_index():
+                args += ["--shadow-storey", self._shadow_storey_index()]
+            args += self._band_args()
+            if self.master.get():
+                args += ["--master-layout", self.master.get()]
+            if self.shadow_study_subset.get():
+                args += ["--shadow-subset", self.shadow_study_subset.get()]
+            args += ["--year", self.year.get().strip() or "2024"]
+            args += self._sheet_args()
+            made.append(Job(SHADOW_HOURS_JOB, args))
 
         if self.do_sun_eyes.get():
             args = [
@@ -9391,12 +9444,21 @@ class Window:
             return
         if any(tick.get() for _name, tick, _section in self._studies()) and not self._have_master():
             return
-        if self.do_shadow_plans.get() and not self.shadow_plan_combination.get().strip():
-            # No office combination to fall back on (D156): the plans are
+        if self.do_shadows.get() and not self.shadow_plan_combination.get().strip():
+            # No office combination to fall back on (D156): the documents are
             # pinned to this one, so it is asked for rather than guessed.
             self._write(
-                "Shadow plans need a layer combination: pick the one with the "
-                "buildings and the ground under them, in the Shadow diagram section."
+                "The shadow diagram needs a layer combination: pick the one with "
+                "the buildings and the ground under them, in its Layers row."
+            )
+            return
+        if self.do_shadow_hours.get() and not self._designed_row():
+            # The command would otherwise fall back to a fill per hour, the
+            # diagram the documents draw now (D160).
+            self._write(
+                "Every hour on one drawing needs the design: choose its layers "
+                "for the Proposed row, or another row being compared, in the "
+                "Shadow diagram panel."
             )
             return
         queued = self.jobs()

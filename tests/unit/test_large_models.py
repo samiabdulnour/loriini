@@ -334,8 +334,11 @@ def _scene(far: tuple[tuple[str, float], ...] = ()) -> Any:
     )
 
 
-def _report(monkeypatch: pytest.MonkeyPatch, scene: Any, capsys: Any) -> tuple[int, str]:
-    """Run the shadow command's measuring half over a scene, drawing nothing."""
+def _report(
+    monkeypatch: pytest.MonkeyPatch, scene: Any, capsys: Any, **asked: Any
+) -> tuple[int, str]:
+    """Run the shadow command's measuring half over a scene, drawing nothing.
+    ``asked`` is any other option the command is given."""
     import typer
 
     from sun_study import cli
@@ -366,6 +369,7 @@ def _report(monkeypatch: pytest.MonkeyPatch, scene: Any, capsys: Any) -> tuple[i
             master_layout=None,
             shadow_subset=None,
             check_georeferencing=False,
+            **asked,
         )
     except typer.Exit as stopped:
         code = int(stopped.exit_code)
@@ -386,6 +390,28 @@ def test_the_shadow_log_says_each_stage_the_grid_and_the_cast(
     assert "timing: read the model and sorted it into the legend in" in said
     assert "timing: cast and traced the shadows in" in said
     assert "timing: the whole run took" in said
+
+
+def test_the_every_hour_drawing_alone_stops_without_a_design(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With nothing being compared there is no design to outline, and drawing
+    the hours anyway would be a fill per hour -- the diagram the 3D Documents
+    draw now, not what was asked. So the run stops before the cast (D160)."""
+    from dataclasses import replace
+
+    scene = _scene()
+    code, said = _report(
+        monkeypatch,
+        replace(scene, sources=scene.sources[:1]),
+        capsys,
+        shadow_all_hours=True,
+        only_all_hours=True,
+    )
+
+    assert code == 2, said
+    assert "--shadow-all-hours-only needs a design to outline" in said
+    assert "  casting " not in said
 
 
 def test_running_out_of_memory_is_said_with_the_way_out(

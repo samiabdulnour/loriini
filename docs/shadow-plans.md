@@ -1,24 +1,32 @@
 # Shadow plans: the hours as 3D Documents, with Archicad's own shadows
 
-The shadow diagram Loriini draws itself -- the model exported, the shadows
-cast by its own ray caster, and what stands and what the proposal adds drawn
-as fills in the legend's colours -- is the argument a DA makes. **Shadow
-plans** are the other way to draw the same hours: a 3D Document per hour,
-looking straight down, with the sun at that hour and Archicad's own vectorial
-sun shadows on. Archicad casts the shadows, from the sun it works out from
-the project's location, at any size of model it can display. This is the
-second half of roadmap R1; D123 records how it is built.
+**The 3D Documents are the shadow diagram** ([D144](decisions.md)): a 3D
+Document per legend row and hour, looking straight down, with the sun at that
+hour and Archicad's own vectorial sun shadows on, the rows of an hour stacked
+in one drawing in the legend's colours. Archicad casts the shadows, from the
+sun it works out from the project's location, at any size of model it can
+display. In the window this is the **Shadow diagram** panel itself
+([D160](decisions.md)). This is the second half of roadmap R1; D123 records
+how it is built.
 
-| | Shadow diagram (fills) | Shadow plans (3D Documents) |
+Loriini's own ray caster -- the model exported, the shadows cast, and drawn
+as fills -- is the route the diagram began on. It is kept for the one
+drawing a document cannot make, since a document is one hour: the design's
+own shadow at every hour, imported as fills into one drawing (`sun-study
+shadows --shadow-all-hours-only`, the window's **Every hour on one
+drawing** panel). The table below is the two routes side by side.
+
+| | Shadow diagram (3D Documents) | Every hour on one drawing (fills) |
 |---|---|---|
-| Who casts the shadow | Loriini's ray caster | Archicad |
-| What a drawing shows | each legend row in its colour: existing, future, proposed, and the split between them | the whole shadow of what the layer combination shows |
-| The areas | measured, in the log and the schedule | none |
-| A larger model | limited by the caster's time and memory ([`larger-models.md`](larger-models.md)) | whatever Archicad can display |
-| Where it goes | fills on the plan, one layer an hour, views and sheets | documents, views and sheets |
+| Who casts the shadow | Archicad | Loriini's ray caster |
+| What a drawing shows | every legend row of an hour stacked, each in its colour where it adds to the rows above; or, with no rows, the whole shadow of what the layer combination shows | the design's shadow at every hour, a fill each, labelled by hour |
+| The areas | none | measured, in the log |
+| A larger model | whatever Archicad can display | limited by the caster's time and memory ([`larger-models.md`](larger-models.md)) |
+| Where it goes | documents, views and a combined sheet per day | fills on one plan, a view and a sheet per day |
 
-So the two answer different questions, and the office may want both: the
-documents as the record, the fills as the argument.
+So the two answer different questions. Any diagram that involves the
+neighbours is the documents; the fills draw the design's every hour on one
+plan, and the areas when the log is wanted.
 
 ## What a run makes
 
@@ -94,9 +102,10 @@ repeated per proposal (**Existing**, **Proposed 1**, **Proposed 2**), with
 `--existing-pen` and `--proposed-pen`. The two ways do not mix. Any `--label`
 is set aside.
 
-From the window, the rows are the **Shadow diagram** page's own legend rows:
-choose layers for them once and the **Shadow plans** box stacks them, so the
-fills and the documents of one project are drawn from one legend.
+From the window, the rows are the **Shadow diagram** panel's legend rows:
+choose layers for them and the documents are stacked. The **Every hour on
+one drawing** panel under it takes its design from the same rows, so one
+project's documents and fills are drawn from one legend.
 
 A run then makes, from the base combination:
 
@@ -198,12 +207,21 @@ against each other.
 
 ## Running it
 
-From the window: the **Shadow diagram** tab, the **Shadow plans** box under
-the days. It draws the days lit and the hours ticked above it. Tick it,
-choose the layer combination and a pen set, and press Run. With layers chosen
-for the page's legend rows it makes the stack and the combined sheets; with
-none, one set, which a set name and a shadow pen can be given. A floor plan
-tab must be in front in Archicad when it runs.
+From the window: the **Shadow diagram** page, its **Shadow diagram** panel
+under the days -- the switch the sidebar and the palette's Shadow button turn
+on. It draws the days lit and the hours ticked in it. Choose the layers for
+the legend rows, the layer combination and a pen set, and press Run; Run
+asks for the combination when it is blank. With legend rows it makes the
+stack and the combined sheets; with none, one set, which a set name and a
+shadow pen can be given. A floor plan tab must be in front in Archicad when
+it runs.
+
+The **Every hour on one drawing** panel under it is the fills: the design --
+the Proposed row, or the last row being compared -- at every hour ticked
+above, imported as fills into one drawing with a sheet per day fitted to its
+shadows. The ground it lands on, the storey it is drawn on and its colour,
+red or blue, are asked there and nowhere else. Run asks for the design when
+no row being compared has layers.
 
 From a command line:
 
