@@ -6410,6 +6410,12 @@ command used to say so and draw a fill per hour instead -- the diagram the
 documents draw now -- so `--shadow-all-hours-only` without one now stops
 before the cast, with nothing drawn.
 
+**Drawn.** The first build's every-hour run, 27 October, exported the
+model, cast the seven hours, printed their areas and drew nothing: the
+window's fills job had never sent `--draw` and `--sheet`, without which
+`shadows` only measures, and the agent's tool was written the same way. Both
+send them now.
+
 **Older presets.** A preset saved before this has the documents as
 `study_shadow_plans`, and the every-hour tick as `shadow_all_hours`, which
 only ran beside the fills: both are read as the switches they are now. Its

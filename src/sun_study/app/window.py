@@ -9236,7 +9236,10 @@ class Window:
             args += self._legend_args()
             for name in self._listed(self.terrain_layers):
                 args += ["--shadow-terrain", name]
-            args += ["--export", "native", "--shadow-all-hours-only"]
+            # Drawn and put on its sheet. Without these the command measures
+            # the hours, prints the areas and draws nothing, which is what
+            # the window's fills job had always sent it.
+            args += ["--export", "native", "--shadow-all-hours-only", "--draw", "--sheet"]
             if self.shadow_hours_colour.get():
                 args += ["--shadow-all-hours-colour", self.shadow_hours_colour.get()]
             if self.terrain_floor.get().strip():

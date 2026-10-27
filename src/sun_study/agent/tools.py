@@ -632,7 +632,8 @@ def shadow_argv(arguments: ShadowArguments) -> list[str]:
             "the every-hour drawing needs the design: name it in scenarios, e.g. "
             "{'PROPOSED': ['20 | Massing']}"
         )
-    argv += ["--export", "native", "--shadow-all-hours-only"]
+    # Drawn and put on its sheet: without these the command only measures.
+    argv += ["--export", "native", "--shadow-all-hours-only", "--draw", "--sheet"]
     argv += _option("--shadow-all-hours-colour", a.colour)
     argv += _option("--shadow-terrain-floor", a.terrain_floor_m)
     argv += ["--shadow-date", ",".join(_mmdd(day) for day in a.dates)]

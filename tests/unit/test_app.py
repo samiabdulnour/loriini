@@ -3056,6 +3056,9 @@ def test_every_hour_on_one_drawing_is_asked_for_only_when_ticked(hidden_window: 
     assert job.label == window.SHADOW_HOURS_JOB
     assert job.args[0] == "shadows"
     assert "--shadow-all-hours-only" in job.args
+    # Drawn and sheeted: without these the command measures and draws nothing,
+    # which is what the window's fills job had always sent it.
+    assert "--draw" in job.args and "--sheet" in job.args
     assert flag(job.args, "--shadow-all-hours-colour") == ["red"]
     assert hidden_window.settings()["study_shadow_hours"] is True
 

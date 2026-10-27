@@ -459,6 +459,8 @@ def test_the_every_hour_drawing_takes_its_rows_days_and_hours() -> None:
         "--export",
         "native",
         "--shadow-all-hours-only",
+        "--draw",
+        "--sheet",
         "--shadow-all-hours-colour",
         "blue",
         "--shadow-date",
