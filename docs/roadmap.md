@@ -74,7 +74,7 @@ the 3D Document defaults as it is made, with their fill in its model
 display. **Shadow plans** are a document per hour looking straight down,
 with Archicad's sun and shadows, their views pinned and dealt onto sheets by
 day -- from the Shadow diagram tab, `sun-study shadow-plans`, and the
-agent's `shadow_plans` tool ([`shadow-plans.md`](shadow-plans.md)). D123 is
+agent's `shadow_diagram` tool ([`shadow-plans.md`](shadow-plans.md)). D123 is
 how. Built against the kit and a scripted Archicad; next is the assisted
 session on the larger model with its log, and one live run of the shadow
 plans to see the shadows come on.

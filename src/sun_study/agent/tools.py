@@ -64,7 +64,10 @@ INSTRUCTIONS = (
     "temporary and no-print geometry -- and the one the diagrams are drawn over, the plan "
     "the reader sees under the colours, usually the office's DA plans; left to default it "
     "is the export combination; and the master the sheets are made from, as the project's "
-    "default places them wrong. Before any study, ask the person to close any open dialog "
+    "default places them wrong. A shadow diagram is shadow_diagram: 3D Documents with "
+    "Archicad's own shadows, the neighbours included; ask the person its layer combination "
+    "too. shadow_every_hour is only the design's shadow at every hour on one drawing. "
+    "Before any study, ask the person to close any open dialog "
     "and put a floor plan in front: Archicad refuses the whole API while a dialog is open, "
     "and refuses the save a study ends with while the 3D window is in front, which leaves "
     "the sheets without their tables."
@@ -243,30 +246,34 @@ class SiteArguments(StudyArguments):
 
 
 class ShadowArguments(SheetedArguments):
+    """The every-hour drawing's: the ``shadows`` command, every hour and
+    nothing else (D144, D160)."""
+
     dates: list[str] = Field(
         default_factory=lambda: ["winter"],
         min_length=1,
         description=(
-            "The days to draw: winter, equinox, summer, or MM-DD; several for a sheet each."
+            "The days to draw: winter, equinox, summer, or MM-DD; a drawing and a sheet each."
         ),
     )
     hours: list[int] | None = Field(
         default=None,
-        description="Whole hours of the day to draw, e.g. [9, 12, 15]; 9 to 15 otherwise.",
+        description="Whole hours of the day on the drawing, e.g. [9, 12, 15]; 9 to 15 otherwise.",
     )
     sources: dict[str, list[str]] = Field(
         default_factory=dict,
         description=(
-            "The shadow that already stands, one legend row each: the row's short name to "
-            "the layers that hold it, e.g. {'EXISTING': ['Site Context.Buildings']}. "
-            "Rows accumulate: each is charged only for ground the earlier ones left lit."
+            "What stands, which the design's shadow lands on beside the ground, one legend "
+            "row each: the row's short name to the layers that hold it, e.g. {'EXISTING': "
+            "['Site Context.Buildings']}."
         ),
     )
     scenarios: dict[str, list[str]] = Field(
         default_factory=dict,
         description=(
-            "Each proposal, drawn against every source and against no other scenario: the "
-            "row's short name to its layers, e.g. {'PROPOSED': ['20 | Massing']}."
+            "The design: the row's short name to its layers, e.g. {'PROPOSED': ['20 | "
+            "Massing']}. The PROPOSED row is the one drawn, or the last row named when there "
+            "is none. Needed: with no design there is nothing to draw."
         ),
     )
     terrain_layers: list[str] = Field(
@@ -282,11 +289,11 @@ class ShadowArguments(SheetedArguments):
     storey: int | None = Field(
         default=None, ge=0, description="The index of the storey the fills are placed on."
     )
-    all_hours: bool = Field(
-        default=False,
+    colour: Literal["red", "blue"] | None = Field(
+        default=None,
         description=(
-            "Also draw the proposal's own shadow at every hour on one plan, as outlines "
-            "labelled by hour."
+            "The drawing's colour, each hour a 25 % drafting fill in the pen nearest it: "
+            "red, the office's, unless the person asks for blue."
         ),
     )
     subset: str | None = Field(
@@ -306,11 +313,12 @@ class ShadowPlanArguments(SheetedArguments):
         default=None,
         description="Whole hours of the day to draw, e.g. [9, 12, 15]; 9 to 15 otherwise.",
     )
-    layer_combination: str | None = Field(
-        default=None,
+    layer_combination: str = Field(
+        min_length=1,
         description=(
-            "The layer combination the plans show -- what casts the shadows and what they "
-            "fall on, so the ground must be in it; the office's shadow diagram one otherwise."
+            "The layer combination the documents show -- what casts the shadows and what "
+            "they fall on, so the ground must be in it. Ask the person which one; never "
+            "choose it yourself. project_options lists them."
         ),
     )
     label: str | None = Field(
@@ -324,7 +332,7 @@ class ShadowPlanArguments(SheetedArguments):
     sources: dict[str, list[str]] = Field(
         default_factory=dict,
         description=(
-            "The stacked mode, named as for shadow_diagrams: the shadow that already "
+            "The stacked mode: the shadow that already "
             "stands, one legend row each, the row's short name to its layers, e.g. "
             "{'EXISTING': ['Site Context.Buildings'], 'FUTURE': ['Site "
             "Context.Future']}. Rows accumulate. Every row of an hour is stacked in one "
@@ -613,9 +621,19 @@ def shadow_argv(arguments: ShadowArguments) -> list[str]:
     for layer in a.terrain_layers:
         argv += ["--shadow-terrain", layer]
     # The native model and never an IFC, as every study of the window's.
-    argv += ["--export", "native"]
-    if a.all_hours:
-        argv += ["--shadow-all-hours"]
+    # The every-hour drawing and nothing else: a fill per hour is the
+    # diagram the documents draw (D160). Without a design the command would
+    # draw that instead, so it is refused here, before anything runs.
+    designed = [*a.scenarios] + [
+        name for name in a.sources if name.casefold() in ("proposed", "additional")
+    ]
+    if not designed:
+        raise InvalidArgumentsError(
+            "the every-hour drawing needs the design: name it in scenarios, e.g. "
+            "{'PROPOSED': ['20 | Massing']}"
+        )
+    argv += ["--export", "native", "--shadow-all-hours-only"]
+    argv += _option("--shadow-all-hours-colour", a.colour)
     argv += _option("--shadow-terrain-floor", a.terrain_floor_m)
     argv += ["--shadow-date", ",".join(_mmdd(day) for day in a.dates)]
     if a.hours:
@@ -823,12 +841,12 @@ def site_analysis(arguments: Mapping[str, Any], call: Call) -> ToolResult:
     return run_command(site_argv(_validated(SiteArguments, arguments)), call)
 
 
-def shadow_diagrams(arguments: Mapping[str, Any], call: Call) -> ToolResult:
-    return run_command(shadow_argv(_validated(ShadowArguments, arguments)), call)
-
-
-def shadow_plans(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+def shadow_diagram(arguments: Mapping[str, Any], call: Call) -> ToolResult:
     return run_command(shadow_plans_argv(_validated(ShadowPlanArguments, arguments)), call)
+
+
+def shadow_every_hour(arguments: Mapping[str, Any], call: Call) -> ToolResult:
+    return run_command(shadow_argv(_validated(ShadowArguments, arguments)), call)
 
 
 def sun_views(arguments: Mapping[str, Any], call: Call) -> ToolResult:
@@ -892,28 +910,31 @@ TOOLS: tuple[Tool, ...] = (
         title="Site analysis",
     ),
     Tool(
-        "shadow_diagrams",
-        "Shadow diagrams for the days and hours asked, cast by the layers named as the "
-        "existing shadow and the proposal onto the terrain, drawn as fills on layouts in "
-        "the legend's colours. The layer names come from project_options.",
-        ShadowArguments.model_json_schema(),
-        shadow_diagrams,
-        title="Shadow diagrams",
+        "shadow_diagram",
+        "The shadow diagram: the days and hours asked as 3D Documents looking straight "
+        "down, each with Archicad's own sun and vectorial shadows for that hour, placed on "
+        "layouts by day. The route for every shadow diagram, the neighbours' included. Given "
+        "a legend -- sources and scenarios, or existing and proposals -- it makes a document "
+        "per row and stacks every row of an hour in one drawing on a combined sheet, each "
+        "row's shadow in its legend colour where it adds to the rows above it, all cast by "
+        "Archicad. Without a legend, one set shows the whole shadow of what the layer "
+        "combination shows; run it once per combination with a label each. The layers and "
+        "combinations come from project_options.",
+        ShadowPlanArguments.model_json_schema(),
+        shadow_diagram,
+        title="Shadow diagram",
     ),
     Tool(
-        "shadow_plans",
-        "The same days and hours as 3D Documents looking straight down, each with "
-        "Archicad's own sun and vectorial shadows for that hour, placed on layouts by day. "
-        "Archicad casts the shadows, so it suits a model too large for shadow_diagrams. One "
-        "document shows the whole shadow of what the layer combination shows; given a "
-        "legend -- sources and scenarios as for shadow_diagrams, or existing and proposals "
-        "-- the stacked mode makes a document per row and stacks every row of an hour in "
-        "one drawing on a combined sheet, so each row's shadow is in its legend colour on "
-        "one plan, all cast by Archicad. Without a legend, run it once per combination "
-        "with a label each.",
-        ShadowPlanArguments.model_json_schema(),
-        shadow_plans,
-        title="Shadow plans",
+        "shadow_every_hour",
+        "The design's own shadow at every hour asked, on one drawing: cast by Loriini and "
+        "imported as fills into the floor plan, a fill per hour labelled by its hour, with a "
+        "view and a sheet per day. Only for that drawing -- a shadow diagram, with or "
+        "without the neighbours, is shadow_diagram. The design is the PROPOSED scenario, or "
+        "the last scenario named; the sources and the terrain are what its shadow lands on. "
+        "The layer names come from project_options.",
+        ShadowArguments.model_json_schema(),
+        shadow_every_hour,
+        title="Every hour on one drawing",
     ),
     Tool(
         "sun_views",

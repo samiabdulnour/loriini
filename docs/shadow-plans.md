@@ -187,9 +187,9 @@ and the sheet in 18 s, a rerun in 12 s; the neighbours' shadow in its pen
 everywhere, and only the ground the tower adds in the proposal's -- to the
 south-west at 9, south at noon, south-east at 3.
 
-From the agent, `shadow_plans` takes `sources` and `scenarios` as
-`shadow_diagrams` does, or `existing`, `proposals`, `existing_pen` and
-`proposed_pens`.
+From the agent, `shadow_diagram` takes `sources` and `scenarios`, or
+`existing`, `proposals`, `existing_pen` and `proposed_pens`; its
+`shadow_every_hour` is the fills' every-hour drawing ([D160](decisions.md)).
 
 ### Two sets side by side
 
@@ -233,7 +233,7 @@ sun-study shadow-plans --shadow-date 06-21 --shadow-hour 9,10,11,12,13,14,15 ^
 `--shadow-fill "Solid Fill"`, `--shadow-background-pen` and
 `--shadow-contours` set the rest of the shadows' look; anything left out
 keeps the project's own defaults for new 3D Documents. An agent connected to
-`Loriini.exe mcp` has the same as its `shadow_plans` tool.
+`Loriini.exe mcp` has the same as its `shadow_diagram` tool.
 
 **Whose clock the hours are in.** Archicad reads a sun date in the project
 location's own time zone -- the one set beside the latitude and longitude in

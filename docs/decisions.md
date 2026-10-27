@@ -6405,6 +6405,16 @@ only ran beside the fills: both are read as the switches they are now. Its
 `study_shadows` asked for the shadow diagram, and turns on the documents. The
 palette's `shadow plans` turns on the documents too.
 
+**The agent too.** Asked the same day, *"update the agent"*: its tools had
+the routes the same way round as the window, `shadow_diagrams` the fills and
+`shadow_plans` the documents, offered for a model too large for the fills.
+They are `shadow_diagram`, the documents, whose layer combination is now
+required and asked of the person as `cos_solar`'s are (D156 left the
+command no default, and the tool still said it had one); and
+`shadow_every_hour`, the fills, which runs `--shadow-all-hours-only` with a
+colour, red or blue, and is refused without a design. The instructions a
+client is shown on connecting say which is which.
+
 *What this does not change:* the documents, the stack, its fit, its pen set
 and its legend (D141 to D143), the every-hour drawing itself (D144, D145,
 D147, D149), or the `shadows` command's other modes.
