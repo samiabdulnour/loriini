@@ -4147,8 +4147,14 @@ def test_a_study_s_rows_are_inside_its_own_box(hidden_window: Any) -> None:
         return False
 
     shadow_box, _ = hidden_window.study_boxes[window.SHADOW_JOB]
+    every_hour_box, _ = hidden_window.study_boxes[window.SHADOW_HOURS_JOB]
     plans_box, _ = hidden_window.study_boxes[window.PLANS_JOB]
-    assert inside(hidden_window.shadow_hours, shadow_box)
+    assert inside(hidden_window.shadow_plan_combination, shadow_box)
+    assert inside(hidden_window.terrain_layers, every_hour_box)
+    # The legend rows and the hours are both drawings', in a panel of their
+    # own above the two switches (D160).
+    for shared in (hidden_window.shadow_hours, hidden_window.shadow_rows[0][2]):
+        assert not inside(shared, shadow_box) and not inside(shared, every_hour_box)
     assert inside(hidden_window.instants, plans_box)
     assert not inside(hidden_window.instants, shadow_box)
     assert not inside(hidden_window.adg_subset, plans_box), "and the page's own rows stay out"
@@ -4670,6 +4676,25 @@ def test_run_asks_for_the_design_before_the_every_hour_drawing(
     assert hidden_window._designed_row() == "PROPOSED"
     hidden_window._start()
     assert started == ["run"]
+
+
+def test_the_every_hour_panel_says_which_massing_it_draws(hidden_window: Any) -> None:
+    """The massing is chosen once, in Layers and hours, with every other row;
+    the every-hour panel names the row it will draw and its layers, so nobody
+    looks in it for a picker it does not have (D160)."""
+    said = hidden_window.shadow_hours_design
+    hidden_window._sync()
+    assert "choose the Proposed row" in said.cget("text")
+
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+    rows["EXISTING"].insert(0, "03 | Site Context.Buildings")
+    rows["TOD"].insert(0, "20 | Massing.TOD")
+    hidden_window._sync()
+    assert said.cget("text") == "TOD envelope: 20 | Massing.TOD"
+
+    rows["PROPOSED"].insert(0, "20 | Massing.Envelope, 20 | Massing.Podium")
+    hidden_window._sync()
+    assert said.cget("text") == "Proposed: 20 | Massing.Envelope, 20 | Massing.Podium"
 
 
 def test_a_preset_from_when_the_fills_were_the_diagram_opens_as_it_meant(

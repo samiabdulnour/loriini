@@ -102,9 +102,9 @@ repeated per proposal (**Existing**, **Proposed 1**, **Proposed 2**), with
 `--existing-pen` and `--proposed-pen`. The two ways do not mix. Any `--label`
 is set aside.
 
-From the window, the rows are the **Shadow diagram** panel's legend rows:
-choose layers for them and the documents are stacked. The **Every hour on
-one drawing** panel under it takes its design from the same rows, so one
+From the window, the rows are the **Layers and hours** panel's legend
+rows: choose layers for them and the documents are stacked. The **Every hour
+on one drawing** panel takes its design from the same rows, so one
 project's documents and fills are drawn from one legend.
 
 A run then makes, from the base combination:
@@ -207,21 +207,25 @@ against each other.
 
 ## Running it
 
-From the window: the **Shadow diagram** page, its **Shadow diagram** panel
-under the days -- the switch the sidebar and the palette's Shadow button turn
-on. It draws the days lit and the hours ticked in it. Choose the layers for
-the legend rows, the layer combination and a pen set, and press Run; Run
-asks for the combination when it is blank. With legend rows it makes the
-stack and the combined sheets; with none, one set, which a set name and a
-shadow pen can be given. A floor plan tab must be in front in Archicad when
-it runs.
+From the window, the **Shadow diagram** page is four panels:
 
-The **Every hour on one drawing** panel under it is the fills: the design --
-the Proposed row, or the last row being compared -- at every hour ticked
-above, imported as fills into one drawing with a sheet per day fitted to its
-shadows. The ground it lands on, the storey it is drawn on and its colour,
-red or blue, are asked there and nowhere else. Run asks for the design when
-no row being compared has layers.
+- **Days studied**;
+- **Layers and hours**, which both drawings read: a layer picker per legend
+  row -- the Proposed row is the design's massing -- the hours, and the
+  sheets' subset;
+- **Shadow diagram**, the documents, under the switch the sidebar and the
+  palette's Shadow button turn on: the layer combination, a pen set, and a
+  set name and shadow pen for a set without legend rows. Run asks for the
+  combination when it is blank. With legend rows it makes the stack and the
+  combined sheets; with none, one set. A floor plan tab must be in front in
+  Archicad when it runs;
+- **Every hour on one drawing**, the fills, under a switch of its own: the
+  design's massing -- the Proposed row, or the last row being compared,
+  which the panel names -- at every hour, imported as fills into one drawing
+  with a sheet per day fitted to its shadows. The ground it lands on, the
+  storey it is drawn on and its colour, red or blue, are asked there and
+  nowhere else. Run asks for the massing when no row being compared has
+  layers.
 
 From a command line:
 

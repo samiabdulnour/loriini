@@ -6378,19 +6378,30 @@ described as the same hours drawn a second way and the route for a model too
 large for the caster; and the every-hour drawing was a tick that ran beside
 the fills' per-hour diagram, never on its own.
 
-**Decided.** The page's **Shadow diagram** panel is the documents
-(`shadow-plans`): the legend rows, the hours, the layer combination, the pen
-set, the sheets' subset, and the set name and shadow pen for a set without
-the legend. It is the study the sidebar's switch and the palette's Shadow
-button turn on. Under it, **Every hour on one drawing** is the fills
-(`shadows --shadow-all-hours-only`) and nothing else: the design's shadow at
-every hour ticked above, imported as fills into one drawing, a sheet per day
-fitted to its shadows. It takes its design and what it lands on from the
-same legend rows, and asks for its own the three things only Loriini's caster
-uses -- the ground it lands on, the ground to ignore below, the storey the
-fills are drawn on -- and its colour, red or blue (D147), which the window
-had not offered. The fills' per-hour diagram is no longer in the window; the
-command line keeps it.
+**Decided.** Under the days, one panel both drawings read, then a small
+panel for each, under its own switch. Asked of the first build: *"where do i
+select the massing layer? there should be one genereal, where i select hours
+and layers. and then 2 small options if i go for shadow diagram or every
+hour on one drawing"*.
+
+- **Layers and hours**, set up rather than switched on: the legend rows --
+  the Proposed row is the design's massing -- the hours, and the sheets'
+  subset.
+- **Shadow diagram** is the documents (`shadow-plans`): the layer
+  combination, the pen set, and the set name and shadow pen for a set
+  without the legend. It is the study the sidebar's switch and the
+  palette's Shadow button turn on.
+- **Every hour on one drawing** is the fills (`shadows
+  --shadow-all-hours-only`) and nothing else: the design's massing at every
+  hour, imported as fills into one drawing, a sheet per day fitted to its
+  shadows. It says which row it draws and its layers -- *Proposed: 20 |
+  Massing.Envelope* -- so the massing is found where it is chosen, and asks
+  for its own the three things only Loriini's caster uses -- the ground it
+  lands on, the ground to ignore below, the storey the fills are drawn on --
+  and its colour, red or blue (D147), which the window had not offered.
+
+The fills' per-hour diagram is no longer in the window; the command line
+keeps it.
 
 **Asked before anything runs.** Run asks for the documents' layer
 combination when it is blank (D156), and for the design when the every-hour
