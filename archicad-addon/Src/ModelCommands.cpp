@@ -604,7 +604,8 @@ GS::Optional<GS::UniString> ExportModelCommand::GetResponseSchema () const
 			"polygonsConcave": { "type": "integer" },
 			"triangulated": { "type": "integer" },
 			"triangulationFailed": { "type": "integer" },
-			"areaMismatch": { "type": "integer" }
+			"areaMismatch": { "type": "integer" },
+			"error": { "type": "object" }
 		},
 		"additionalProperties": false
 	})");
