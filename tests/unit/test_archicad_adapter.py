@@ -211,13 +211,21 @@ def texts_sent(transport: Any) -> list[dict[str, Any]]:
 SS = naming.prefix()
 
 
+#: How an add-on built before a command answers it.
+UNREGISTERED = {"error": {"code": 4010, "message": "does not have the registered Add-On command"}}
+
+
 def connect(responses: dict[str, Any]) -> tuple[ArchicadConnection, FakeTransport]:
+    # The add-on's own database and layer commands answer as an older build's
+    # do unless a test scripts them, so what the tool falls back on stays tested.
     transport = FakeTransport(
         {
             "GetAddOnVersion": {"version": "1.5.7"},
             # The add-on's own clock answer (D135): a Sydney project keeping AEST,
             # which every scripted run here is, so an hour goes over unchanged.
             "GetPlace": {"success": True, "timeZoneInMinutes": 600, "summerTime": False},
+            "GetCurrentDatabase": UNREGISTERED,
+            "ModifyLayers": UNREGISTERED,
             **responses,
         }
     )
@@ -1779,9 +1787,11 @@ def test_the_previous_run_is_deleted_before_drawing() -> None:
         _draw_responses(
             GetElementsByType={"elements": stale},
             # The clear asks once per element type -- Hatch, Text, PolyLine --
-            # and then the legend labels' move asks a fourth time.
+            # once more to see the deleted ones gone, and then the legend
+            # labels' move asks again.
             GetDetailsOfElements=Sequential(
                 *[{"detailsOfElements": [{"layerIndex": 7}, {"layerIndex": 99}]}] * 3,
+                {"detailsOfElements": [{"error": {"code": -1, "message": "no such element"}}] * 3},
                 {"detailsOfElements": [{"layerIndex": 7}] * 99},
             ),
             DeleteElements={"success": True},
@@ -1806,6 +1816,29 @@ def test_the_previous_run_is_deleted_before_drawing() -> None:
     assert transport.commands().index("DeleteElements") < transport.commands().index(
         "CreateHatches"
     )
+
+
+def test_a_delete_that_did_not_take_stops_the_run_before_it_draws_over_it() -> None:
+    """Archicad answers a delete on a hidden layer with success and deletes
+    nothing. On Kogarah a rerun reported replacing 276 and drew its result
+    over the last one on eight layers: two results stacked on every sheet."""
+    stale = [{"elementId": {"guid": "old-1"}}]
+    connection, transport = connect(
+        _draw_responses(
+            GetElementsByType={"elements": stale},
+            # Still there when asked again.
+            GetDetailsOfElements={"detailsOfElements": [{"layerIndex": 7}]},
+            DeleteElements={"success": True},
+        )
+    )
+    with pytest.raises(ArchicadError, match="still there after deleting"):
+        draw_assessment(
+            connection,
+            _assessment(_apartment("apt-1")),
+            [_zone("z1")],
+            zone_by_apartment={"apt-1": "z1"},
+        )
+    assert "CreateHatches" not in transport.commands(), "nothing drawn over the old result"
 
 
 def test_something_else_on_the_layer_is_not_touched() -> None:
@@ -2547,6 +2580,10 @@ def test_a_hidden_results_layer_is_called_out() -> None:
             }
         ]
     }
+    # And the add-on refuses too, as an unreserved layer would in Teamwork.
+    responses["ModifyLayers"] = {
+        "error": {"code": -2130313112, "message": "Archicad refused to change layer"}
+    }
     connection, transport = connect(responses)
     report = draw_assessment(
         connection,
@@ -2558,6 +2595,8 @@ def test_a_hidden_results_layer_is_called_out() -> None:
     shown = transport.parameters_for("CreateLayers")["layerDataArray"][0]
     assert shown["isHidden"] is False, "the run must try to show it first"
     assert transport.parameters_for("CreateLayers")["overwriteExisting"] is True
+    asked = transport.parameters_for("ModifyLayers")["layers"][0]
+    assert asked["isHidden"] is False, "and then through the add-on, when the rewrite did not take"
 
     assert report.layer.hidden
     assert "THE LAYER IS HIDDEN" in report.describe()
@@ -3823,6 +3862,48 @@ def test_a_view_carries_the_scale_and_is_pinned_square_to_the_page() -> None:
     assert settings["layerCombination"] == f"{SS} Solar Analysis 09:00"
 
 
+def test_a_view_overrides_nothing_so_the_result_fills_show() -> None:
+    """A view is made with whatever override the window has. On Kogarah that
+    was the office's DA Landscape, and the COS sheets showed none of the
+    fills drawn for them."""
+    from sun_study.archicad.views import NO_OVERRIDES, views_for_storeys
+
+    connection, transport = connect(_view_world())
+    views_for_storeys(
+        connection,
+        [_storey()],
+        combination=f"{SS} X",
+        suffix="09:00",
+        drawing_scale=200,
+        folder=f"{SS} Solar Analysis fix 01",
+    )
+
+    settings = transport.parameters_for("SetViewSettings")["navigatorItemIdsWithViewSettings"]
+    assert settings[0]["viewSettings"]["graphicOverrideCombination"] == NO_OVERRIDES
+
+
+def test_a_project_without_the_override_still_gets_the_rest_of_the_view() -> None:
+    from sun_study.archicad.views import views_for_storeys
+
+    refused = {"executionResults": [{"error": {"message": "no such combination", "code": -1}}]}
+    connection, transport = connect(
+        _view_world(SetViewSettings=Sequential(refused, {"executionResults": [{"success": True}]}))
+    )
+    views_for_storeys(
+        connection,
+        [_storey()],
+        combination=f"{SS} X",
+        suffix="09:00",
+        drawing_scale=200,
+        folder=f"{SS} Solar Analysis fix 01",
+    )
+
+    second = transport.all_parameters_for("SetViewSettings")[1]
+    settings = second["navigatorItemIdsWithViewSettings"][0]["viewSettings"]
+    assert "graphicOverrideCombination" not in settings
+    assert settings["drawingScale"] == 200
+
+
 def test_a_view_that_refuses_its_settings_is_raised_not_drawn_anyway() -> None:
     """This one call decides the layer combination, the scale and the rotation
     of every drawing on the sheet. Ignoring a per-item error here is the
@@ -4513,6 +4594,46 @@ def test_a_massing_of_slabs_proves_the_floor_plan_as_walls_did() -> None:
     assert connection.database is not None and connection.database.is_model
     assert "ChangeWindow" not in transport.commands()
     assert "GetElementsByType" not in transport.commands(), "no second read when the first answers"
+
+
+def test_a_layout_of_lines_under_a_floor_plan_is_not_taken_for_the_model() -> None:
+    """Twenty lines read as a building to a guess that asks for any element:
+    Kogarah's COS areas sheet left '14 | Communal Areas' current under the
+    plan (October 2026), and the next reads found no fills. The add-on says
+    which database is current, so it is asked before anything is guessed."""
+    from sun_study.archicad.series import ensure_model_database
+
+    tree = {
+        "navigatorItemTree": {
+            "navigatorItemId": {"guid": "R"},
+            "name": "Project Map",
+            "children": [
+                {
+                    "navigatorItem": {
+                        "navigatorItemId": {"guid": "N0"},
+                        "name": "Ground",
+                        "type": "StoryItem",
+                        "prefix": "0",
+                    }
+                }
+            ],
+        }
+    }
+    connection, transport = connect(
+        {
+            "GetCurrentWindowType": {"currentWindowType": "FloorPlan"},
+            "GetCurrentDatabase": {"success": True, "windowType": "Layout"},
+            # The table's lines: readable, and not a building.
+            "GetAllElements": {"elements": [{"elementId": {"guid": "line"}}] * 20},
+            "GetNavigatorItemTree": tree,
+            "GetDatabaseIdFromNavigatorItemId": {"databases": [{"databaseId": {"guid": "S0"}}]},
+            "SetCurrentDatabase": {"success": True},
+        }
+    )
+    ensure_model_database(connection)
+
+    assert transport.parameters_for("SetCurrentDatabase")["databaseId"] == {"guid": "S0"}
+    assert "GetAllElements" not in transport.commands(), "the add-on answered; nothing guessed"
 
 
 def test_a_strayed_database_under_a_floor_plan_is_moved_without_the_window() -> None:
@@ -5325,3 +5446,49 @@ def test_a_refused_element_without_a_contour_is_reported_without_measurements() 
     message = str(raised.value)
     assert "[0] no such layer" in message
     assert "vertices" not in message
+
+
+def test_a_combination_already_there_is_rewritten_by_its_id_not_kept() -> None:
+    """D164: on Darlinghurst each option's combination, made before the
+    options after it existed, kept showing them; a rerun must rewrite the
+    combination it finds, and Tapir rewrites by the existing attribute's id."""
+    from sun_study.archicad.layers import ensure_combination
+
+    transport = FakeTransport(
+        {
+            "GetAttributesByType": {
+                "attributes": [
+                    {
+                        "attributeId": {"guid": "C-OLD"},
+                        "index": 75,
+                        "name": "OPTION 13 | Shadow Diagram JUNE 21 ALL HOURS",
+                    }
+                ]
+            },
+            "CreateLayerCombinations": {"attributeIds": [{"attributeId": {"guid": "C-OLD"}}]},
+        }
+    )
+    written = ensure_combination(
+        ArchicadConnection(transport),
+        "OPTION 13 | Shadow Diagram JUNE 21 ALL HOURS",
+        {"L-13": False, "L-03": True},
+    )
+    assert written is True
+    sent = transport.parameters_for("CreateLayerCombinations")
+    assert sent["overwriteExisting"] is True
+    (entry,) = sent["layerCombinationDataArray"]
+    assert entry["attributeId"] == {"guid": "C-OLD"}
+    assert "index" not in entry, "the schema refuses the listing's index; the id finds it"
+    assert {row["attributeId"]["guid"]: row["isHidden"] for row in entry["layers"]} == {
+        "L-13": False,
+        "L-03": True,
+    }
+
+    fresh = FakeTransport(
+        {
+            "GetAttributesByType": {"attributes": []},
+            "CreateLayerCombinations": {"attributeIds": [{"attributeId": {"guid": "C-NEW"}}]},
+        }
+    )
+    assert ensure_combination(ArchicadConnection(fresh), "New one", {"L-13": False}) is True
+    assert "overwriteExisting" not in fresh.parameters_for("CreateLayerCombinations")

@@ -156,6 +156,8 @@ def test_the_tools_are_listed_with_what_they_take(client: Client) -> None:
     assert set(listed) == {
         "archicad_instances",
         "project_options",
+        "renovation_filters",
+        "set_renovation_filter",
         "loriini_help",
         "run_loriini",
         "site_analysis",
@@ -179,6 +181,9 @@ def test_the_tools_are_listed_with_what_they_take(client: Client) -> None:
     assert site["additionalProperties"] is False, "a misspelled option is refused, not ignored"
     assert "port" in site["properties"] and "model_radius_m" in site["properties"]
     assert listed["project_options"]["annotations"]["readOnlyHint"] is True
+    assert listed["renovation_filters"]["annotations"]["readOnlyHint"] is True
+    assert listed["set_renovation_filter"]["annotations"]["readOnlyHint"] is False
+    assert listed["set_renovation_filter"]["inputSchema"]["required"] == ["name"]
     assert listed["shadow_every_hour"]["annotations"]["readOnlyHint"] is False
     # The documents are the shadow diagram (D144, D160), and the combination
     # they show is the person's answer, as cos_solar's is.
@@ -324,6 +329,8 @@ def test_the_listings_read_the_project_as_the_window_does(
             combinations=("04 | Shadow Diagrams",),
             masters=("A1 Landscape",),
             pen_sets=("00 FA Pens",),
+            renovation_filters=("04 Planned Status", "SCENARIO 2_COMPLIANT TOD"),
+            renovation_filter_shown="04 Planned Status",
             storey_names=("Ground", "Level 1"),
             latitude=-33.9,
             longitude=151.2,
@@ -339,6 +346,7 @@ def test_the_listings_read_the_project_as_the_window_does(
         "project: Tower.pln" in text and "G08 — Apartment (15 x 74 m2) on 06 | Zone.Units" in text
     )
     assert "could not read: layout subsets" in text
+    assert "renovation filters (2): 04 Planned Status (shown now); SCENARIO 2_COMPLIANT TOD" in text
     assert result["structuredContent"]["masters"] == ["A1 Landscape"]
     assert result["structuredContent"]["zone_kinds"][0]["label"] == "G08"
 
@@ -569,6 +577,49 @@ def test_the_stacked_shadow_diagram_names_the_layers_of_what_stands_and_each_pro
         tools.ShadowPlanArguments(layer_combination="04 | Shadow Diagrams")
     )
     assert not {"--existing", "--proposed", "--existing-pen", "--proposed-pen"} & set(plain)
+
+
+def test_a_scenario_kept_as_a_renovation_filter_is_named_to_the_command() -> None:
+    """D162: the filters' names go over one --scenario each, and the planned
+    filter by name; nothing of it when neither is given."""
+    argv = tools.shadow_plans_argv(
+        tools.ShadowPlanArguments(
+            layer_combination="04 | Shadow Diagrams",
+            existing=["03 | Site Context.Buildings"],
+            renovation_scenarios=["SCENARIO 2_COMPLIANT TOD", "SCENARIO 5_SEARs"],
+            renovation_filter="04 Planned Status",
+        )
+    )
+    assert [argv[i + 1] for i, word in enumerate(argv) if word == "--scenario"] == [
+        "SCENARIO 2_COMPLIANT TOD",
+        "SCENARIO 5_SEARs",
+    ]
+    assert argv[argv.index("--renovation-filter") + 1] == "04 Planned Status"
+    assert "--sheets-per-scenario" not in argv
+    many = tools.shadow_plans_argv(
+        tools.ShadowPlanArguments(
+            layer_combination="04 | Shadow Diagrams",
+            existing=["03 | Site Context.Buildings"],
+            renovation_scenarios=["SCENARIO 2_COMPLIANT TOD"],
+            sheets_per_scenario=True,
+        )
+    )
+    assert "--sheets-per-scenario" in many
+    plain = tools.shadow_plans_argv(
+        tools.ShadowPlanArguments(layer_combination="04 | Shadow Diagrams")
+    )
+    assert not {"--scenario", "--renovation-filter", "--sheets-per-scenario"} & set(plain)
+
+
+def test_the_renovation_filters_are_listed_and_switched_through_the_command() -> None:
+    assert tools.renovation_filters_argv(19724) == ["renovation-filters", "--port", "19724"]
+    assert tools.renovation_filters_argv(19724, "SCENARIO 2_COMPLIANT TOD") == [
+        "renovation-filters",
+        "--port",
+        "19724",
+        "--set",
+        "SCENARIO 2_COMPLIANT TOD",
+    ]
 
 
 def test_cos_solar_is_the_windows_communal_job_under_the_combination_asked_for() -> None:

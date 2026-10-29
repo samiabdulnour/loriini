@@ -72,6 +72,8 @@ class ShadowTransport:
             for index in range(stale)
         ]
         self.sent: list[dict[str, Any]] = []
+        #: What a ``DeleteElements`` has taken away.
+        self.deleted: set[str] = set()
         #: Every Element ID written, in the order it was written.
         self.stamped: list[dict[str, Any]] = []
         #: Every group asked for, so a test can check what shares one.
@@ -129,12 +131,17 @@ class ShadowTransport:
         if command == "GetElementsByType":
             return {"elements": self.stale if given.get("elementType") == "Hatch" else []}
         if command == "GetDetailsOfElements":
+            # A deleted element answers with an error, as Archicad's does.
             return {
                 "detailsOfElements": [
-                    {"layerIndex": element["layerIndex"]} for element in given["elements"]
+                    {"error": {"code": -1, "message": "no such element"}}
+                    if (element.get("elementId") or {}).get("guid") in self.deleted
+                    else {"layerIndex": element["layerIndex"]}
+                    for element in given["elements"]
                 ]
             }
         if command == "DeleteElements":
+            self.deleted.update(element["elementId"]["guid"] for element in given["elements"])
             return {"executionResults": [{"success": True} for _ in given["elements"]]}
         if command == "CreateHatches":
             return {"elements": [{"elementId": {"guid": "fill"}} for _ in given["hatchesData"]]}
@@ -351,6 +358,30 @@ def test_a_combination_leaves_the_rest_of_the_project_as_it_found_it() -> None:
     }
     assert states["wall"] is False, "was shown, stays shown"
     assert states["dims"] is True, "was hidden, stays hidden"
+
+
+def test_another_options_shadow_layers_are_hidden_whatever_their_prefix() -> None:
+    """D164: sixteen options drawn under sixteen prefixes each showed every
+    earlier option's shadow as well as its own. Another prefix's shadow
+    layers are this tool's and go off; an office layer with a shadow in its
+    part stays as it was found."""
+    connection, transport = connect(["9AM"])
+    transport.layers += [
+        ("other-hours", "OPTION 03 | Shadow Diagram.JUNE 21 ALL HOURS", 300, False),
+        ("other-legend", "OPTION 03 | Shadow Diagram.Legend", 301, False),
+        ("overhang", "01 | Floor Overhang. Shadow Calcs", 302, False),
+    ]
+
+    draw_shadow_series(connection, series(["9AM"]))
+
+    entry = transport.all_parameters_for("CreateLayerCombinations")[0]
+    states = {
+        row["attributeId"]["guid"]: row["isHidden"]
+        for row in entry["layerCombinationDataArray"][0]["layers"]
+    }
+    assert states["other-hours"] is True and states["other-legend"] is True
+    assert states["overhang"] is False, "not this tool's: left as found"
+    assert states["legend"] is False and states["shadow-9AM"] is False
 
 
 def test_the_combinations_are_named_for_the_hour_they_show() -> None:

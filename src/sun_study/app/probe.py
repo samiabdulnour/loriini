@@ -22,6 +22,7 @@ from sun_study.archicad.cos_schedule import schedule_names
 from sun_study.archicad.layers import read_layers
 from sun_study.archicad.layout import _walk, master_layouts
 from sun_study.archicad.read import read_geo_location
+from sun_study.archicad.renovation import renovation_filters
 from sun_study.archicad.series import ensure_model_database
 from sun_study.archicad.sun_eyes import overrides_in_views
 
@@ -113,6 +114,16 @@ class ProjectOptions:
     and cannot list them. Empty on an older add-on, and the field then takes a
     typed name as before.
     """
+
+    renovation_filters: tuple[str, ...] = ()
+    """The Renovation palette's filters, in its order -- where an office may
+    keep its massing scenarios. Read through the Loriini add-on, since Tapir
+    pins a view to a filter by GUID and cannot name one; empty on an older
+    add-on."""
+
+    renovation_filter_shown: str = ""
+    """The filter the project shows now, by name -- which scenario the model
+    stands in -- or blank where the add-on cannot say."""
 
     storeys: tuple[int, ...] = ()
 
@@ -326,6 +337,11 @@ def options(port: int) -> ProjectOptions:
         # misses only an override no view has.
         used = attempt("graphic overrides", lambda: overrides_in_views(connection)) or ()
         overrides = {"combinations": [{"name": name} for name in used]}
+    # The same: an add-on without the command has no names to offer.
+    try:
+        filters, shown = renovation_filters(connection)
+    except ArchicadError:
+        filters, shown = [], None
     book = attempt(
         "layout book",
         lambda: connection.run_tapir("GetNavigatorItemTree", {"navigatorMapId": "LayoutBook"}),
@@ -372,6 +388,8 @@ def options(port: int) -> ProjectOptions:
                 if isinstance(entry, dict) and str(entry.get("name", "")).strip()
             )
         ),
+        renovation_filters=tuple(one.name for one in filters if one.name.strip()),
+        renovation_filter_shown=next((one.name for one in filters if one.guid == shown), ""),
         subsets=tuple(
             sorted(
                 {

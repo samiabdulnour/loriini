@@ -6465,3 +6465,94 @@ agent's `shadow_every_hour` takes the same as `grid_m`.
 
 *What this does not change:* the documents, the fills' colours (D147), or the
 sheet's fit (D149).
+
+### D162 — A scenario kept as a renovation filter is a legend row, and the filter is listed, named and switched
+
+Asked 29 October 2026: *"are you able to control renovation filter via
+loriini?"*, and then to make it so, for an automation.
+
+**What was there.** A view could be pinned to a renovation filter, by GUID
+only, on the sun views and the shadow plans (`--renovation-filter`), and the
+yield could count by one (D140); Tapir has no way to list the filters, name
+one or switch the project to one. A branch of 19 October had the add-on list
+them by name and a `--scenario` for Crows Nest, whose massing scenarios are
+renovation filters -- each massing shown on its own filter only, the
+Renovation palette offering *SCENARIO 2_COMPLIANT TOD* and *SCENARIO
+5_SEARs* -- written against the two-tier stack that the legend has since
+replaced (`--shadow-source` and `--shadow-scenario`). It is rebased onto the
+legend here rather than merged.
+
+**The row.** A scenario kept as a filter is a legend row that is compared,
+with no layers of its own (`LegendRow.renovation_filter_guid`). Its
+combination shows what every source's does and hides the other scenarios'
+layers, as any scenario with nothing of its own to show would; its views
+pin its filter, and every other row's pin the run's -- `--renovation-filter`,
+now by the palette's name or a GUID, or the planned state most of the
+project's views carry. So the stack, the pens, the pen set, the combined
+sheets and the legend are the ones every other row has (D137 to D148), and
+`--scenario` joins either way of naming the legend, or `--existing` alone.
+The agent's `shadow_diagram` takes them as `renovation_scenarios` and
+`renovation_filter`. A name the project lacks stops the run with the names
+it has; a scenario on the filter the other rows pin is said, since the two
+rows would show the same massing.
+
+**Fifteen options.** The stack lays every scenario in one cell, which
+compares two or three and buries fifteen. `--sheets-per-scenario` makes a
+combined sheet set per scenario instead -- each scenario alone under every
+source, named for it, the sources' documents made once and placed on every
+set, every scenario in the one proposal blue and one pen -- so one run makes
+the fifteen layouts asked for, each read on its own (`stacks_per_scenario`,
+and `make_stack_sheets` named for the set it makes).
+
+**The filter itself.** `GetRenovationFilters` lists the palette's filters in
+its order with the one the project shows, and `SetRenovationFilter` switches
+to one -- `ACAPI_Renovation_SetActualRenovationFilter`, the
+`APIDb_SetActualRenovationFilterID` dispatcher on 26 -- which is what the
+floor plan and the 3D window then show, as picking it in the palette does.
+`sun-study renovation-filters` lists them and `--set` switches; the agent
+has `renovation_filters` and `set_renovation_filter`, and `project_options`
+lists them with the one shown. An add-on without the commands takes a GUID
+as before and says a name needs the current build.
+
+*What this does not change:* what a view pinned to a filter shows, the
+yield's counting by filter or by status (D140), or `--shadow-source` and
+`--shadow-scenario`.
+
+### D163 — The every-hour drawing's grid is the design's reach, not the whole model
+
+Found on Darlinghurst, 29 October 2026, drawing the every-hour fills for
+the first of twenty-three massing options: thirty minutes for one option,
+twenty-six of them casting. The grid is laid over everything the export
+holds plus 150 m -- a kilometre of Rhino context -- 6.9 million samples
+at 0.5 m, cast three times, for a drawing of one building's own shadow
+that lands within two hundred metres of it.
+
+**Decided.** With `--shadow-all-hours-only` the grid covers the design and
+the distance its shadow can reach at the lowest sun of the hours asked --
+its height above the datum over the tangent of that altitude, plus 10 m
+clear -- or `--shadow-margin` where that is more (`design_reach_bounds`).
+Every other drawing keeps the whole model's bounds: a shadow diagram with
+the neighbours is about where the shadows land on them. The run says which
+it did and how far the reach is.
+
+*What this does not change:* the cast, the tracing (D161), the drape onto
+the terrain and the baselines, or the fills' resolution.
+
+### D164 — A shadow combination hides every other shadow layer, whatever its prefix
+
+Found on Darlinghurst, 29 October 2026, after the sixteen options' every-hour
+drawings (D163): each option's combination showed its own shadow and every
+earlier option's. A combination decides only the tool's own shadow layers
+and leaves the rest of the project as it found it (D78's rule), and "the
+tool's own" was read as this run's -- the layers under this prefix -- while
+each option was drawn under a prefix of its own, so the others were "the
+rest of the project", found visible and left so.
+
+**Decided.** A layer whose group is `<anything> Shadow Diagram`, with or
+without a day, is this tool's shadow layer whatever prefix or day it was
+made under, and a combination turns it off unless it is the one being shown
+or the run's own legend (`_is_shadow_layer`). The practice's layers keep the
+rule they had: an office's `01 | Floor Overhang. Shadow Calcs` has no such
+group and is left as found. The sixteen combinations were re-made in place
+through the same function; the views and layouts, which name their
+combination, needed nothing.

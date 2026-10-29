@@ -327,6 +327,20 @@ from +X toward the sun, as its camera azimuth does); the same date with
 reported, `archicad.clock` hands the hour over in Archicad's own clock, and
 the run says whose clock the hours are in.
 
+### `Loriini.GetRenovationFilters` and `SetRenovationFilter`
+
+The Renovation palette's filters, each as `guid` and `name` in the palette's
+order, with `current`, the one the project shows now; and the switch to one
+by `guid`, answering its `name`. Tapir pins a view to a filter by GUID and
+can neither list, name nor switch one, so a run could only take the filter
+most of the project's views carry. An office that keeps its massing
+scenarios as filters (Crows Nest, October 2026) names a scenario the way the
+palette does, and a script that puts the model into a scenario needs the
+switch ([D162](decisions.md)). `ACAPI_Renovation_GetRenovationFilters`,
+`GetRenovationFilterName`, `GetActualRenovationFilter` and
+`SetActualRenovationFilter` from 27, the `APIDb_` dispatcher on 26. A guid
+the project does not have is refused by name, before Archicad is asked.
+
 ### `Loriini.CreateWorksheet`
 
 The same wall from the other side. Tapir's `CreateWorksheets` works, and

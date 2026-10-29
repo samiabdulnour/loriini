@@ -67,6 +67,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Any
 
 from sun_study.archicad import naming
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError
@@ -350,47 +351,56 @@ def _with(
 def ensure_combination(
     connection: ArchicadConnection, name: str, states: Mapping[str, bool]
 ) -> bool:
-    """Record the export state as a real Layer Combination. ``True`` if made.
+    """Record ``states`` as a real Layer Combination called ``name``, made
+    or rewritten. ``True`` if written.
 
     Not how the state is applied -- nothing here can activate a combination --
     but worth writing anyway. It gives the choice a name in the Layer Settings
     dialog, so a person can see exactly what the tool exported with, and select
     it by hand if they want the model on screen to match.
 
-    Reused by name and never deleted: ``DeleteAttributes`` refuses a
-    ``LayerCombination``, answering "Attribute not found" for an id the
-    project had just reported.
+    One of the name already there is rewritten with these states, by its id,
+    rather than kept (D164): what a combination of the tool's shows is this
+    run's to say, and the one it found was left by a run that knew less --
+    on Darlinghurst, one that had not seen the fifteen options drawn after
+    it. Never deleted: ``DeleteAttributes`` refuses a ``LayerCombination``,
+    answering "Attribute not found" for an id the project had just reported.
     """
     listing = connection.run_tapir("GetAttributesByType", {"attributeType": "LayerCombination"})
     attributes = listing.get("attributes") if isinstance(listing, dict) else None
     tidy = " ".join(name.split()).casefold()
-    if isinstance(attributes, list) and any(
-        isinstance(entry, dict) and " ".join(str(entry.get("name", "")).split()).casefold() == tidy
-        for entry in attributes
-    ):
-        return False
-
-    try:
-        connection.run_tapir(
-            "CreateLayerCombinations",
+    existing = next(
+        (
+            entry
+            for entry in (attributes if isinstance(attributes, list) else [])
+            if isinstance(entry, dict)
+            and " ".join(str(entry.get("name", "")).split()).casefold() == tidy
+        ),
+        None,
+    )
+    data: dict[str, Any] = {
+        "name": name,
+        "layers": [
             {
-                "layerCombinationDataArray": [
-                    {
-                        "name": name,
-                        "layers": [
-                            {
-                                "attributeId": {"guid": guid},
-                                "isHidden": hidden,
-                                "isLocked": False,
-                                "isWireframe": False,
-                                "intersectionGroupNr": 1,
-                            }
-                            for guid, hidden in states.items()
-                        ],
-                    }
-                ]
-            },
-        )
+                "attributeId": {"guid": guid},
+                "isHidden": hidden,
+                "isLocked": False,
+                "isWireframe": False,
+                "intersectionGroupNr": 1,
+            }
+            for guid, hidden in states.items()
+        ],
+    }
+    asked: dict[str, Any] = {"layerCombinationDataArray": [data]}
+    if existing is not None:
+        # By its id alone: the schema refuses the listing's ``index`` as given,
+        # and the id is what Tapir finds the one to modify by.
+        guid = str((existing.get("attributeId") or {}).get("guid", ""))
+        if guid:
+            data["attributeId"] = {"guid": guid}
+        asked["overwriteExisting"] = True
+    try:
+        connection.run_tapir("CreateLayerCombinations", asked)
     except ArchicadError:
         # A combination is a convenience here, not the mechanism. Failing to
         # record one is no reason to fail an export that does not need it.

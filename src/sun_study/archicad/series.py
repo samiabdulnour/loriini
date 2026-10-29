@@ -518,7 +518,15 @@ def ensure_model_database(connection: ArchicadConnection) -> str | None:
     # what is actually visible to a read instead: any element at all. Walls
     # were the test once, and a massing of slabs has none, so every start on
     # a massing project moved the window for nothing (D128).
-    readable = _anything_readable(connection)
+    #
+    # And elements are only a guess. A layout carrying a table drawn in lines
+    # reads as a building to it: Kogarah's COS areas sheet left the database
+    # on '14 | Communal Areas' (October 2026), the next reads found twenty
+    # lines and no fills, and the run went on as if on the plan. The add-on
+    # knows which database is current, so it is asked first, and the guess is
+    # kept for an add-on too old to answer.
+    actual = _current_database_type(connection)
+    readable = actual == "FloorPlan" if actual is not None else _anything_readable(connection)
     if where == "FloorPlan" and readable:
         # Nothing to move, but the elements just proved where we are. Say so,
         # or the connection goes on reporting that it does not know -- and
@@ -550,6 +558,17 @@ def ensure_model_database(connection: ArchicadConnection) -> str | None:
     # way, to bring them back together, while telling somebody the project
     # had nothing in it would be untrue.
     return None if readable else str(where)
+
+
+def _current_database_type(connection: ArchicadConnection) -> str | None:
+    """The current database's window type, as the add-on reads it, or
+    ``None`` when the add-on cannot say."""
+    try:
+        here = connection.run_loriini("GetCurrentDatabase", {})
+    except ArchicadError:
+        return None
+    kind = here.get("windowType") if isinstance(here, dict) else None
+    return str(kind) if kind else None
 
 
 def _anything_readable(connection: ArchicadConnection) -> bool:

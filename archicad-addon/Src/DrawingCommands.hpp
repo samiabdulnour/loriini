@@ -53,6 +53,30 @@ public:
 };
 
 
+// Elements brought to the front of the plan, all in one call.
+//
+// Tapir's `SetDetailsOfElements` takes a `drawIndex`, and reaches it one
+// level at a time with Bring Forward, element by element, because Bring to
+// Front misbehaves on walls. For a study's fills that is thousands of tool
+// calls: four thousand COS patches on Kogarah (October 2026) took longer than
+// ten minutes. A fill has no such trouble, and one Bring to Front over the
+// whole list is one call.
+class BringToFrontCommand : public Command {
+public:
+	virtual GS::String						GetName () const override;
+	virtual GS::Optional<GS::UniString>		GetInputParametersSchema () const override;
+	virtual GS::Optional<GS::UniString>		GetResponseSchema () const override;
+
+	virtual API_AddOnCommandExecutionPolicy	GetExecutionPolicy () const override
+	{
+		return API_AddOnCommandExecutionPolicy::ScheduleForExecutionOnMainThread;
+	}
+
+	virtual GS::ObjectState					Execute (const GS::ObjectState& parameters,
+													 GS::ProcessControl& processControl) const override;
+};
+
+
 // Texts, with the box, the layer and the anchor Tapir's `CreateTexts` cannot set.
 //
 // Tapir's version takes a coordinate, a string, a height, a pen, a

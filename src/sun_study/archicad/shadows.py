@@ -832,6 +832,11 @@ def _visibility(
     and it is already recorded in whatever combination they draw site plans
     with; a combination built from scratch here would be this tool's opinion
     of somebody else's drawing.
+
+    Every other shadow layer of this tool's is off too, whatever prefix or
+    day it was made under (``_is_shadow_layer``): on Darlinghurst, sixteen
+    options drawn under sixteen prefixes left each option's combination
+    showing every earlier option's shadow as well as its own (D164).
     """
     ours = {name.casefold() for name in mine}
     states: dict[str, bool] = {}
@@ -839,11 +844,21 @@ def _visibility(
         name = str(layer.name).casefold()
         if name == showing.casefold() or name == shared.casefold():
             states[layer.identifier] = False
-        elif name in ours:
+        elif name in ours or _is_shadow_layer(str(layer.name)):
             states[layer.identifier] = True
         else:
             states[layer.identifier] = bool(layer.hidden)
     return states
+
+
+def _is_shadow_layer(name: str) -> bool:
+    """A layer this tool made for a shadow drawing, under any prefix and on
+    any day: its group is ``<prefix> Shadow Diagram`` or that with the day,
+    as ``naming.group`` makes it -- ``OPTION 03 | Shadow Diagram.Legend``.
+    An office's ``01 | Floor Overhang. Shadow Calcs`` is not: its group has
+    no such word."""
+    group, dot, part = name.partition(".")
+    return bool(dot and part.strip()) and f" {naming.SHADOW_WORD}" in group
 
 
 def draw_shadow_series(

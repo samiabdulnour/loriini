@@ -73,6 +73,7 @@ from sun_study.archicad.read import GeoLocation
 from sun_study.archicad.series import _worksheets, clear_database, database_of
 from sun_study.archicad.sun_eyes import TITLE_BLOCK_MM
 from sun_study.archicad.views import (
+    NO_OVERRIDES,
     ModelSource,
     StoreyView,
     ensure_layer_combination,
@@ -5030,10 +5031,6 @@ def _view_of(
         except ArchicadError:
             continue
     return views[0]
-
-
-#: Archicad's built-in graphic override combination that overrides nothing.
-NO_OVERRIDES = "No Overrides"
 
 
 def _site_pen_set(connection: ArchicadConnection) -> str | None:

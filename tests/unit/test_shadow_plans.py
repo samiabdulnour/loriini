@@ -42,6 +42,7 @@ from sun_study.archicad.shadow_plans import (
     stack_labels,
     stack_order,
     stack_sheet_groups,
+    stacks_per_scenario,
 )
 from sun_study.archicad.views import StoreyView
 from sun_study.core.shadow import BASELINE, SCENARIO
@@ -145,6 +146,17 @@ class PlanTransport:
         if command == "GetPlace":
             # A Sydney project keeping AEST (D135): the hours go over unchanged.
             return {"success": True, "timeZoneInMinutes": 600, "summerTime": False}
+        if command == "GetRenovationFilters":
+            # The Crows Nest palette's scenarios, and the planned state (D162).
+            return {
+                "success": True,
+                "renovationFilters": [
+                    {"guid": PLANNED_GUID, "name": "04 Planned Status"},
+                    {"guid": TOD_GUID, "name": "SCENARIO 2_COMPLIANT TOD"},
+                    {"guid": SEARS_GUID, "name": "SCENARIO 5_SEARs"},
+                ],
+                "current": PLANNED_GUID,
+            }
         raise AssertionError(f"unscripted command {command!r}")
 
     def asked(self, command: str) -> list[dict[str, Any]]:
@@ -152,6 +164,11 @@ class PlanTransport:
 
 
 SS = naming.prefix()
+
+#: The Crows Nest palette (D162): the planned state and two scenarios.
+PLANNED_GUID = "38FD3426-70C5-9C4D-ACA5-877D4A623A36"
+TOD_GUID = "62AA7A95-BEAD-4C9C-8A4B-72C128F11D7B"
+SEARS_GUID = "8DAD5038-907C-4997-80E8-0160AF04B4C1"
 
 
 # -- the hours -----------------------------------------------------------------
@@ -988,6 +1005,123 @@ def test_the_two_ways_of_naming_the_legend_do_not_mix(monkeypatch: pytest.Monkey
     assert "Name the legend one way" in result.output
 
 
+# -- scenarios kept as renovation filters (Crows Nest, D162) --------------------
+
+
+def test_a_scenario_row_with_no_layers_shows_what_the_baselines_do() -> None:
+    """A scenario kept as a filter has no layers: its combination is the
+    context's, with the other scenarios' massings off; the filter does the
+    rest."""
+    rows = [
+        LegendRow("Existing", ("03 | Site Context.Buildings",), BASELINE),
+        LegendRow("Proposed", ("20 | Massing.Envelope",), SCENARIO),
+        LegendRow("SCENARIO 2_COMPLIANT TOD", (), SCENARIO, renovation_filter_guid=TOD_GUID),
+    ]
+    _, _, tod = legend_combinations(rows)
+    assert tod == (
+        "SCENARIO 2_COMPLIANT TOD",
+        ("03 | Site Context.Buildings",),
+        ("20 | Massing.Envelope",),
+    )
+
+
+def test_a_member_kept_as_a_filter_pins_it_and_the_rest_pin_the_runs() -> None:
+    transport = PlanTransport()
+    settings = ShadowPlanSettings(layer_combination="BASE", renovation_filter_guid="PLANNED")
+    stack, _ = make_shadow_plan_stack(
+        ArchicadConnection(transport),
+        _plans([9]),
+        settings=settings,
+        members=[
+            PlanSet("SCENARIO 2_COMPLIANT TOD", "C-TOD", 95, renovation_filter_guid=TOD_GUID),
+            PlanSet("Existing", "C-E", 93),
+        ],
+    )
+    pinned = [
+        row["viewSettings"]["renovationFilterGuid"]["guid"]
+        for ask in transport.asked("SetViewSettings")
+        for row in ask["navigatorItemIdsWithViewSettings"]
+        if "renovationFilterGuid" in row["viewSettings"]
+    ]
+    assert pinned == [TOD_GUID, "PLANNED"]
+    assert [label for label, _ in stack.piles] == ["SCENARIO 2_COMPLIANT TOD", "Existing"]
+
+
+def test_scenarios_kept_as_renovation_filters_join_the_stack_by_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D162, end to end: --scenario names a filter as the palette spells it,
+    case aside; its row has no layers and its views pin that filter; the
+    other rows pin the planned state, given by name; the sets carry the
+    palette's own spelling."""
+    result, transport, combinations, sheets = _stacked_command(
+        monkeypatch,
+        "--existing",
+        "03 | Site Context.Buildings",
+        "--scenario",
+        "scenario 2_compliant tod",
+        "--scenario",
+        "SCENARIO 5_SEARs",
+        "--renovation-filter",
+        "04 Planned Status",
+    )
+
+    assert result.exit_code == 0, result.output
+    prefix = naming.SHADOW_PREFIX
+    assert [row[0] for row in combinations] == [
+        f"{prefix} Shadow Plans Existing",
+        f"{prefix} Shadow Plans SCENARIO 2_COMPLIANT TOD",
+        f"{prefix} Shadow Plans SCENARIO 5_SEARs",
+    ]
+    assert combinations[1][1] == ["03 | Site Context.Buildings"] and combinations[1][2] == []
+    pinned = [
+        row["viewSettings"]["renovationFilterGuid"]["guid"]
+        for ask in transport.asked("SetViewSettings")
+        for row in ask["navigatorItemIdsWithViewSettings"]
+        if "renovationFilterGuid" in row["viewSettings"]
+    ]
+    # Two hours a set, made bottom to top: each scenario on its own filter,
+    # the existing set on the planned state.
+    assert pinned == [TOD_GUID] * 2 + [SEARS_GUID] * 2 + [PLANNED_GUID] * 2
+    created = transport.asked("CreateDocumentFrom3D")
+    assert created[0]["name"] == f"{prefix} Shadow Plan SCENARIO 2_COMPLIANT TOD 21 Jun 09:00"
+    ((stack, _),) = sheets
+    assert [label for label, _ in stack.piles] == [
+        "SCENARIO 2_COMPLIANT TOD",
+        "SCENARIO 5_SEARs",
+        "Existing",
+    ]
+    assert "views pin the renovation filter '04 Planned Status'" in result.output
+    assert "pinned to its own renovation filter" in result.output
+
+
+def test_a_scenario_the_project_lacks_stops_the_run_with_the_names_it_has(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, transport, _, _ = _stacked_command(
+        monkeypatch, "--existing", "03 | Site Context.Buildings", "--scenario", "SCENARIO 9"
+    )
+    assert result.exit_code == 2
+    assert "04 Planned Status; SCENARIO 2_COMPLIANT TOD; SCENARIO 5_SEARs" in result.output
+    assert not transport.asked("CreateDocumentFrom3D"), "stopped before anything was made"
+
+
+def test_a_scenario_on_the_filter_the_other_rows_pin_is_said(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _, _, _ = _stacked_command(
+        monkeypatch,
+        "--existing",
+        "03 | Site Context.Buildings",
+        "--scenario",
+        "SCENARIO 2_COMPLIANT TOD",
+        "--renovation-filter",
+        TOD_GUID,
+    )
+    assert result.exit_code == 0, result.output
+    assert "is the filter the other rows pin too" in result.output
+
+
 def test_the_sun_date_is_in_archicads_own_clock_when_the_add_on_reports_one() -> None:
     """D135. Archicad reads a sun date in the project location's time zone.
     The sample project keeps UTC+3 while its hours were asked for in Dubai
@@ -1162,3 +1296,57 @@ def test_a_sheet_whose_titles_are_right_is_not_touched_and_a_refusal_is_said() -
     refused = TitleTransport({"9AM TOD": _titled(32), "9AM": _titled(32)}, refuse=True)
     note = one_title_per_pile(ArchicadConnection(refused), "LAYOUT", piles)
     assert note is not None and "title" in note
+
+
+def test_a_stack_splits_into_one_per_scenario_with_the_baselines_shared() -> None:
+    """D162: fifteen options are fifteen sheet sets, each scenario alone under
+    the sources, the sources' documents the same objects in every one."""
+    day = dt.date(2024, 6, 21)
+    stack = _stack(day, [9], "S2", "S5", "FUTURE", "EXISTING")
+    split = stacks_per_scenario(stack, ["S2", "S5"])
+    assert [label for label, _ in split] == ["S2", "S5"]
+    assert [label for label, _ in split[0][1].piles] == ["S2", "FUTURE", "EXISTING"]
+    assert split[0][1].piles[1] is split[1][1].piles[1]
+    groups, _ = stack_sheet_groups(split[1][1], sheets="one", label="S5")
+    ((name, (pile,)),) = groups
+    assert name == f"{SS} Shadow Plans S5 - JUNE 21"
+    assert [drawing for _, drawing in pile] == [
+        "JUNE 21 -9AM S5",
+        "JUNE 21 -9AM FUTURE",
+        "JUNE 21 -9AM",
+    ]
+
+
+def test_sheets_per_scenario_put_each_option_on_a_set_of_its_own(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, transport, _, sheets = _stacked_command(
+        monkeypatch,
+        "--existing",
+        "03 | Site Context.Buildings",
+        "--scenario",
+        "SCENARIO 2_COMPLIANT TOD",
+        "--scenario",
+        "SCENARIO 5_SEARs",
+        "--sheets-per-scenario",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert [kwargs["label"] for _, kwargs in sheets] == [
+        "SCENARIO 2_COMPLIANT TOD",
+        "SCENARIO 5_SEARs",
+    ]
+    assert [[label for label, _ in stack.piles] for stack, _ in sheets] == [
+        ["SCENARIO 2_COMPLIANT TOD", "Existing"],
+        ["SCENARIO 5_SEARs", "Existing"],
+    ]
+    assert [[words for words, _ in kwargs["legend"]] for _, kwargs in sheets] == [
+        ["EXISTING NEIGHBOURING BUILDINGS", "SCENARIO 2_COMPLIANT TOD"],
+        ["EXISTING NEIGHBOURING BUILDINGS", "SCENARIO 5_SEARS"],
+    ]
+    created = transport.asked("CreateDocumentFrom3D")
+    assert len(created) == 6, "two hours a set, the existing set made once"
+    pens = {c["name"]: c["shadowFill"]["fillPen"] for c in created}
+    blues = {pen for name, pen in pens.items() if "SCENARIO" in name}
+    assert len(blues) == 1, "one blue for every option"
+    assert "a combined sheet set per scenario, 2 in all" in result.output

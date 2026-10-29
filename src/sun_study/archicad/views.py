@@ -37,6 +37,7 @@ from sun_study.archicad.layout import NavigatorItem, _walk
 from sun_study.archicad.series import ensure_model_database
 
 __all__ = [
+    "NO_OVERRIDES",
     "ModelSource",
     "StoreyView",
     "ensure_layer_combination",
@@ -44,6 +45,9 @@ __all__ = [
     "views_for_sources",
     "views_for_storeys",
 ]
+
+#: Archicad's built-in graphic override combination that overrides nothing.
+NO_OVERRIDES = "No Overrides"
 
 #: On every view, layout and layer combination this tool makes. A project
 #: carries hundreds of navigator items and the ones a study adds have to be
@@ -390,12 +394,20 @@ def views_for_storeys(
     zoom: tuple[float, float, float, float] | None = None,
     folder: str | None = None,
     prefix: str | None = None,
+    graphic_override: str | None = NO_OVERRIDES,
 ) -> list[StoreyView]:
     """One independent View per storey, pinned to a layer combination.
 
     Independent rather than a clone: a clone follows its Project Map source,
     including its layer combination, so pinning one would either fail or drag
     every other view of that storey with it.
+
+    And pinned to ``graphic_override``, nothing overridden by default, because
+    a view is made with whatever override is in force on the window. On
+    Kogarah (October 2026) that was the office's *DA Landscape*, and every
+    result fill on the COS sheets came out invisible: the fills were drawn
+    and the drawings showed none of them. ``None`` keeps what the view was
+    made with.
     """
     if not storeys:
         return []
@@ -461,23 +473,39 @@ def views_for_storeys(
         settings["zoom"] = {"xMin": x_min, "yMin": y_min, "xMax": x_max, "yMax": y_max}
         settings["saveZoom"] = True
 
+    if graphic_override:
+        settings["graphicOverrideCombination"] = graphic_override
+
     # Checked, like every other write here. This one call decides the layer
     # combination, the scale and the rotation of every drawing on the sheet --
     # a view that quietly kept the storey's rotation is the 279.9 degrees the
     # sheets arrived at, and a per-item error here is the difference between
     # a wrong sheet and a run that says which view refused.
-    _check(
-        connection.run_tapir(
-            "SetViewSettings",
-            {
-                "navigatorItemIdsWithViewSettings": [
-                    {"navigatorItemId": {"guid": identifier}, "viewSettings": settings}
-                    for identifier in identifiers
-                ]
-            },
-        ),
-        "SetViewSettings",
-    )
+    #
+    # Except the override, which is tried once more without: a project with
+    # no combination by that name -- a renamed one, another language -- still
+    # gets its scale and its layers, as the site sheet does.
+    attempts = [settings]
+    if graphic_override:
+        attempts.append({k: v for k, v in settings.items() if k != "graphicOverrideCombination"})
+    for number, attempt in enumerate(attempts, start=1):
+        try:
+            _check(
+                connection.run_tapir(
+                    "SetViewSettings",
+                    {
+                        "navigatorItemIdsWithViewSettings": [
+                            {"navigatorItemId": {"guid": identifier}, "viewSettings": attempt}
+                            for identifier in identifiers
+                        ]
+                    },
+                ),
+                "SetViewSettings",
+            )
+            break
+        except ArchicadError:
+            if number == len(attempts):
+                raise
 
     return [
         StoreyView(
