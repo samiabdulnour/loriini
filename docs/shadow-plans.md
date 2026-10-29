@@ -190,6 +190,10 @@ south-west at 9, south at noon, south-east at 3.
 From the agent, `shadow_diagram` takes `sources` and `scenarios`, or
 `existing`, `proposals`, `existing_pen` and `proposed_pens`; its
 `shadow_every_hour` is the fills' every-hour drawing ([D160](decisions.md)).
+The every-hour drawing alone lays its grid over the design and as far as
+its shadow reaches at the lowest sun, not over the whole model
+([D163](decisions.md)): on Darlinghurst that is a cast in a minute or two
+rather than half an hour, which is what makes twenty-three options a run.
 
 ### Scenarios kept as renovation filters
 

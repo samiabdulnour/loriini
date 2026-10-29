@@ -65,6 +65,7 @@ up as a number in the run rather than as a sheet somebody prints.
 from __future__ import annotations
 
 import datetime as dt
+import math
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
@@ -320,6 +321,36 @@ def ground_plane_grid(
         height_m=offset_m,
         spacing_m=spacing_m,
     )
+
+
+#: How far past a shadow's farthest reach the every-hour grid runs, so the
+#: fill's edge is traced on samples rather than on the grid's own edge.
+REACH_CLEARANCE_M = 10.0
+
+
+def design_reach_bounds(
+    design: TriangleMesh, elevation_deg: npt.ArrayLike, *, datum_m: float
+) -> tuple[tuple[FloatArray, FloatArray], float] | None:
+    """The design's corner pair, and how far its shadow can reach past it.
+
+    For the every-hour drawing alone (D163): the grid has to cover where the
+    design's shadow can land and nothing else, and that is the design's own
+    extent plus its height above ``datum_m`` over the tangent of the lowest
+    sun among ``elevation_deg`` that is up. A kilometre of context stretched
+    the grid to seven million samples on Darlinghurst for a drawing that
+    uses a few hundred thousand of them. ``None`` with no design or no sun up,
+    when the whole scene's bounds are the grid, as for every other drawing.
+    """
+    if design.triangle_count == 0:
+        return None
+    up = [float(a) for a in np.asarray(elevation_deg, dtype=np.float64).ravel() if a > 0.0]
+    if not up:
+        return None
+    lower = np.min(design.vertices, axis=0)
+    upper = np.max(design.vertices, axis=0)
+    height = max(float(upper[2]) - datum_m, 0.0)
+    reach = height / math.tan(math.radians(min(up)))
+    return (lower, upper), reach
 
 
 @dataclass(frozen=True)

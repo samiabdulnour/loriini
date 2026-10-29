@@ -14,6 +14,7 @@ to a consent authority, and is wrong about the only thing anybody asked.
 from __future__ import annotations
 
 import datetime as dt
+import math
 
 import numpy as np
 import pytest
@@ -29,6 +30,7 @@ from sun_study.core.shadow import (
     ShadowSource,
     cast_shadows,
     default_sources,
+    design_reach_bounds,
     ground_plane_grid,
 )
 
@@ -644,3 +646,21 @@ def test_a_shadow_lands_on_a_roof_rather_than_the_ground_behind_it() -> None:
     assert on_ground_and_building < on_ground, (
         "the roof catches the shadow short of where the ground would"
     )
+
+
+def test_the_every_hour_grid_is_the_designs_reach_at_the_lowest_sun() -> None:
+    """D163: a 30 m block with the sun 30 degrees up at its lowest casts
+    about 52 m; the grid is the block and that reach, not the whole model."""
+    block = TriangleMesh(
+        np.array([[0.0, 0.0, 0.0], [20.0, 0.0, 0.0], [20.0, 10.0, 30.0], [0.0, 10.0, 30.0]]),
+        np.array([[0, 1, 2], [0, 2, 3]]),
+    )
+    found = design_reach_bounds(block, [30.0, 60.0, -5.0], datum_m=0.0)
+    assert found is not None
+    (lower, upper), reach = found
+    assert lower.tolist() == [0.0, 0.0, 0.0] and upper.tolist() == [20.0, 10.0, 30.0]
+    assert abs(reach - 30.0 / math.tan(math.radians(30.0))) < 1e-9
+    assert design_reach_bounds(block, [-5.0, -1.0], datum_m=0.0) is None, "no sun up"
+    assert design_reach_bounds(TriangleMesh.empty(), [30.0], datum_m=0.0) is None
+    found = design_reach_bounds(block, [45.0], datum_m=40.0)
+    assert found is not None and found[1] == 0.0, "a design under the datum reaches nowhere"

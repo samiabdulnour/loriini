@@ -6517,3 +6517,23 @@ as before and says a name needs the current build.
 *What this does not change:* what a view pinned to a filter shows, the
 yield's counting by filter or by status (D140), or `--shadow-source` and
 `--shadow-scenario`.
+
+### D163 — The every-hour drawing's grid is the design's reach, not the whole model
+
+Found on Darlinghurst, 29 October 2026, drawing the every-hour fills for
+the first of twenty-three massing options: thirty minutes for one option,
+twenty-six of them casting. The grid is laid over everything the export
+holds plus 150 m -- a kilometre of Rhino context -- 6.9 million samples
+at 0.5 m, cast three times, for a drawing of one building's own shadow
+that lands within two hundred metres of it.
+
+**Decided.** With `--shadow-all-hours-only` the grid covers the design and
+the distance its shadow can reach at the lowest sun of the hours asked --
+its height above the datum over the tangent of that altitude, plus 10 m
+clear -- or `--shadow-margin` where that is more (`design_reach_bounds`).
+Every other drawing keeps the whole model's bounds: a shadow diagram with
+the neighbours is about where the shadows land on them. The run says which
+it did and how far the reach is.
+
+*What this does not change:* the cast, the tracing (D161), the drape onto
+the terrain and the baselines, or the fills' resolution.

@@ -272,8 +272,10 @@ from sun_study.core.resources import (
 from sun_study.core.sampling import SamplePoints
 from sun_study.core.shadow import (
     BASELINE,
+    REACH_CLEARANCE_M,
     SCENARIO,
     cast_shadows,
+    design_reach_bounds,
     drape_onto_terrain,
     ground_plane_grid,
     receiving_samples,
@@ -7295,13 +7297,36 @@ def _shadow_report(
     # out solid grey: measured, 24% of the plane permanently dark and
     # 87 hectares of "existing shadow".
     datum = shadow_datum if shadow_datum is not None else 0.0
+    # The every-hour drawing alone needs the grid where the design's shadow
+    # can land and nowhere else (D163): the design's extent and its reach at
+    # the lowest sun, not the kilometre of context the other drawings cover.
+    bounds, margin, past = scene.bounds, shadow_margin, "everything"
+    if only_all_hours:
+        key = designed_source([source.spec for source in scene.sources])
+        design = next((s.mesh for s in scene.sources if s.spec.key == key), None)
+        reach = (
+            design_reach_bounds(
+                design,
+                solar_position(
+                    moments, scene.orientation.latitude_deg, scene.orientation.longitude_deg
+                ).elevation_deg,
+                datum_m=datum,
+            )
+            if design is not None
+            else None
+        )
+        if reach is not None:
+            bounds, distance = reach
+            margin, past = max(shadow_margin, distance + REACH_CLEARANCE_M), "the design"
+            typer.echo(
+                f"  the every-hour drawing alone: the grid covers the design and the "
+                f"{distance:,.0f} m its shadow reaches at the lowest sun, not the whole model"
+            )
     # Said before the grid is laid, so a grid too big to hold is on the log
     # with its size before it is attempted.
-    samples = _say_grid(scene, grid_m=shadow_grid, margin_m=shadow_margin)
+    samples = _say_grid(scene, grid_m=shadow_grid, margin_m=margin, bounds=bounds, past=past)
     try:
-        grid = ground_plane_grid(
-            scene.bounds, datum_m=datum, spacing_m=shadow_grid, margin_m=shadow_margin
-        )
+        grid = ground_plane_grid(bounds, datum_m=datum, spacing_m=shadow_grid, margin_m=margin)
     except MemoryError as error:
         _out_of_memory(f"laying a grid of about {samples:,} samples", error)
     # What the shadow lands on is the ground *and* what stands on it. A
@@ -7516,21 +7541,30 @@ HOUR_SHEET_SCALE = 1000.0
 LARGE_GRID_SAMPLES = 5_000_000
 
 
-def _say_grid(scene: Any, *, grid_m: float, margin_m: float) -> int:
+def _say_grid(
+    scene: Any,
+    *,
+    grid_m: float,
+    margin_m: float,
+    bounds: tuple[Any, Any] | None = None,
+    past: str = "everything",
+) -> int:
     """How big the grid will be, and what stretched it, before it is laid.
 
     Said up front because the cast is where a larger model spends its time
     and its memory, and both go with the grid's area: a log that ends in the
     caster should already have said how much it was asked to do. Returns the
     samples, near enough -- the grid rounds its edges to the spacing.
+    ``bounds`` is what the grid covers when it is not the whole scene -- the
+    design alone, for the every-hour drawing (D163) -- and ``past`` its word.
     """
-    lower, upper = scene.bounds
+    lower, upper = bounds if bounds is not None else scene.bounds
     width = float(upper[0] - lower[0]) + 2.0 * margin_m
     depth = float(upper[1] - lower[1]) + 2.0 * margin_m
     samples = max(round(width / grid_m), 1) * max(round(depth / grid_m), 1)
     typer.echo(
         f"  grid {width:,.0f} x {depth:,.0f} m at {grid_m:g} m, {margin_m:g} m past "
-        f"everything: about {samples:,} samples"
+        f"{past}: about {samples:,} samples"
     )
     for layer, distance in scene.far[:6]:
         typer.secho(
