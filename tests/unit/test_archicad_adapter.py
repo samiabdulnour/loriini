@@ -5446,3 +5446,49 @@ def test_a_refused_element_without_a_contour_is_reported_without_measurements() 
     message = str(raised.value)
     assert "[0] no such layer" in message
     assert "vertices" not in message
+
+
+def test_a_combination_already_there_is_rewritten_by_its_id_not_kept() -> None:
+    """D164: on Darlinghurst each option's combination, made before the
+    options after it existed, kept showing them; a rerun must rewrite the
+    combination it finds, and Tapir rewrites by the existing attribute's id."""
+    from sun_study.archicad.layers import ensure_combination
+
+    transport = FakeTransport(
+        {
+            "GetAttributesByType": {
+                "attributes": [
+                    {
+                        "attributeId": {"guid": "C-OLD"},
+                        "index": 75,
+                        "name": "OPTION 13 | Shadow Diagram JUNE 21 ALL HOURS",
+                    }
+                ]
+            },
+            "CreateLayerCombinations": {"attributeIds": [{"attributeId": {"guid": "C-OLD"}}]},
+        }
+    )
+    written = ensure_combination(
+        ArchicadConnection(transport),
+        "OPTION 13 | Shadow Diagram JUNE 21 ALL HOURS",
+        {"L-13": False, "L-03": True},
+    )
+    assert written is True
+    sent = transport.parameters_for("CreateLayerCombinations")
+    assert sent["overwriteExisting"] is True
+    (entry,) = sent["layerCombinationDataArray"]
+    assert entry["attributeId"] == {"guid": "C-OLD"}
+    assert "index" not in entry, "the schema refuses the listing's index; the id finds it"
+    assert {row["attributeId"]["guid"]: row["isHidden"] for row in entry["layers"]} == {
+        "L-13": False,
+        "L-03": True,
+    }
+
+    fresh = FakeTransport(
+        {
+            "GetAttributesByType": {"attributes": []},
+            "CreateLayerCombinations": {"attributeIds": [{"attributeId": {"guid": "C-NEW"}}]},
+        }
+    )
+    assert ensure_combination(ArchicadConnection(fresh), "New one", {"L-13": False}) is True
+    assert "overwriteExisting" not in fresh.parameters_for("CreateLayerCombinations")
