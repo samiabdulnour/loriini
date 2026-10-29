@@ -784,8 +784,22 @@ def make_shadow_plan_stack(
     return Stack(piles=tuple(piles)), said
 
 
+def stacks_per_scenario(stack: Stack, scenario_labels: Sequence[str]) -> list[tuple[str, Stack]]:
+    """The stack split into one per scenario, each scenario's documents under
+    every baseline's in the stack's own order, for a sheet set of its own
+    (D162): fifteen options are fifteen sheet sets, each read on its own,
+    not fifteen rows in one cell. The baselines' documents are the same
+    objects in every one, made once."""
+    baselines = tuple(pile for pile in stack.piles if pile[0] not in scenario_labels)
+    return [
+        (label, Stack(piles=((label, made), *baselines)))
+        for label, made in stack.piles
+        if label in scenario_labels
+    ]
+
+
 def stack_sheet_groups(
-    stack: Stack, *, sheets: str = DEFAULT_SHEET_MODE
+    stack: Stack, *, sheets: str = DEFAULT_SHEET_MODE, label: str = COMBINED_LABEL
 ) -> tuple[list[tuple[str, list[list[tuple[str, str]]]]], int]:
     """The stack's sheets, a cell per hour holding every set's drawing, and the
     cells the fullest sheet has.
@@ -793,7 +807,8 @@ def stack_sheet_groups(
     ``(layout name, [[(navigator id, drawing name), ...] per cell])``, each
     cell's list bottom to top. The sheets are dealt as a labelled set's are,
     by the lowest set's hours, and named *Shadow | Shadow Plans Combined - JUNE
-    21*. The top drawing of a cell is named for the hour alone, ``JUNE 21
+    21* -- or for ``label``, a scenario's own sheet set (D162). The top
+    drawing of a cell is named for the hour alone, ``JUNE 21
     -9AM``, as the one title the cell shows (D148); each drawing under it for
     the hour and its set, ``JUNE 21 -9AM TOD``, since a sheet finds its
     drawings by name and two of one name would be one. A set that lacks an
@@ -804,7 +819,7 @@ def stack_sheet_groups(
         return [], 0
     _, lowest = stack.piles[0]
     by_hour = [{one.plan.when: one for one in made} for _, made in stack.piles]
-    dealt, cells = _dealt(lowest, sheets=sheets, set_label=COMBINED_LABEL)
+    dealt, cells = _dealt(lowest, sheets=sheets, set_label=label)
     groups: list[tuple[str, list[list[tuple[str, str]]]]] = []
     for name, on_sheet in dealt:
         cells_here: list[list[tuple[str, str]]] = []
@@ -835,8 +850,10 @@ def make_stack_sheets(
     legend_title: str = LEGEND_TITLE,
     rings: Sequence[Sequence[tuple[float, float]]] = (),
     outline_pen: int | None = None,
+    label: str = COMBINED_LABEL,
 ) -> tuple[list[LayoutReport], list[str], list[str]]:
-    """The stack on its sheets, every set's drawing of an hour in one cell.
+    """The stack on its sheets, every set's drawing of an hour in one cell,
+    named for ``label``: the combined set, or one scenario's own (D162).
 
     Each drawing above the lowest has a transparent background; with a
     ``window``, every drawing's origin is put where the window's centre lands
@@ -849,8 +866,8 @@ def make_stack_sheets(
     over every drawing in ``outline_pen`` (D143). Returns the sheets, the
     names removed, and anything worth saying.
     """
-    groups, cells = stack_sheet_groups(stack, sheets=sheets)
-    stem = _sheet_stem(COMBINED_LABEL)
+    groups, cells = stack_sheet_groups(stack, sheets=sheets, label=label)
+    stem = _sheet_stem(label)
     removed = remove_stale_layouts(connection, stem, {name for name, _ in groups})
     clear_of = title_block_mm + (LEGEND_COLUMN_MM if legend else 0.0)
     offset = (0.0, 0.0)

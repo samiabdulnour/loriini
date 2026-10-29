@@ -595,10 +595,20 @@ def test_a_scenario_kept_as_a_renovation_filter_is_named_to_the_command() -> Non
         "SCENARIO 5_SEARs",
     ]
     assert argv[argv.index("--renovation-filter") + 1] == "04 Planned Status"
+    assert "--sheets-per-scenario" not in argv
+    many = tools.shadow_plans_argv(
+        tools.ShadowPlanArguments(
+            layer_combination="04 | Shadow Diagrams",
+            existing=["03 | Site Context.Buildings"],
+            renovation_scenarios=["SCENARIO 2_COMPLIANT TOD"],
+            sheets_per_scenario=True,
+        )
+    )
+    assert "--sheets-per-scenario" in many
     plain = tools.shadow_plans_argv(
         tools.ShadowPlanArguments(layer_combination="04 | Shadow Diagrams")
     )
-    assert not {"--scenario", "--renovation-filter"} & set(plain)
+    assert not {"--scenario", "--renovation-filter", "--sheets-per-scenario"} & set(plain)
 
 
 def test_the_renovation_filters_are_listed_and_switched_through_the_command() -> None:

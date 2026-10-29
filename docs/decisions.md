@@ -6496,6 +6496,14 @@ The agent's `shadow_diagram` takes them as `renovation_scenarios` and
 it has; a scenario on the filter the other rows pin is said, since the two
 rows would show the same massing.
 
+**Fifteen options.** The stack lays every scenario in one cell, which
+compares two or three and buries fifteen. `--sheets-per-scenario` makes a
+combined sheet set per scenario instead -- each scenario alone under every
+source, named for it, the sources' documents made once and placed on every
+set, every scenario in the one proposal blue and one pen -- so one run makes
+the fifteen layouts asked for, each read on its own (`stacks_per_scenario`,
+and `make_stack_sheets` named for the set it makes).
+
 **The filter itself.** `GetRenovationFilters` lists the palette's filters in
 its order with the one the project shows, and `SetRenovationFilter` switches
 to one -- `ACAPI_Renovation_SetActualRenovationFilter`, the

@@ -42,6 +42,7 @@ from sun_study.archicad.shadow_plans import (
     stack_labels,
     stack_order,
     stack_sheet_groups,
+    stacks_per_scenario,
 )
 from sun_study.archicad.views import StoreyView
 from sun_study.core.shadow import BASELINE, SCENARIO
@@ -1295,3 +1296,57 @@ def test_a_sheet_whose_titles_are_right_is_not_touched_and_a_refusal_is_said() -
     refused = TitleTransport({"9AM TOD": _titled(32), "9AM": _titled(32)}, refuse=True)
     note = one_title_per_pile(ArchicadConnection(refused), "LAYOUT", piles)
     assert note is not None and "title" in note
+
+
+def test_a_stack_splits_into_one_per_scenario_with_the_baselines_shared() -> None:
+    """D162: fifteen options are fifteen sheet sets, each scenario alone under
+    the sources, the sources' documents the same objects in every one."""
+    day = dt.date(2024, 6, 21)
+    stack = _stack(day, [9], "S2", "S5", "FUTURE", "EXISTING")
+    split = stacks_per_scenario(stack, ["S2", "S5"])
+    assert [label for label, _ in split] == ["S2", "S5"]
+    assert [label for label, _ in split[0][1].piles] == ["S2", "FUTURE", "EXISTING"]
+    assert split[0][1].piles[1] is split[1][1].piles[1]
+    groups, _ = stack_sheet_groups(split[1][1], sheets="one", label="S5")
+    ((name, (pile,)),) = groups
+    assert name == f"{SS} Shadow Plans S5 - JUNE 21"
+    assert [drawing for _, drawing in pile] == [
+        "JUNE 21 -9AM S5",
+        "JUNE 21 -9AM FUTURE",
+        "JUNE 21 -9AM",
+    ]
+
+
+def test_sheets_per_scenario_put_each_option_on_a_set_of_its_own(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, transport, _, sheets = _stacked_command(
+        monkeypatch,
+        "--existing",
+        "03 | Site Context.Buildings",
+        "--scenario",
+        "SCENARIO 2_COMPLIANT TOD",
+        "--scenario",
+        "SCENARIO 5_SEARs",
+        "--sheets-per-scenario",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert [kwargs["label"] for _, kwargs in sheets] == [
+        "SCENARIO 2_COMPLIANT TOD",
+        "SCENARIO 5_SEARs",
+    ]
+    assert [[label for label, _ in stack.piles] for stack, _ in sheets] == [
+        ["SCENARIO 2_COMPLIANT TOD", "Existing"],
+        ["SCENARIO 5_SEARs", "Existing"],
+    ]
+    assert [[words for words, _ in kwargs["legend"]] for _, kwargs in sheets] == [
+        ["EXISTING NEIGHBOURING BUILDINGS", "SCENARIO 2_COMPLIANT TOD"],
+        ["EXISTING NEIGHBOURING BUILDINGS", "SCENARIO 5_SEARS"],
+    ]
+    created = transport.asked("CreateDocumentFrom3D")
+    assert len(created) == 6, "two hours a set, the existing set made once"
+    pens = {c["name"]: c["shadowFill"]["fillPen"] for c in created}
+    blues = {pen for name, pen in pens.items() if "SCENARIO" in name}
+    assert len(blues) == 1, "one blue for every option"
+    assert "a combined sheet set per scenario, 2 in all" in result.output

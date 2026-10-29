@@ -214,6 +214,13 @@ sun-study shadow-plans --layer-combination "04 | Shadow Diagrams" ^
   --scenario "SCENARIO 2_COMPLIANT TOD" --scenario "SCENARIO 5_SEARs"
 ```
 
+With many options -- Crows Nest has fifteen -- `--sheets-per-scenario`
+makes a combined sheet set per scenario instead of one: each scenario alone
+under every source, named for it (`Shadow | Shadow Plans SCENARIO
+2_COMPLIANT TOD - JUNE 21`), the sources' documents made once and placed on
+every set, and every scenario in the one proposal blue. One run, fifteen
+sheet sets. From the agent, `sheets_per_scenario`.
+
 The names are read through the add-on's `GetRenovationFilters`, which Tapir
 lacks; with an older add-on a filter can still be given by its GUID.
 `sun-study renovation-filters` lists them with the one the project shows

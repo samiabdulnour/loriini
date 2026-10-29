@@ -705,7 +705,6 @@ GS::ObjectState GetRenovationFiltersCommand::Execute (const GS::ObjectState& /*p
 	return result;
 }
 
-}		// namespace Loriini
 
 
 // -- SetRenovationFilter ----------------------------------------------------
@@ -776,3 +775,5 @@ GS::ObjectState SetRenovationFilterCommand::Execute (const GS::ObjectState& para
 	result.Add ("name", name);
 	return result;
 }
+
+}		// namespace Loriini

@@ -72,6 +72,7 @@ from sun_study.archicad.draw import (
 from sun_study.archicad.layers import combination_states, export_state, read_layers
 from sun_study.archicad.layout import (
     DEFAULT_LAYOUT_SCALE,
+    LayoutReport,
     NavigatorItem,
     _create_layout,
     _layout_named,
@@ -151,6 +152,7 @@ from sun_study.archicad.shadow_plans import (
     COMBINED_LABEL,
     EXISTING_LABEL,
     PLAN_SCALE,
+    PROPOSED_LABEL,
     SET_WORD,
     STACK_SHADOW_FILLS,
     LegendRow,
@@ -168,6 +170,7 @@ from sun_study.archicad.shadow_plans import (
     site_context_layers,
     stack_labels,
     stack_order,
+    stacks_per_scenario,
 )
 from sun_study.archicad.shadows import (
     BASELINE_RAMP,
@@ -8043,6 +8046,20 @@ def shadow_plan_documents(
             ),
         ),
     ] = None,
+    sheets_per_scenario: Annotated[
+        bool,
+        typer.Option(
+            "--sheets-per-scenario/--one-sheet",
+            help=(
+                "In the stacked mode, a combined sheet set per scenario, each stacking that "
+                "scenario alone under every source and named for it -- Shadow Plans "
+                "SCENARIO 2_COMPLIANT TOD - JUNE 21 -- rather than every scenario in one "
+                "cell. For many options read one at a time: the sources' documents are made "
+                "once and placed on every set, and every scenario prints in the one "
+                "proposal blue."
+            ),
+        ),
+    ] = False,
     renovation_filter: Annotated[
         str | None,
         typer.Option(
@@ -8296,6 +8313,7 @@ def shadow_plan_documents(
             also_show=wanted,
             legend=legend,
             given_pens=given_pens,
+            per_scenario=sheets_per_scenario,
             layout=layout,
             sheets=sheets,
             master_layout=master_layout,
@@ -8493,7 +8511,11 @@ def _scenario_rows(
 
 
 def _legend_pens(
-    legend: Sequence[LegendRow], given: Mapping[str, int], pens: Sequence[Pen]
+    legend: Sequence[LegendRow],
+    given: Mapping[str, int],
+    pens: Sequence[Pen],
+    *,
+    one_blue: bool = False,
 ) -> dict[str, tuple[int, tuple[int, int, int], tuple[int, int, int] | None]]:
     """A solid pen per legend row, by label: ``(pen, legend colour, the pen's
     own colour in the table, or None when unknown)``.
@@ -8503,7 +8525,9 @@ def _legend_pens(
     row the legend knows by name -- EXISTING, FUTURE, TOD, SEARS, PROPOSED,
     in its short words or its sheet words -- takes the legend's colour, and
     any other row takes the next grey for a source or the next blue for a
-    scenario.
+    scenario. With ``one_blue`` every scenario not given a pen takes the
+    proposal's blue and one pen between them: each has a sheet set of its
+    own (D162), and one colour is what a reader meets on every one.
     """
     seen = {BASELINE: 0, SCENARIO: 0}
     wanted: list[BandStyle] = []
@@ -8511,19 +8535,21 @@ def _legend_pens(
         ramp = BASELINE_RAMP if row.role == BASELINE else SCENARIO_RAMP
         position = seen[row.role]
         seen[row.role] += 1
+        rgb = legend_colour(row.label) or ramp[min(position, len(ramp) - 1)]
+        if one_blue and row.role == SCENARIO:
+            rgb = legend_colour(PROPOSED_LABEL) or ramp[-1]
         wanted.append(
-            BandStyle(
-                row.label.upper(),
-                float("inf"),
-                fill_pen=FIRST_SHADOW_PEN + index,
-                rgb=legend_colour(row.label) or ramp[min(position, len(ramp) - 1)],
-            )
+            BandStyle(row.label.upper(), float("inf"), fill_pen=FIRST_SHADOW_PEN + index, rgb=rgb)
         )
     matched, _ = match_pens(wanted, pens)
     colour_of = {pen.index: pen.rgb for pen in pens}
     chosen: dict[str, tuple[int, tuple[int, int, int], tuple[int, int, int] | None]] = {}
+    shared: int | None = None
     for row, band, asked in zip(legend, matched, wanted, strict=True):
         pen = given.get(row.label, band.fill_pen)
+        if one_blue and row.role == SCENARIO and row.label not in given:
+            shared = band.fill_pen if shared is None else shared
+            pen = shared
         chosen[row.label] = (pen, asked.rgb, colour_of.get(pen))
     return chosen
 
@@ -8634,6 +8660,7 @@ def _stacked_shadow_plans(
     also_show: Sequence[str],
     legend: Sequence[LegendRow],
     given_pens: Mapping[str, int],
+    per_scenario: bool = False,
     layout: bool,
     sheets: str,
     master_layout: str | None,
@@ -8653,7 +8680,10 @@ def _stacked_shadow_plans(
     pen; every one above the lowest draws its surfaces in the transparent
     pen, so what is seen of each row is what it adds (D142). A row kept as a
     renovation filter has no layers: its combination shows what every
-    source's does, and its views pin its filter (D162).
+    source's does, and its views pin its filter (D162). With
+    ``per_scenario``, a combined sheet set per scenario instead of one: each
+    scenario alone under every source, named for it, the sources' documents
+    made once and placed on every set.
     """
     typer.echo("  shadow pens for the legend:")
     source_guid, source_name = _pen_source(connection, settings.pen_set)
@@ -8665,7 +8695,7 @@ def _stacked_shadow_plans(
             fg=typer.colors.YELLOW,
         )
         table = ()
-    chosen = _legend_pens(legend, given_pens, table)
+    chosen = _legend_pens(legend, given_pens, table, one_blue=per_scenario)
     pens = {label: pen for label, (pen, _, _) in chosen.items()}
     # The stack's own pen set: the source's pens with each matched row's pen
     # set to the legend's colour, so the drawings print in the legend's
@@ -8700,9 +8730,9 @@ def _stacked_shadow_plans(
         combos[label] = name
         on = ", ".join(repr(layer) for layer in show) or "nothing more"
         off = ", ".join(repr(layer) for layer in hide) or "nothing"
-        own = ", pinned to its own renovation filter" if label in filtered else ""
+        note = ", pinned to its own renovation filter" if label in filtered else ""
         typer.echo(
-            f"  {label}: views on {name!r}, which is {base!r} with {on} on and {off} off{own}"
+            f"  {label}: views on {name!r}, which is {base!r} with {on} on and {off} off{note}"
         )
     members = [
         PlanSet(
@@ -8729,6 +8759,12 @@ def _stacked_shadow_plans(
         f"Archicad's sun and shadows; stacked bottom to top as "
         + " < ".join(member.label for member in members)
     )
+    scenario_labels = [row.label for row in legend if row.role == SCENARIO]
+    if per_scenario:
+        typer.echo(
+            f"  a combined sheet set per scenario, {len(scenario_labels)} in all, each "
+            f"stacking its scenario alone under the sources"
+        )
 
     try:
         stack, said = make_shadow_plan_stack(connection, plans, settings=settings, members=members)
@@ -8772,39 +8808,53 @@ def _stacked_shadow_plans(
                 fg=typer.colors.YELLOW,
             )
     if layout:
-        try:
-            placed, removed, notes = make_stack_sheets(
-                connection,
-                stack,
-                sheets=sheets,
-                scale=fitted,
-                master_layout=master_layout,
-                title_block_mm=title_block_mm,
-                window=window,
-                pen_table_index=pen_index,
-                legend=[(_legend_words(row.label), swatches[row.label]) for row in legend],
-                rings=rings,
-                outline_pen=outline_pen,
+        sets = (
+            stacks_per_scenario(stack, scenario_labels)
+            if per_scenario
+            else [(COMBINED_LABEL, stack)]
+        )
+        placed_all: list[LayoutReport] = []
+        for label, part in sets:
+            rows = (
+                [row for row in legend if row.role == BASELINE or row.label == label]
+                if per_scenario
+                else list(legend)
             )
-        except ArchicadError as error:
-            typer.secho(
-                f"  the documents are made; the sheets are not: {error}",
-                fg=typer.colors.YELLOW,
-                err=True,
-            )
-        else:
+            try:
+                placed, removed, notes = make_stack_sheets(
+                    connection,
+                    part,
+                    sheets=sheets,
+                    scale=fitted,
+                    master_layout=master_layout,
+                    title_block_mm=title_block_mm,
+                    window=window,
+                    pen_table_index=pen_index,
+                    legend=[(_legend_words(row.label), swatches[row.label]) for row in rows],
+                    rings=rings,
+                    outline_pen=outline_pen,
+                    label=label,
+                )
+            except ArchicadError as error:
+                typer.secho(
+                    f"  the documents are made; the sheets of {label!r} are not: {error}",
+                    fg=typer.colors.YELLOW,
+                    err=True,
+                )
+                continue
             for name in removed:
                 typer.echo(f"  removed the earlier sheet {name!r}")
             for report in placed:
                 typer.echo(report.describe())
             for note in notes:
                 typer.secho(f"  {note}", fg=typer.colors.YELLOW)
-            if subset:
-                filing = file_under_subset(
-                    connection, [r.layout_name for r in placed], subset, flag="--subset"
-                )
-                typer.echo(filing.describe())
-            typer.echo(clock.said("placed them on sheets"))
+            placed_all += placed
+        if subset and placed_all:
+            filing = file_under_subset(
+                connection, [r.layout_name for r in placed_all], subset, flag="--subset"
+            )
+            typer.echo(filing.describe())
+        typer.echo(clock.said("placed them on sheets"))
     typer.echo(
         f"  Archicad draws the shadows when a sheet is opened or its drawings updated; open "
         f"a {COMBINED_LABEL.lower()} sheet to check each row's colour shows only where the "

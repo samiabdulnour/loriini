@@ -404,6 +404,15 @@ class ShadowPlanArguments(SheetedArguments):
             "the project's views carry."
         ),
     )
+    sheets_per_scenario: bool = Field(
+        default=False,
+        description=(
+            "In the stacked mode, a combined sheet set per scenario -- each scenario alone "
+            "under every source, named for it -- rather than every scenario in one cell. For "
+            "many options read one at a time, e.g. fifteen renovation_scenarios as fifteen "
+            "sheet sets; the sources' documents are made once."
+        ),
+    )
     existing_pen: int | None = Field(
         default=None,
         ge=0,
@@ -705,6 +714,8 @@ def shadow_plans_argv(arguments: ShadowPlanArguments) -> list[str]:
     for name in a.renovation_scenarios or []:
         argv += ["--scenario", name]
     argv += _option("--renovation-filter", a.renovation_filter)
+    if a.sheets_per_scenario:
+        argv.append("--sheets-per-scenario")
     argv += _option("--existing-pen", a.existing_pen)
     for pen in a.proposed_pens or []:
         argv += ["--proposed-pen", str(pen)]
