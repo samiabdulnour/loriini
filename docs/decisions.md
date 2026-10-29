@@ -6537,3 +6537,22 @@ it did and how far the reach is.
 
 *What this does not change:* the cast, the tracing (D161), the drape onto
 the terrain and the baselines, or the fills' resolution.
+
+### D164 — A shadow combination hides every other shadow layer, whatever its prefix
+
+Found on Darlinghurst, 29 October 2026, after the sixteen options' every-hour
+drawings (D163): each option's combination showed its own shadow and every
+earlier option's. A combination decides only the tool's own shadow layers
+and leaves the rest of the project as it found it (D78's rule), and "the
+tool's own" was read as this run's -- the layers under this prefix -- while
+each option was drawn under a prefix of its own, so the others were "the
+rest of the project", found visible and left so.
+
+**Decided.** A layer whose group is `<anything> Shadow Diagram`, with or
+without a day, is this tool's shadow layer whatever prefix or day it was
+made under, and a combination turns it off unless it is the one being shown
+or the run's own legend (`_is_shadow_layer`). The practice's layers keep the
+rule they had: an office's `01 | Floor Overhang. Shadow Calcs` has no such
+group and is left as found. The sixteen combinations were re-made in place
+through the same function; the views and layouts, which name their
+combination, needed nothing.
