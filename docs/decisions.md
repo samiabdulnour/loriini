@@ -6558,3 +6558,33 @@ until this change) are gone with the scene they belonged to.
 
 *What this does not change:* the other pages, their four tabs and their
 foot; the download (the previous commit); the wordmark itself (D165).
+
+### D167 — The site is put up by a workflow, and the download page says what the zip says
+
+Asked 31 October 2026, after the front and the download page had changed in
+one pull request: *"now lets deploy everything on web"*.
+
+**A workflow, because the deploy could not be done from where the work
+was.** The site had been deployed by hand from a checkout signed in to Fly
+(docs/website.md). The session that made the changes could reach GitHub
+but not Fly, so the deploy is now a workflow, *Website*, that anybody with
+the repository can run from the Actions tab, and that runs itself when a
+push to `windows` touches the site or how it is served. It needs a deploy
+token for the app as the `FLY_API_TOKEN` secret, and nothing else: the
+build comes from the repository's own artifacts, and flyctl builds the
+image on Fly's builder.
+
+**The page's figures are the file's.** The download page's version, build
+day, Archicad versions, size and SHA-256 had been typed by hand from the
+run's page. `scripts/site_download.py` now reads them out of the zip --
+the install note inside says the version and the day, the add-ons' names
+say the Archicad versions, and the file says its size and digest -- and
+writes them on the page before every deploy, so the page cannot say one
+thing about the file and the file another. The workflow then checks that
+the site serves a zip of the size it deployed. By hand the script is the
+step between downloading the artifact and `fly deploy`.
+
+*What this does not change:* the licence service's deploy
+(docs/licence-service.md), which stays by hand; what the pages say about
+the program; the artifact the workflow takes, which is still the newest
+successful add-on build on `windows`.
