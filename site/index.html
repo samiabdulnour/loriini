@@ -12,267 +12,171 @@
 </head>
 <body>
 
-<header class="top wrap wide bare">
+<!-- The front, as the mock-up of 31 October 2026 (D166): the wordmark,
+     large, with three tabs on the right; the picture the width of the page;
+     one line of small print at the foot. Everything said in words lives on
+     its own page. -->
+<header class="top wrap wide front">
+  <a class="mark" href="/"><img src="wordmark.png" alt="Loriini" width="1613" height="446"></a>
   <nav class="main">
-    <a href="makes.html">What it makes</a>
     <a href="works.html">How it works</a>
-    <a href="price.html">Price</a>
-    <a href="download.html">Download</a>
+    <a href="price.html">Plans</a>
+    <!-- Sign in is the Stripe customer portal, where a subscriber changes the
+         card and the seats. Its login link is made in the Stripe dashboard
+         (Settings > Customer portal); until it is pasted here, the tab goes
+         to Plans, where the portal is explained. -->
+    <a href="price.html">Sign in</a>
   </nav>
 </header>
 
-<!-- The front is the name over the picture: the towers and the lorikeet
-     under the sun, their shadows on the ground. Everything said in words
-     lives on its own page, one per tab above. -->
 <main class="wrap wide front">
-  <h1 class="name">Loriini</h1>
   <p class="unseen">Sun studies from Archicad, for a NSW DA.</p>
+  <!-- The picture: the Sydney skyline in black under a yellow sun, on a
+       khaki ground, in a thin lemon frame; a pixel lorikeet on the tower at
+       each end, hopping along its roof and now and then swapping towers.
+       Drawn as one SVG so it is sharp at any width, the skyline with no
+       anti-aliasing and each of its rectangles a unit into the next, so
+       they meet without seams; the birds are sprites, moved by the script
+       below. On a narrow screen the left end shows,
+       where a bird is. -->
   <div class="picture">
-    <canvas id="picture" role="img" aria-label="Five black towers and a pixel lorikeet on the ground under the sun, the sky pale at sunrise, blue at noon and red at sunset; the sun follows the pointer and the shadows turn and stretch in front of them"></canvas>
+    <svg viewBox="0 0 1582 583" preserveAspectRatio="xMinYMid slice" role="img" aria-label="A black Sydney skyline under a yellow sun, on a strip of khaki ground, with a pixel lorikeet hopping along the rooftop at each end">
+      <rect width="1582" height="583" fill="#6bb9e7"/>
+      <rect y="459" width="1582" height="124" fill="#d5cf9a"/>
+      <circle cx="692" cy="89.5" r="50.5" fill="#f9da49"/>
+      <path shape-rendering="crispEdges" d="M0 301h60v3h-60zM0 303h128v78h-128zM0 381h240v77h-240zM61 301h67v3h-67zM256 353h101v47h-101zM256 400h157v58h-157zM279 306h56v3h-56zM279 308h57v3h-57zM279 310h56v16h-56zM279 325h57v28h-57zM290 293h37v14h-37zM442 180h80v31h-80zM451 211h62v11h-62zM457 150h50v21h-50zM467 171h30v10h-30zM468 222h29v236h-29zM476 88h12v62h-12zM533 400h136v58h-136zM558 370h111v30h-111zM599 234h70v136h-70zM610 231h48v3h-48zM682 371h111v36h-111zM682 406h380v52h-380zM722 244h71v125h-71zM729 228h64v17h-64zM763 208h30v21h-30zM798 341h233v44h-233zM798 384h234v5h-234zM798 389h264v18h-264zM825 282h83v28h-83zM825 309h103v11h-103zM825 319h206v22h-206zM844 275h64v8h-64zM859 272h49v4h-49zM950 238h81v4h-81zM950 241h82v5h-82zM950 245h81v74h-81zM955 206h71v33h-71zM1069 252h66v89h-66zM1069 340h85v118h-85zM1181 379h224v79h-224zM1438 242h78v5h-78zM1438 246h81v3h-81zM1438 248h113v207h-113zM1456 228h49v4h-49zM1456 232h52v4h-52zM1456 236h79v5h-79zM1509 227h26v4h-26zM1510 230h25v3h-25zM1511 232h24v5h-24zM1521 244h30v5h-30z" fill="#000"/>
+      <image id="bird-left" href="lorikeet-wings.png" x="26" y="209" width="101" height="104"/>
+      <image id="bird-right" href="lorikeet-perched.png" x="1437" y="141" width="109" height="107"/>
+    </svg>
   </div>
 </main>
 
 <footer class="slim">
   <div class="wrap wide cols">
-    <div>Sami Abdulnour · Žofia Kosová, trading as Loriini.app · IČO 19785283</div>
-    <div><a href="mailto:hi@loriini.app">hi@loriini.app</a> · <a href="terms.html">Licence terms</a> · <a href="privacy.html">Privacy</a></div>
+    <div>Drafts from open public data, not a survey or a planning certificate. <a href="terms.html">Terms of use</a>.</div>
+    <div>© 2026 Sami Abdulnour and Zofia Kosova.</div>
   </div>
 </footer>
 
 <script>
-/* The front's picture: five black towers and the lorikeet on the ground,
-   the sun crossing behind them and their shadows falling on the ground in
-   front of them. The scene is drawn at one pixel per cell, the bird's own
-   pixels for cells, and each pixel scaled up whole, edge to edge, to a sharp
-   edge all round.
+/* The birds move the way lorikeets do. On a roof: a short hop, a pause of a
+   second or two, another; round at the roof's edge or on a whim; through
+   some hops the wings open. Every so often the two swap towers: one takes
+   off, the other a moment later, and they cross over the skyline, flapping,
+   and land on the other's roof.
 
-   The sky runs down to the towers' feet, the ground a strip in front of
-   them. It takes the hour's colour: pale at sunrise, blue at noon, red at
-   sunset, with three bands of glow round the sun, a plain yellow disc,
-   spreading wide at sunrise and sunset; and its light colours the ground,
-   the shadows and the bird a little. The sun keeps to the day's arc on its
-   own; the pointer takes it, always behind the towers, the bird and the
-   ground, and the shadows follow it: short when it is high, long when it is
-   low, thrown away from its side. */
+   Three sprites: perched, wings out, and in flight. The flying one is
+   lorikeet-flying.png when the site has it, and the wings-out sprite until
+   then; each is mirrored to face the way the bird is going. Sizes are read
+   from the files, so a sprite can be swapped for another without touching
+   this. Picture units throughout, so it all scales with the picture. Still
+   when motion is asked to be reduced: the mock-up as drawn. */
 (function () {
-  var box = document.querySelector('.picture');
-  var canvas = document.getElementById('picture');
-  if (!canvas || !canvas.getContext) return;
-  var ctx = canvas.getContext('2d');
-  var src = document.createElement('canvas');
-  var sctx = src.getContext('2d');
-  var obj = document.createElement('canvas');
-  var octx = obj.getContext('2d', { willReadFrequently: true });
-  var bird = new Image();
-  bird.src = 'lorikeet.png';
-
-  var C = { tower: '#000', sun: '#ffd900' };
-  var GROUND = [214, 207, 147], SHADE = [184, 184, 184];
-  // The sky through the day, as the hour and the sky's colour with the glow
-  // nearest the sun: sunrise, noon and sunset from the design, held a while
-  // each. Between them the sky passes through a pale, nearly white sky, then
-  // in the evening an apricot and an orange, so each step blends two
-  // neighbouring colours: no green between the yellow and the blue, no grey
-  // or purple between the blue and the red.
-  var DAY = [
-    [0, [255, 255, 195], [255, 228, 80]],
-    [.14, [255, 255, 195], [255, 228, 80]],
-    [.24, [222, 237, 245], [255, 250, 225]],
-    [.34, [76, 187, 236], [205, 236, 248]],
-    [.66, [76, 187, 236], [205, 236, 248]],
-    [.72, [224, 238, 245], [255, 252, 238]],
-    [.77, [247, 214, 180], [255, 244, 215]],
-    [.83, [255, 160, 95], [255, 222, 135]],
-    [.89, [255, 88, 40], [255, 198, 55]],
-    [1, [255, 88, 40], [255, 198, 55]]
+  // Each sprite: which way it faces as drawn, and the point of it that
+  // stands on the roof line, as shares of its width and height.
+  var SPRITE = {
+    perched: { href: 'lorikeet-perched.png', faces: -1, ax: .294, ay: .832 },
+    wings:   { href: 'lorikeet-wings.png',   faces: 1,  ax: .663, ay: .885 },
+    flying:  { href: 'lorikeet-flying.png',  faces: 1,  ax: .5,   ay: .78 }
+  };
+  // The two roofs: the roof line, and how far along it a bird's feet may go.
+  var ROOF = [{ y: 301, from: 64, to: 120 }, { y: 230, from: 1462, to: 1528 }];
+  var BIRDS = [
+    { id: 'bird-left',  roof: 0, x: 93,   facing: 1,  sprite: 'wings' },
+    { id: 'bird-right', roof: 1, x: 1469, facing: -1, sprite: 'perched' }
   ];
-  // How far the sky's light colours the ground, the shadows and the bird.
-  var TINT = .22;
+  var CRUISE = 150, SPEED = .3, FLAP = 160;   // height, picture units a millisecond, ms a wingbeat
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // The scene, as shares of a frame 70 cells high and 189 wide: where the
-  // towers and the bird stand, which is where the sky meets the ground, and
-  // the towers' edges and tops. A narrower picture shows the middle of it,
-  // round the bird.
-  var ROWS = 70, WIDE = 189, BASE = .78, FOCUS = .56;
-  var TOWERS = [[0, .128, .436], [.169, .296, .358], [.372, .45, .358], [.651, .778, .358], [.859, .987, .358]];
-  var BIRD_AT = .475;
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function ease(p) { return p * p * (3 - 2 * p); }
 
-  function clamp(v) { return Math.min(Math.max(v, 0), 1); }
-  function smooth(a, b, v) { v = clamp((v - a) / (b - a)); return v * v * (3 - 2 * v); }
-  function mix(a, b, f) { return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f]; }
-  // The sky for the hour: the three bands of glow from the sun outwards, the
-  // sky itself, and the light it casts, the sky's colour at its brightest.
-  function skyFor(hour) {
-    var i = 1;
-    while (i < DAY.length - 1 && hour > DAY[i][0]) i++;
-    var a = DAY[i - 1], b = DAY[i], f = smooth(a[0], b[0], hour);
-    var sky = mix(a[1], b[1], f), glow = mix(a[2], b[2], f), top = Math.max(sky[0], sky[1], sky[2]);
-    return {
-      bands: [0, 1, 2, 3].map(function (k) { return mix(glow, sky, k / 3).map(Math.round); }),
-      light: sky.map(function (v) { return 1 - TINT + TINT * v / top; })
-    };
+  function place(b, x, y) {
+    var s = SPRITE[b.sprite], mirrored = b.facing !== s.faces;
+    var left = x - s.w * (mirrored ? 1 - s.ax : s.ax), top = y - s.h * s.ay;
+    b.node.setAttribute('href', s.href);
+    b.node.setAttribute('width', s.w); b.node.setAttribute('height', s.h);
+    b.node.setAttribute('x', left); b.node.setAttribute('y', top);
+    b.node.setAttribute('transform', mirrored ? 'translate(' + (2 * left + s.w) + ' 0) scale(-1 1)' : '');
   }
-  function lit(c, light) { return [c[0] * light[0], c[1] * light[1], c[2] * light[2]]; }
+  function sit(b, now, wait) { b.act = 'rest'; b.until = now + wait; b.sprite = 'perched'; place(b, b.x, ROOF[b.roof].y); }
 
-  // Smooth noise, for the bands' uneven edges.
-  var perm = [];
-  for (var i = 0; i < 256; i++) perm[i] = i;
-  for (i = 255; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), sw = perm[i]; perm[i] = perm[j]; perm[j] = sw; }
-  function lattice(x, y) { return perm[(perm[x & 255] + y) & 255] / 255; }
-  function noise(x, y) {
-    var xi = Math.floor(x), yi = Math.floor(y), u = x - xi, v = y - yi;
-    u = u * u * (3 - 2 * u); v = v * v * (3 - 2 * v);
-    var a = lattice(xi, yi), b = lattice(xi + 1, yi), c = lattice(xi, yi + 1), d = lattice(xi + 1, yi + 1);
-    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  function hopOrTurn(b, now) {
+    var roof = ROOF[b.roof];
+    var atEdge = (b.facing < 0 && b.x <= roof.from + 4) || (b.facing > 0 && b.x >= roof.to - 4);
+    if (atEdge || Math.random() < .18) { b.facing = -b.facing; sit(b, now, rand(350, 950)); return; }
+    b.act = 'hop'; b.t0 = now; b.dur = rand(320, 440);
+    b.x0 = b.x; b.x1 = Math.min(roof.to, Math.max(roof.from, b.x + rand(18, 58) * b.facing));
+    b.high = rand(14, 32); b.flutter = Math.random() < .4;
   }
-
-  var W, H, cols, rows, off, hz, base;
-  function size() {
-    var r = box.getBoundingClientRect();
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    W = r.width; H = r.height;
-    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    rows = ROWS;
-    cols = Math.max(1, Math.round(W / (H / rows)));
-    off = cols >= WIDE ? Math.round((WIDE - cols) / 2) : Math.min(Math.max(Math.round(FOCUS * WIDE - cols / 2), 0), WIDE - cols);
-    base = hz = Math.round(BASE * rows);
-    src.width = obj.width = cols; src.height = obj.height = rows;
+  function takeOff(b, now) {
+    var to = ROOF[1 - b.roof];
+    b.act = 'fly'; b.t0 = now; b.x0 = b.x; b.y0 = ROOF[b.roof].y;
+    b.x1 = rand(to.from + 8, to.to - 8); b.y1 = to.y;
+    b.dur = Math.abs(b.x1 - b.x0) / SPEED;
+    b.facing = b.x1 > b.x0 ? 1 : -1; b.roof = 1 - b.roof;
   }
-  function at(share) { return Math.round(share * WIDE) - off; }
-
-  function rect(c, x, y, w, h, colour) { c.fillStyle = colour; c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
-
-  // The towers and the bird, on a clear layer of their own: drawn over the
-  // scene, and read back as the shapes whose shadows fall on the ground.
-  function figures(frame, light) {
-    octx.clearRect(0, 0, cols, rows);
-    TOWERS.forEach(function (tw) {
-      var x0 = at(tw[0]), x1 = at(tw[1]), top = Math.round(tw[2] * rows);
-      rect(octx, x0, top, x1 - x0, base - top, C.tower);
-    });
-    // The lorikeet, turned to face left, its feet on the ground with the
-    // towers', its tail over the shadows; hopping now and then.
-    if (bird.complete && bird.naturalWidth) {
-      var bw = bird.naturalWidth, bh = bird.naturalHeight, bx = at(BIRD_AT);
-      var by = base - Math.round(bh * .82) - (frame % 23 < 2 ? 1 : 0);
-      octx.save();
-      octx.translate(bx + bw, by); octx.scale(-1, 1);
-      octx.imageSmoothingEnabled = false;
-      octx.drawImage(bird, 0, 0, bw, bh);
-      octx.restore();
-    }
-    // The figures take the sky's light too: the towers stay black, the bird
-    // warms at sunrise and sunset and cools a little at noon.
-    var img = octx.getImageData(0, 0, cols, rows), a = img.data, mask = new Uint8Array(cols * rows);
-    for (var i = 0; i < mask.length; i++) {
-      mask[i] = a[i * 4 + 3] > 110 ? 1 : 0;
-      a[i * 4] *= light[0]; a[i * 4 + 1] *= light[1]; a[i * 4 + 2] *= light[2];
-    }
-    octx.putImageData(img, 0, 0);
-    return mask;
+  function fly(b, now) {
+    var p = Math.min(1, (now - b.t0) / b.dur), q = ease(p);
+    var x = b.x0 + (b.x1 - b.x0) * q;
+    // Up from the roof over the first fifth, level with a bob, down over the last.
+    var up = p < .2 ? ease(p / .2) : 1, down = p > .8 ? ease((p - .8) / .2) : 0;
+    var y = b.y0 + (CRUISE - b.y0) * up + (b.y1 - CRUISE) * down + Math.sin(p * b.dur / 420) * 9 * up * (1 - down);
+    b.sprite = p > .9 ? 'wings' : (Math.floor((now - b.t0) / FLAP) % 2 ? 'wings' : 'flying');
+    place(b, x, y);
+    if (p >= 1) { b.x = b.x1; sit(b, now, rand(700, 1800)); }
   }
 
-  function draw(frame) {
-    // Where the sun stands. On its own it keeps to the day's arc across the
-    // picture for the hour t; as the pointer it stands where the pointer is,
-    // and the hour and its height are read back from there.
-    var R = Math.max(3, Math.round(rows * .087)), low = hz - R, span = low - R - 2, sun;
-    if (!aim) {
-      var e = Math.sin(Math.PI * t);
-      sun = { x: Math.round(cols * (.06 + .88 * t)), y: Math.round(low - e * span), elev: e, hour: t };
-    } else {
-      var px = Math.floor(aim.x), py = Math.floor(aim.y);
-      sun = { x: px, y: py, elev: clamp((low - py) / span), hour: clamp((px / cols - .06) / .88) };
-    }
-
-    // The sky, with its three bands of glow round the sun: tight round it
-    // at noon, spreading wide at sunrise and sunset.
-    var dusk = smooth(.2, .5, Math.abs(sun.hour - .5));
-    var day = skyFor(sun.hour), step = R * (.55 + 2.4 * dusk), fq = 3 / rows, drift = frame * .015;
-    var img = sctx.createImageData(cols, hz), q = img.data;
-    for (var y = 0; y < hz; y++)
-      for (var x = 0; x < cols; x++) {
-        var d = Math.sqrt((x - sun.x) * (x - sun.x) + (y - sun.y) * (y - sun.y));
-        d *= 1 + (noise(x * fq + drift, y * fq) - .5) * .3;
-        var c = day.bands[Math.min(3, Math.max(0, Math.floor((d - R) / step + 1)))], k = (y * cols + x) * 4;
-        q[k] = c[0]; q[k + 1] = c[1]; q[k + 2] = c[2]; q[k + 3] = 255;
-      }
-    sctx.putImageData(img, 0, 0);
-    // The sun, a plain yellow disc, behind the ground when it is down.
-    for (var dy = -R; dy <= R; dy++)
-      for (var dx = -R; dx <= R; dx++)
-        if (dx * dx + dy * dy <= R * R + R * .6 && sun.y + dy < hz) rect(sctx, sun.x + dx, sun.y + dy, 1, 1, C.sun);
-
-    // The ground, with the shadows on it. A point h cells above the ground
-    // falls h * sy cells in front of the figures and h * sx across.
-    var mask = figures(frame, day.light), ground = lit(GROUND, day.light), shade = lit(SHADE, day.light);
-    var ang = .1 + sun.elev * 1.35;
-    var L = Math.min(2.4, Math.cos(ang) / Math.sin(ang));
-    var sy = .55 * L, sx = -(sun.hour - .5) * 1.6 * L;
-    var land = sctx.createImageData(cols, rows - hz), g = land.data;
-    for (y = hz; y < rows; y++)
-      for (x = 0; x < cols; x++) {
-        var dark = false;
-        if (y > base) {
-          var h = (y - base) / sy, mx = Math.round(x - h * sx), my = Math.round(base - h);
-          dark = mx >= 0 && mx < cols && my >= 0 && mask[my * cols + mx] === 1;
+  var swapAt = 0, flown = 0;
+  function step(now) {
+    var i, b;
+    if (!swapAt) swapAt = now + rand(9000, 20000);
+    for (i = 0; i < BIRDS.length; i++) {
+      b = BIRDS[i];
+      if (b.act === 'hop') {
+        var p = Math.min(1, (now - b.t0) / b.dur);
+        b.x = b.x0 + (b.x1 - b.x0) * p;
+        b.sprite = (b.flutter && p > .15 && p < .85) ? 'wings' : 'perched';
+        place(b, b.x, ROOF[b.roof].y - 4 * b.high * p * (1 - p));
+        if (p >= 1) sit(b, now, rand(500, 2700));
+      } else if (b.act === 'fly') {
+        fly(b, now);
+      } else if (now >= b.until) {
+        // The swap: the first bird to be ready goes, the second once it is
+        // airborne, so neither lands on an occupied roof.
+        if (now >= swapAt && flown < 2 && (flown === 0 || BIRDS[1 - i].act === 'fly' && now - BIRDS[1 - i].t0 > 500)) {
+          takeOff(b, now); flown++;
+          if (flown === 2) { swapAt = now + rand(12000, 26000); flown = 0; }
+        } else {
+          hopOrTurn(b, now);
         }
-        var c2 = dark ? shade : ground, j = ((y - hz) * cols + x) * 4;
-        g[j] = c2[0]; g[j + 1] = c2[1]; g[j + 2] = c2[2]; g[j + 3] = 255;
       }
-    sctx.putImageData(land, 0, hz);
-
-    sctx.drawImage(obj, 0, 0);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(src, 0, 0, W, H);
+    }
+    window.requestAnimationFrame(step);
   }
 
-  var t = .3, frame = 0, aim = null, held = 0, queued = false;
-  function redraw() {
-    if (queued) return;
-    queued = true;
-    requestAnimationFrame(function () { queued = false; draw(frame); });
+  var waiting = 0;
+  function loaded(name, img, ok) {
+    if (ok) { SPRITE[name].w = img.naturalWidth; SPRITE[name].h = img.naturalHeight; }
+    else if (name === 'flying') { SPRITE.flying = SPRITE.wings; }
+    if (--waiting === 0) begin();
   }
-  // The pointer is the sun. Over the sky the pointer itself is hidden and the
-  // sun shows in its place; over the ground the sun is set behind it, and the
-  // pointer is a crosshair so it is not lost. A mouse keeps the sun until it
-  // leaves the picture; a touch leaves it where it was put for a few seconds.
-  function point(e) {
-    var r = canvas.getBoundingClientRect();
-    aim = { x: (e.clientX - r.left) / r.width * cols, y: (e.clientY - r.top) / r.height * rows };
-    held = e.pointerType === 'touch' ? performance.now() + 4000 : Infinity;
-    canvas.style.cursor = aim.y < hz ? 'none' : 'crosshair';
-    redraw();
-  }
-  // Back to its arc, carrying on from the hour it was let go at.
-  function letGo() {
-    if (!aim) return;
-    t = clamp((Math.floor(aim.x) / cols - .06) / .88);
-    aim = null;
-    redraw();
+  function begin() {
+    var start = window.performance && performance.now ? performance.now() : Date.now();
+    for (var i = 0; i < BIRDS.length; i++) { BIRDS[i].act = 'rest'; BIRDS[i].until = start + 1200 + i * 900; }
+    place(BIRDS[0], BIRDS[0].x, ROOF[0].y); place(BIRDS[1], BIRDS[1].x, ROOF[1].y);
+    window.requestAnimationFrame(step);
   }
 
-  size();
-  window.addEventListener('resize', function () { size(); draw(frame); });
-  canvas.addEventListener('pointermove', point);
-  canvas.addEventListener('pointerdown', point);
-  canvas.addEventListener('pointerleave', function (e) { if (e.pointerType !== 'touch') letGo(); });
-  bird.addEventListener('load', redraw);
-  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    t = .35;
-    draw(frame);
-  } else {
-    setInterval(function () {
-      if (aim && performance.now() > held) letGo();
-      draw(frame);
-      frame++;
-      if (!aim) {
-        t += 1 / 220;
-        if (t >= 1) t = 0;
-      }
-    }, 100);
-  }
+  for (var i = 0; i < BIRDS.length; i++) BIRDS[i].node = document.getElementById(BIRDS[i].id);
+  if (still || !window.requestAnimationFrame || !BIRDS[0].node || !BIRDS[1].node) return;
+  Object.keys(SPRITE).forEach(function (name) {
+    var img = new Image();
+    waiting++;
+    img.onload = function () { loaded(name, img, true); };
+    img.onerror = function () { loaded(name, img, false); };
+    img.src = SPRITE[name].href;
+  });
 })();
 </script>
 </body>

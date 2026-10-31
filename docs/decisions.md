@@ -6501,3 +6501,48 @@ longer writes them. The icon itself is as D151 left it everywhere else: the
 *What this does not change:* the icon (D151); the site's top bar, which
 carries the name alone in type (docs/website.md); or the About box's lines
 under the name.
+
+### D166 — The front is the mock-up: the wordmark, three tabs, the skyline, and two lorikeets that hop
+
+Asked 31 October 2026, with a picture of the page: *"update website to have
+this on a front page"*, and then *"i want birds to be moving ... from side
+to side, jump like they normaly doo"*.
+
+**The page is the picture.** The wordmark (D165), large, at the top left,
+with How it works, Plans and Sign in beside its top; the picture the width
+of the page; one line of small print at the foot, with the terms. The
+company's details and the privacy link stay on every other page's foot. Sign
+in is the Stripe customer portal, whose login link is not in the repository;
+until it is pasted in the tab goes to Plans, marked as the page's fourth
+placeholder (docs/website.md).
+
+**The picture is traced, not pasted.** The mock-up was a raster; the page
+draws it as one SVG so it is sharp at any width and weighs a few kilobytes:
+the skyline as the rectangles its black pixels make (75 of them, by run
+length), the sun a circle, the sky and the ground flat colours sampled from
+it, the frame its two pixels of lemon. The slight second blue behind the
+skyline in the mock-up, where a pasted layer did not quite match, is not
+kept. The two birds are lifted from the mock-up as sprites at its own
+resolution, the sky keyed out and the roof under their feet cut away. They
+are a finer bird than the one the front had, so that one goes.
+
+**The birds hop, and swap towers.** Each bird keeps to the flat top of its
+tower and moves the way a lorikeet on a ledge does: a short hop, a pause of
+a second or two, another; it turns round at the roof's edge or on a whim,
+and through some hops the wings open, which is the second sprite, each
+sprite mirrored to face the way the bird is going. Every ten to twenty
+seconds the two swap: one takes off, the other once the first is airborne,
+and they cross over the skyline at a steady height with a slight rise and
+fall, flapping -- the flying frame and the wings-out one in turn -- and land
+on the other's roof, wings out to brake, then perched. The flying frame was
+supplied with the request as a picture, which did not reach the repository
+as a file; until it is put there as `site/lorikeet-flying.png`, the file of
+that name is a copy of the wings-out sprite, and the script reads each
+sprite's size from its file so the swap needs no other change. The hops and
+flights are in the picture's units, so they scale with it. A reader who asks
+for reduced motion gets the mock-up as drawn. The sun's arc, the
+hour-coloured sky and the shadows of the front before this (docs/website.md,
+until this change) are gone with the scene they belonged to.
+
+*What this does not change:* the other pages, their four tabs and their
+foot; the download (the previous commit); the wordmark itself (D165).
