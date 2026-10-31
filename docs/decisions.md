@@ -6522,9 +6522,12 @@ the skyline as the rectangles its black pixels make (75 of them, by run
 length), the sun a circle, the sky and the ground flat colours sampled from
 it, the frame its two pixels of lemon. The slight second blue behind the
 skyline in the mock-up, where a pasted layer did not quite match, is not
-kept. The two birds are lifted from the mock-up as sprites at its own
-resolution, the sky keyed out and the roof under their feet cut away. They
-are a finer bird than the one the front had, so that one goes.
+kept. The wings-out bird is lifted from the mock-up as a sprite at its own
+resolution, the sky keyed out and the roof under its feet cut away. The
+perched bird is the pixel lorikeet supplied afterwards, at its own 40 by 53
+pixels and shown at two picture units a pixel: the mock-up's perched bird
+was that sprite pasted wider than it is tall, and the file is the drawing.
+The coarser bird the front had goes.
 
 **The birds hop, and swap towers.** Each bird keeps to the flat top of its
 tower and moves the way a lorikeet on a ledge does: a short hop, a pause of

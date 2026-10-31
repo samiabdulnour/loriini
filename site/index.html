@@ -46,7 +46,7 @@
       <circle cx="692" cy="89.5" r="50.5" fill="#f9da49"/>
       <path shape-rendering="crispEdges" d="M0 301h60v3h-60zM0 303h128v78h-128zM0 381h240v77h-240zM61 301h67v3h-67zM256 353h101v47h-101zM256 400h157v58h-157zM279 306h56v3h-56zM279 308h57v3h-57zM279 310h56v16h-56zM279 325h57v28h-57zM290 293h37v14h-37zM442 180h80v31h-80zM451 211h62v11h-62zM457 150h50v21h-50zM467 171h30v10h-30zM468 222h29v236h-29zM476 88h12v62h-12zM533 400h136v58h-136zM558 370h111v30h-111zM599 234h70v136h-70zM610 231h48v3h-48zM682 371h111v36h-111zM682 406h380v52h-380zM722 244h71v125h-71zM729 228h64v17h-64zM763 208h30v21h-30zM798 341h233v44h-233zM798 384h234v5h-234zM798 389h264v18h-264zM825 282h83v28h-83zM825 309h103v11h-103zM825 319h206v22h-206zM844 275h64v8h-64zM859 272h49v4h-49zM950 238h81v4h-81zM950 241h82v5h-82zM950 245h81v74h-81zM955 206h71v33h-71zM1069 252h66v89h-66zM1069 340h85v118h-85zM1181 379h224v79h-224zM1438 242h78v5h-78zM1438 246h81v3h-81zM1438 248h113v207h-113zM1456 228h49v4h-49zM1456 232h52v4h-52zM1456 236h79v5h-79zM1509 227h26v4h-26zM1510 230h25v3h-25zM1511 232h24v5h-24zM1521 244h30v5h-30z" fill="#000"/>
       <image id="bird-left" href="lorikeet-wings.png" x="26" y="209" width="101" height="104"/>
-      <image id="bird-right" href="lorikeet-perched.png" x="1437" y="141" width="109" height="107"/>
+      <image id="bird-right" href="lorikeet-perched.png" x="1439" y="144" width="80" height="106" transform="translate(2958 0) scale(-1 1)"/>
     </svg>
   </div>
 </main>
@@ -72,10 +72,11 @@
    this. Picture units throughout, so it all scales with the picture. Still
    when motion is asked to be reduced: the mock-up as drawn. */
 (function () {
-  // Each sprite: which way it faces as drawn, and the point of it that
-  // stands on the roof line, as shares of its width and height.
+  // Each sprite: which way it faces as drawn, the point of it that stands
+  // on the roof line as shares of its width and height, and how many
+  // picture units each of its pixels is shown at.
   var SPRITE = {
-    perched: { href: 'lorikeet-perched.png', faces: -1, ax: .294, ay: .832 },
+    perched: { href: 'lorikeet-perched.png', faces: 1,  ax: .622, ay: .811, scale: 2 },
     wings:   { href: 'lorikeet-wings.png',   faces: 1,  ax: .663, ay: .885 },
     flying:  { href: 'lorikeet-flying.png',  faces: 1,  ax: .5,   ay: .78 }
   };
@@ -157,7 +158,7 @@
 
   var waiting = 0;
   function loaded(name, img, ok) {
-    if (ok) { SPRITE[name].w = img.naturalWidth; SPRITE[name].h = img.naturalHeight; }
+    if (ok) { var k = SPRITE[name].scale || 1; SPRITE[name].w = img.naturalWidth * k; SPRITE[name].h = img.naturalHeight * k; }
     else if (name === 'flying') { SPRITE.flying = SPRITE.wings; }
     if (--waiting === 0) begin();
   }
