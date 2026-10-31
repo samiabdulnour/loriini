@@ -6588,3 +6588,47 @@ step between downloading the artifact and `fly deploy`.
 (docs/licence-service.md), which stays by hand; what the pages say about
 the program; the artifact the workflow takes, which is still the newest
 successful add-on build on `windows`.
+
+### D168 — The front's sun is the pointer's again, the buildings stand on the ground, the birds have seven roofs, and the wordmark is the mock-up's
+
+Asked 31 October 2026, after the front went up: *"the logo is wrong look at
+the dots above the ii in loriini. make it precise"*; *"there are
+imperfections in the animation, like gap between house and ground"*; *"let
+the parrots fly on different places"*; *"the sun scrip should be still
+active. cursor as a sun casting shadows"*.
+
+**The wordmark is the mock-up's lettering.** D165's wordmark was redrawn
+from a picture in Inter Display Bold, and its dots were not the mock-up's.
+Measured on the mock-up, the lettering is Arial Bold's: a stem 0.26 of the
+x-height, the word 5.1 x-heights wide, round dots 1.06 stems across set
+0.46 of a stem above the x-height line, centred on their stems. Liberation
+Sans Bold has Arial's metrics and near enough its shapes, so the wordmark
+is now that face, the L cut to the x-height, the square dots taken off and
+round ones put on at those proportions. One file still serves the site and
+the program's tool bar.
+
+**The buildings stand on the ground.** Traced from a raster, the
+skyline's feet ended a pixel above the ground line, and the sky showed
+through as a hairline. Each building's outline now runs on eight units
+under the ground, and the ground is drawn over it; the outline's vertices
+are snapped to a four-unit grid, which takes the raster's one-pixel steps
+off the roofs without touching the tower's mast.
+
+**The birds have seven roofs.** Every flat roof wide enough for a bird is
+a perch, found on the outline; a bird flies to any of them, never the one
+the other bird is on, and well away from where it stands when such a roof
+exists. The take-off and the landing are the same frames at the artist's
+positions wherever the roof is; the cruising height drops for a high roof.
+
+**The sun is the pointer's, as the first front's was.** Over the picture
+the sun goes where the pointer goes, easing after it, and drifts back to
+where the mock-up drew it when the pointer leaves. The sky takes the
+hour's colour from the first front's day (docs/website.md, until D166),
+with the mock-up's blue at noon. Every building throws its own shadow on
+the ground: the same outline sheared away from the sun by up to three
+units a unit of height and flattened onto the ground, as far as the sun is
+low, clipped to the ground strip, at a fifth of black over the khaki. The
+birds cast none: on a roof their shadow would fall on the roof.
+
+*What this does not change:* the sheet of poses and the hops (D166); the
+pages besides the front; the program, which wears the wordmark as before.
