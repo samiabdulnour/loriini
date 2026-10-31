@@ -6465,3 +6465,39 @@ agent's `shadow_every_hour` takes the same as `grid_m`.
 
 *What this does not change:* the documents, the fills' colours (D147), or the
 sheet's fit (D149).
+
+### D165 — The tool bar wears the name written, not the icon
+
+Asked 31 October 2026, with the artwork: *"instead of picture of loriini
+there will be written loriini, exactly with this. please take this exact
+logo and put it in"* -- the word in a heavy sans, the L cut to the x-height,
+round dots over the i's.
+
+**The written name in place of the tile.** The top left of the window showed
+the icon at 32 pixels beside the name in the heading face (D151). It now
+shows the wordmark alone, `assets/loriini-wordmark.png`, and the About box's
+band the same, with the version chip beside it. One file, black on nothing
+at a size no screen reaches, fitted by Pillow to the height of a line of the
+heading face the name was set in -- so it stands where the name stood and
+grows with the type on a scaled screen -- because Tk shrinks a picture only
+by dropping rows and columns, which leaves letters in pieces. Without the
+file, or a Tk that will not take it, the bar shows the name in the heading
+face as before: a missing picture costs the picture, as with every icon.
+`Loriini.spec` carries the file where it carried the mark, and the Mac
+recipe reads it from there.
+
+**The file is a reconstruction until the original is dropped in.** The
+artwork reached the request as a picture in a message, not as a file, so the
+committed PNG is the wordmark redrawn to it: Inter Display Bold, whose stem
+is the same share of the x-height as the artwork's (0.28), the L cut at the
+x-height, the dots replaced with circles a stroke wide, a fifth of a stroke
+above the stems. Put the original at `assets/loriini-wordmark.png`, any
+size, black on transparent, and nothing else changes.
+
+**What goes.** `loriini-mark-32.png` and `-64.png`, and `make_icon.py` no
+longer writes them. The icon itself is as D151 left it everywhere else: the
+.ico and .icns, the Dock, the MCP server's picture, the site's favicon.
+
+*What this does not change:* the icon (D151); the site's top bar, which
+carries the name alone in type (docs/website.md); or the About box's lines
+under the name.
