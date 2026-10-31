@@ -80,7 +80,7 @@ from itertools import pairwise
 from pathlib import Path
 from tkinter import filedialog, ttk
 from tkinter import font as tkfont
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from sun_study import ADDON_FILE, PRODUCT, WEBSITE, licence
 from sun_study.app import (
@@ -103,6 +103,9 @@ from sun_study.licence import credential
 from sun_study.rules.days import ASSESSMENT_DAYS, day_name, parse_day
 from sun_study.site import theme as site_theme
 from sun_study.site.pipeline import SITE_SCALES
+
+if TYPE_CHECKING:
+    from PIL import ImageTk
 
 PAD = theme.PAD
 #: Kept as a name because a dozen widgets still pass it directly. The value
@@ -3941,15 +3944,15 @@ class Window:
 
         brand = ttk.Frame(top, style="Chrome.TFrame")
         brand.pack(side="left", padx=(0, PAD * 2))
-        # The program's own mark: the application icon itself, the lorikeet
-        # over the black L on its orange tile (D151). Its own 32-pixel file:
-        # Tk can only shrink a picture by dropping pixels, which leaves the
-        # eye in pieces.
-        mark = brand_mark(self.root)
-        if mark is not None:
-            self._mark = mark  # Tk forgets a picture nothing in Python holds
-            ttk.Label(brand, image=mark, style="Brand.TLabel").pack(side="left")
-        ttk.Label(brand, text=PRODUCT, style="Brand.TLabel").pack(side="left", padx=(8, 0))
+        # The program's name, written: the wordmark, as tall as a line of the
+        # heading face the name was set in, so it stands where the name stood
+        # (D165). The name in that face when the picture cannot be had.
+        wordmark = brand_wordmark(self.root, brand_height(self.root))
+        if wordmark is not None:
+            self._wordmark = wordmark  # Tk forgets a picture nothing in Python holds
+            ttk.Label(brand, image=wordmark, style="Brand.TLabel").pack(side="left")
+        else:
+            ttk.Label(brand, text=PRODUCT, style="Brand.TLabel").pack(side="left")
 
         # Listed, never assumed: each instance gets its own port, so the
         # default is right only for whichever started first, and two projects
@@ -9664,11 +9667,11 @@ class Window:
 #: PNG, because a Mac does nothing with an .ico.
 MAC_DOCK_ICON = "loriini-icon-256.png"
 
-#: The mark the tool bar shows: the application icon, at the size it is shown
-#: (D151). Its own file, reduced from ``loriini-icon-1024.png`` with a proper
-#: filter by ``scripts/make_icon.py``: Tk can only shrink a picture by
-#: dropping pixels.
-BRAND_MARK = "loriini-mark-32.png"
+#: The wordmark the tool bar and the About box show: the name written, black
+#: on nothing (D165). One file, at a size no screen reaches, fitted to the
+#: heading face's line by ``brand_wordmark`` with a proper filter: Tk can
+#: only shrink a picture by dropping pixels, which leaves letters in pieces.
+BRAND_WORDMARK = "loriini-wordmark.png"
 
 
 def icon_path() -> Path | None:
@@ -9689,16 +9692,47 @@ def icon_path() -> Path | None:
     return found if found.is_file() else None
 
 
-def brand_mark(window: tk.Misc) -> tk.PhotoImage | None:
-    """The mark at 32 pixels for the tool bar, or ``None`` without it."""
+#: The wordmark's height as a share of a line of the heading face: the
+#: proportion of the artwork's own mock-up, where the word's x-height is near
+#: twice the picker's capitals, so it reads as a mark and not as one more
+#: label in the bar.
+WORDMARK_LINES = 1.4
+
+
+def brand_height(window: tk.Misc) -> int:
+    """How tall the wordmark is shown: ``WORDMARK_LINES`` lines of the heading
+    face the name was set in before it, so it grows with the type on a
+    scaled screen rather than being one size on every one."""
+    try:
+        spec = ttk.Style(window).lookup("Brand.TLabel", "font") or "TkDefaultFont"
+        line = int(tkfont.Font(root=window, font=spec).metrics("linespace"))
+        return max(1, round(line * WORDMARK_LINES))
+    except (tk.TclError, RuntimeError, ValueError):
+        return 24
+
+
+def brand_wordmark(window: tk.Misc, tall: int) -> ImageTk.PhotoImage | None:
+    """The wordmark ``tall`` pixels high, or ``None`` without it.
+
+    Fitted by Pillow rather than Tk: ``PhotoImage`` shrinks only by dropping
+    whole rows and columns, and the file is a dozen times taller than the
+    bar. ``None`` is an ordinary answer, as it is for every icon: the bar
+    then shows the name in the heading face, as it did before the wordmark.
+    """
     packaged = getattr(sys, "_MEIPASS", None)
     root = Path(packaged) if packaged else Path(__file__).resolve().parents[3]
-    found = root / "assets" / BRAND_MARK
-    if not found.is_file():
+    found = root / "assets" / BRAND_WORDMARK
+    if not found.is_file() or tall < 1:
         return None
     try:
-        return tk.PhotoImage(master=window, file=str(found))
-    except tk.TclError:
+        from PIL import Image, ImageTk
+
+        with Image.open(found) as source:
+            picture = source.convert("RGBA")
+        wide = max(1, round(picture.width * tall / picture.height))
+        fitted = picture.resize((wide, tall), Image.Resampling.LANCZOS)
+        return ImageTk.PhotoImage(fitted, master=window)
+    except (ImportError, OSError, ValueError, tk.TclError, RuntimeError):
         return None
 
 

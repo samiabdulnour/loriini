@@ -83,27 +83,30 @@ img.px { image-rendering: pixelated; }
 
 /* The top bar, the same on every page: the name on the left of a tab's
    page, linking home, and the four tabs on the right, in capitals. On the
-   front the large name stands in for it, and the tabs are alone. */
+   front the wordmark stands in for the name, large, with the tabs beside
+   its top (D166). */
 header.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 16px; flex-wrap: wrap; }
 header.top.wide { padding-top: 2.4rem; padding-bottom: 0; }
-header.top.bare { justify-content: flex-end; }
+header.top.front { align-items: flex-start; padding-top: clamp(2.4rem, 3.4vw, 4rem); }
+header.top.front nav.main { padding-top: .7rem; }
+.mark { display: block; width: min(36vw, 640px); min-width: 11rem; }
+.mark img { display: block; width: 100%; height: auto; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mark img { filter: invert(.92); } }
+:root[data-theme="dark"] .mark img { filter: invert(.92); }
 .home { font-size: var(--s); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; text-decoration: none; padding: .15rem 0; }
 .home:hover { color: inherit; }
 nav.main { display: flex; gap: .5rem clamp(1.25rem, 4vw, 3.5rem); flex-wrap: wrap; font-size: var(--s); text-transform: uppercase; letter-spacing: .02em; }
 nav.main a { text-decoration: none; padding: .15rem 0; }
 nav.main a[aria-current="page"] { box-shadow: 0 1px 0 currentColor; }
 
-/* ---- The front: the name, large, over the top of the picture, and the
-   picture the width of the page. The picture is a canvas of whole cells,
-   edge to edge, with a sharp edge all round. ---- */
-.front { padding-bottom: 3rem; }
-.front .name {
-  position: relative; z-index: 1; pointer-events: none;
-  font-size: clamp(4.5rem, 15vw, 19rem); line-height: .75; letter-spacing: -.04em;
-  margin: .5rem 0 -.19em -.05em;
-}
-.picture { position: relative; height: 0; padding-top: 36.94%; min-height: 300px; }
-.picture canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; }
+/* ---- The front: the picture the width of the page, under the wordmark.
+   The picture keeps the mock-up's proportion; on a
+   narrow screen it keeps a height and shows its left end, where a bird is.
+   The birds are pixel art and stay so when scaled. ---- */
+main.front { padding-top: 1.6rem; padding-bottom: 5rem; }
+.picture { position: relative; aspect-ratio: 1582 / 583; min-height: 260px; background: #6bb9e7; overflow: hidden; }
+.picture svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.picture image { image-rendering: pixelated; }
 .unseen { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* A tab's page. */
@@ -169,7 +172,10 @@ footer { border-top: 1px solid var(--line); padding: 2rem 0 3rem; color: var(--m
 footer .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; }
 footer strong { color: var(--ink); }
 footer.slim { padding: 1rem 0; border-top: 0; }
-footer.slim .cols { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+/* The front's foot: the small print on the left, the copyright from the
+   middle of the page, as the mock-up has them. */
+footer.slim .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 640px) { footer.slim .cols { grid-template-columns: 1fr; } }
 
 /* The legal pages */
 .legal { max-width: 46rem; padding: 2rem 0 4rem; }

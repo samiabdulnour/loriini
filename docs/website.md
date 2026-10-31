@@ -12,21 +12,22 @@ It is a handful of static files and the current build, served by nginx, on
 Fly.io beside the licence service, at `https://loriini.app` (and
 `www.loriini.app`; the `loriini-site.fly.dev` address keeps working). No
 cookies, no analytics, no third-party requests (the font is served from the
-site itself), nothing to keep running; the one script is the front's picture,
-inline, talking to nothing.
+site itself), nothing to keep running; the one script moves the front's
+birds, inline, talking to nothing.
 
 ## What is where
 
 | | |
 |---|---|
-| `site/index.html` | The front: the name, large, over the top of the picture, and the picture the width of the page, on white; the front runs wider than a tab's page, its margins a share of the window, and its top bar holds only the tabs, while every other page's has the name on the left, linking home; every page runs the same width, its margins a share of the window. The picture is a canvas of whole cells, edge to edge, with a sharp edge all round: five black towers and the lorikeet standing where the sky meets the ground, the bird turned to face left, and their light grey shadows on the strip of khaki ground in front of them. The sky takes the hour's colour, pale at sunrise, blue at noon, red at sunset, passing between them through a nearly white sky and, in the evening, an apricot and an orange, with three uneven bands of glow round the sun, a plain yellow disc, tight at noon and spreading wide at sunrise and sunset; its light colours the ground, the shadows and the bird a little. The sun keeps to the day's arc on its own; the pointer takes it, always behind the towers, the bird and the ground, and the shadows follow it, short when it is high, long when it is low, thrown away from its side. On a narrow screen the picture shows the middle of the scene, round the bird. |
+| `site/index.html` | The front, as the mock-up of 31 October 2026 (D166): the wordmark, large, at the top left, with three tabs beside its top -- How it works, Plans, Sign in -- and the picture the width of the page under it, on white; every page runs the same width, its margins a share of the window. The picture is one SVG: the Sydney skyline in black, traced from the mock-up as one outline a building, under a plain yellow sun on a flat blue sky, on a strip of khaki ground; and a pixel lorikeet on the tower at each end. The birds hop along their roofs the way lorikeets do, a short hop and a pause, round at the roof's edge or on a whim, the wings coming out through some hops, and swapping towers now and then -- the take-off and the landing as the artist drew them, the cruise on the four airborne wing positions -- by the one script; a reader who asks for reduced motion gets the mock-up as drawn. On a narrow screen the picture keeps a height and shows its left end, where a bird is. The foot is one line: the small print with Terms of use on the left, the copyright from the middle. |
 | `site/makes.html`, `site/works.html`, `site/price.html`, `site/download.html` | The tabs: what it makes, how it works, price, download. Contact lives in every footer. |
 | `site/terms.html`, `site/privacy.html` | The licence terms and the privacy note, **drafts for a lawyer's hour** (licence-model.md §7). |
 | `site/style.css` | The one stylesheet. One typeface in two weights (400, 600) and three sizes (`--s`, `--m`, `--l`) and nothing else; thin 1px lines, flat buttons, a white page. |
 | `site/fonts/` | Inter, regular and semibold, Latin and Latin Extended, self-hosted, with its licence (SIL OFL 1.1). |
 | `site/favicon.ico`, `site/icon-*.png`, `site/apple-touch-icon.png` | The application icon, the lorikeet over the black L on its orange tile (D151), written by `scripts/make_icon.py`. `icon-52.png`, the mark at double density, is not shown in the top bar, which carries the name alone, as the front does. |
-| `site/lorikeet.png` | The whole bird that stands among the front picture's towers, at native resolution and drawn with its pixels whole. |
-| `site/download/` | The current build's zip, put there at deploy time and never committed. |
+| `site/wordmark.png` | The wordmark, the same file the program's tool bar wears (`assets/loriini-wordmark.png`, D165), black on nothing; inverted in dark mode. |
+| `site/lorikeet-sheet.png` | Every pose of the front's birds on one sheet, at the bird's own pixels, shown at two picture units a pixel, facing right and mirrored for a bird going left: the perched bird, the six frames of the take-off from the crouch to the climb, and the seven of the landing from the approach to the fold. Written by `scripts/make_lorikeet_sheet.py` from `assets/lorikeet/` -- the perched drawing and the two animations supplied -- which also writes the page's table of where each cell is, where the artist placed it relative to the perched bird, and how long it holds. Run it when the artwork changes. |
+| `site/download/` | The current build's zip, `Loriini_Win.zip`, put there at deploy time and never committed. nginx answers the old name, `Loriini_AC26_Win.zip`, with a redirect to it, because that address is in the licence service's recall notice and in mail already sent. |
 | `deploy/site/` | The Dockerfile, nginx's config, and `fly.toml` for the `loriini-site` app. |
 
 ## Before it goes live
@@ -41,6 +42,10 @@ beside it:
    Loriini.app, IČO 19785283, DIČ CZ0154024321, as on the Stripe account.
 3. **The prices** are the placeholders from licence-model.md §8, A$75 a seat
    a month and A$750 a year; change them with the Stripe prices.
+4. **Sign in**, on the front, is the Stripe customer portal, where a
+   subscriber changes the card and the seats. Its login link is made in the
+   Stripe dashboard (Settings > Customer portal); until it is pasted in, the
+   tab goes to Plans.
 
 And the two drafts want a lawyer's hour before a practice is asked to accept
 them.
@@ -48,13 +53,17 @@ them.
 ## Deploying it
 
 From the repository's root, signed in to Fly. The current build is the
-`Loriini_AC26_Win` artifact of the newest successful *Archicad add-on*
-workflow run; download it from the run's page and put it in
-`site/download/Loriini_AC26_Win.zip`, then update the version, date, size
-and SHA-256 under *Download* on the page:
+`Loriini_Win` artifact of the newest successful *Archicad add-on* workflow
+run on `windows` -- the program and one add-on per Archicad version, 26 to
+30, with the install note and the licence; download it from the run's page
+and put it in `site/download/Loriini_Win.zip` as it comes (GitHub serves
+the artifact as that zip; its SHA-256 is the digest shown beside the
+artifact on the run's page, so the page's figure can be checked against
+it). Then update the version, date, size and SHA-256 under *Download* on
+the page, and the Archicad versions wherever the pages name them:
 
 ```
-sha256sum site/download/Loriini_AC26_Win.zip
+sha256sum site/download/Loriini_Win.zip
 fly deploy . --config deploy/site/fly.toml --dockerfile deploy/site/Dockerfile --ha=false
 ```
 
@@ -70,11 +79,11 @@ Once the site serves the build, tell the licence service where it is, so a
 recall's notice can point there:
 
 ```
-uv run python scripts/licence.py set download=https://loriini.app/download/Loriini_AC26_Win.zip
+uv run python scripts/licence.py set download=https://loriini.app/download/Loriini_Win.zip
 ```
 
 ## What it costs
 
 A shared machine that stops when idle, started by the next visitor: cents a
-month. The 65 MB download is inside the image, so a visitor's download comes
+month. The 83 MB download is inside the image, so a visitor's download comes
 from Fly's edge in Sydney.

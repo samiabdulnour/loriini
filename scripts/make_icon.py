@@ -11,9 +11,6 @@ writes, beside it:
 * ``loriini-icon-256.png``, the Dock's picture for a window started from a
   checkout and the MCP server's icon;
 * ``loriini-icon-32.png``;
-* ``loriini-mark-32.png`` and ``loriini-mark-64.png``, the mark at the top
-  left of the window and of the About box: the same tile, since D151 the
-  icon is the mark;
 * ``loriini-icon-tile-1024.png``, the icon on cream, opaque, for anywhere that
   wants a square with nothing transparent in it;
 
@@ -65,8 +62,6 @@ TARGET = ASSETS / "loriini.ico"
 MAC_TARGET = ASSETS / "loriini.icns"
 #: The PNGs the program reads at run time, by size.
 PNG_TARGETS = {256: ASSETS / "loriini-icon-256.png", 32: ASSETS / "loriini-icon-32.png"}
-#: The mark at the top left of the window and the About box, by size.
-MARK_TARGETS = {32: ASSETS / "loriini-mark-32.png", 64: ASSETS / "loriini-mark-64.png"}
 TILE_TARGET = ASSETS / "loriini-icon-tile-1024.png"
 SITE = ROOT / "site"
 
@@ -157,7 +152,7 @@ def main() -> int:
     written = ", ".join(str(size) for size in MAC_SIZES)
     print(f"wrote {MAC_TARGET}  ({MAC_TARGET.stat().st_size / 1024:.1f} kB, sizes {written})")
 
-    for size, target in [*PNG_TARGETS.items(), *MARK_TARGETS.items()]:
+    for size, target in PNG_TARGETS.items():
         render(source, size).save(target, optimize=True)
         print(f"wrote {target}  ({target.stat().st_size / 1024:.1f} kB)")
 

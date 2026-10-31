@@ -152,7 +152,7 @@ folder and add the folder in Options > Add-On Manager. Once it loads, the Tapir
 add-on can be removed.
 
 The same workflow makes the whole handover folder: `Loriini.exe` beside the
-add-on, with an install note and the licence, as the `Loriini_AC26_Win`
+add-on, with an install note and the licence, as the `Loriini_Win`
 artifact on the run's page. [`docs/addon.md`](docs/addon.md#installing-it)
 says where to find it and how to ask for a fresh one.
 

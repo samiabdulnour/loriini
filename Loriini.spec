@@ -27,10 +27,11 @@ datas += [(str(ROOT / 'assets' / 'icons'), 'assets/icons')]
 datas += [(str(ROOT / 'assets' / 'fonts'), 'assets/fonts')]
 # The icon at 256 pixels, for the agent's client to show beside the server's
 # name (`sun_study.agent.tools.icon` looks for it at `assets` under _MEIPASS),
-# and at 32 for the window's tool bar (`sun_study.app.window.brand_mark`).
+# and at 32; and the wordmark the window's tool bar and About box wear
+# (`sun_study.app.window.brand_wordmark`, D165).
 datas += [(str(ROOT / 'assets' / 'loriini-icon-256.png'), 'assets')]
 datas += [(str(ROOT / 'assets' / 'loriini-icon-32.png'), 'assets')]
-datas += [(str(ROOT / 'assets' / 'loriini-mark-32.png'), 'assets')]
+datas += [(str(ROOT / 'assets' / 'loriini-wordmark.png'), 'assets')]
 # The licence itself, at the root of the bundle, where `sun_study.licence.file`
 # looks for it. The info box summarises the terms from a constant that is in
 # the executable either way; this is what `Read the full licence` shows, and

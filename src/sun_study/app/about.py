@@ -179,29 +179,29 @@ class About(tk.Toplevel):
 
     def _heading(self, parent: tk.Misc) -> None:
         """Whose program this is. The one part that is not scrolled away: the
-        window's own top band, with the mark, the name, the version as the
-        chip the window uses for a figure, and the two lines under them."""
-        from sun_study.app.window import brand_mark
+        window's own top band, with the wordmark as the tool bar wears it
+        (D165), the version as the chip the window uses for a figure, and the
+        two lines under them."""
+        from sun_study.app.window import brand_height, brand_wordmark
 
         head = ttk.Frame(
             parent, style="Chrome.TFrame", padding=(PAD * 2, PAD + 4, PAD * 2, PAD + 2)
         )
         head.pack(side="top", fill="x")
-        head.columnconfigure(1, weight=1)
-        mark = brand_mark(self)
-        if mark is not None:
-            self._mark = mark  # Tk forgets a picture nothing in Python holds
-            ttk.Label(head, image=mark, style="Brand.TLabel").grid(
-                row=0, column=0, rowspan=3, sticky="nw", padx=(0, 10)
-            )
+        head.columnconfigure(0, weight=1)
         name = ttk.Frame(head, style="Chrome.TFrame")
-        name.grid(row=0, column=1, sticky="w")
-        ttk.Label(name, text=PRODUCT, style="Brand.TLabel").pack(side="left")
+        name.grid(row=0, column=0, sticky="w")
+        wordmark = brand_wordmark(self, brand_height(self))
+        if wordmark is not None:
+            self._wordmark = wordmark  # Tk forgets a picture nothing in Python holds
+            ttk.Label(name, image=wordmark, style="Brand.TLabel").pack(side="left")
+        else:
+            ttk.Label(name, text=PRODUCT, style="Brand.TLabel").pack(side="left")
         ttk.Label(name, text=__version__, style="Chip.TLabel").pack(side="left", padx=(8, 0))
-        ttk.Label(head, text=AUTHOR, style="ChromeHint.TLabel").grid(row=1, column=1, sticky="w")
+        ttk.Label(head, text=AUTHOR, style="ChromeHint.TLabel").grid(row=1, column=0, sticky="w")
         # Clause 2(e): this line may not be removed from the software or from
         # what it draws. It is here for the same reason it is on every sheet.
-        ttk.Label(head, text=COPYRIGHT, style="ChromeHint.TLabel").grid(row=2, column=1, sticky="w")
+        ttk.Label(head, text=COPYRIGHT, style="ChromeHint.TLabel").grid(row=2, column=0, sticky="w")
 
     def _status(self, page: ttk.Frame, row: int) -> int:
         """What the numbers are worth. The same words as everywhere else."""

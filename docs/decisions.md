@@ -6465,3 +6465,96 @@ agent's `shadow_every_hour` takes the same as `grid_m`.
 
 *What this does not change:* the documents, the fills' colours (D147), or the
 sheet's fit (D149).
+
+### D165 — The tool bar wears the name written, not the icon
+
+Asked 31 October 2026, with the artwork: *"instead of picture of loriini
+there will be written loriini, exactly with this. please take this exact
+logo and put it in"* -- the word in a heavy sans, the L cut to the x-height,
+round dots over the i's.
+
+**The written name in place of the tile.** The top left of the window showed
+the icon at 32 pixels beside the name in the heading face (D151). It now
+shows the wordmark alone, `assets/loriini-wordmark.png`, and the About box's
+band the same, with the version chip beside it. One file, black on nothing
+at a size no screen reaches, fitted by Pillow to the height of a line of the
+heading face the name was set in -- so it stands where the name stood and
+grows with the type on a scaled screen -- because Tk shrinks a picture only
+by dropping rows and columns, which leaves letters in pieces. Without the
+file, or a Tk that will not take it, the bar shows the name in the heading
+face as before: a missing picture costs the picture, as with every icon.
+`Loriini.spec` carries the file where it carried the mark, and the Mac
+recipe reads it from there.
+
+**The file is a reconstruction until the original is dropped in.** The
+artwork reached the request as a picture in a message, not as a file, so the
+committed PNG is the wordmark redrawn to it: Inter Display Bold, whose stem
+is the same share of the x-height as the artwork's (0.28), the L cut at the
+x-height, the dots replaced with circles a stroke wide, a fifth of a stroke
+above the stems. Put the original at `assets/loriini-wordmark.png`, any
+size, black on transparent, and nothing else changes.
+
+**What goes.** `loriini-mark-32.png` and `-64.png`, and `make_icon.py` no
+longer writes them. The icon itself is as D151 left it everywhere else: the
+.ico and .icns, the Dock, the MCP server's picture, the site's favicon.
+
+*What this does not change:* the icon (D151); the site's top bar, which
+carries the name alone in type (docs/website.md); or the About box's lines
+under the name.
+
+### D166 — The front is the mock-up: the wordmark, three tabs, the skyline, and two lorikeets that hop
+
+Asked 31 October 2026, with a picture of the page: *"update website to have
+this on a front page"*, and then *"i want birds to be moving ... from side
+to side, jump like they normaly doo"*.
+
+**The page is the picture.** The wordmark (D165), large, at the top left,
+with How it works, Plans and Sign in beside its top; the picture the width
+of the page; one line of small print at the foot, with the terms. The
+company's details and the privacy link stay on every other page's foot. Sign
+in is the Stripe customer portal, whose login link is not in the repository;
+until it is pasted in the tab goes to Plans, marked as the page's fourth
+placeholder (docs/website.md).
+
+**The picture is traced, not pasted.** The mock-up was a raster; the page
+draws it as one SVG so it is sharp at any width and weighs a few kilobytes:
+the skyline as the one outline a building its dark pixels make, their
+seams closed first -- the mock-up's skyline was a pasted raster whose blocks
+met with a pixel of grey between them, and traced as rectangles those showed
+as hairlines in the page -- the sun a circle, the sky and the ground flat
+colours sampled from it. The second mock-up, of the same day, has no frame
+round the picture and the copyright from the middle of the foot, and the
+page follows it. The slight second blue behind the
+skyline in the mock-up, where a pasted layer did not quite match, is not
+kept. The birds are the pixel lorikeet supplied afterwards, at its own 40 by 53
+pixels and shown at two picture units a pixel: the mock-up's perched bird
+was that sprite pasted wider than it is tall, and the file is the drawing.
+Every pose is a cell of one sheet, `site/lorikeet-sheet.png`, which
+`scripts/make_lorikeet_sheet.py` writes from the artwork in
+`assets/lorikeet/`: the perched drawing, and the take-off and landing
+animations that followed it, each frame cut at the bird's own pixels with
+the place the artist drew it in relative to the perched bird. The coarser
+bird the front had goes, and so does the wings-out bird lifted from the
+mock-up, which the landing's approach replaces.
+
+**The birds hop, and swap towers.** Each bird keeps to the flat top of its
+tower and moves the way a lorikeet on a ledge does: a short hop, a pause of
+a second or two, another; it turns round at the roof's edge or on a whim,
+and through some hops the wings come out, which is the take-off's crouch,
+every cell mirrored to face the way the bird is going. Every ten to twenty
+seconds the two swap: one takes off, the other once the first is well up,
+and they cross over the skyline and land on each other's roof. The take-off
+and the landing are the artist's: each frame is shown where the animation
+drew it, relative to the perched bird, so the crouch, the lift, the climb,
+the approach with the feet out and the fold on the roof are as supplied.
+Between them the bird cruises at a steady height with a slight rise and
+fall, looping the four airborne wing positions of the take-off, each cell
+centred so the wings' reach does not jolt the body. A standing bird in the
+air, which the first attempt flew with, is what this replaces. The hops and
+flights are in the picture's units, so they scale with it. A reader who asks
+for reduced motion gets the page as drawn. The sun's arc, the
+hour-coloured sky and the shadows of the front before this (docs/website.md,
+until this change) are gone with the scene they belonged to.
+
+*What this does not change:* the other pages, their four tabs and their
+foot; the download (the previous commit); the wordmark itself (D165).
