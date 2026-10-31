@@ -6526,29 +6526,33 @@ colours sampled from it. The second mock-up, of the same day, has no frame
 round the picture and the copyright from the middle of the foot, and the
 page follows it. The slight second blue behind the
 skyline in the mock-up, where a pasted layer did not quite match, is not
-kept. The wings-out bird is lifted from the mock-up as a sprite at its own
-resolution, the sky keyed out and the roof under its feet cut away. The
-perched bird is the pixel lorikeet supplied afterwards, at its own 40 by 53
+kept. The birds are the pixel lorikeet supplied afterwards, at its own 40 by 53
 pixels and shown at two picture units a pixel: the mock-up's perched bird
 was that sprite pasted wider than it is tall, and the file is the drawing.
-The coarser bird the front had goes.
+Every pose is a cell of one sheet, `site/lorikeet-sheet.png`, which
+`scripts/make_lorikeet_sheet.py` writes from the artwork in
+`assets/lorikeet/`: the perched drawing, and the take-off and landing
+animations that followed it, each frame cut at the bird's own pixels with
+the place the artist drew it in relative to the perched bird. The coarser
+bird the front had goes, and so does the wings-out bird lifted from the
+mock-up, which the landing's approach replaces.
 
 **The birds hop, and swap towers.** Each bird keeps to the flat top of its
 tower and moves the way a lorikeet on a ledge does: a short hop, a pause of
 a second or two, another; it turns round at the roof's edge or on a whim,
-and through some hops the wings open, which is the second sprite, each
-sprite mirrored to face the way the bird is going. Every ten to twenty
-seconds the two swap: one takes off, the other once the first is airborne,
-and they cross over the skyline at a steady height with a slight rise and
-fall, flapping -- the flying frame and the wings-out one in turn -- and land
-on the other's roof, wings out to brake, then perched. The flying frame was
-supplied with the request as a picture, which did not reach the repository
-as a file; a standing bird in the air looked wrong, so until the frame is
-put there as `site/lorikeet-flying.png` the birds hop and keep to their
-towers, and the script reads each sprite's size from its file so adding it
-needs no other change. The hops and
+and through some hops the wings come out, which is the take-off's crouch,
+every cell mirrored to face the way the bird is going. Every ten to twenty
+seconds the two swap: one takes off, the other once the first is well up,
+and they cross over the skyline and land on each other's roof. The take-off
+and the landing are the artist's: each frame is shown where the animation
+drew it, relative to the perched bird, so the crouch, the lift, the climb,
+the approach with the feet out and the fold on the roof are as supplied.
+Between them the bird cruises at a steady height with a slight rise and
+fall, looping the four airborne wing positions of the take-off, each cell
+centred so the wings' reach does not jolt the body. A standing bird in the
+air, which the first attempt flew with, is what this replaces. The hops and
 flights are in the picture's units, so they scale with it. A reader who asks
-for reduced motion gets the mock-up as drawn. The sun's arc, the
+for reduced motion gets the page as drawn. The sun's arc, the
 hour-coloured sky and the shadows of the front before this (docs/website.md,
 until this change) are gone with the scene they belonged to.
 

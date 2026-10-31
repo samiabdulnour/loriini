@@ -32,20 +32,20 @@
 <main class="wrap wide front">
   <p class="unseen">Sun studies from Archicad, for a NSW DA.</p>
   <!-- The picture: the Sydney skyline in black under a yellow sun, on a
-       khaki ground, in a thin lemon frame; a pixel lorikeet on the tower at
-       each end, hopping along its roof and, with a flying frame to do it
-       with, now and then swapping towers. Drawn as one SVG so it is sharp
-       at any width, the skyline a single outline with nothing inside it to
-       show a seam; the birds are sprites, moved by the script below. On a
-       narrow screen the left end shows, where a bird is. -->
+       khaki ground; a pixel lorikeet on the tower at each end, hopping
+       along its roof and now and then swapping towers. Drawn as one SVG so
+       it is sharp at any width, the skyline a single outline with nothing
+       inside it to show a seam. Each bird is a window onto one sheet of
+       poses, moved from pose to pose by the script below. On a narrow
+       screen the left end shows, where a bird is. -->
   <div class="picture">
     <svg viewBox="0 0 1582 583" preserveAspectRatio="xMinYMid slice" role="img" aria-label="A black Sydney skyline under a yellow sun, on a strip of khaki ground, with a pixel lorikeet hopping along the rooftop at each end">
       <rect width="1582" height="583" fill="#6bb9e7"/>
       <rect y="459" width="1582" height="124" fill="#d5cf9a"/>
       <circle cx="692" cy="89.5" r="50.5" fill="#f9da49"/>
       <path d="M476 88h11v61h19v1h1v20h-2v1h-8v9h24v1h1v29h-1v1h-2v-1h-6v11h-1v1h-16v235h-29v-235h-16v-11h-1v-1h-5v1h-3v-3h-1v-27h1v-1h25v-9h-9v-1h-1v-21h19zM955 205h70v1h1v19h-1v13h6v150h30v69h-379v-87h1v-1h38v-124h1v-1h7v-16h34v-21h29v22h1v176h5v-65h27v-58h19v-7h13v-1h2v-3h48v37h16v1h4v9h23v-80h5zM1454 226h81v14h15v214h-112v-1h-1v-212h1v-1h17v-12h-1zM610 230h47v3h11v224h-135v-58h25v-29h1v-1h40v-136h11zM1069 250h65v90h20v117h-85zM291 292h35v2h1v4h-1v7h1v1h8v46h21v47h56v58h-156v-105h22v-46h6v-1h6v-12h1zM0 300h26v1h101v79h112v77h-239zM1181 378h223v79h-223z" fill="#000"/>
-      <image id="bird-left" href="lorikeet-wings.png" x="26" y="209" width="101" height="104"/>
-      <image id="bird-right" href="lorikeet-perched.png" x="1439" y="144" width="80" height="106" transform="translate(2958 0) scale(-1 1)"/>
+      <g id="bird-left"><svg x="33.2" y="223" width="116" height="84" viewBox="41 0 58 42" preserveAspectRatio="none"><image href="lorikeet-sheet.png" width="879" height="65"/></svg></g>
+      <g id="bird-right" transform="translate(2957.6 0) scale(-1 1)"><svg x="1438.8" y="144" width="80" height="106" viewBox="0 0 40 53" preserveAspectRatio="none"><image href="lorikeet-sheet.png" width="879" height="65"/></svg></g>
     </svg>
   </div>
 </main>
@@ -60,46 +60,89 @@
 <script>
 /* The birds move the way lorikeets do. On a roof: a short hop, a pause of a
    second or two, another; round at the roof's edge or on a whim; through
-   some hops the wings open. Every so often the two swap towers: one takes
-   off, the other a moment later, and they cross over the skyline, flapping,
-   and land on the other's roof.
+   some hops the wings come out. Every so often the two swap towers: one
+   takes off, the other a moment later, and they cross over the skyline and
+   land on each other's roof.
 
-   Three sprites: perched, wings out, and in flight; each is mirrored to
-   face the way the bird is going. Sizes are read from the files, so a
-   sprite can be swapped for another without touching this. Without the
-   flying frame (lorikeet-flying.png) the birds hop and keep to their
-   towers. Picture units throughout, so it all scales with the picture.
-   Still when motion is asked to be reduced: the mock-up as drawn. */
+   Every pose is a cell of one sheet, lorikeet-sheet.png, at the bird's own
+   pixels, shown at two picture units a pixel. The perched bird is the
+   drawing supplied; the take-off and the landing are the frames of the two
+   animations supplied, each with the place the artist drew it in, relative
+   to the perched bird, so the rise and the approach are theirs; the cruise
+   loops the four airborne wing positions from the take-off. The sheet
+   faces right and is mirrored for a bird going left. Picture units
+   throughout, so it all scales with the picture. Still when motion is
+   asked to be reduced: the page as drawn. */
 (function () {
-  // Each sprite: which way it faces as drawn, the point of it that stands
-  // on the roof line as shares of its width and height, and how many
-  // picture units each of its pixels is shown at.
-  var SPRITE = {
-    perched: { href: 'lorikeet-perched.png', faces: 1,  ax: .622, ay: .811, scale: 2 },
-    wings:   { href: 'lorikeet-wings.png',   faces: 1,  ax: .663, ay: .885 },
-    flying:  { href: 'lorikeet-flying.png',  faces: 1,  ax: .5,   ay: .78 }
+  var K = 2;                         // picture units a pixel
+  var FEET = { x: 24.9, y: 43 };     // where the perched bird's feet are, in its cell
+  // Each cell: left, top, width, height on the sheet; where its top left
+  // sits relative to the perched bird's, in pixels; how long it holds.
+  var CELL = {
+    perched: [0, 0, 40, 53, 0, 0, 0],
+    up1: [41, 0, 58, 42, -5, 4, 170],
+    up2: [100, 0, 63, 65, 2, -24, 120],
+    up3: [164, 0, 65, 63, 0, -35, 80],
+    up4: [230, 0, 65, 43, 6, -23, 80],
+    up5: [296, 0, 70, 44, 13, -30, 80],
+    up6: [367, 0, 63, 52, 27, -54, 80],
+    down5: [431, 0, 65, 43, -54, -27, 80],
+    down6: [497, 0, 70, 44, -40, -15, 80],
+    down7: [568, 0, 63, 65, -24, -31, 140],
+    down8: [632, 0, 63, 65, -26, -22, 120],
+    down9: [696, 0, 63, 65, -28, -14, 100],
+    down10: [760, 0, 59, 47, -14, 7, 140],
+    down11: [820, 0, 59, 47, -14, 5, 150]
   };
+  var TAKEOFF = ['up1', 'up2', 'up3', 'up4', 'up5', 'up6'];
+  var BEAT = ['up3', 'up4', 'up5', 'up6'];
+  var LANDING = ['down5', 'down6', 'down7', 'down8', 'down9', 'down10', 'down11'];
   // The two roofs: the roof line, and how far along it a bird's feet may go.
   var ROOF = [{ y: 301, from: 64, to: 120 }, { y: 230, from: 1462, to: 1528 }];
   var BIRDS = [
-    { id: 'bird-left',  roof: 0, x: 93,   facing: 1,  sprite: 'wings' },
-    { id: 'bird-right', roof: 1, x: 1469, facing: -1, sprite: 'perched' }
+    { id: 'bird-left',  roof: 0, x: 93,   facing: 1 },
+    { id: 'bird-right', roof: 1, x: 1469, facing: -1 }
   ];
-  var CRUISE = 150, SPEED = .3, FLAP = 160;   // height, picture units a millisecond, ms a wingbeat
+  var CRUISE = 150, SPEED = .3, STEP = 80;   // the height flown at, picture units a millisecond, ms a wing position
   var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function rand(a, b) { return a + Math.random() * (b - a); }
   function ease(p) { return p * p * (3 - 2 * p); }
 
-  function place(b, x, y) {
-    var s = SPRITE[b.sprite], mirrored = b.facing !== s.faces;
-    var left = x - s.w * (mirrored ? 1 - s.ax : s.ax), top = y - s.h * s.ay;
-    b.node.setAttribute('href', s.href);
-    b.node.setAttribute('width', s.w); b.node.setAttribute('height', s.h);
-    b.node.setAttribute('x', left); b.node.setAttribute('y', top);
-    b.node.setAttribute('transform', mirrored ? 'translate(' + (2 * left + s.w) + ' 0) scale(-1 1)' : '');
+  // Show one cell with its top left at (x, y), mirrored or not.
+  function show(b, name, x, y, mirrored) {
+    var c = CELL[name], w = c[2] * K, h = c[3] * K;
+    b.win.setAttribute('viewBox', c[0] + ' ' + c[1] + ' ' + c[2] + ' ' + c[3]);
+    b.win.setAttribute('width', w); b.win.setAttribute('height', h);
+    b.win.setAttribute('x', x); b.win.setAttribute('y', y);
+    b.node.setAttribute('transform', mirrored ? 'translate(' + (2 * x + w) + ' 0) scale(-1 1)' : '');
   }
-  function sit(b, now, wait) { b.act = 'rest'; b.until = now + wait; b.sprite = 'perched'; place(b, b.x, ROOF[b.roof].y); }
+  // A cell in the artist's place relative to a perch: feet at (px, py).
+  function posed(b, name, px, py, lift) {
+    var c = CELL[name], m = b.facing < 0;
+    var x = m ? px + K * FEET.x - K * (c[4] + c[2]) : px - K * FEET.x + K * c[4];
+    show(b, name, x, py - K * FEET.y + K * c[5] - (lift || 0), m);
+  }
+  // A cell with its middle at (cx, cy): the airborne poses, which the
+  // bounding boxes of the wings would otherwise jolt about.
+  function centred(b, name, cx, cy) {
+    var c = CELL[name];
+    show(b, name, cx - c[2] * K / 2, cy - c[3] * K / 2, b.facing < 0);
+  }
+  // Where a posed cell's middle lands, so a cruise can start and end there.
+  function middleOf(b, name, px, py) {
+    var c = CELL[name], m = b.facing < 0;
+    var x = m ? px + K * FEET.x - K * (c[4] + c[2]) : px - K * FEET.x + K * c[4];
+    return { x: x + c[2] * K / 2, y: py - K * FEET.y + K * c[5] + c[3] * K / 2 };
+  }
+  function sit(b, now, wait) { b.act = 'rest'; b.until = now + wait; posed(b, 'perched', b.x, ROOF[b.roof].y); }
+
+  // A run of cells, each held for its own time; answers the cell for a
+  // moment into the run, or null once the run is over.
+  function frameAt(names, t) {
+    for (var i = 0; i < names.length; i++) { t -= CELL[names[i]][6]; if (t < 0) return names[i]; }
+    return null;
+  }
 
   function hopOrTurn(b, now) {
     var roof = ROOF[b.roof];
@@ -109,42 +152,58 @@
     b.x0 = b.x; b.x1 = Math.min(roof.to, Math.max(roof.from, b.x + rand(18, 58) * b.facing));
     b.high = rand(14, 32); b.flutter = Math.random() < .4;
   }
-  function takeOff(b, now) {
-    var to = ROOF[1 - b.roof];
-    b.act = 'fly'; b.t0 = now; b.x0 = b.x; b.y0 = ROOF[b.roof].y;
-    b.x1 = rand(to.from + 8, to.to - 8); b.y1 = to.y;
-    b.dur = Math.abs(b.x1 - b.x0) / SPEED;
-    b.facing = b.x1 > b.x0 ? 1 : -1; b.roof = 1 - b.roof;
-  }
-  function fly(b, now) {
-    var p = Math.min(1, (now - b.t0) / b.dur), q = ease(p);
-    var x = b.x0 + (b.x1 - b.x0) * q;
-    // Up from the roof over the first fifth, level with a bob, down over the last.
-    var up = p < .2 ? ease(p / .2) : 1, down = p > .8 ? ease((p - .8) / .2) : 0;
-    var y = b.y0 + (CRUISE - b.y0) * up + (b.y1 - CRUISE) * down + Math.sin(p * b.dur / 420) * 9 * up * (1 - down);
-    b.sprite = p > .9 ? 'wings' : (Math.floor((now - b.t0) / FLAP) % 2 ? 'wings' : 'flying');
-    place(b, x, y);
-    if (p >= 1) { b.x = b.x1; sit(b, now, rand(700, 1800)); }
+  function hop(b, now) {
+    var p = Math.min(1, (now - b.t0) / b.dur);
+    b.x = b.x0 + (b.x1 - b.x0) * p;
+    posed(b, (b.flutter && p > .15 && p < .85) ? 'up1' : 'perched', b.x, ROOF[b.roof].y, 4 * b.high * p * (1 - p));
+    if (p >= 1) sit(b, now, rand(500, 2700));
   }
 
-  var swapAt = 0, flown = 0, canFly = true;
+  function takeOff(b, now) {
+    var to = ROOF[1 - b.roof];
+    b.act = 'takeoff'; b.t0 = now;
+    b.px = b.x; b.py = ROOF[b.roof].y;                       // the perch left
+    b.x = rand(to.from + 8, to.to - 8); b.qy = to.y;          // the perch landed on
+    b.facing = b.x > b.px ? 1 : -1; b.roof = 1 - b.roof;
+    b.from = middleOf(b, 'up6', b.px, b.py);
+    b.to = middleOf(b, 'down5', b.x, b.qy);
+    b.dur = Math.abs(b.to.x - b.from.x) / SPEED;
+  }
+  function fly(b, now) {
+    var name, p, q, up, down, t;
+    if (b.act === 'takeoff') {
+      name = frameAt(TAKEOFF, now - b.t0);
+      if (name) { posed(b, name, b.px, b.py); return; }
+      b.act = 'cruise'; b.t0 = now;
+    }
+    if (b.act === 'cruise') {
+      p = Math.min(1, (now - b.t0) / b.dur); q = ease(p);
+      // Up to the cruising height over the first fifth, down to the approach over the last.
+      up = p < .2 ? ease(p / .2) : 1; down = p > .8 ? ease((p - .8) / .2) : 0;
+      centred(b, BEAT[Math.floor((now - b.t0) / STEP) % BEAT.length],
+        b.from.x + (b.to.x - b.from.x) * q,
+        b.from.y + (CRUISE - b.from.y) * up + (b.to.y - CRUISE) * down + Math.sin((now - b.t0) / 420) * 9 * up * (1 - down));
+      if (p < 1) return;
+      b.act = 'landing'; b.t0 = now;
+    }
+    name = frameAt(LANDING, now - b.t0);
+    if (name) { posed(b, name, b.x, b.qy); return; }
+    sit(b, now, rand(700, 1800));
+  }
+
+  var swapAt = 0, flown = 0;
   function step(now) {
     var i, b;
     if (!swapAt) swapAt = now + rand(9000, 20000);
     for (i = 0; i < BIRDS.length; i++) {
       b = BIRDS[i];
-      if (b.act === 'hop') {
-        var p = Math.min(1, (now - b.t0) / b.dur);
-        b.x = b.x0 + (b.x1 - b.x0) * p;
-        b.sprite = (b.flutter && p > .15 && p < .85) ? 'wings' : 'perched';
-        place(b, b.x, ROOF[b.roof].y - 4 * b.high * p * (1 - p));
-        if (p >= 1) sit(b, now, rand(500, 2700));
-      } else if (b.act === 'fly') {
-        fly(b, now);
-      } else if (now >= b.until) {
-        // The swap: the first bird to be ready goes, the second once it is
-        // airborne, so neither lands on an occupied roof.
-        if (canFly && now >= swapAt && flown < 2 && (flown === 0 || BIRDS[1 - i].act === 'fly' && now - BIRDS[1 - i].t0 > 500)) {
+      if (b.act === 'hop') hop(b, now);
+      else if (b.act === 'takeoff' || b.act === 'cruise' || b.act === 'landing') fly(b, now);
+      else if (now >= b.until) {
+        // The swap: the first bird to be ready goes, the second once the
+        // first is well up, so neither lands on an occupied roof.
+        var other = BIRDS[1 - i];
+        if (now >= swapAt && flown < 2 && (flown === 0 || (other.act !== 'rest' && other.act !== 'hop' && now - other.t0 > 500))) {
           takeOff(b, now); flown++;
           if (flown === 2) { swapAt = now + rand(12000, 26000); flown = 0; }
         } else {
@@ -155,28 +214,15 @@
     window.requestAnimationFrame(step);
   }
 
-  var waiting = 0;
-  function loaded(name, img, ok) {
-    if (ok) { var k = SPRITE[name].scale || 1; SPRITE[name].w = img.naturalWidth * k; SPRITE[name].h = img.naturalHeight * k; }
-    else if (name === 'flying') { canFly = false; }
-    if (--waiting === 0) begin();
+  for (var i = 0; i < BIRDS.length; i++) {
+    BIRDS[i].node = document.getElementById(BIRDS[i].id);
+    BIRDS[i].win = BIRDS[i].node && BIRDS[i].node.querySelector('svg');
   }
-  function begin() {
-    var start = window.performance && performance.now ? performance.now() : Date.now();
-    for (var i = 0; i < BIRDS.length; i++) { BIRDS[i].act = 'rest'; BIRDS[i].until = start + 1200 + i * 900; }
-    place(BIRDS[0], BIRDS[0].x, ROOF[0].y); place(BIRDS[1], BIRDS[1].x, ROOF[1].y);
-    window.requestAnimationFrame(step);
-  }
-
-  for (var i = 0; i < BIRDS.length; i++) BIRDS[i].node = document.getElementById(BIRDS[i].id);
-  if (still || !window.requestAnimationFrame || !BIRDS[0].node || !BIRDS[1].node) return;
-  Object.keys(SPRITE).forEach(function (name) {
-    var img = new Image();
-    waiting++;
-    img.onload = function () { loaded(name, img, true); };
-    img.onerror = function () { loaded(name, img, false); };
-    img.src = SPRITE[name].href;
-  });
+  if (still || !window.requestAnimationFrame || !BIRDS[0].win || !BIRDS[1].win) return;
+  var start = window.performance && performance.now ? performance.now() : Date.now();
+  BIRDS[0].act = 'rest'; BIRDS[0].until = start + 1200;   // left as drawn: wings half out, about to hop
+  BIRDS[1].act = 'rest'; BIRDS[1].until = start + 2100; posed(BIRDS[1], 'perched', BIRDS[1].x, ROOF[1].y);
+  window.requestAnimationFrame(step);
 })();
 </script>
 </body>
