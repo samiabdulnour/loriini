@@ -26,7 +26,7 @@ inline, talking to nothing.
 | `site/fonts/` | Inter, regular and semibold, Latin and Latin Extended, self-hosted, with its licence (SIL OFL 1.1). |
 | `site/favicon.ico`, `site/icon-*.png`, `site/apple-touch-icon.png` | The application icon, the lorikeet over the black L on its orange tile (D151), written by `scripts/make_icon.py`. `icon-52.png`, the mark at double density, is not shown in the top bar, which carries the name alone, as the front does. |
 | `site/lorikeet.png` | The whole bird that stands among the front picture's towers, at native resolution and drawn with its pixels whole. |
-| `site/download/` | The current build's zip, put there at deploy time and never committed. |
+| `site/download/` | The current build's zip, `Loriini_Win.zip`, put there at deploy time and never committed. nginx answers the old name, `Loriini_AC26_Win.zip`, with a redirect to it, because that address is in the licence service's recall notice and in mail already sent. |
 | `deploy/site/` | The Dockerfile, nginx's config, and `fly.toml` for the `loriini-site` app. |
 
 ## Before it goes live
@@ -48,13 +48,17 @@ them.
 ## Deploying it
 
 From the repository's root, signed in to Fly. The current build is the
-`Loriini_AC26_Win` artifact of the newest successful *Archicad add-on*
-workflow run; download it from the run's page and put it in
-`site/download/Loriini_AC26_Win.zip`, then update the version, date, size
-and SHA-256 under *Download* on the page:
+`Loriini_Win` artifact of the newest successful *Archicad add-on* workflow
+run on `windows` -- the program and one add-on per Archicad version, 26 to
+30, with the install note and the licence; download it from the run's page
+and put it in `site/download/Loriini_Win.zip` as it comes (GitHub serves
+the artifact as that zip; its SHA-256 is the digest shown beside the
+artifact on the run's page, so the page's figure can be checked against
+it). Then update the version, date, size and SHA-256 under *Download* on
+the page, and the Archicad versions wherever the pages name them:
 
 ```
-sha256sum site/download/Loriini_AC26_Win.zip
+sha256sum site/download/Loriini_Win.zip
 fly deploy . --config deploy/site/fly.toml --dockerfile deploy/site/Dockerfile --ha=false
 ```
 
@@ -70,11 +74,11 @@ Once the site serves the build, tell the licence service where it is, so a
 recall's notice can point there:
 
 ```
-uv run python scripts/licence.py set download=https://loriini.app/download/Loriini_AC26_Win.zip
+uv run python scripts/licence.py set download=https://loriini.app/download/Loriini_Win.zip
 ```
 
 ## What it costs
 
 A shared machine that stops when idle, started by the next visitor: cents a
-month. The 65 MB download is inside the image, so a visitor's download comes
+month. The 83 MB download is inside the image, so a visitor's download comes
 from Fly's edge in Sydney.
