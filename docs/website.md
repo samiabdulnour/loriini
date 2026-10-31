@@ -52,20 +52,41 @@ them.
 
 ## Deploying it
 
-From the repository's root, signed in to Fly. The current build is the
-`Loriini_Win` artifact of the newest successful *Archicad add-on* workflow
-run on `windows` -- the program and one add-on per Archicad version, 26 to
-30, with the install note and the licence; download it from the run's page
-and put it in `site/download/Loriini_Win.zip` as it comes (GitHub serves
-the artifact as that zip; its SHA-256 is the digest shown beside the
-artifact on the run's page, so the page's figure can be checked against
-it). Then update the version, date, size and SHA-256 under *Download* on
-the page, and the Archicad versions wherever the pages name them:
+The *Website* workflow (`.github/workflows/site.yml`) puts the site up: it
+runs itself on a push to `windows` that touches `site/`, `deploy/site/` or
+itself, and from the Actions tab (*Run workflow*) for anything else. It
+takes the current build -- the `Loriini_Win` artifact of the newest
+successful *Archicad add-on* run on `windows`, the program and one add-on
+per Archicad version with the install note and the licence, or of the run
+named when it is started by hand -- puts it at
+`site/download/Loriini_Win.zip` as GitHub serves it, writes that file's
+own facts under *Download* on the page with `scripts/site_download.py`,
+deploys with flyctl on Fly's builder, checks the site serves a zip of the
+deployed size, and, with the admin token at hand, tells the licence
+service where the download is. It needs one repository secret,
+`FLY_API_TOKEN`, a deploy token for the app:
 
 ```
-sha256sum site/download/Loriini_Win.zip
+fly tokens create deploy -a loriini-site
+```
+
+By hand, from the repository's root, signed in to Fly: download the
+artifact from the run's page, then
+
+```
+python3 scripts/site_download.py site/download/Loriini_Win.zip
 fly deploy . --config deploy/site/fly.toml --dockerfile deploy/site/Dockerfile --ha=false
 ```
+
+The script reads the version, the day it was built and the Archicad
+versions out of the zip's own install note and add-ons, and the size and
+SHA-256 of the file, and writes them on the page; nothing about the build
+is typed by hand. The page in the repository carries the figures of the
+build last put on it that way, which is what a deploy from a checkout
+serves; the workflow writes the figures of the build it fetches and does
+not commit them, so after a deploy from the Actions tab the page's figures
+in the repository are a build behind until someone runs the script and
+commits.
 
 The first deploy made the app with `fly apps create loriini-site`. The
 domain, `loriini.app`, is at Namecheap: A and AAAA records for `@` and `www`
@@ -76,7 +97,8 @@ Email (`mail.privateemail.com`, port 587, STARTTLS), set on the service with
 `fly secrets set`.
 
 Once the site serves the build, tell the licence service where it is, so a
-recall's notice can point there:
+recall's notice can point there -- the workflow does this itself when the
+`LORIINI_ADMIN_TOKEN` secret is set:
 
 ```
 uv run python scripts/licence.py set download=https://loriini.app/download/Loriini_Win.zip

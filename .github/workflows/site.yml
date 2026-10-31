@@ -1,0 +1,115 @@
+name: Website
+
+# The site goes up from here (docs/website.md, "Deploying it"): the pages
+# in site/, and the current build beside them, served by nginx on Fly.
+#
+# The build is the Loriini_Win artifact of the newest successful Archicad
+# add-on run on windows -- or of the run named when this is started by
+# hand -- put at site/download/Loriini_Win.zip as GitHub serves it. Before
+# the deploy, scripts/site_download.py writes that file's own facts under
+# Download on the page, so the page cannot say one thing and the file
+# another. The deploy is flyctl's, on Fly's own builder.
+#
+# Runs itself on a push to windows that touches the site or how it is
+# served, and from the Actions tab for anything else. Needs one repository
+# secret, FLY_API_TOKEN, a deploy token for the app:
+#
+#   fly tokens create deploy -a loriini-site
+#
+# With LORIINI_ADMIN_TOKEN set as well (the backup workflow's), the licence
+# service is told where the download is after each deploy, so a recall's
+# notice can point there.
+
+on:
+  push:
+    branches: [windows]
+    paths:
+      - "site/**"
+      - "deploy/site/**"
+      - "scripts/site_download.py"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "The Archicad add-on run whose Loriini_Win folder to serve; empty for the newest successful one on windows"
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Put the site up
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the current build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.inputs.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow archicad-addon.yml \
+                       --branch windows --status success --json databaseId --limit 1 --jq '.[0].databaseId')
+          fi
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::No successful Archicad add-on run on windows to take the build from."
+            exit 1
+          fi
+          artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" \
+                       --jq '.artifacts[] | select(.name == "Loriini_Win" and .expired == false) | .id')
+          if [ -z "$artifact" ]; then
+            echo "::error::Run $RUN_ID has no Loriini_Win artifact (expired, or the package job did not run)."
+            exit 1
+          fi
+          mkdir -p site/download
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > site/download/Loriini_Win.zip
+          echo "Build from run $RUN_ID, artifact $artifact: $(stat -c %s site/download/Loriini_Win.zip) bytes"
+          echo "run_url=https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" >> "$GITHUB_ENV"
+
+      - name: Write the build's facts on the download page
+        run: |
+          set -euo pipefail
+          python3 scripts/site_download.py site/download/Loriini_Win.zip | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Build taken from $run_url" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -u
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::The FLY_API_TOKEN repository secret is not set (fly tokens create deploy -a loriini-site)."
+            exit 1
+          fi
+          flyctl deploy . --config deploy/site/fly.toml --dockerfile deploy/site/Dockerfile --ha=false --remote-only
+
+      - name: Check the site serves it
+        run: |
+          set -euo pipefail
+          sleep 10
+          size=$(curl -sS -I https://loriini.app/download/Loriini_Win.zip | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}')
+          want=$(stat -c %s site/download/Loriini_Win.zip)
+          echo "served $size bytes, deployed $want"
+          [ "$size" = "$want" ] || { echo "::error::The site serves a zip of $size bytes, not the $want deployed."; exit 1; }
+
+      - name: Tell the licence service where the download is
+        env:
+          LORIINI_ADMIN_TOKEN: ${{ secrets.LORIINI_ADMIN_TOKEN }}
+        run: |
+          set -u
+          if [ -z "$LORIINI_ADMIN_TOKEN" ]; then
+            echo "LORIINI_ADMIN_TOKEN is not set; the licence service's download address is left as it is."
+            exit 0
+          fi
+          pip install --quiet uv
+          uv sync --no-dev
+          uv run --no-dev python scripts/licence.py set --service https://licence.loriini.app \
+            download=https://loriini.app/download/Loriini_Win.zip
