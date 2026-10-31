@@ -33,18 +33,17 @@
   <p class="unseen">Sun studies from Archicad, for a NSW DA.</p>
   <!-- The picture: the Sydney skyline in black under a yellow sun, on a
        khaki ground, in a thin lemon frame; a pixel lorikeet on the tower at
-       each end, hopping along its roof and now and then swapping towers.
-       Drawn as one SVG so it is sharp at any width, the skyline with no
-       anti-aliasing and each of its rectangles a unit into the next, so
-       they meet without seams; the birds are sprites, moved by the script
-       below. On a narrow screen the left end shows,
-       where a bird is. -->
+       each end, hopping along its roof and, with a flying frame to do it
+       with, now and then swapping towers. Drawn as one SVG so it is sharp
+       at any width, the skyline a single outline with nothing inside it to
+       show a seam; the birds are sprites, moved by the script below. On a
+       narrow screen the left end shows, where a bird is. -->
   <div class="picture">
     <svg viewBox="0 0 1582 583" preserveAspectRatio="xMinYMid slice" role="img" aria-label="A black Sydney skyline under a yellow sun, on a strip of khaki ground, with a pixel lorikeet hopping along the rooftop at each end">
       <rect width="1582" height="583" fill="#6bb9e7"/>
       <rect y="459" width="1582" height="124" fill="#d5cf9a"/>
       <circle cx="692" cy="89.5" r="50.5" fill="#f9da49"/>
-      <path shape-rendering="crispEdges" d="M0 301h60v3h-60zM0 303h128v78h-128zM0 381h240v77h-240zM61 301h67v3h-67zM256 353h101v47h-101zM256 400h157v58h-157zM279 306h56v3h-56zM279 308h57v3h-57zM279 310h56v16h-56zM279 325h57v28h-57zM290 293h37v14h-37zM442 180h80v31h-80zM451 211h62v11h-62zM457 150h50v21h-50zM467 171h30v10h-30zM468 222h29v236h-29zM476 88h12v62h-12zM533 400h136v58h-136zM558 370h111v30h-111zM599 234h70v136h-70zM610 231h48v3h-48zM682 371h111v36h-111zM682 406h380v52h-380zM722 244h71v125h-71zM729 228h64v17h-64zM763 208h30v21h-30zM798 341h233v44h-233zM798 384h234v5h-234zM798 389h264v18h-264zM825 282h83v28h-83zM825 309h103v11h-103zM825 319h206v22h-206zM844 275h64v8h-64zM859 272h49v4h-49zM950 238h81v4h-81zM950 241h82v5h-82zM950 245h81v74h-81zM955 206h71v33h-71zM1069 252h66v89h-66zM1069 340h85v118h-85zM1181 379h224v79h-224zM1438 242h78v5h-78zM1438 246h81v3h-81zM1438 248h113v207h-113zM1456 228h49v4h-49zM1456 232h52v4h-52zM1456 236h79v5h-79zM1509 227h26v4h-26zM1510 230h25v3h-25zM1511 232h24v5h-24zM1521 244h30v5h-30z" fill="#000"/>
+      <path d="M476 88h11v61h19v1h1v20h-2v1h-8v9h24v1h1v29h-1v1h-2v-1h-6v11h-1v1h-16v235h-29v-235h-16v-11h-1v-1h-5v1h-3v-3h-1v-27h1v-1h25v-9h-9v-1h-1v-21h19zM955 205h70v1h1v19h-1v13h6v150h30v69h-379v-87h1v-1h38v-124h1v-1h7v-16h34v-21h29v22h1v176h5v-65h27v-58h19v-7h13v-1h2v-3h48v37h16v1h4v9h23v-80h5zM1454 226h81v14h15v214h-112v-1h-1v-212h1v-1h17v-12h-1zM610 230h47v3h11v224h-135v-58h25v-29h1v-1h40v-136h11zM1069 250h65v90h20v117h-85zM291 292h35v2h1v4h-1v7h1v1h8v46h21v47h56v58h-156v-105h22v-46h6v-1h6v-12h1zM0 300h26v1h101v79h112v77h-239zM1181 378h223v79h-223z" fill="#000"/>
       <image id="bird-left" href="lorikeet-wings.png" x="26" y="209" width="101" height="104"/>
       <image id="bird-right" href="lorikeet-perched.png" x="1439" y="144" width="80" height="106" transform="translate(2958 0) scale(-1 1)"/>
     </svg>
@@ -65,12 +64,12 @@
    off, the other a moment later, and they cross over the skyline, flapping,
    and land on the other's roof.
 
-   Three sprites: perched, wings out, and in flight. The flying one is
-   lorikeet-flying.png when the site has it, and the wings-out sprite until
-   then; each is mirrored to face the way the bird is going. Sizes are read
-   from the files, so a sprite can be swapped for another without touching
-   this. Picture units throughout, so it all scales with the picture. Still
-   when motion is asked to be reduced: the mock-up as drawn. */
+   Three sprites: perched, wings out, and in flight; each is mirrored to
+   face the way the bird is going. Sizes are read from the files, so a
+   sprite can be swapped for another without touching this. Without the
+   flying frame (lorikeet-flying.png) the birds hop and keep to their
+   towers. Picture units throughout, so it all scales with the picture.
+   Still when motion is asked to be reduced: the mock-up as drawn. */
 (function () {
   // Each sprite: which way it faces as drawn, the point of it that stands
   // on the roof line as shares of its width and height, and how many
@@ -128,7 +127,7 @@
     if (p >= 1) { b.x = b.x1; sit(b, now, rand(700, 1800)); }
   }
 
-  var swapAt = 0, flown = 0;
+  var swapAt = 0, flown = 0, canFly = true;
   function step(now) {
     var i, b;
     if (!swapAt) swapAt = now + rand(9000, 20000);
@@ -145,7 +144,7 @@
       } else if (now >= b.until) {
         // The swap: the first bird to be ready goes, the second once it is
         // airborne, so neither lands on an occupied roof.
-        if (now >= swapAt && flown < 2 && (flown === 0 || BIRDS[1 - i].act === 'fly' && now - BIRDS[1 - i].t0 > 500)) {
+        if (canFly && now >= swapAt && flown < 2 && (flown === 0 || BIRDS[1 - i].act === 'fly' && now - BIRDS[1 - i].t0 > 500)) {
           takeOff(b, now); flown++;
           if (flown === 2) { swapAt = now + rand(12000, 26000); flown = 0; }
         } else {
@@ -159,7 +158,7 @@
   var waiting = 0;
   function loaded(name, img, ok) {
     if (ok) { var k = SPRITE[name].scale || 1; SPRITE[name].w = img.naturalWidth * k; SPRITE[name].h = img.naturalHeight * k; }
-    else if (name === 'flying') { SPRITE.flying = SPRITE.wings; }
+    else if (name === 'flying') { canFly = false; }
     if (--waiting === 0) begin();
   }
   function begin() {

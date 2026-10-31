@@ -6518,9 +6518,13 @@ placeholder (docs/website.md).
 
 **The picture is traced, not pasted.** The mock-up was a raster; the page
 draws it as one SVG so it is sharp at any width and weighs a few kilobytes:
-the skyline as the rectangles its black pixels make (75 of them, by run
-length), the sun a circle, the sky and the ground flat colours sampled from
-it, the frame its two pixels of lemon. The slight second blue behind the
+the skyline as the one outline a building its dark pixels make, their
+seams closed first -- the mock-up's skyline was a pasted raster whose blocks
+met with a pixel of grey between them, and traced as rectangles those showed
+as hairlines in the page -- the sun a circle, the sky and the ground flat
+colours sampled from it. The second mock-up, of the same day, has no frame
+round the picture and the copyright from the middle of the foot, and the
+page follows it. The slight second blue behind the
 skyline in the mock-up, where a pasted layer did not quite match, is not
 kept. The wings-out bird is lifted from the mock-up as a sprite at its own
 resolution, the sky keyed out and the roof under its feet cut away. The
@@ -6539,9 +6543,10 @@ and they cross over the skyline at a steady height with a slight rise and
 fall, flapping -- the flying frame and the wings-out one in turn -- and land
 on the other's roof, wings out to brake, then perched. The flying frame was
 supplied with the request as a picture, which did not reach the repository
-as a file; until it is put there as `site/lorikeet-flying.png`, the file of
-that name is a copy of the wings-out sprite, and the script reads each
-sprite's size from its file so the swap needs no other change. The hops and
+as a file; a standing bird in the air looked wrong, so until the frame is
+put there as `site/lorikeet-flying.png` the birds hop and keep to their
+towers, and the script reads each sprite's size from its file so adding it
+needs no other change. The hops and
 flights are in the picture's units, so they scale with it. A reader who asks
 for reduced motion gets the mock-up as drawn. The sun's arc, the
 hour-coloured sky and the shadows of the front before this (docs/website.md,
