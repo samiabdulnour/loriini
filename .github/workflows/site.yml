@@ -39,6 +39,12 @@ concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
 
+# The job's own token reads the add-on runs and their artifacts, which the
+# repository's default token may not: the first run failed on exactly that.
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   deploy:
     name: Put the site up
