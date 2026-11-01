@@ -27,7 +27,7 @@ birds, inline, talking to nothing.
 | `site/favicon.ico`, `site/icon-*.png`, `site/apple-touch-icon.png` | The application icon, the lorikeet over the black L on its orange tile (D151), written by `scripts/make_icon.py`. `icon-52.png`, the mark at double density, is not shown in the top bar, which carries the wordmark alone, as the front does (D173). |
 | `site/wordmark.png` | The wordmark, the same file the program's tool bar wears (`assets/loriini-wordmark.png`, D165, D171, D173), large on the front and small in every other page's top bar where the name was written: the logo as supplied, letter for letter -- its own pixels, the edges taken at sub-pixel precision and the whole set at twice its size, with the L cut to the x-height and, over the three i's, a round dot, a square one and a round one, as drawn -- black on nothing; inverted in dark mode. Not set in any font: the faces tried (D165, D168, D169) had the logo's widths but not its letters. |
 | `site/lorikeet-sheet.png` | Every pose of the front's birds on one sheet, at the bird's own pixels, shown at two picture units a pixel, facing right and mirrored for a bird going left: the perched bird, the six frames of the take-off from the crouch to the climb, the seven of the landing from the approach to the fold, and the nineteen of the turn from the perched bird to its mirror image (the turn back is the same frames reversed, so the page plays these, mirrored or not, for either turn). Written by `scripts/make_lorikeet_sheet.py` from `assets/lorikeet/` -- the perched drawing and the three animations supplied -- which also writes the page's table of where each cell is, where the artist placed it relative to the perched bird, and how long it holds. The page reads the sheet's pixels back for the birds' shadows, so the sheet is served from the site's own origin. Run the script when the artwork changes. |
-| `site/download/` | The current build's zip, `Loriini_Win.zip`, put there at deploy time and never committed. nginx answers the old name, `Loriini_AC26_Win.zip`, with a redirect to it, because that address is in the licence service's recall notice and in mail already sent. |
+| `site/download/` | The current builds' zips, `Loriini_Win.zip` and `Loriini_Mac.zip`, put there at deploy time and never committed. nginx answers the Windows build's old name, `Loriini_AC26_Win.zip`, with a redirect to it, because that address is in the licence service's recall notice and in mail already sent. |
 | `deploy/site/` | The Dockerfile, nginx's config, and `fly.toml` for the `loriini-site` app. |
 
 ## Before it goes live
@@ -54,38 +54,46 @@ them.
 
 The *Website* workflow (`.github/workflows/site.yml`) puts the site up: it
 runs itself on a push to `windows` that touches `site/`, `deploy/site/` or
-itself, again whenever an *Archicad add-on* build on `windows` completes
-(so the download is the newest build as soon as there is one, D172), and
-from the Actions tab (*Run workflow*) for anything else. It takes the
-current build -- the `Loriini_Win` artifact of the newest
-successful *Archicad add-on* run on `windows`, the program and one add-on
-per Archicad version with the install note and the licence, or of the run
-named when it is started by hand -- puts it at
-`site/download/Loriini_Win.zip` as GitHub serves it, writes that file's
-own facts under *Download* on the page with `scripts/site_download.py`,
-deploys with flyctl on Fly's builder, checks the site serves a zip of the
-deployed size, and, with the admin token at hand, tells the licence
-service where the download is. It needs one repository secret,
+itself, again whenever an *Archicad add-on* or *Archicad add-on (macOS)*
+build on `windows` completes (so the download is the newest build as soon
+as there is one, D172, D175), and from the Actions tab (*Run workflow*)
+for anything else. It takes the current builds -- the `Loriini_Win`
+artifact of the newest successful *Archicad add-on* run on `windows` and
+the `Loriini_Mac` artifact of the newest successful *Archicad add-on
+(macOS)* run there, each the program and one add-on per Archicad version
+with the install note and the licence, or of the runs named when it is
+started by hand. The Windows one it puts at `site/download/Loriini_Win.zip`
+as GitHub serves it. The Mac one GitHub serves as a zip holding
+`Loriini_Mac.zip`, ditto's zip of the folder, which keeps the program's
+links and execute bits (macos.md); that inner zip it puts at
+`site/download/Loriini_Mac.zip`. It writes each file's own facts in its
+box under *Download* on the page with `scripts/site_download.py`, deploys
+with flyctl on Fly's builder, checks the site serves both zips at the
+deployed sizes, and, with the admin token at hand, tells the licence
+service where the download page is. It needs one repository secret,
 `FLY_API_TOKEN`, a deploy token for the app:
 
 ```
 fly tokens create deploy -a loriini-site
 ```
 
-By hand, from the repository's root, signed in to Fly: download the
-artifact from the run's page, then
+By hand, from the repository's root, signed in to Fly: download each
+artifact from its run's page, take `Loriini_Mac.zip` out of the Mac one,
+then
 
 ```
 python3 scripts/site_download.py site/download/Loriini_Win.zip
+python3 scripts/site_download.py site/download/Loriini_Mac.zip
 fly deploy . --config deploy/site/fly.toml --dockerfile deploy/site/Dockerfile --ha=false
 ```
 
 The script reads the version, the day it was built and the Archicad
-versions out of the zip's own install note and add-ons, and the size and
-SHA-256 of the file, and writes them on the page; nothing about the build
-is typed by hand. The page in the repository carries the figures of the
-build last put on it that way, which is what a deploy from a checkout
-serves; the workflow writes the figures of the build it fetches and does
+versions out of the zip's own install note and add-ons -- on a Mac, which
+Macs as well, from the note's own line -- and the size and SHA-256 of the
+file, and writes them in that build's box on the page, the other box
+untouched; nothing about a build is typed by hand. The page in the
+repository carries the figures of the build last put on it that way,
+which is what a deploy from a checkout serves; the workflow writes the figures of the build it fetches and does
 not commit them, so after a deploy from the Actions tab the page's figures
 in the repository are a build behind until someone runs the script and
 commits.
@@ -98,16 +106,18 @@ The mailbox the keys come from, `sami@loriini.app`, is Namecheap's Private
 Email (`mail.privateemail.com`, port 587, STARTTLS), set on the service with
 `fly secrets set`.
 
-Once the site serves the build, tell the licence service where it is, so a
-recall's notice can point there -- the workflow does this itself when the
-`LORIINI_ADMIN_TOKEN` secret is set:
+Once the site serves the builds, tell the licence service where the
+download page is, so a recall's notice can point there -- the page rather
+than one platform's zip, now that there are two; the Windows zip's old
+address, in notices already sent, still redirects. The workflow does this
+itself when the `LORIINI_ADMIN_TOKEN` secret is set:
 
 ```
-uv run python scripts/licence.py set download=https://loriini.app/download/Loriini_Win.zip
+uv run python scripts/licence.py set download=https://loriini.app/download
 ```
 
 ## What it costs
 
 A shared machine that stops when idle, started by the next visitor: cents a
-month. The 83 MB download is inside the image, so a visitor's download comes
-from Fly's edge in Sydney.
+month. The two downloads, some 190 MB, are inside the image, so a visitor's
+download comes from Fly's edge in Sydney.

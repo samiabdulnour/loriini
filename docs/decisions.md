@@ -6837,3 +6837,44 @@ being a colour operation and not a blur.
 
 *What this does not change:* the shadows' geometry (D169, D170); the sun's
 day (D169, D172); the sheet of poses (D166, D170).
+
+### D175 — The download page offers the Mac build beside the Windows one
+
+Asked 1 November 2026: *"please, put there also macos version for
+download"*.
+
+**The Mac build goes up the way the Windows one does.** The *Archicad
+add-on (macOS)* workflow has made the Mac folder -- `Loriini.app`, one
+add-on per Archicad version as a `.bundle`, the install note and the
+licence, zipped by ditto so the program keeps its links and execute bits
+(macos.md) -- as the `Loriini_Mac` artifact of each run, but it sat on the
+run's page: the site served the Windows folder alone. The *Website*
+workflow now takes the newest successful run of that workflow on `windows`
+as well as of the Windows one, serves the ditto zip inside the artifact as
+`site/download/Loriini_Mac.zip`, runs itself when either build completes
+(D172), and checks the site serves both. A run of either can still be
+named from the Actions tab.
+
+**Two boxes, each saying what its file says.** The download page has a
+box per platform, side by side, and `scripts/site_download.py` writes a
+build's facts into its own box and no other, telling the two apart by the
+program in the zip and reading the Mac folder through the parent folder
+ditto zips it under. A Mac's box also says which Macs, from the install
+note's own line -- an Apple silicon Mac on macOS 11 or later, because the
+program is built for the runner's processor (macos.md). The Windows box's
+*Runs on* is the page's own words, since the Windows note names no
+Windows. The description and every footer say Windows and macOS; How it
+works says where a Mac's install differs, which is the one Terminal
+command; the terms say what is licensed runs on both; the privacy note
+says what a Mac sends in place of Windows' machine identifier, which is
+the identifier Loriini makes once and keeps.
+
+**The recall notice points at the page.** The licence service's download
+address was the Windows zip. With two builds it is the download page,
+which offers both; the old zip address in notices already sent still
+redirects (D167).
+
+*What this does not change:* what either folder contains, and how it is
+made; how a Mac is installed, which is the install note's four steps
+(macos.md); the Windows build's address, `Loriini_Win.zip`; the page's
+figures being the files' (D167).
