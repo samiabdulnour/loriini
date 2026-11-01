@@ -27,6 +27,7 @@ birds, inline, talking to nothing.
 | `site/favicon.ico`, `site/icon-*.png`, `site/apple-touch-icon.png` | The application icon, the lorikeet over the black L on its orange tile (D151), written by `scripts/make_icon.py`. `icon-52.png`, the mark at double density, is not shown in the top bar, which carries the name alone, as the front does. |
 | `site/wordmark.png` | The wordmark, the same file the program's tool bar wears (`assets/loriini-wordmark.png`, D165), black on nothing; inverted in dark mode. |
 | `site/lorikeet-sheet.png` | Every pose of the front's birds on one sheet, at the bird's own pixels, shown at two picture units a pixel, facing right and mirrored for a bird going left: the perched bird, the six frames of the take-off from the crouch to the climb, and the seven of the landing from the approach to the fold. Written by `scripts/make_lorikeet_sheet.py` from `assets/lorikeet/` -- the perched drawing and the two animations supplied -- which also writes the page's table of where each cell is, where the artist placed it relative to the perched bird, and how long it holds. Run it when the artwork changes. |
+| `site/demo-makes.mp4`, `site/demo-makes.png` | The animation on *What it makes* and its poster, from the engine's own run on the sample building; `site/demo.mp4` and `site/demo-poster.png`, the recording on *How it works*, once cut. See "The demo videos" below. |
 | `site/download/` | The current build's zip, `Loriini_Win.zip`, put there at deploy time and never committed. nginx answers the old name, `Loriini_AC26_Win.zip`, with a redirect to it, because that address is in the licence service's recall notice and in mail already sent. |
 | `deploy/site/` | The Dockerfile, nginx's config, and `fly.toml` for the `loriini-site` app. |
 
@@ -109,3 +110,53 @@ uv run python scripts/licence.py set download=https://loriini.app/download/Lorii
 A shared machine that stops when idle, started by the next visitor: cents a
 month. The 83 MB download is inside the image, so a visitor's download comes
 from Fly's edge in Sydney.
+
+## The demo videos
+
+Two, made two ways (D168), and nothing in either is drawn by hand or
+generated: the one is the engine's own run, the other the real window.
+
+**What it makes: the animation.** `site/demo-makes.mp4`, fifteen seconds
+at the head of the *What it makes* page, with `site/demo-makes.png` as its
+poster: the sample building the repository is allowed to show, the sun
+swept over it from 09:00 to 15:00 on 21 June, every face of the model
+banded by its hours of sun, the ground grid the rays were cast from, and
+the four apartments assessed. Three things make it:
+
+| | |
+|---|---|
+| `scripts/demo_fixture.py` | Runs the engine on `tests/fixtures/sample_building.ifc` -- the massing study and the apartment study, as the command line runs them -- and writes `assets/demo/fixture.js`: the geometry; the skin of cells the model bands are drawn with, each with whether it saw the sun at each instant; the ground grid the same way; the sun's direction; each apartment's lit share instant by instant; the bands and the verdict. Committed, so the site deploys from a checkout. |
+| `assets/demo/makes.html` | Draws that file: one SVG, built in painter's order from the north-east and recoloured by the clock, beside the table and the legend. `demo.seek(t)` puts it at any moment, which is how it is filmed; opened in a browser it plays once and rests on the verdict. |
+| `scripts/demo_render.py` | Opens the page in a headless Chromium -- Playwright, the `demo` dependency group -- photographs it thirty times a second, and has ffmpeg make the video and the poster. `uv run --group demo playwright install chromium` once, or `--chromium` (or `LORIINI_CHROMIUM`) naming one the machine has. |
+
+**How it works: the screen recording.** `site/demo.mp4`, cut by
+`scripts/demo_cut.py` from raw clips in `assets/demo/captures/` (not
+committed) as `assets/demo/works.yaml` says: which clip, from when to when,
+how much faster than life, what the caption along its foot says, which
+part of the frame. The clips come from two scripts:
+
+- `scripts/demo_capture_window.py`, on any machine: the real window over a
+  fake project -- the lists the window's tests feed it -- and a fake run
+  that says what a run says, a line at a time, under the progress bar. It
+  opens Site analysis, types an address, switches the panels on, presses
+  Run and waits for Done, while ffmpeg records the window. On Linux it
+  starts an Xvfb of its own, with Inter from `assets/fonts` served to it,
+  so a runner can make the clip; on Windows it records the window off the
+  screen, which is the window as the office sees it, and the one to
+  publish. Needs a Python with tkinter (`.venv*` in `.gitignore`) and
+  ffmpeg.
+- `scripts/demo_capture_archicad.py`, on a workstation with Archicad open
+  and the add-on loaded, the one part the cloud cannot make: for each
+  study, ffmpeg records the screen while the study runs exactly as the
+  command line runs it, then rests on the result. Minutes long; the cut
+  list shows them faster. Its first run is also the manual checklist in
+  `docs/archicad.md`.
+
+The video block on `works.html` stays commented out until the Archicad
+clips are recorded and the cut committed; the cut list already names them,
+and `--skip-missing` cuts the demo of what there is meanwhile.
+
+Both videos are H.264 at 1280 x 720, a megabyte or so, muted, served from
+the site itself like everything on it: no third-party request. The
+animation plays itself and loops; a reader who asks for less motion gets
+its poster and a play button. The recording plays when asked.

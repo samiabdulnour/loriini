@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Loriini — what it makes</title>
+<!-- The animation behind the video on the *What it makes* page (docs/website.md,
+     D168). It draws assets/demo/fixture.js, which scripts/demo_fixture.py
+     writes from the engine's own run on the sample building: nothing in the
+     picture is drawn by hand. scripts/demo_render.py opens this page, steps
+     demo.seek(t) frame by frame and writes the frames to a video; opened in
+     a browser it plays itself, once, and stops on the verdict.
+
+     1280 x 720, the video's own size. The right panel is HTML; the scene is
+     one SVG, built once from the geometry in painter's order and recoloured
+     by the clock. -->
+<style>
+@font-face { font-family: Inter; font-weight: 400; src: url(../../site/fonts/inter-latin-400.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 600; src: url(../../site/fonts/inter-latin-600.woff2) format("woff2"); }
+:root {
+  --ink: #1f1f1d; --muted: #6a6d67; --line: #bfc4bb; --tint: #ebede8;
+  --green: #12a84a; --red: #f0301e; --blue: #1846d6; --yellow: #ffd21e; --orange: #ff8a1f;
+}
+html, body { margin: 0; background: #fff; }
+body {
+  position: relative; width: 1280px; height: 720px; overflow: hidden;
+  font: 400 18px/1.45 Inter, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  color: var(--ink); -webkit-font-smoothing: antialiased;
+}
+#mark { position: absolute; left: 44px; top: 40px; height: 34px; width: auto; }
+#caption { position: absolute; left: 820px; top: 34px; width: 416px; margin: 0; font-size: 19px; line-height: 1.4; color: var(--ink); min-height: 4.2em; }
+#caption b { font-weight: 600; }
+#scene { position: absolute; left: 0; top: 0; width: 800px; height: 720px; display: block; }
+#panel { position: absolute; left: 820px; top: 190px; width: 416px; }
+.kicker { display: flex; align-items: center; gap: .5rem; font-size: 14px; font-weight: 600; margin: 0 0 14px; color: var(--ink); }
+.kicker::before { content: ""; width: 8px; height: 8px; background: var(--orange); box-shadow: 9px 0 0 var(--yellow), 18px 0 0 var(--blue); margin-right: 20px; }
+table { border-collapse: collapse; width: 100%; font-size: 17px; }
+th, td { text-align: left; padding: 9px 6px 9px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-weight: 600; font-size: 14px; color: var(--muted); border-bottom-color: var(--ink); }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+td.mark, th.mark { text-align: center; width: 2.6em; padding-right: 0; }
+td.mark span { display: inline-block; min-width: 1.4em; font-weight: 600; opacity: 0; transition: none; }
+td.mark .pass { color: var(--green); }
+td.mark .fail { color: var(--red); }
+#verdict { margin: 16px 0 0; font-size: 17px; line-height: 1.4; opacity: 0; }
+#verdict b { font-weight: 600; }
+#verdict .ok { color: var(--green); font-weight: 600; }
+#legend { margin-top: 28px; opacity: 0; }
+#legend .row { display: flex; gap: 2px; height: 14px; }
+#legend .row span { display: block; flex: 1 1 0; }
+#legend .names { display: flex; gap: 2px; font-size: 12px; color: var(--muted); margin-top: 5px; }
+#legend .names span { flex: 1 1 0; white-space: nowrap; }
+#legend .names span:first-child { }
+#legend p { margin: 12px 0 0; font-size: 16px; line-height: 1.4; }
+#legend p b { font-weight: 600; }
+#foot { position: absolute; left: 44px; bottom: 26px; margin: 0; font-size: 13px; color: var(--muted); }
+svg text { font-family: Inter, sans-serif; }
+</style>
+</head>
+<body>
+<img id="mark" src="../../site/wordmark.png" alt="Loriini">
+<p id="caption"></p>
+<svg id="scene" viewBox="0 0 800 720" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="fade" cx="0.47" cy="0.6" r="0.5" fx="0.47" fy="0.6">
+      <stop offset="0.55" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="vignette"><rect x="0" y="0" width="800" height="720" fill="url(#fade)"/></mask>
+  </defs>
+  <g mask="url(#vignette)">
+  <g id="ground"></g>
+  <g id="solids"></g>
+  </g>
+  <g id="compass"></g>
+  <g id="dial"></g>
+</svg>
+<aside id="panel">
+  <div class="kicker" id="kicker"></div>
+  <table>
+    <thead><tr><th>Apartment</th><th class="n">Living room</th><th class="n">Open space</th><th class="mark">2 h</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p id="verdict"></p>
+  <div id="legend"></div>
+</aside>
+<p id="foot"></p>
+
+<script src="fixture.js"></script>
+<script>
+(function () {
+  var D = FIXTURE, S = D.skin, G = D.ground, N = D.times.length;
+  var W = 800, H = 720;
+
+  // -- the timeline, in seconds ----------------------------------------
+  // An introduction with the building standing grey; the sweep, 09:00 to
+  // 15:00, the shadow moving and the cells warming; the hours settled into
+  // bands; the apartments judged; the closing line. Then the loop.
+  var INTRO = 1.0, SWEEP = 6.4, SETTLE = 2.2, VERDICT = 3.4, CLOSE = 2.0;
+  var T1 = INTRO, T2 = T1 + SWEEP, T3 = T2 + SETTLE, T4 = T3 + VERDICT, T5 = T4 + CLOSE;
+  var DURATION = T5;
+
+  // -- the camera: an axonometric from the north-east, a little above ----
+  // Bearing is where the camera stands, clockwise from the model's +Y.
+  // The lit faces are the northern ones, and the sun stands over them, so
+  // the camera stands on that side too; its arc is told by the dial, not
+  // by a disc in the sky it would have to share with the viewer.
+  var BEARING = 38, ELEVATION = 36;
+  var A = BEARING * Math.PI / 180, E = ELEVATION * Math.PI / 180;
+  var sinA = Math.sin(A), cosA = Math.cos(A), sinE = Math.sin(E), cosE = Math.cos(E);
+  var VIEW = [sinA * cosE, cosA * cosE, sinE];          // towards the camera
+  function toward(p) { return p[0] * sinA + p[1] * cosA; }
+  function proj(p) {   // screen right, screen up, depth (bigger is nearer)
+    return [p[1] * sinA - p[0] * cosA, p[2] * cosE - toward(p) * sinE, toward(p) * cosE + p[2] * sinE];
+  }
+  function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+  function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+  function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+  function mul(a, k) { return [a[0] * k, a[1] * k, a[2] * k]; }
+  function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+  function norm(a) { var l = Math.sqrt(dot(a, a)) || 1; return mul(a, 1 / l); }
+  function mid(a, b) { return mul(add(a, b), 0.5); }
+
+  // -- colours -----------------------------------------------------------
+  // The bands are the engine's: no sun, under an hour, under two, then an
+  // hour a band to five and over. Grey is shade; the yellows and oranges are
+  // the lorikeet's.
+  var BANDS = [
+    { label: "0 h", upper: 1e-9, colour: "#b9bfc9" },
+    { label: "<1 h", upper: 60, colour: "#e4e6df" },
+    { label: "1–2 h", upper: 120, colour: "#f3edc0" },
+    { label: "2–3 h", upper: 180, colour: "#ffd21e" },
+    { label: "3–4 h", upper: 240, colour: "#ffb21f" },
+    { label: "4–5 h", upper: 300, colour: "#ff8a1f" },
+    { label: ">5 h", upper: Infinity, colour: "#f0631e" }
+  ];
+  function band(minutes) { for (var i = 0; i < BANDS.length; i++) if (minutes <= BANDS[i].upper) return i; return BANDS.length - 1; }
+  var GROUND_LIT = "#dcd7a6", GROUND_SHADE = "#9c9d88";
+  var SUBJECT = [236, 236, 233], CONTEXT = [234, 235, 232], GLASS = [207, 227, 240];
+  var LIGHT = norm([0.35, 0.45, 0.82]);
+  function shade(base, normal) {
+    var k = 0.84 + 0.16 * Math.max(0, dot(normal, LIGHT));
+    return "rgb(" + Math.round(base[0] * k) + "," + Math.round(base[1] * k) + "," + Math.round(base[2] * k) + ")";
+  }
+  function hex(c) { c = c.replace("#", ""); return [parseInt(c.substr(0, 2), 16), parseInt(c.substr(2, 2), 16), parseInt(c.substr(4, 2), 16)]; }
+  function lerp(a, b, p) {
+    var x = hex(a), y = hex(b), r = [0, 1, 2].map(function (i) { return Math.round(x[i] + (y[i] - x[i]) * p); });
+    return "rgb(" + r.join(",") + ")";
+  }
+  function ease(p) { p = Math.max(0, Math.min(1, p)); return p * p * (3 - 2 * p); }
+
+  // -- the weights: minutes an instant stands for ------------------------
+  // Trapezoidal, as the ruleset says: half a step at each end, so the 37
+  // instants sum to the 360 minutes of the window and not to 370.
+  var STEP = 360 / (N - 1);
+  var WEIGHT = []; for (var i = 0; i < N; i++) WEIGHT.push(i === 0 || i === N - 1 ? STEP / 2 : STEP);
+
+  // Minutes of sun each cell has had by each instant: cumulative over the
+  // engine's lit bits, so a cell warms through the bands as the sweep runs.
+  function cumulative(lit, count) {
+    var out = [], sofar = new Float32Array(count);
+    for (var k = 0; k < N; k++) {
+      var row = lit[k], next = new Float32Array(count);
+      for (var c = 0; c < count; c++) { sofar[c] += row.charCodeAt(c) === 49 ? WEIGHT[k] : 0; next[c] = sofar[c]; }
+      out.push(next);
+    }
+    return out;
+  }
+  var skinCum = cumulative(S.lit, S.minutes.length);
+  var groundCum = cumulative(G.lit, G.minutes.length);
+
+  // -- geometry into the picture ----------------------------------------
+  var pts = [];     // every projected point of the subject, for the fit
+  var prims = [];   // what is drawn, with its depth
+  var SOLID_STEP = { subject: 1.0, context: 3.0 };
+
+  // A box's triangles come with whatever winding the exporter chose; the
+  // outward side is the one away from the element's own middle, which is
+  // exact for the convex solids the sample building is made of.
+  D.elements.forEach(function (el) {
+    if (el.ifc_class === "IfcSpace" || el.ifc_class === "IfcOpeningElement") return;
+    var centre = [0, 0, 0], n = 0;
+    el.triangles.forEach(function (t) { t.forEach(function (p) { centre = add(centre, p); n++; }); });
+    centre = mul(centre, 1 / n);
+    var base = el.context ? CONTEXT : (el.ifc_class === "IfcWindow" ? GLASS : SUBJECT);
+    var step = el.context ? SOLID_STEP.context : SOLID_STEP.subject;
+    el.triangles.forEach(function (t) {
+      var normal = norm(cross(sub(t[1], t[0]), sub(t[2], t[0])));
+      if (dot(normal, sub(mid(mid(t[0], t[1]), t[2]), centre)) < 0) normal = mul(normal, -1);
+      if (dot(normal, VIEW) <= 0.02) return;             // faces away: never seen
+      var fill = shade(base, normal);
+      split(t, step, function (piece) {
+        var p = piece.map(proj), d = (p[0][2] + p[1][2] + p[2][2]) / 3;
+        if (!el.context) p.forEach(function (q) { pts.push(q); });
+        prims.push({ depth: d, pts: p, fill: fill, kind: "solid" });
+      });
+    });
+  });
+  function longest(t) {
+    return Math.max(Math.sqrt(dot(sub(t[1], t[0]), sub(t[1], t[0]))),
+                    Math.sqrt(dot(sub(t[2], t[1]), sub(t[2], t[1]))),
+                    Math.sqrt(dot(sub(t[0], t[2]), sub(t[0], t[2]))));
+  }
+  // Painter's order only works for pieces of a size, so the big faces are
+  // cut down to about a cell: a wall piece then sorts against a cell by
+  // where it is, not by where its far corner is.
+  function split(t, step, emit) {
+    if (longest(t) <= step) { emit(t); return; }
+    var a = mid(t[0], t[1]), b = mid(t[1], t[2]), c = mid(t[2], t[0]);
+    split([t[0], a, c], step, emit); split([a, t[1], b], step, emit);
+    split([c, b, t[2]], step, emit); split([a, b, c], step, emit);
+  }
+
+  // The skin: a square per cell, in its panel's frame, a little proud of the
+  // face as the engine samples it, and nearer still for the sort, so it is
+  // drawn over its own wall and under a balcony standing in front of it.
+  var BIAS = 0.5, half = S.spacing_m / 2;
+  var skinIndex = 0, skinEls = [];
+  S.panels.forEach(function (panel) {
+    var visible = dot(panel.normal, VIEW) > 0.02;
+    var lift = mul(panel.normal, S.offset_m);
+    panel.cells.forEach(function (uv) {
+      var idx = skinIndex++;
+      if (!visible) return;
+      var corners = [[-half, -half], [half, -half], [half, half], [-half, half]].map(function (d) {
+        return add(add(add(panel.origin, mul(panel.u, uv[0] + d[0])), mul(panel.v, uv[1] + d[1])), lift);
+      });
+      var p = corners.map(proj), centre = proj(add(add(add(panel.origin, mul(panel.u, uv[0])), mul(panel.v, uv[1])), lift));
+      prims.push({ depth: centre[2] + BIAS, pts: p, kind: "cell", idx: idx, measured: panel.measured });
+    });
+  });
+
+  // The ground grid: flat squares on the ground level, drawn under everything.
+  var groundPrims = [], gh = G.spacing_m / 2;
+  G.cells.forEach(function (c, idx) {
+    var p = [[-gh, -gh], [gh, -gh], [gh, gh], [-gh, gh]].map(function (d) { return proj([c[0] + d[0], c[1] + d[1], G.level_m]); });
+    groundPrims.push({ pts: p, idx: idx });
+  });
+
+  // Fit: the scene into its box, aspect kept, the dial's corner left clear.
+  var BOX = { x0: 110, x1: 690, y0: 230, y1: 640 };
+  var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  pts.forEach(function (q) { minX = Math.min(minX, q[0]); maxX = Math.max(maxX, q[0]); minY = Math.min(minY, q[1]); maxY = Math.max(maxY, q[1]); });
+  var MARGIN = 7;   // metres of ground kept round the building
+  minX -= MARGIN; maxX += MARGIN; minY -= MARGIN * sinE; maxY += MARGIN * sinE;
+  var K = Math.min((BOX.x1 - BOX.x0) / (maxX - minX), (BOX.y1 - BOX.y0) / (maxY - minY));
+  var CX = (BOX.x0 + BOX.x1) / 2 - K * (minX + maxX) / 2, CY = (BOX.y0 + BOX.y1) / 2 + K * (minY + maxY) / 2;
+  function screen(q) { return (CX + K * q[0]).toFixed(1) + "," + (CY - K * q[1]).toFixed(1); }
+  function polygon(prim, parent) {
+    var el = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    el.setAttribute("points", prim.pts.map(screen).join(" "));
+    parent.appendChild(el);
+    return el;
+  }
+
+  var groundG = document.getElementById("ground"), solidsG = document.getElementById("solids");
+  var groundEls = groundPrims.map(function (prim) {
+    var el = polygon(prim, groundG);
+    el.setAttribute("stroke", "rgba(255,255,255,0.45)"); el.setAttribute("stroke-width", "0.5");
+    return el;
+  });
+  prims.sort(function (a, b) { return a.depth - b.depth; });
+  prims.forEach(function (prim) {
+    var el = polygon(prim, solidsG);
+    if (prim.kind === "solid") {
+      el.setAttribute("fill", prim.fill); el.setAttribute("stroke", prim.fill); el.setAttribute("stroke-width", "0.6");
+    } else if (prim.measured) {
+      // What the apartment study measures: the living-room glazing and
+      // the private open space, outlined in the window's blue.
+      el.setAttribute("stroke", "#1846d6"); el.setAttribute("stroke-width", "1.1");
+      skinEls[prim.idx] = el;
+    } else {
+      el.setAttribute("stroke", "rgba(255,255,255,0.6)"); el.setAttribute("stroke-width", "0.6");
+      skinEls[prim.idx] = el;
+    }
+  });
+
+  // North: at the scene's foot, the arrow the way north projects.
+  (function () {
+    var n = D.site.north_in_model, d = proj([n[0] * 4, n[1] * 4, 0]), g = document.getElementById("compass");
+    var ns = "http://www.w3.org/2000/svg", ox = 92, oy = 628, len = 30 / Math.sqrt(d[0] * d[0] + d[1] * d[1]);
+    var line = document.createElementNS(ns, "line");
+    line.setAttribute("x1", ox); line.setAttribute("y1", oy);
+    line.setAttribute("x2", (ox + d[0] * len).toFixed(1)); line.setAttribute("y2", (oy - d[1] * len).toFixed(1));
+    line.setAttribute("stroke", "#1f1f1d"); line.setAttribute("stroke-width", "1.4");
+    g.appendChild(line);
+    var dotEl = document.createElementNS(ns, "circle");
+    dotEl.setAttribute("cx", ox); dotEl.setAttribute("cy", oy); dotEl.setAttribute("r", "2.2"); dotEl.setAttribute("fill", "#1f1f1d");
+    g.appendChild(dotEl);
+    var text = document.createElementNS(ns, "text");
+    text.setAttribute("x", (ox + d[0] * len * 1.45).toFixed(1)); text.setAttribute("y", (oy - d[1] * len * 1.45 + 5).toFixed(1));
+    text.setAttribute("text-anchor", "middle"); text.setAttribute("font-size", "13"); text.setAttribute("font-weight", "600");
+    text.textContent = "N";
+    g.appendChild(text);
+  })();
+
+  // -- the dial: the sun's path, true north up, and the clock --------------
+  // A stereographic sun path: the horizon is the circle, the zenith its
+  // centre, and the arc is where the sun was each ten minutes of the window.
+  var north = D.site.north_in_model, east = [north[1], -north[0]];
+  function skyPoint(s) {
+    var az = Math.atan2(s[0] * east[0] + s[1] * east[1], s[0] * north[0] + s[1] * north[1]);
+    var el = Math.asin(Math.max(-1, Math.min(1, s[2])));
+    var r = (1 - el / (Math.PI / 2));
+    return [Math.sin(az) * r, -Math.cos(az) * r];
+  }
+  var DIAL = { cx: 700, cy: 112, r: 58 };
+  var clockText, sunDot;
+  (function () {
+    var g = document.getElementById("dial"), ns = "http://www.w3.org/2000/svg";
+    var horizon = document.createElementNS(ns, "circle");
+    horizon.setAttribute("cx", DIAL.cx); horizon.setAttribute("cy", DIAL.cy); horizon.setAttribute("r", DIAL.r);
+    horizon.setAttribute("fill", "#f3f4f1"); horizon.setAttribute("stroke", "#bfc4bb"); horizon.setAttribute("stroke-width", "1");
+    g.appendChild(horizon);
+    [[0, -1, "N"], [1, 0, "E"], [0, 1, "S"], [-1, 0, "W"]].forEach(function (c) {
+      var t = document.createElementNS(ns, "text");
+      t.setAttribute("x", DIAL.cx + c[0] * (DIAL.r + 11)); t.setAttribute("y", DIAL.cy + c[1] * (DIAL.r + 11) + 4);
+      t.setAttribute("text-anchor", "middle"); t.setAttribute("font-size", "11"); t.setAttribute("fill", "#6a6d67");
+      t.textContent = c[2]; g.appendChild(t);
+    });
+    var path = document.createElementNS(ns, "polyline");
+    path.setAttribute("points", D.sun.map(function (s) { var q = skyPoint(s); return (DIAL.cx + q[0] * DIAL.r).toFixed(1) + "," + (DIAL.cy + q[1] * DIAL.r).toFixed(1); }).join(" "));
+    path.setAttribute("fill", "none"); path.setAttribute("stroke", "#1f1f1d"); path.setAttribute("stroke-width", "1"); path.setAttribute("stroke-dasharray", "2 3");
+    g.appendChild(path);
+    sunDot = document.createElementNS(ns, "circle");
+    sunDot.setAttribute("r", "6"); sunDot.setAttribute("fill", "#f9da49"); sunDot.setAttribute("stroke", "#1f1f1d"); sunDot.setAttribute("stroke-width", "1");
+    g.appendChild(sunDot);
+    clockText = document.createElementNS(ns, "text");
+    clockText.setAttribute("x", DIAL.cx); clockText.setAttribute("y", DIAL.cy + DIAL.r + 42);
+    clockText.setAttribute("text-anchor", "middle"); clockText.setAttribute("font-size", "26"); clockText.setAttribute("font-weight", "600");
+    g.appendChild(clockText);
+    var day = document.createElementNS(ns, "text");
+    day.setAttribute("x", DIAL.cx); day.setAttribute("y", DIAL.cy + DIAL.r + 62);
+    day.setAttribute("text-anchor", "middle"); day.setAttribute("font-size", "13"); day.setAttribute("fill", "#6a6d67");
+    day.textContent = "21 June · " + D.site.timezone.split("/")[1];
+    g.appendChild(day);
+  })();
+
+  // -- the panel -----------------------------------------------------------
+  var pct = function (share) { return Math.round(share * 100) + "%"; };
+  document.getElementById("kicker").textContent = "Solar access · NSW Apartment Design Guide 4A-1";
+  var rows = document.getElementById("rows");
+  var rowEls = D.apartments.map(function (a) {
+    var tr = document.createElement("tr");
+    tr.innerHTML = "<td>" + a.name.replace("Apartment ", "") + "</td><td class='n'></td><td class='n'></td>" +
+      "<td class='mark'><span class='" + (a.meets_minimum ? "pass" : "fail") + "'>" + (a.meets_minimum ? "✓" : "✗") + "</span></td>";
+    rows.appendChild(tr);
+    return { living: tr.children[1], open: tr.children[2], mark: tr.children[3].firstChild };
+  });
+  function hm(minutes) {
+    var m = Math.round(minutes), h = Math.floor(m / 60), r = m % 60;
+    return h + " h " + (r < 10 ? "0" : "") + r;
+  }
+  function soFar(series, k) { var m = 0; for (var i = 0; i <= k; i++) m += series[i] * WEIGHT[i]; return m; }
+
+  var summary = D.summary, bands = D.bands;
+  var verdict = document.getElementById("verdict");
+  verdict.innerHTML = "<b>" + summary.meeting_minimum + " of " + summary.counted + " apartments</b> receive " +
+    Math.round(summary.minimum_minutes / 60) + " hours: " + pct(summary.compliant_share) + " against a target of " +
+    pct(summary.required_share) + ". <span class='ok'>" + (summary.complies ? "Complies." : "Does not comply.") + "</span>";
+  if (!summary.complies) verdict.querySelector(".ok").style.color = "#f0301e";
+
+  var legend = document.getElementById("legend");
+  legend.innerHTML = "<div class='row'>" + BANDS.map(function (b) { return "<span style='background:" + b.colour + "'></span>"; }).join("") + "</div>" +
+    "<div class='names'>" + BANDS.map(function (b) { return "<span>" + b.label + "</span>"; }).join("") + "</div>" +
+    "<p><b>" + pct(bands.facade_at_or_above_share) + " of the facade</b> and <b>" + pct(bands.ground_at_or_above_share) +
+    " of the open ground</b> reach " + Math.round(bands.threshold_minutes / 60) + " hours.</p>";
+
+  var caption = document.getElementById("caption");
+  var CAPTIONS = [
+    "<b>21 June, 09:00 to 15:00.</b> From every cell of the model a ray to the sun, every ten minutes. Where something stands in the way, there is shadow.",
+    "<b>Then the hours add up.</b> Every face of the model banded by its hours of sun, and the share of the facade and the ground that reach two.",
+    "<b>And each apartment is assessed:</b> its living-room glazing and its private open space against the Guide's two hours, and the building against its 70%.",
+    "<b>Written back into Archicad</b> as Zone properties, a coloured skin on the model and 3D Documents. No export to another program, no hand-typed table."
+  ];
+  document.getElementById("foot").textContent = "A sample building: two storeys, four apartments, a neighbour to the north. Blue outlines are what each apartment is measured on. Every figure is Loriini's own.";
+
+  // -- the clock drives everything -----------------------------------------
+  var lastCaption = -1;
+  function setCaption(which, opacity) {
+    if (which !== lastCaption) { caption.innerHTML = CAPTIONS[which]; lastCaption = which; }
+    caption.style.opacity = opacity.toFixed(3);
+  }
+  function fadeInOut(t, from, to, edge) {
+    return Math.min(1, Math.max(0, Math.min((t - from) / edge, (to - t) / edge)));
+  }
+  function instantAt(t) {
+    if (t < T1) return 0;
+    if (t >= T2) return N - 1;
+    return Math.min(N - 1, Math.floor((t - T1) / SWEEP * N));
+  }
+  function paintSkin(k) {
+    var cum = skinCum[k];
+    for (var i = 0; i < skinEls.length; i++) if (skinEls[i]) skinEls[i].setAttribute("fill", BANDS[band(cum[i])].colour);
+  }
+  function paintGround(k, settled) {
+    var row = G.lit[k], cum = groundCum[k];
+    for (var i = 0; i < groundEls.length; i++) {
+      var now = row.charCodeAt(i) === 49 ? GROUND_LIT : GROUND_SHADE;
+      groundEls[i].setAttribute("fill", settled > 0 ? lerp(now, BANDS[band(cum[i])].colour, settled) : now);
+    }
+  }
+  var lastKey = "";
+  function seek(t) {
+    t = ((t % DURATION) + DURATION) % DURATION;
+    var k = instantAt(t);
+    var settled = t < T2 ? 0 : ease((t - T2) / 0.9);
+    var key = k + ":" + settled.toFixed(3);
+    if (key !== lastKey) { paintSkin(k); paintGround(k, settled); lastKey = key; }
+
+    clockText.textContent = D.times[k];
+    var q = skyPoint(D.sun[k]);
+    sunDot.setAttribute("cx", (DIAL.cx + q[0] * DIAL.r).toFixed(1)); sunDot.setAttribute("cy", (DIAL.cy + q[1] * DIAL.r).toFixed(1));
+
+    rowEls.forEach(function (row, i) {
+      var a = D.apartments[i];
+      row.living.textContent = hm(k === N - 1 ? a.living_minutes : soFar(a.living_share, k));
+      row.open.textContent = a.open_space_minutes === null ? "—" : hm(k === N - 1 ? a.open_space_minutes : soFar(a.open_space_share, k));
+      // The marks come one after another, a third of a second apart.
+      row.mark.style.opacity = t < T3 ? 0 : ease((t - T3 - 0.35 * i) / 0.3);
+    });
+    verdict.style.opacity = t < T3 ? 0 : ease((t - T3 - 0.35 * rowEls.length - 0.2) / 0.5);
+    legend.style.opacity = t < T2 ? 0 : (t < T4 + CLOSE - 0.4 ? ease((t - T2 - 0.3) / 0.6) : 1);
+
+    if (t < T2) setCaption(0, Math.min(ease(t / 0.4), ease((T2 - t) / 0.35)));
+    else if (t < T3) setCaption(1, fadeInOut(t, T2, T3, 0.35));
+    else if (t < T4) setCaption(2, fadeInOut(t, T3, T4, 0.35));
+    else setCaption(3, fadeInOut(t, T4, T5 + 0.35, 0.35));
+  }
+
+  window.demo = { duration: DURATION, seek: seek, instants: N };
+  seek(0);
+
+  // Opened in a browser: play once and stop on the verdict. A renderer asks
+  // with ?render and drives the clock itself; a reader who asks for less
+  // motion gets the verdict straight away.
+  var still = /[?&]render\b/.test(location.search) ||
+    (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  if (still) { if (!/[?&]render\b/.test(location.search)) seek(T4 - 0.5); return; }
+  var start = null;
+  function frame(now) {
+    if (start === null) start = now;
+    var t = (now - start) / 1000;
+    if (t >= T4 - 0.5) { seek(T4 - 0.5); return; }
+    seek(t); window.requestAnimationFrame(frame);
+  }
+  window.requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -45,6 +45,13 @@ dependencies = [
 validation = ["pvlib>=0.10"]
 
 [dependency-groups]
+# Playwright films the demo animation (scripts/demo_render.py, D168): a
+# headless browser asked for one moment after another and photographed.
+# Nothing at run time or in the suite needs it, so it is a group of its
+# own, installed on request: `uv run --group demo ...`.
+demo = [
+    "playwright>=1.45",
+]
 # PyInstaller is here and not in `dependencies`: it builds the window into a
 # single .exe for colleagues without Python, and nothing at runtime needs it.
 dev = [

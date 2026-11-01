@@ -141,6 +141,10 @@ main.front { padding-top: 1.6rem; padding-bottom: 5rem; }
 .card p:last-child { margin-bottom: 0; }
 .tag { font-size: var(--s); color: var(--muted); }
 
+/* The demo videos (docs/website.md): the width of the page's measure, a
+   thin line round them, the poster's white behind them while they load. */
+video.demo { display: block; width: 100%; height: auto; max-width: 64rem; margin: 2rem 0 2.5rem; border: 1px solid var(--line); background: #fff; }
+
 .notice { border: 1px solid var(--line); background: var(--notice); padding: 1.1rem 1.3rem; margin: 2.5rem 0 0; }
 .notice strong { color: var(--red); }
 
