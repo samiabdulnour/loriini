@@ -6676,3 +6676,61 @@ the take-off, cruise and landing as before.
 
 *What this does not change:* the skyline, the roofs and the sheet of poses
 (D166, D168); the pages besides the front.
+
+### D170 — The front's shadows in cells, the glow shimmering, the birds' shadows and their turn, the tower symmetrical
+
+Asked 1 November 2026, with a crop of the tower and the artist's animation
+of the bird turning round: *"even the shadow needs to be pixelated. I like
+the bands around sun. is it possible to make the bands around sun moving
+even though it stays on one place? so its flickering all the time like
+water does in the sun?"*; *"is it possible to cas shadow from parrots?"*;
+*"this is not correct the tower should be symetrical"*; *"when parrots
+turns around, it should make this animation"*.
+
+**The shadow in the same cells as the sun.** D169 painted the sky and the
+sun cell by cell and left the shadow a vector shape, the skyline sheared
+onto the ground. The canvas now covers the whole picture, 198 by 73 cells,
+and the ground and its shadows are cells too: a ground cell is shaded when
+most of nine points in it, carried back along the sun's light (the shear of
+D169 run backwards), land on something solid -- the skyline, rasterised
+once into the same cells, or a bird. One point a cell would do for a short
+shadow but breaks a long one into dashes where the gaps between buildings
+cross it, so it is a vote of nine. The vector shadow and the ground
+rectangle are gone from the SVG; the skyline is clipped at the ground line
+instead of running on under a rectangle.
+
+**The glow shimmers.** The bands' uneven edges were a fixed noise over the
+cells. The noise now drifts with the clock, two layers of it, one broad and
+slow and one finer and quicker, so the edges move all the while even when
+the sun stands still, and the glow flickers as sunlight on water does. A
+reader who asks for reduced motion gets the glow still.
+
+**The birds throw shadows.** Each bird's window on the sheet -- which
+cell, where, mirrored or not -- is kept as it is shown, and a point carried
+back by the light that lands in a window is solid where the sheet's pixel
+is. So the perched bird's shadow lies on the ground beside its building's,
+and a flying bird's shadow crosses the ground under it. The page reads the
+sheet's pixels back through a canvas, which a browser allows only from the
+site's own origin: opened as a file, the birds throw no shadow and nothing
+else changes.
+
+**The birds turn round as drawn.** The artist's `turn.gif` is the perched
+bird turning to its mirror image in nineteen frames, about two and a half
+seconds, and back again by the same frames reversed. The nineteen are on
+the sheet after the landing, and a bird plays them, mirrored or not for the
+way it faces, whenever it turns: as often as not once while it sits, to
+look the other way, and before a flight to a roof behind it, so no bird
+flips about any more. The bird stands on its feet where the artist's turn
+has its axis, 23.5 pixels along the perched cell instead of the 24.9 of
+D166, so the turn's last frame and the mirrored perched bird are in the
+same place.
+
+**The Sydney Tower is symmetrical.** The outline traced from the mock-up
+(D168) had a bump on one side of the turret and a notch on the other, from
+the mock-up's own pixels. It is now symmetrical about its mast: the mast,
+the upper block, the neck, the turret, the base and the stem each the
+wider of the traced halves on both sides.
+
+*What this does not change:* the sun's day and arc (D169); the other
+buildings and the roofs (D168); the take-off and landing (D166); the pages
+besides the front.

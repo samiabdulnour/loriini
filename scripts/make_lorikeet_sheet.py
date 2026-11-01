@@ -4,13 +4,18 @@
 
 Reads ``assets/lorikeet/``: ``perched.png``, the bird on its feet, drawn at
 ten screen pixels a pixel; ``take-off.gif`` and ``landing.gif``, the two
-animations, drawn at four screen pixels a pixel on one canvas, the perched
-bird in the same place in both. Writes ``site/lorikeet-sheet.png``: every
-pose as a cell at the bird's own pixels, side by side -- the perched bird,
-then the six frames of the take-off from the crouch to the climb, then the
-seven of the landing from the approach to the fold -- and rewrites the
-``CELL`` table in ``site/index.html`` to say where each cell is, where the
-artist placed it relative to the perched bird, and how long it holds.
+flying animations, drawn at four screen pixels a pixel on one canvas, the
+perched bird in the same place in both; and ``turn.gif``, the bird turning
+round on its feet, drawn at eight screen pixels a pixel on its own canvas,
+from the perched bird to its mirror image and back again. Writes
+``site/lorikeet-sheet.png``: every pose as a cell at the bird's own pixels,
+side by side -- the perched bird, then the six frames of the take-off from
+the crouch to the climb, then the seven of the landing from the approach to
+the fold, then the nineteen of the turn between the perched bird and its
+mirror image (the turn back is the same frames reversed, so the page plays
+these, mirrored or not, for either turn) -- and rewrites the ``CELL`` table
+in ``site/index.html`` to say where each cell is, where the artist placed
+it relative to the perched bird, and how long it holds.
 
 The page shows the cells at two picture units a pixel and moves the bird
 from pose to pose (docs/website.md, D166). Run this when the artwork
@@ -31,15 +36,19 @@ PAGE = ROOT / "site" / "index.html"
 
 #: The perched drawing's pixel pitch, and where its drawing begins.
 PERCHED_PITCH, PERCHED_ORIGIN = 10, (120, 120)
-#: The animations' pixel pitch, canvas in pixels, and the perched bird's top
-#: left on that canvas, in pixels.
+#: The flying animations' pixel pitch, canvas in pixels, and the perched
+#: bird's top left on that canvas, in pixels; the same for the turn, drawn
+#: on its own canvas.
 PITCH, CANVAS, PERCH = 4, (160, 152), (65, 78)
+TURN_PITCH, TURN_CANVAS, TURN_PERCH = 8, (96, 88), (23, 21)
 #: The frames used: the take-off from the crouch to the climb, before the
 #: bird leaves the canvas; the landing from the approach, once the bird is
 #: wholly on the canvas, to the fold, before the perched frame that repeats
-#: the drawing.
+#: the drawing; the turn from the first frame after the perched bird to the
+#: last before its mirror image.
 TAKE_OFF = range(1, 7)
 LANDING = range(5, 12)
+TURN = range(1, 20)
 
 
 def _drawn(value: tuple[int, ...]) -> tuple[int, int, int, int] | None:
@@ -67,14 +76,16 @@ def at_pitch(
     return out
 
 
-def frames(path: Path, keep: range) -> list[tuple[Image.Image, int]]:
+def frames(
+    path: Path, keep: range, pitch: int = PITCH, canvas: tuple[int, int] = CANVAS
+) -> list[tuple[Image.Image, int]]:
     """The kept frames of an animation at their own pixels, with their times."""
     out = []
     with Image.open(path) as animation:
         for index, frame in enumerate(ImageSequence.Iterator(animation)):
             if index in keep:
                 held = int(frame.info.get("duration", 0))
-                out.append((at_pitch(frame, PITCH, (0, 0), CANVAS), held))
+                out.append((at_pitch(frame, pitch, (0, 0), canvas), held))
     return out
 
 
@@ -87,14 +98,18 @@ def main() -> int:
     if box is None:
         raise SystemExit("perched.png has nothing drawn in it")
     cells: list[tuple[str, Image.Image, int, int, int]] = [("perched", perched.crop(box), 0, 0, 0)]
-    animations = (("up", ART / "take-off.gif", TAKE_OFF), ("down", ART / "landing.gif", LANDING))
-    for name, path, keep in animations:
-        for index, (frame, held) in zip(keep, frames(path, keep), strict=True):
+    animations = (
+        ("up", ART / "take-off.gif", TAKE_OFF, PITCH, CANVAS, PERCH),
+        ("down", ART / "landing.gif", LANDING, PITCH, CANVAS, PERCH),
+        ("turn", ART / "turn.gif", TURN, TURN_PITCH, TURN_CANVAS, TURN_PERCH),
+    )
+    for name, path, keep, pitch, canvas, perch in animations:
+        for index, (frame, held) in zip(keep, frames(path, keep, pitch, canvas), strict=True):
             box = frame.getbbox()
             if box is None:
                 raise SystemExit(f"{path.name} frame {index} has nothing drawn in it")
             cells.append(
-                (f"{name}{index}", frame.crop(box), box[0] - PERCH[0], box[1] - PERCH[1], held)
+                (f"{name}{index}", frame.crop(box), box[0] - perch[0], box[1] - perch[1], held)
             )
 
     wide = sum(cell[1].width + 1 for cell in cells) - 1
