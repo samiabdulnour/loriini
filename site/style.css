@@ -11,6 +11,7 @@
 @font-face { font-family: Inter; font-weight: 600; font-display: swap; src: url(fonts/inter-latin-ext-600.woff2) format("woff2"); unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 
 :root {
+  color-scheme: light;   /* the white page whatever the system is set to (D176) */
   --bg: #ffffff;
   --ink: #1f1f1d;
   --muted: #6a6d67;
@@ -33,25 +34,6 @@
   --l: clamp(2.75rem, 6.5vw, 5.25rem);
 
   --measure: 72rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #1c1d1b;
-    --ink: #e6e8e2;
-    --muted: #9a9d96;
-    --line: #3a3c38;
-    --tint: #252624;
-    --notice: #372f1c;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #1c1d1b;
-  --ink: #e6e8e2;
-  --muted: #9a9d96;
-  --line: #3a3c38;
-  --tint: #252624;
-  --notice: #372f1c;
 }
 
 * { box-sizing: border-box; }
@@ -91,8 +73,6 @@ header.top.front { align-items: flex-start; padding-top: clamp(2.4rem, 3.4vw, 4r
 header.top.front nav.main { padding-top: .7rem; }
 .mark { display: block; width: min(36vw, 640px); min-width: 11rem; }
 .mark img { display: block; width: 100%; height: auto; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mark img { filter: invert(.92); } }
-:root[data-theme="dark"] .mark img { filter: invert(.92); }
 .home { font-size: var(--s); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; text-decoration: none; padding: .15rem 0; }
 .home:hover { color: inherit; }
 .home.mark { width: auto; min-width: 0; padding: 0; }      /* the wordmark small, where a page's bar wrote the name */
