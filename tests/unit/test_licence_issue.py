@@ -348,6 +348,10 @@ def served(
 def test_the_vendor_issues_through_the_service_and_looks_it_up(
     served: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # A day ahead of whatever today is: a key cannot end before it is issued,
+    # and a day written out here went past on 1 November 2026.
+    paid_to = dt.date.today() + dt.timedelta(days=30)
+    grace = paid_to + dt.timedelta(days=14)
     draft = tmp_path / "welcome.eml"
     code, out, err = _vendor(
         monkeypatch,
@@ -361,7 +365,7 @@ def test_the_vendor_issues_through_the_service_and_looks_it_up(
         "12",
         "--online",
         "--paid-to",
-        "2026-10-31",
+        paid_to.isoformat(),
         "--send",
         "--eml",
         str(draft),
@@ -378,10 +382,10 @@ def test_the_vendor_issues_through_the_service_and_looks_it_up(
     code, out, _err = _vendor(monkeypatch, served, "status")
     assert code == 0
     assert out.startswith("0001  Fuse Architects")
-    assert "12 seats" in out and "paid to 2026-10-31" in out
+    assert "12 seats" in out and f"paid to {paid_to.isoformat()}" in out
 
     code, out, _err = _vendor(monkeypatch, served, "status", "1")
-    assert "Leases run to 14 November 2026 (14 days' grace past what is paid)." in out
+    assert f"Leases run to {grace.day} {grace:%B %Y} (14 days' grace past what is paid)." in out
     assert "Key:" in out and "LORIINI-" in out
 
 
@@ -390,11 +394,9 @@ def test_the_vendor_changes_withdraws_restores_and_frees(
 ) -> None:
     served.issue(seats=2)
     served.store.seen(1, "ab" * 16, "amy on PC-1", "1.0", dt.date.today())
+    later = (dt.date.today() + dt.timedelta(days=60)).isoformat()
     assert (
-        _vendor(monkeypatch, served, "paid", "1", "--to", "2026-12-31")[1].count(
-            "paid to 2026-12-31"
-        )
-        == 1
+        _vendor(monkeypatch, served, "paid", "1", "--to", later)[1].count(f"paid to {later}") == 1
     )
     assert " 5 seats" in _vendor(monkeypatch, served, "seats", "1", "5")[1]
     assert (
