@@ -95,6 +95,8 @@ header.top.front nav.main { padding-top: .7rem; }
 :root[data-theme="dark"] .mark img { filter: invert(.92); }
 .home { font-size: var(--s); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; text-decoration: none; padding: .15rem 0; }
 .home:hover { color: inherit; }
+.home.mark { width: auto; min-width: 0; padding: 0; }      /* the wordmark small, where a page's bar wrote the name */
+.home.mark img { height: 1.3rem; width: auto; }
 nav.main { display: flex; gap: .5rem clamp(1.25rem, 4vw, 3.5rem); flex-wrap: wrap; font-size: var(--s); text-transform: uppercase; letter-spacing: .02em; }
 nav.main a { text-decoration: none; padding: .15rem 0; }
 nav.main a[aria-current="page"] { box-shadow: 0 1px 0 currentColor; }
