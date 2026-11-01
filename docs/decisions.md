@@ -6878,3 +6878,21 @@ redirects (D167).
 made; how a Mac is installed, which is the install note's four steps
 (macos.md); the Windows build's address, `Loriini_Win.zip`; the page's
 figures being the files' (D167).
+
+### D176 — The site is light only
+
+Asked 1 November 2026: *"loriini web should have only light mode"*.
+
+**One appearance, the white page.** The stylesheet carried a dark
+palette: on a system set to dark, the page went near-black with pale
+ink, the lines, tints and the notice darkened with it, and the wordmark
+was inverted to match, under a `data-theme` attribute that nothing on
+the site set. That is gone. The page is white with dark ink whatever the
+system is set to, as the mock-up drew it (D166) and as the stylesheet's
+own first lines say, and `color-scheme: light` on the root tells the
+browser so, so its own parts -- the scroll bar, a form control -- follow
+the page rather than the system.
+
+*What this does not change:* the colours themselves (D166 onwards); the
+front's picture, which never had a dark version; the program's window,
+which has one appearance of its own (app/theme.py).
