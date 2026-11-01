@@ -6632,3 +6632,47 @@ birds cast none: on a roof their shadow would fall on the roof.
 
 *What this does not change:* the sheet of poses and the hops (D166); the
 pages besides the front; the program, which wears the wordmark as before.
+
+### D169 — The first front's sun is back in the second: pixel sun and glow, its own day, one shadow; the birds only fly; the wordmark's second dot is square
+
+Asked 1 November 2026, with the mock-up's wordmark enlarged: *"the logo
+is not precise. look at dots above the 'i' please be precise. one dot is
+circle one dot is square"*; and of the front: *"keep the pixalated sun and
+bands around the sun"*, *"the parrots do not jump, just let them fly from
+place to place"*, *"the sun should move automaticaly as a day
+progressing"*, *"the sun shadow is parallel - the shadows have the same
+direction for all building"*.
+
+**Round, square, round.** The mock-up's three i's do not wear the same
+dot: the first and the third have a round one, the second the face's own
+square. D168 had made all three round. Every dot is the mock-up's size and
+height -- 1.06 stems across, its foot 0.46 of a stem above the x-height
+line, centred on its stem -- and the middle one is a square of that side.
+
+**The sun and its glow as the first front drew them.** D168 drew the sun
+as a plain circle in the vector picture. The first front (docs/website.md
+until D166) drew it cell by cell: a yellow disc with three uneven bands of
+glow, tight at noon and wide at sunrise and sunset, on a sky of the hour's
+colour, every cell scaled up whole. That is back: the sky, the sun and the
+bands are painted on a canvas of 198 by 58 cells, eight picture units a
+cell, twenty times a second, and set behind the vector skyline as the
+picture's sky; the first front's day of colours is kept, with the mock-up's
+blue at noon. Without the script, a plain disc stands in where the mock-up
+drew it.
+
+**The sun keeps to the day's arc on its own.** A day runs sunrise to
+sunset every two and a half minutes, starting where the mock-up put the
+sun. The pointer takes the sun while it is over the picture and the sun
+eases back to the arc when it leaves, which is what the first front did.
+
+**One shadow.** D168 gave each building its own shadow, thrown away from
+the sun as from a lamp. Sunlight is parallel: the skyline is now sheared as
+one, in one direction for every building, by as much as the sun is low and
+to the side.
+
+**The birds only fly.** The hops and turns of D166 go: a bird sits still
+on its roof until, every eight to twenty seconds, it flies to another, with
+the take-off, cruise and landing as before.
+
+*What this does not change:* the skyline, the roofs and the sheet of poses
+(D166, D168); the pages besides the front.
