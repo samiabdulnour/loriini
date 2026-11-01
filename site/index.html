@@ -85,7 +85,7 @@
    sunset, on a sky that takes the hour's colour, pale at sunrise, blue at
    noon, red at sunset; the bands' edges drift all the while, so the glow
    shimmers as light on water does even when the sun stands still. The sun
-   keeps to the day's arc on its own, a day every two and a half minutes;
+   keeps to the day's arc on its own, a day a minute;
    the pointer takes it while it is over the picture, and it finds its way
    back to the arc after. The ground is cells too, and on it the shadows
    of the skyline and of the birds: a ground cell is in shadow when the
@@ -150,7 +150,7 @@
     [.89, [255, 88, 40], [255, 198, 55]], [1, [255, 88, 40], [255, 198, 55]]
   ];
   var SUN_COLOUR = [249, 218, 73], HOME = { x: 692, y: 89.5 }, RADIUS = 50.5;
-  var DAY_MS = 150000;                       // sunrise to sunset
+  var DAY_MS = 60000;                        // sunrise to sunset
   function dayAt(hour) {
     var i = 1;
     while (i < DAY.length - 1 && hour > DAY[i][0]) i++;
