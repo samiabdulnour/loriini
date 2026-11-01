@@ -6817,7 +6817,11 @@ the start from the skyline alone, the sun stepped through forty-eight
 positions of its arc and each cell's shadow test (D170) run for every one.
 The colours are the drawings': blue where the skyline shades a cell most
 of the day, through a pale blue and a khaki to yellow and, in the open,
-orange. The moving shadow of the hour, the birds' too, is painted over it
+orange -- five flat steps of a fifth of the day each and no gradient
+between, so every edge in the map is a cell's edge. (The first cut ran
+the colours smoothly from stop to stop and, at cell size, read as water:
+*"this ground is a bit blurry looking like a sea. just simplify the
+ground to be more sharp edges"*.) The moving shadow of the hour, the birds' too, is painted over it
 in the shade's own blue, a step deeper than the map's blue so it still
 shows where the map is blue already (first tried as a darkening of the
 map, and asked blue: *"i think the shadow should be blue in this case

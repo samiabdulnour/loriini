@@ -101,8 +101,9 @@
    day's sun-hours map, as the program draws one: each cell coloured by the
    share of the day's arc from which the sun reaches it, blue where the
    skyline shades it most of the day through khaki and yellow to orange in
-   the open, worked out once from the skyline alone; the moving shadow is
-   the shade's blue over it, a step deeper than the map's. The birds take the hour's light: the sun's own colour, dimmer
+   the open, in five flat steps, worked out once from the skyline alone;
+   the moving shadow is the shade's blue over it, a step deeper than the
+   map's. The birds take the hour's light: the sun's own colour, dimmer
    as the sun is lower, through one colour matrix on both. A bird that
    turns round, to look the other way or to fly off behind it, turns frame
    by frame on its feet.
@@ -131,17 +132,13 @@
     'M1456 224h80v16h16v228h-112v-16h-4v-212h20z'
   ];
   var GROUND_COLOUR = [213, 207, 154];
-  // The sun-hours map's colours, as the program's drawings have them: none
-  // of the day in sun, blue; all of it, orange; khaki and yellow between.
-  var RAMP = [[0, [84, 104, 198]], [.3, [146, 164, 222]], [.55, [206, 204, 168]], [.8, [236, 222, 136]], [1, [232, 170, 72]]];
+  // The sun-hours map's colours, as the program's drawings have them, in
+  // five flat steps of the day's share in sun and no gradient between, so
+  // every edge is a cell's edge: a fifth or less, blue; all of it, orange.
+  var BANDS = [[84, 104, 198], [146, 164, 222], [206, 204, 168], [236, 222, 136], [232, 170, 72]];
   var SHADOW = [62, 80, 178];                           // the hour's shadow on the map: the shade's blue, a step deeper
   var light = document.getElementById('light');
-  function rampAt(f) {
-    var i = 1;
-    while (i < RAMP.length - 1 && f > RAMP[i][0]) i++;
-    var a = RAMP[i - 1], b = RAMP[i];
-    return mix(a[1], b[1], Math.min(Math.max((f - a[0]) / (b[0] - a[0]), 0), 1));
-  }
+  function rampAt(f) { return BANDS[Math.min(BANDS.length - 1, Math.floor(f * BANDS.length))]; }
   var sheetAlpha = null, sheetW = 0;                   // the birds' sheet, solid or clear a pixel
   (function () {
     var img = new Image();
