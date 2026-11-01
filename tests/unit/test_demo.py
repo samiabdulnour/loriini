@@ -192,6 +192,46 @@ cuts:
     assert float(probed) == pytest.approx(3.0, abs=0.25), "two seconds, and two at double speed"
 
 
+# -- the workstation's screen ------------------------------------------------
+@pytest.fixture
+def demo_capture_archicad() -> Any:
+    sys.path.insert(0, str(SCRIPTS))
+    try:
+        return importlib.import_module("demo_capture_archicad")
+    finally:
+        sys.path.remove(str(SCRIPTS))
+
+
+def test_a_windows_screen_is_grabbed_at_its_offset(demo_capture_archicad: Any) -> None:
+    grabbed = demo_capture_archicad.grab(
+        (10, 20, 1600, 900), Path("clip.mp4"), "ffmpeg", platform="win32"
+    )
+    assert grabbed[grabbed.index("-f") + 1] == "gdigrab"
+    assert grabbed[grabbed.index("-offset_x") + 1] == "10"
+    assert grabbed[grabbed.index("-video_size") + 1] == "1600x900"
+    assert grabbed[grabbed.index("-i") + 1] == "desktop"
+    assert "-vf" not in grabbed
+
+
+def test_a_mac_screen_is_named_and_its_region_cut_out(demo_capture_archicad: Any) -> None:
+    grabbed = demo_capture_archicad.grab(
+        (0, 50, 2881, 1601), Path("clip.mp4"), "ffmpeg", platform="darwin"
+    )
+    assert grabbed[grabbed.index("-f") + 1] == "avfoundation"
+    assert grabbed[grabbed.index("-i") + 1] == "Capture screen 0:none", "the screen, no sound"
+    picture = grabbed[grabbed.index("-vf") + 1]
+    assert picture.startswith("crop=2880:1600:0:50,"), "even sizes, at the region's corner"
+    assert "scale='min(1920,iw)':-2" in picture
+    whole = demo_capture_archicad.grab(None, Path("c.mp4"), "ffmpeg", platform="darwin", screen="2")
+    assert whole[whole.index("-i") + 1] == "2:none"
+    assert not whole[whole.index("-vf") + 1].startswith("crop")
+
+
+def test_no_other_screen_is_pretended(demo_capture_archicad: Any) -> None:
+    with pytest.raises(SystemExit, match="Windows or a Mac"):
+        demo_capture_archicad.grab(None, Path("c.mp4"), "ffmpeg", platform="linux")
+
+
 # -- the fixture's export ----------------------------------------------------
 @pytest.fixture(scope="module")
 def fixture_document() -> dict[str, Any]:

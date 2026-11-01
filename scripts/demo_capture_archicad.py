@@ -21,12 +21,20 @@ frames a second, as long as the study takes. The first run of each study is
 also the manual checklist in docs/archicad.md: if a study stops, the clip
 stops with it and says so, and the transcript is on the console.
 
-Windows only, with ffmpeg's screen grabber; ffmpeg is a portable exe, so
-no administrator rights are needed, and ``--ffmpeg`` names it when it is
-not on the path. The study is run from this checkout with the Python it is
-run with, or from a packaged build named with ``--loriini``, which carries
-the licence key the command line asks for. On a Mac, record with
-QuickTime while running the same commands by hand; they are printed first.
+On Windows the screen is ffmpeg's ``gdigrab``; ffmpeg is a portable exe,
+so no administrator rights are needed, and ``--ffmpeg`` names it when it is
+not on the path. On a Mac it is ``avfoundation``, which asks for the Screen
+Recording permission the first time, for whatever started the script -- a
+terminal, or Claude's app when a Claude session runs it through Remote
+Control. ``--list-screens`` says what the Mac calls its screens, and
+``--screen`` picks one; ``--region`` there is in the screen's own pixels,
+twice its points on a Retina display. The study is run from this checkout
+with the Python it is run with, or from a packaged build named with
+``--loriini``, which carries the licence key the command line asks for.
+
+``--go`` starts without waiting for Enter: for a run driven by somebody
+else -- a Claude session working the Mac through Remote Control while the
+person sets Archicad up in front of it -- once Archicad is ready.
 """
 
 from __future__ import annotations
@@ -113,26 +121,55 @@ def command_prefix(loriini: str | None) -> list[str]:
     return [sys.executable, "-u", "-m", "sun_study.cli"]
 
 
-def grab(region: tuple[int, int, int, int] | None, out: Path, ffmpeg: str) -> list[str]:
+#: What a Mac calls its main screen to ffmpeg: avfoundation takes a device
+#: by name as well as by number, and the number moves when a camera is
+#: plugged in.
+MAC_SCREEN = "Capture screen 0"
+#: The widest a raw clip is kept. A Retina screen is captured at its pixels,
+#: 2880 or more across, which the cut shrinks to 1280 anyway.
+WIDEST = 1920
+
+
+def grab(
+    region: tuple[int, int, int, int] | None,
+    out: Path,
+    ffmpeg: str,
+    *,
+    platform: str | None = None,
+    screen: str = MAC_SCREEN,
+) -> list[str]:
+    """ffmpeg's command line for recording the screen, on this platform."""
     # Read at run time rather than as ``sys.platform`` itself, which a type
     # checker on a Mac or Linux would take as settled and the rest as dead.
-    windows = sys.platform.startswith("win")
-    if not windows:
-        raise SystemExit(
-            "This records a Windows screen. On a Mac, record with QuickTime while running "
-            "the commands printed by --dry-run."
-        )
-    source: list[str] = ["-f", "gdigrab", "-framerate", str(FPS)]
-    if region is not None:
-        x, y, width, height = region
-        source += ["-offset_x", str(x), "-offset_y", str(y), "-video_size", f"{width}x{height}"]
-    source += ["-i", "desktop"]
+    platform = platform or sys.platform
+    picture: list[str] = []
+    if platform.startswith("win"):
+        source: list[str] = ["-f", "gdigrab", "-framerate", str(FPS)]
+        if region is not None:
+            x, y, width, height = region
+            source += ["-offset_x", str(x), "-offset_y", str(y)]
+            source += ["-video_size", f"{width}x{height}"]
+        source += ["-i", "desktop"]
+    elif platform == "darwin":
+        # No offset in avfoundation: the whole screen comes, and a region is
+        # cut out of it. Even sizes, which H.264 at 4:2:0 needs.
+        source = ["-f", "avfoundation", "-capture_cursor", "1", "-framerate", str(FPS)]
+        source += ["-i", f"{screen}:none"]
+        steps = []
+        if region is not None:
+            x, y, width, height = region
+            steps.append(f"crop={width - width % 2}:{height - height % 2}:{x}:{y}")
+        steps.append(f"scale='min({WIDEST},iw)':-2")
+        picture = ["-vf", ",".join(steps)]
+    else:
+        raise SystemExit("This records a Windows or a Mac screen; Archicad runs on nothing else.")
     return [
         ffmpeg,
         "-y",
         "-loglevel",
         "error",
         *source,
+        *picture,
         "-c:v",
         "libx264",
         "-preset",
@@ -197,7 +234,30 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--balcony-layer", default="06 | Zone.Balcony")
     parser.add_argument("--livable-suffix", default="_L")
     parser.add_argument("--dry-run", action="store_true", help="Print the commands and stop.")
+    parser.add_argument(
+        "--go", action="store_true", help="Start at once rather than waiting for Enter."
+    )
+    parser.add_argument(
+        "--screen", default=MAC_SCREEN, help="On a Mac, which screen to record, by name or number."
+    )
+    parser.add_argument(
+        "--list-screens", action="store_true", help="On a Mac, list the screens ffmpeg sees."
+    )
     args = parser.parse_args(argv)
+
+    if args.list_screens:
+        if not args.ffmpeg:
+            raise SystemExit("ffmpeg is not on the path; name it with --ffmpeg.")
+        # ffmpeg lists the devices on stderr and then complains about the
+        # empty input it was given; the list is the useful part.
+        listed = subprocess.run(
+            [args.ffmpeg, "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        print(listed.stderr)
+        return
 
     region = None
     if args.region:
@@ -217,20 +277,22 @@ def main(argv: list[str] | None = None) -> None:
     if not args.ffmpeg:
         raise SystemExit("ffmpeg is not on the path; name it with --ffmpeg.")
 
-    print(
-        "Archicad on the screen, on the project, the add-on loaded? Enter to start, Ctrl-C to stop."
-    )
-    try:
-        input()
-    except KeyboardInterrupt:
-        return
+    if not args.go:
+        print(
+            "Archicad on the screen, on the project, the add-on loaded? "
+            "Enter to start, Ctrl-C to stop."
+        )
+        try:
+            input()
+        except KeyboardInterrupt:
+            return
     failed = 0
     for study in wanted:
         out = CAPTURES / study.clip
         code = record(
             study,
             [*prefix, *study.args(args)],
-            grabber=grab(region, out, args.ffmpeg),
+            grabber=grab(region, out, args.ffmpeg, screen=args.screen),
             out=out,
             lead=args.lead,
             hold=args.hold,
