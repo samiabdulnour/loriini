@@ -6588,3 +6588,149 @@ step between downloading the artifact and `fly deploy`.
 (docs/licence-service.md), which stays by hand; what the pages say about
 the program; the artifact the workflow takes, which is still the newest
 successful add-on build on `windows`.
+
+### D168 — The front's sun is the pointer's again, the buildings stand on the ground, the birds have seven roofs, and the wordmark is the mock-up's
+
+Asked 31 October 2026, after the front went up: *"the logo is wrong look at
+the dots above the ii in loriini. make it precise"*; *"there are
+imperfections in the animation, like gap between house and ground"*; *"let
+the parrots fly on different places"*; *"the sun scrip should be still
+active. cursor as a sun casting shadows"*.
+
+**The wordmark is the mock-up's lettering.** D165's wordmark was redrawn
+from a picture in Inter Display Bold, and its dots were not the mock-up's.
+Measured on the mock-up, the lettering is Arial Bold's: a stem 0.26 of the
+x-height, the word 5.1 x-heights wide, round dots 1.06 stems across set
+0.46 of a stem above the x-height line, centred on their stems. Liberation
+Sans Bold has Arial's metrics and near enough its shapes, so the wordmark
+is now that face, the L cut to the x-height, the square dots taken off and
+round ones put on at those proportions. One file still serves the site and
+the program's tool bar.
+
+**The buildings stand on the ground.** Traced from a raster, the
+skyline's feet ended a pixel above the ground line, and the sky showed
+through as a hairline. Each building's outline now runs on eight units
+under the ground, and the ground is drawn over it; the outline's vertices
+are snapped to a four-unit grid, which takes the raster's one-pixel steps
+off the roofs without touching the tower's mast.
+
+**The birds have seven roofs.** Every flat roof wide enough for a bird is
+a perch, found on the outline; a bird flies to any of them, never the one
+the other bird is on, and well away from where it stands when such a roof
+exists. The take-off and the landing are the same frames at the artist's
+positions wherever the roof is; the cruising height drops for a high roof.
+
+**The sun is the pointer's, as the first front's was.** Over the picture
+the sun goes where the pointer goes, easing after it, and drifts back to
+where the mock-up drew it when the pointer leaves. The sky takes the
+hour's colour from the first front's day (docs/website.md, until D166),
+with the mock-up's blue at noon. Every building throws its own shadow on
+the ground: the same outline sheared away from the sun by up to three
+units a unit of height and flattened onto the ground, as far as the sun is
+low, clipped to the ground strip, at a fifth of black over the khaki. The
+birds cast none: on a roof their shadow would fall on the roof.
+
+*What this does not change:* the sheet of poses and the hops (D166); the
+pages besides the front; the program, which wears the wordmark as before.
+
+### D169 — The first front's sun is back in the second: pixel sun and glow, its own day, one shadow; the birds only fly; the wordmark's second dot is square
+
+Asked 1 November 2026, with the mock-up's wordmark enlarged: *"the logo
+is not precise. look at dots above the 'i' please be precise. one dot is
+circle one dot is square"*; and of the front: *"keep the pixalated sun and
+bands around the sun"*, *"the parrots do not jump, just let them fly from
+place to place"*, *"the sun should move automaticaly as a day
+progressing"*, *"the sun shadow is parallel - the shadows have the same
+direction for all building"*.
+
+**Round, square, round.** The mock-up's three i's do not wear the same
+dot: the first and the third have a round one, the second the face's own
+square. D168 had made all three round. Every dot is the mock-up's size and
+height -- 1.06 stems across, its foot 0.46 of a stem above the x-height
+line, centred on its stem -- and the middle one is a square of that side.
+
+**The sun and its glow as the first front drew them.** D168 drew the sun
+as a plain circle in the vector picture. The first front (docs/website.md
+until D166) drew it cell by cell: a yellow disc with three uneven bands of
+glow, tight at noon and wide at sunrise and sunset, on a sky of the hour's
+colour, every cell scaled up whole. That is back: the sky, the sun and the
+bands are painted on a canvas of 198 by 58 cells, eight picture units a
+cell, twenty times a second, and set behind the vector skyline as the
+picture's sky; the first front's day of colours is kept, with the mock-up's
+blue at noon. Without the script, a plain disc stands in where the mock-up
+drew it.
+
+**The sun keeps to the day's arc on its own.** A day runs sunrise to
+sunset every two and a half minutes, starting where the mock-up put the
+sun. The pointer takes the sun while it is over the picture and the sun
+eases back to the arc when it leaves, which is what the first front did.
+
+**One shadow.** D168 gave each building its own shadow, thrown away from
+the sun as from a lamp. Sunlight is parallel: the skyline is now sheared as
+one, in one direction for every building, by as much as the sun is low and
+to the side.
+
+**The birds only fly.** The hops and turns of D166 go: a bird sits still
+on its roof until, every eight to twenty seconds, it flies to another, with
+the take-off, cruise and landing as before.
+
+*What this does not change:* the skyline, the roofs and the sheet of poses
+(D166, D168); the pages besides the front.
+
+### D170 — The front's shadows in cells, the glow shimmering, the birds' shadows and their turn, the tower symmetrical
+
+Asked 1 November 2026, with a crop of the tower and the artist's animation
+of the bird turning round: *"even the shadow needs to be pixelated. I like
+the bands around sun. is it possible to make the bands around sun moving
+even though it stays on one place? so its flickering all the time like
+water does in the sun?"*; *"is it possible to cas shadow from parrots?"*;
+*"this is not correct the tower should be symetrical"*; *"when parrots
+turns around, it should make this animation"*.
+
+**The shadow in the same cells as the sun.** D169 painted the sky and the
+sun cell by cell and left the shadow a vector shape, the skyline sheared
+onto the ground. The canvas now covers the whole picture, 198 by 73 cells,
+and the ground and its shadows are cells too: a ground cell is shaded when
+most of nine points in it, carried back along the sun's light (the shear of
+D169 run backwards), land on something solid -- the skyline, rasterised
+once into the same cells, or a bird. One point a cell would do for a short
+shadow but breaks a long one into dashes where the gaps between buildings
+cross it, so it is a vote of nine. The vector shadow and the ground
+rectangle are gone from the SVG; the skyline is clipped at the ground line
+instead of running on under a rectangle.
+
+**The glow shimmers.** The bands' uneven edges were a fixed noise over the
+cells. The noise now drifts with the clock, two layers of it, one broad and
+slow and one finer and quicker, so the edges move all the while even when
+the sun stands still, and the glow flickers as sunlight on water does. A
+reader who asks for reduced motion gets the glow still.
+
+**The birds throw shadows.** Each bird's window on the sheet -- which
+cell, where, mirrored or not -- is kept as it is shown, and a point carried
+back by the light that lands in a window is solid where the sheet's pixel
+is. So the perched bird's shadow lies on the ground beside its building's,
+and a flying bird's shadow crosses the ground under it. The page reads the
+sheet's pixels back through a canvas, which a browser allows only from the
+site's own origin: opened as a file, the birds throw no shadow and nothing
+else changes.
+
+**The birds turn round as drawn.** The artist's `turn.gif` is the perched
+bird turning to its mirror image in nineteen frames, about two and a half
+seconds, and back again by the same frames reversed. The nineteen are on
+the sheet after the landing, and a bird plays them, mirrored or not for the
+way it faces, whenever it turns: as often as not once while it sits, to
+look the other way, and before a flight to a roof behind it, so no bird
+flips about any more. The bird stands on its feet where the artist's turn
+has its axis, 23.5 pixels along the perched cell instead of the 24.9 of
+D166, so the turn's last frame and the mirrored perched bird are in the
+same place.
+
+**The Sydney Tower is symmetrical.** The outline traced from the mock-up
+(D168) had a bump on one side of the turret and a notch on the other, from
+the mock-up's own pixels. It is now symmetrical about its mast: the mast,
+the upper block, the neck, the turret, the base and the stem each the
+wider of the traced halves on both sides.
+
+*What this does not change:* the sun's day and arc (D169); the other
+buildings and the roofs (D168); the take-off and landing (D166); the pages
+besides the front.

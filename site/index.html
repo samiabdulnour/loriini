@@ -17,7 +17,7 @@
      one line of small print at the foot. Everything said in words lives on
      its own page. -->
 <header class="top wrap wide front">
-  <a class="mark" href="/"><img src="wordmark.png" alt="Loriini" width="1613" height="446"></a>
+  <a class="mark" href="/"><img src="wordmark.png" alt="Loriini" width="2223" height="627"></a>
   <nav class="main">
     <a href="works.html">How it works</a>
     <a href="price.html">Plans</a>
@@ -31,21 +31,39 @@
 
 <main class="wrap wide front">
   <p class="unseen">Sun studies from Archicad, for a NSW DA.</p>
-  <!-- The picture: the Sydney skyline in black under a yellow sun, on a
-       khaki ground; a pixel lorikeet on the tower at each end, hopping
-       along its roof and now and then swapping towers. Drawn as one SVG so
-       it is sharp at any width, the skyline a single outline with nothing
-       inside it to show a seam. Each bird is a window onto one sheet of
-       poses, moved from pose to pose by the script below. On a narrow
-       screen the left end shows, where a bird is. -->
+  <!-- The picture: the Sydney skyline in black under the sun, on a khaki
+       ground; a pixel lorikeet on a rooftop at each end, flying now and
+       then to another. Everything but the skyline and the birds is drawn
+       cell by cell on a small canvas, as the first front drew it, and
+       scaled up whole: the sky in the hour's colour, the sun with its
+       bands of glow shimmering round it, the ground, and on the ground the
+       shadows of the skyline and of the birds, perched or in the air, all
+       thrown away from the sun in one direction, short when the sun is high
+       and long when it is low.
+       The sun crosses the day's arc by itself; the pointer takes it while
+       over the picture. The skyline is one outline a building, cut at the
+       ground line over the ground it stands on. Each bird is a window onto
+       one sheet of poses, moved from pose to pose by the script below. On
+       a narrow screen the left end shows, where a bird is. -->
   <div class="picture">
-    <svg viewBox="0 0 1582 583" preserveAspectRatio="xMinYMid slice" role="img" aria-label="A black Sydney skyline under a yellow sun, on a strip of khaki ground, with a pixel lorikeet hopping along the rooftop at each end">
+    <svg viewBox="0 0 1582 583" preserveAspectRatio="xMinYMid slice" role="img" aria-label="A black Sydney skyline under a pixel sun crossing the sky, its glow in bands, on a strip of khaki ground; the buildings' shadows follow the sun, and pixel lorikeets fly from rooftop to rooftop">
+      <defs><clipPath id="above-the-ground"><rect width="1582" height="459"/></clipPath></defs>
       <rect width="1582" height="583" fill="#6bb9e7"/>
       <rect y="459" width="1582" height="124" fill="#d5cf9a"/>
-      <circle cx="692" cy="89.5" r="50.5" fill="#f9da49"/>
-      <path d="M476 88h11v61h19v1h1v20h-2v1h-8v9h24v1h1v29h-1v1h-2v-1h-6v11h-1v1h-16v235h-29v-235h-16v-11h-1v-1h-5v1h-3v-3h-1v-27h1v-1h25v-9h-9v-1h-1v-21h19zM955 205h70v1h1v19h-1v13h6v150h30v69h-379v-87h1v-1h38v-124h1v-1h7v-16h34v-21h29v22h1v176h5v-65h27v-58h19v-7h13v-1h2v-3h48v37h16v1h4v9h23v-80h5zM1454 226h81v14h15v214h-112v-1h-1v-212h1v-1h17v-12h-1zM610 230h47v3h11v224h-135v-58h25v-29h1v-1h40v-136h11zM1069 250h65v90h20v117h-85zM291 292h35v2h1v4h-1v7h1v1h8v46h21v47h56v58h-156v-105h22v-46h6v-1h6v-12h1zM0 300h26v1h101v79h112v77h-239zM1181 378h223v79h-223z" fill="#000"/>
-      <g id="bird-left"><svg x="33.2" y="223" width="116" height="84" viewBox="41 0 58 42" preserveAspectRatio="none"><image href="lorikeet-sheet.png" width="879" height="65"/></svg></g>
-      <g id="bird-right" transform="translate(2957.6 0) scale(-1 1)"><svg x="1438.8" y="144" width="80" height="106" viewBox="0 0 40 53" preserveAspectRatio="none"><image href="lorikeet-sheet.png" width="879" height="65"/></svg></g>
+      <circle id="sun-still" cx="692" cy="89.5" r="50.5" fill="#f9da49"/>
+      <image id="cells" width="1584" height="584" preserveAspectRatio="none" style="image-rendering: pixelated"/>
+      <g id="skyline" fill="#000" clip-path="url(#above-the-ground)">
+      <path d="M0 300h128v80h112v88h-240z"/>
+      <path d="M328 292v12h8v48h20v48h56v68h-156v-116h24v-48h8v-12z"/>
+      <path d="M476 88h12v60h20v24h-12v8h28v32h-12v12h-16v244h-28v-244h-16v-12h-12v-32h28v-8h-12v-24h20z"/>
+      <path d="M668 232v236h-136v-68h28v-32h40v-136z"/>
+      <path d="M956 204h68v36h8v148h28v80h-380v-100h40v-124h8v-16h36v-20h28v196h8v-64h24v-60h20v-4h12v-4h52v36h20v12h24v-80h4z"/>
+      <path d="M1068 248h68v92h16v128h-84z"/>
+      <path d="M1180 376h224v92h-224z"/>
+      <path d="M1456 224h80v16h16v228h-112v-16h-4v-212h20z"/>
+      </g>
+    <g id="bird-left"><svg x="46.0" y="214" width="80" height="106" viewBox="0 0 40 53" preserveAspectRatio="none"><image href="lorikeet-sheet.png" width="1608" height="65"/></svg></g>
+    <g id="bird-right" transform="translate(2952.0 0) scale(-1 1)"><svg x="1436.0" y="138" width="80" height="106" viewBox="0 0 40 53" preserveAspectRatio="none"><image href="lorikeet-sheet.png" width="1608" height="65"/></svg></g>
     </svg>
   </div>
 </main>
@@ -58,26 +76,187 @@
 </footer>
 
 <script>
-/* The birds move the way lorikeets do. On a roof: a short hop, a pause of a
-   second or two, another; round at the roof's edge or on a whim; through
-   some hops the wings come out. Every so often the two swap towers: one
-   takes off, the other a moment later, and they cross over the skyline and
-   land on each other's roof.
+/* The front's picture, moving.
 
-   Every pose is a cell of one sheet, lorikeet-sheet.png, at the bird's own
-   pixels, shown at two picture units a pixel. The perched bird is the
-   drawing supplied; the take-off and the landing are the frames of the two
-   animations supplied, each with the place the artist drew it in, relative
-   to the perched bird, so the rise and the approach are theirs; the cruise
-   loops the four airborne wing positions from the take-off. The sheet
-   faces right and is mirrored for a bird going left. Picture units
-   throughout, so it all scales with the picture. Still when motion is
-   asked to be reduced: the page as drawn. */
+   The sky, the sun and its glow are drawn cell by cell -- eight picture
+   units a cell -- on a small canvas behind the skyline, and scaled up
+   whole, as the first front drew them: a plain yellow disc, three uneven
+   bands of glow round it, tight at noon and spreading wide at sunrise and
+   sunset, on a sky that takes the hour's colour, pale at sunrise, blue at
+   noon, red at sunset; the bands' edges drift all the while, so the glow
+   shimmers as light on water does even when the sun stands still. The sun
+   keeps to the day's arc on its own, a day every two and a half minutes;
+   the pointer takes it while it is over the picture, and it finds its way
+   back to the arc after. The ground is cells too, and on it the shadows
+   of the skyline and of the birds: a ground cell is in shadow when the
+   point the sun's light would carry onto it is solid, a building or a
+   bird, everything sheared away from the sun in one direction as sunlight
+   is, as far as the sun is low. A bird that turns round, to look the
+   other way or to fly off behind it, turns frame by frame on its feet.
+
+   The birds sit, and every so often one flies to another rooftop. Every
+   pose is a cell of one sheet, lorikeet-sheet.png, at the bird's own
+   pixels, shown at two picture units a pixel: the perched drawing
+   supplied, and the frames of the take-off and the landing supplied, each
+   in the place the artist drew it relative to the perched bird, so the
+   rise and the approach are theirs; the cruise loops the four airborne
+   wing positions. The sheet faces right and is mirrored for a bird going
+   left. Picture units throughout, so it all scales with the picture.
+
+   With motion asked to be reduced: the birds stay as drawn and the sun
+   stays where the mock-up put it; the pointer may still take it. */
 (function () {
-  var K = 2;                         // picture units a pixel
-  var FEET = { x: 24.9, y: 43 };     // where the perched bird's feet are, in its cell
-  // Each cell: left, top, width, height on the sheet; where its top left
-  // sits relative to the perched bird's, in pixels; how long it holds.
+  var W = 1582, GROUND = 459, PX = 8, COLS = 198, ROWS = 73, GROUND_ROW = 57;
+  var SKYLINE = [
+    'M0 300h128v80h112v88h-240z',
+    'M328 292v12h8v48h20v48h56v68h-156v-116h24v-48h8v-12z',
+    'M476 88h12v60h20v24h-12v8h28v32h-12v12h-16v244h-28v-244h-16v-12h-12v-32h28v-8h-12v-24h20z',
+    'M668 232v236h-136v-68h28v-32h40v-136z',
+    'M956 204h68v36h8v148h28v80h-380v-100h40v-124h8v-16h36v-20h28v196h8v-64h24v-60h20v-4h12v-4h52v36h20v12h24v-80h4z',
+    'M1068 248h68v92h16v128h-84z',
+    'M1180 376h224v92h-224z',
+    'M1456 224h80v16h16v228h-112v-16h-4v-212h20z'
+  ];
+  var GROUND_COLOUR = [213, 207, 154], SHADE = [166, 161, 120];
+  var sheetAlpha = null, sheetW = 0;                   // the birds' sheet, solid or clear a pixel
+  (function () {
+    var img = new Image();
+    img.onload = function () {
+      try {
+        var m = document.createElement('canvas'), mc = m.getContext('2d'), i;
+        m.width = img.width; m.height = img.height; mc.drawImage(img, 0, 0);
+        var data = mc.getImageData(0, 0, img.width, img.height).data, a = new Uint8Array(img.width * img.height);
+        for (i = 0; i < a.length; i++) a[i] = data[i * 4 + 3] > 64 ? 1 : 0;
+        sheetAlpha = a; sheetW = img.width;
+      } catch (e) { /* the sheet not ours to read: the birds throw no shadow */ }
+    };
+    img.src = 'lorikeet-sheet.png';
+  })();
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var picture = document.querySelector('.picture > svg');
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function ease(p) { return p * p * (3 - 2 * p); }
+  function mix(a, b, f) { return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f]; }
+
+  // -- the day --------------------------------------------------------------------
+  // The hour, the sky's colour and the glow nearest the sun: sunrise, noon
+  // and sunset held a while each, with the mock-up's blue at noon. Between
+  // them a nearly white sky, then in the evening an apricot and an orange.
+  var DAY = [
+    [0, [255, 255, 195], [255, 228, 80]], [.14, [255, 255, 195], [255, 228, 80]],
+    [.24, [222, 237, 245], [255, 250, 225]], [.34, [107, 185, 231], [205, 236, 248]],
+    [.66, [107, 185, 231], [205, 236, 248]], [.72, [224, 238, 245], [255, 252, 238]],
+    [.77, [247, 214, 180], [255, 244, 215]], [.83, [255, 160, 95], [255, 222, 135]],
+    [.89, [255, 88, 40], [255, 198, 55]], [1, [255, 88, 40], [255, 198, 55]]
+  ];
+  var SUN_COLOUR = [249, 218, 73], HOME = { x: 692, y: 89.5 }, RADIUS = 50.5;
+  var DAY_MS = 150000;                       // sunrise to sunset
+  function dayAt(hour) {
+    var i = 1;
+    while (i < DAY.length - 1 && hour > DAY[i][0]) i++;
+    var a = DAY[i - 1], b = DAY[i], f = ease(Math.min(Math.max((hour - a[0]) / (b[0] - a[0]), 0), 1));
+    return { sky: mix(a[1], b[1], f), glow: mix(a[2], b[2], f) };
+  }
+  // Where the sun is at an hour: across the picture, high at noon, at the
+  // horizon at either end.
+  function arc(hour) { return { x: hour * W, y: GROUND - 30 - Math.sin(Math.PI * hour) * (GROUND - 30 - HOME.y) }; }
+
+  // Smooth noise, for the bands' uneven edges.
+  var perm = [], i, j, swap;
+  for (i = 0; i < 256; i++) perm[i] = i;
+  for (i = 255; i > 0; i--) { j = Math.floor(Math.random() * (i + 1)); swap = perm[i]; perm[i] = perm[j]; perm[j] = swap; }
+  function lattice(x, y) { return perm[(perm[x & 255] + y) & 255] / 255; }
+  function noise(x, y) {
+    var xi = Math.floor(x), yi = Math.floor(y), u = x - xi, v = y - yi;
+    u = u * u * (3 - 2 * u); v = v * v * (3 - 2 * v);
+    var a = lattice(xi, yi), b = lattice(xi + 1, yi), c = lattice(xi, yi + 1), d = lattice(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+
+  // -- the picture, drawn cell by cell -------------------------------------------------
+  var cellsImage = document.getElementById('cells'), sunStill = document.getElementById('sun-still');
+  var canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+  canvas.width = COLS; canvas.height = ROWS;
+  var pixels = ctx.createImageData(COLS, ROWS);
+  // The skyline as cells, for the shadow: solid where a building is.
+  var solid = new Uint8Array(COLS * ROWS);
+  (function () {
+    var m = document.createElement('canvas'), mc = m.getContext('2d'), i;
+    m.width = COLS; m.height = ROWS;
+    if (!mc || !window.Path2D) return;
+    mc.scale(1 / PX, 1 / PX); mc.fillStyle = '#000';
+    for (i = 0; i < SKYLINE.length; i++) mc.fill(new Path2D(SKYLINE[i]));
+    var data = mc.getImageData(0, 0, COLS, ROWS).data;
+    for (i = 0; i < COLS * ROWS; i++) solid[i] = data[i * 4 + 3] > 64 ? 1 : 0;
+  })();
+  function paint(sun, hour, t) {
+    var day = dayAt(hour), bands = [mix(day.glow, day.sky, 0), mix(day.glow, day.sky, 1 / 3), mix(day.glow, day.sky, 2 / 3)];
+    var high = Math.sin(Math.PI * Math.min(Math.max(hour, 0), 1));          // 1 at noon, 0 at the horizon
+    var width = (1.3 + 2.6 * (1 - high));                                     // a band, in cells: tight at noon
+    var cx = sun.x / PX, cy = sun.y / PX, r = RADIUS / PX, data = pixels.data, k = 0, x, y, dx, dy, dist, c;
+    // The shadow: a ground cell is shaded when the skyline is solid at the
+    // point the light carries onto it, (x, y) <- (x - s h, G - h) with
+    // h = (y - G) / d; one s and d for all, the light being parallel.
+    var up = Math.max(24, GROUND - sun.y), d = Math.min(1.2, Math.max(.1, 55 / up));
+    var s = Math.max(-3, Math.min(3, .6 * (W / 2 - sun.x) / up)), h, X, Y, i, j, b, u, v, dark;
+    for (y = 0; y < ROWS; y++) {
+      for (x = 0; x < COLS; x++) {
+        if (y >= GROUND_ROW) {
+          // Nine points of the cell, and the cell is shaded when most are:
+          // one point alone breaks a long shadow into dashes.
+          dark = 0;
+          for (j = 0; j < 9; j++) {
+            h = ((y + (j / 3 | 0) / 3 + 1 / 6) * PX - GROUND) / d; X = (x + (j % 3) / 3 + 1 / 6) * PX - s * h; Y = GROUND - h;
+            if (Y >= 0 && X >= 0 && X < W && solid[Math.floor(Y / PX) * COLS + Math.floor(X / PX)]) { dark++; continue; }
+            for (i = 0; sheetAlpha && i < BIRDS.length; i++) {
+              b = BIRDS[i];
+              if (X >= b.sx && X < b.sx + b.sw && Y >= b.sy && Y < b.sy + b.sh) {
+                u = Math.floor((X - b.sx) / K); v = Math.floor((Y - b.sy) / K);
+                if (b.m) u = b.cell[2] - 1 - u;
+                if (sheetAlpha[(b.cell[1] + v) * sheetW + b.cell[0] + u]) { dark++; break; }
+              }
+            }
+          }
+          c = dark >= 5 ? SHADE : GROUND_COLOUR;
+        } else {
+          dx = x + .5 - cx; dy = y + .5 - cy; dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < r) c = SUN_COLOUR;
+          else {
+            // The bands' edges, uneven and on the move: two drifts of noise,
+            // one slow and broad, one quicker and finer, as light on water.
+            dist += (noise(x * .55 + t * .9, y * .55 + t * .5) - .5) * 1.5 * width
+                  + (noise(x * 1.1 - t * 1.4, y * 1.1 + t * .3) - .5) * .7 * width;
+            c = dist < r + width ? bands[0] : dist < r + 2 * width ? bands[1] : dist < r + 3 * width ? bands[2] : day.sky;
+          }
+        }
+        data[k++] = c[0]; data[k++] = c[1]; data[k++] = c[2]; data[k++] = 255;
+      }
+    }
+    ctx.putImageData(pixels, 0, 0);
+    cellsImage.setAttribute('href', canvas.toDataURL());
+  }
+
+  // -- the sun's day, and the pointer -------------------------------------------------
+  var at = { x: HOME.x, y: HOME.y }, held = null, t0 = null, frames = 0;
+  function place(e) {
+    var p = picture.createSVGPoint(), m = picture.getScreenCTM();
+    if (!m) return;
+    p.x = e.clientX; p.y = e.clientY; p = p.matrixTransform(m.inverse());
+    held = { x: Math.min(Math.max(p.x, 0), W), y: Math.min(Math.max(p.y, 20), GROUND - 20) };
+  }
+  picture.addEventListener('pointermove', place);
+  picture.addEventListener('pointerdown', place);
+  picture.addEventListener('pointerleave', function () { held = null; });
+  function sunAt(now) {
+    if (t0 === null) t0 = now - DAY_MS * (HOME.x / W);          // start where the mock-up drew it
+    var hour = still ? HOME.x / W : ((now - t0) % DAY_MS) / DAY_MS;
+    var want = held || arc(hour);
+    at.x += (want.x - at.x) * (held ? .12 : .06); at.y += (want.y - at.y) * (held ? .12 : .06);
+    return { x: at.x, y: at.y, hour: Math.min(Math.max(at.x / W, 0), 1) };
+  }
+
+  // -- the birds ------------------------------------------------------------------------
+  var K = 2, FEET = { x: 23.5, y: 43 };   // where the bird stands, on the cell: the artist's axis of the turn
   var CELL = {
     perched: [0, 0, 40, 53, 0, 0, 0],
     up1: [41, 0, 58, 42, -5, 4, 170],
@@ -92,85 +271,110 @@
     down8: [632, 0, 63, 65, -26, -22, 120],
     down9: [696, 0, 63, 65, -28, -14, 100],
     down10: [760, 0, 59, 47, -14, 7, 140],
-    down11: [820, 0, 59, 47, -14, 5, 150]
+    down11: [820, 0, 59, 47, -14, 5, 150],
+    turn1: [880, 0, 40, 53, 1, 1, 110],
+    turn2: [921, 0, 40, 53, 1, 1, 150],
+    turn3: [962, 0, 41, 49, -4, -2, 150],
+    turn4: [1004, 0, 41, 49, -4, -2, 110],
+    turn5: [1046, 0, 41, 49, -4, -2, 180],
+    turn6: [1088, 0, 41, 49, -5, -1, 110],
+    turn7: [1130, 0, 41, 49, -5, -1, 150],
+    turn8: [1172, 0, 28, 45, 7, -2, 150],
+    turn9: [1201, 0, 28, 45, 7, -2, 110],
+    turn10: [1230, 0, 28, 45, 7, -2, 180],
+    turn11: [1259, 0, 28, 44, 8, -1, 110],
+    turn12: [1288, 0, 28, 44, 8, -1, 150],
+    turn13: [1317, 0, 41, 49, 11, -2, 150],
+    turn14: [1359, 0, 41, 49, 11, -2, 110],
+    turn15: [1401, 0, 41, 49, 11, -2, 180],
+    turn16: [1443, 0, 41, 49, 10, -1, 110],
+    turn17: [1485, 0, 41, 49, 10, -1, 150],
+    turn18: [1527, 0, 40, 53, 7, 0, 150],
+    turn19: [1568, 0, 40, 53, 7, 0, 110]
   };
   var TAKEOFF = ['up1', 'up2', 'up3', 'up4', 'up5', 'up6'];
   var BEAT = ['up3', 'up4', 'up5', 'up6'];
   var LANDING = ['down5', 'down6', 'down7', 'down8', 'down9', 'down10', 'down11'];
-  // The two roofs: the roof line, and how far along it a bird's feet may go.
-  var ROOF = [{ y: 301, from: 64, to: 120 }, { y: 230, from: 1462, to: 1528 }];
+  var TURN = ['turn1', 'turn2', 'turn3', 'turn4', 'turn5', 'turn6', 'turn7', 'turn8', 'turn9', 'turn10', 'turn11', 'turn12', 'turn13', 'turn14', 'turn15', 'turn16', 'turn17', 'turn18', 'turn19'];
+  var ROOFS = [
+    { y: 300, from: 14, to: 114 },
+    { y: 380, from: 142, to: 226 },
+    { y: 232, from: 614, to: 654 },
+    { y: 204, from: 970, to: 1010 },
+    { y: 248, from: 1082, to: 1122 },
+    { y: 376, from: 1194, to: 1390 },
+    { y: 224, from: 1470, to: 1522 }
+  ];
   var BIRDS = [
     { id: 'bird-left',  roof: 0, x: 93,   facing: 1 },
-    { id: 'bird-right', roof: 1, x: 1469, facing: -1 }
+    { id: 'bird-right', roof: 6, x: 1469, facing: -1 }
   ];
-  var CRUISE = 150, SPEED = .3, STEP = 80;   // the height flown at, picture units a millisecond, ms a wing position
-  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  function rand(a, b) { return a + Math.random() * (b - a); }
-  function ease(p) { return p * p * (3 - 2 * p); }
-
-  // Show one cell with its top left at (x, y), mirrored or not.
+  var SPEED = .3, STEP = 80, HIGHEST = 150;
   function show(b, name, x, y, mirrored) {
     var c = CELL[name], w = c[2] * K, h = c[3] * K;
     b.win.setAttribute('viewBox', c[0] + ' ' + c[1] + ' ' + c[2] + ' ' + c[3]);
     b.win.setAttribute('width', w); b.win.setAttribute('height', h);
     b.win.setAttribute('x', x); b.win.setAttribute('y', y);
     b.node.setAttribute('transform', mirrored ? 'translate(' + (2 * x + w) + ' 0) scale(-1 1)' : '');
+    b.sx = x; b.sy = y; b.sw = w; b.sh = h; b.cell = c; b.m = mirrored;   // for its shadow
   }
-  // A cell in the artist's place relative to a perch: feet at (px, py).
-  function posed(b, name, px, py, lift) {
+  function posed(b, name, px, py) {
     var c = CELL[name], m = b.facing < 0;
-    var x = m ? px + K * FEET.x - K * (c[4] + c[2]) : px - K * FEET.x + K * c[4];
-    show(b, name, x, py - K * FEET.y + K * c[5] - (lift || 0), m);
+    show(b, name, m ? px + K * FEET.x - K * (c[4] + c[2]) : px - K * FEET.x + K * c[4], py - K * FEET.y + K * c[5], m);
   }
-  // A cell with its middle at (cx, cy): the airborne poses, which the
-  // bounding boxes of the wings would otherwise jolt about.
   function centred(b, name, cx, cy) {
     var c = CELL[name];
     show(b, name, cx - c[2] * K / 2, cy - c[3] * K / 2, b.facing < 0);
   }
-  // Where a posed cell's middle lands, so a cruise can start and end there.
   function middleOf(b, name, px, py) {
     var c = CELL[name], m = b.facing < 0;
     var x = m ? px + K * FEET.x - K * (c[4] + c[2]) : px - K * FEET.x + K * c[4];
     return { x: x + c[2] * K / 2, y: py - K * FEET.y + K * c[5] + c[3] * K / 2 };
   }
-  function sit(b, now, wait) { b.act = 'rest'; b.until = now + wait; posed(b, 'perched', b.x, ROOF[b.roof].y); }
-
-  // A run of cells, each held for its own time; answers the cell for a
-  // moment into the run, or null once the run is over.
+  function sit(b, now) {
+    b.act = 'rest'; b.flyAt = now + rand(8000, 20000);
+    b.turnAt = Math.random() < .5 ? now + rand(2500, 6000) : Infinity;    // as often as not, a look the other way first
+    posed(b, 'perched', b.x, ROOFS[b.roof].y);
+  }
+  function turn(b, now, then) {                      // round on its feet, then 'rest' or 'takeoff'
+    b.act = 'turn'; b.t0 = now; b.then = then; b.px = b.x; b.py = ROOFS[b.roof].y;
+  }
   function frameAt(names, t) {
     for (var i = 0; i < names.length; i++) { t -= CELL[names[i]][6]; if (t < 0) return names[i]; }
     return null;
   }
-
-  function hopOrTurn(b, now) {
-    var roof = ROOF[b.roof];
-    var atEdge = (b.facing < 0 && b.x <= roof.from + 4) || (b.facing > 0 && b.x >= roof.to - 4);
-    if (atEdge || Math.random() < .18) { b.facing = -b.facing; sit(b, now, rand(350, 950)); return; }
-    b.act = 'hop'; b.t0 = now; b.dur = rand(320, 440);
-    b.x0 = b.x; b.x1 = Math.min(roof.to, Math.max(roof.from, b.x + rand(18, 58) * b.facing));
-    b.high = rand(14, 32); b.flutter = Math.random() < .4;
+  function pick(b) {
+    var other = BIRDS[b === BIRDS[0] ? 1 : 0], far = [], any = [], i, mid;
+    for (i = 0; i < ROOFS.length; i++) {
+      if (i === b.roof || i === other.roof) continue;
+      any.push(i); mid = (ROOFS[i].from + ROOFS[i].to) / 2;
+      if (Math.abs(mid - b.x) >= 250) far.push(i);
+    }
+    var from = far.length ? far : any;
+    return from.length ? from[Math.floor(Math.random() * from.length)] : -1;
   }
-  function hop(b, now) {
-    var p = Math.min(1, (now - b.t0) / b.dur);
-    b.x = b.x0 + (b.x1 - b.x0) * p;
-    posed(b, (b.flutter && p > .15 && p < .85) ? 'up1' : 'perched', b.x, ROOF[b.roof].y, 4 * b.high * p * (1 - p));
-    if (p >= 1) sit(b, now, rand(500, 2700));
-  }
-
   function takeOff(b, now) {
-    var to = ROOF[1 - b.roof];
+    var to = pick(b);
+    if (to < 0) { b.flyAt = now + rand(4000, 9000); return; }
+    turn(b, now, 'takeoff');                         // where it stands, where it goes
+    b.roof = to; b.x = rand(ROOFS[to].from + 6, ROOFS[to].to - 6); b.qy = ROOFS[to].y;
+    if ((b.x > b.px ? 1 : -1) === b.facing) launch(b, now);    // already facing the way: off at once
+  }
+  function launch(b, now) {
     b.act = 'takeoff'; b.t0 = now;
-    b.px = b.x; b.py = ROOF[b.roof].y;                       // the perch left
-    b.x = rand(to.from + 8, to.to - 8); b.qy = to.y;          // the perch landed on
-    b.facing = b.x > b.px ? 1 : -1; b.roof = 1 - b.roof;
-    b.from = middleOf(b, 'up6', b.px, b.py);
-    b.to = middleOf(b, 'down5', b.x, b.qy);
-    b.dur = Math.abs(b.to.x - b.from.x) / SPEED;
+    b.from = middleOf(b, 'up6', b.px, b.py); b.to = middleOf(b, 'down5', b.x, b.qy);
+    b.cruise = Math.min(HIGHEST, b.from.y, b.to.y);
+    b.dur = Math.max(900, Math.abs(b.to.x - b.from.x) / SPEED);
   }
   function fly(b, now) {
-    var name, p, q, up, down, t;
+    var name, p, q, up, down;
+    if (b.act === 'turn') {
+      name = frameAt(TURN, now - b.t0);
+      if (name) { posed(b, name, b.px, b.py); return; }
+      b.facing = -b.facing;                          // turned: the frames end at the mirror image
+      if (b.then === 'takeoff') { launch(b, now); }
+      else { b.act = 'rest'; b.turnAt = Infinity; b.flyAt = Math.max(b.flyAt, now + 1500); posed(b, 'perched', b.x, b.py); return; }
+    }
     if (b.act === 'takeoff') {
       name = frameAt(TAKEOFF, now - b.t0);
       if (name) { posed(b, name, b.px, b.py); return; }
@@ -178,50 +382,42 @@
     }
     if (b.act === 'cruise') {
       p = Math.min(1, (now - b.t0) / b.dur); q = ease(p);
-      // Up to the cruising height over the first fifth, down to the approach over the last.
       up = p < .2 ? ease(p / .2) : 1; down = p > .8 ? ease((p - .8) / .2) : 0;
       centred(b, BEAT[Math.floor((now - b.t0) / STEP) % BEAT.length],
         b.from.x + (b.to.x - b.from.x) * q,
-        b.from.y + (CRUISE - b.from.y) * up + (b.to.y - CRUISE) * down + Math.sin((now - b.t0) / 420) * 9 * up * (1 - down));
+        b.from.y + (b.cruise - b.from.y) * up + (b.to.y - b.cruise) * down + Math.sin((now - b.t0) / 420) * 9 * up * (1 - down));
       if (p < 1) return;
       b.act = 'landing'; b.t0 = now;
     }
     name = frameAt(LANDING, now - b.t0);
     if (name) { posed(b, name, b.x, b.qy); return; }
-    sit(b, now, rand(700, 1800));
+    sit(b, now);
+  }
+  function birds(now) {
+    for (var i = 0; i < BIRDS.length; i++) {
+      var b = BIRDS[i];
+      if (b.act !== 'rest') fly(b, now);
+      else if (now >= b.flyAt) takeOff(b, now);
+      else if (now >= b.turnAt) turn(b, now, 'rest');
+    }
   }
 
-  var swapAt = 0, flown = 0;
+  // -- the frames -------------------------------------------------------------------------
   function step(now) {
-    var i, b;
-    if (!swapAt) swapAt = now + rand(9000, 20000);
-    for (i = 0; i < BIRDS.length; i++) {
-      b = BIRDS[i];
-      if (b.act === 'hop') hop(b, now);
-      else if (b.act === 'takeoff' || b.act === 'cruise' || b.act === 'landing') fly(b, now);
-      else if (now >= b.until) {
-        // The swap: the first bird to be ready goes, the second once the
-        // first is well up, so neither lands on an occupied roof.
-        var other = BIRDS[1 - i];
-        if (now >= swapAt && flown < 2 && (flown === 0 || (other.act !== 'rest' && other.act !== 'hop' && now - other.t0 > 500))) {
-          takeOff(b, now); flown++;
-          if (flown === 2) { swapAt = now + rand(12000, 26000); flown = 0; }
-        } else {
-          hopOrTurn(b, now);
-        }
-      }
-    }
+    var sun = sunAt(now);
+    if (!still) birds(now);
+    if (frames++ % 3 === 0) paint(sun, sun.hour, still ? 0 : now / 1000);   // twenty times a second is plenty for cells
     window.requestAnimationFrame(step);
   }
-
-  for (var i = 0; i < BIRDS.length; i++) {
+  for (i = 0; i < BIRDS.length; i++) {
     BIRDS[i].node = document.getElementById(BIRDS[i].id);
     BIRDS[i].win = BIRDS[i].node && BIRDS[i].node.querySelector('svg');
   }
-  if (still || !window.requestAnimationFrame || !BIRDS[0].win || !BIRDS[1].win) return;
+  if (!window.requestAnimationFrame || !ctx || !cellsImage || !BIRDS[0].win || !BIRDS[1].win) return;
+  sunStill.setAttribute('display', 'none');            // the plain disc stands in only without the script
   var start = window.performance && performance.now ? performance.now() : Date.now();
-  BIRDS[0].act = 'rest'; BIRDS[0].until = start + 1200;   // left as drawn: wings half out, about to hop
-  BIRDS[1].act = 'rest'; BIRDS[1].until = start + 2100; posed(BIRDS[1], 'perched', BIRDS[1].x, ROOF[1].y);
+  BIRDS[0].act = 'rest'; BIRDS[0].flyAt = start + rand(7000, 14000); BIRDS[0].turnAt = start + rand(2500, 4000);
+  BIRDS[1].act = 'rest'; BIRDS[1].flyAt = start + rand(14000, 26000); BIRDS[1].turnAt = start + rand(7000, 11000);
   window.requestAnimationFrame(step);
 })();
 </script>
