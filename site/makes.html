@@ -27,6 +27,24 @@
   <p class="lead">Solar access hours against the Apartment Design Guide, shadow diagrams, site and context analysis and the area calculation, drawn straight into your Archicad project as native sheets, fills and schedules. No export to another program, no hand-typed table.</p>
   <p>Loriini is a Windows program and an Archicad add-on, for Archicad 26 to 30. It reads the open project, works out the sun, and writes what it finds back into Archicad as the things Archicad already knows: Zone properties, fills, worksheets, 3D Documents, layouts.</p>
 
+  <!-- Fifteen seconds of what the solar analysis does, drawn from the
+       engine's own run on the sample building (docs/website.md, "The demo
+       videos"): assets/demo/makes.html, rendered by scripts/demo_render.py.
+       Muted, looping, no sound to miss; the verdict is its poster, for a
+       browser that does not play it. A reader who asks for less motion
+       gets the poster and a play button instead. -->
+  <video class="demo" autoplay muted loop playsinline preload="metadata" poster="demo-makes.png" width="1280" height="720" aria-label="The sun swept over a sample building from 09:00 to 15:00 on 21 June, every face banded by its hours of sun, and the four apartments assessed against the Apartment Design Guide: three of four receive two hours, and the building complies.">
+    <source src="demo-makes.mp4" type="video/mp4">
+  </video>
+  <script>
+  (function () {
+    var v = document.querySelector("video.demo");
+    if (v && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      v.removeAttribute("autoplay"); v.removeAttribute("loop"); v.controls = true;
+    }
+  })();
+  </script>
+
   <div class="grid">
     <div class="card">
       <h3>Solar access, by apartment</h3>
