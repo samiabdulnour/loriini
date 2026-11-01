@@ -15,17 +15,19 @@ from __future__ import annotations
 import math
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import numpy as np
 import pytest
 
+from sun_study import pipeline
 from sun_study.core.analysis import (
     DEFAULT_BAND_EDGES_MINUTES,
     band_by_area,
     cumulative_minutes,
     instant_weights,
+    sunlit_matrix,
 )
 from sun_study.core.geometry import TriangleMesh, box, rectangle
 from sun_study.core.sampling import (
@@ -36,6 +38,7 @@ from sun_study.core.sampling import (
     single_sample,
     triangle_samples,
 )
+from sun_study.ingest import scene as scene_module
 from sun_study.ingest.ifc import IfcElement, read_ifc
 from sun_study.ingest.scene import (
     MassingConfig,
@@ -821,25 +824,58 @@ def test_a_skipped_surface_is_not_reported_as_zero() -> None:
     assert "0.0 m2" not in said
 
 
-def test_a_skipped_surface_costs_nothing_rather_than_being_computed_and_dropped() -> None:
+def test_a_skipped_surface_costs_nothing_rather_than_being_computed_and_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The whole point. Returning None from a full computation would report
     the same and save nothing."""
-    import time
+    # Counted, not timed. What a surface costs is calls: its samples are built,
+    # and rays are cast from them at every instant of the window. A call is
+    # either made or it is not. This used to clock the two runs and ask for a
+    # two-to-one ratio, which a shared CI runner answers with noise: 0.280 s
+    # against 0.437 s once on windows-latest, failing a change to the website.
+    sampled: list[str] = []
 
-    def seconds(**kw: object) -> float:
-        start = time.perf_counter()
-        run_massing(
-            SAMPLE,
-            timezone=SYDNEY,
-            massing_config=MassingConfig(timezone=SYDNEY, **kw),  # type: ignore[arg-type]
-        )
-        return time.perf_counter() - start
+    def counted(module: ModuleType, name: str, what: str) -> None:
+        real = getattr(module, name)
 
-    whole_site = seconds()
-    zone_only = seconds(zone_names=("Apartment L00-A",))
-    assert zone_only < whole_site / 2, (
-        f"a zone study took {zone_only:.3f}s against {whole_site:.3f}s for the "
-        f"whole site, which is not the saving this exists for"
+        def spy(*args: Any, **kwargs: Any) -> Any:
+            sampled.append(what)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(module, name, spy)
+
+    # Where build_massing_scene makes the two site surfaces' samples ...
+    counted(scene_module, "triangle_samples", "facade")
+    counted(scene_module, "open_ground_grid", "ground")
+
+    # ... and where run_massing casts the rays for whatever it was given.
+    cast: list[SamplePoints] = []
+
+    def counting_sunlit_matrix(points: SamplePoints, *args: Any, **kwargs: Any) -> Any:
+        cast.append(points)
+        return sunlit_matrix(points, *args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "sunlit_matrix", counting_sunlit_matrix)
+
+    whole_site = run_massing(SAMPLE, timezone=SYDNEY, massing_config=MassingConfig(timezone=SYDNEY))
+    assert {"facade", "ground"} <= set(sampled), "the ordinary run does the work"
+    assert any(points is whole_site.scene.facade_samples for points in cast)
+    assert any(points is whole_site.scene.ground_samples for points in cast)
+
+    sampled.clear()
+    cast.clear()
+    zone_only = run_massing(
+        SAMPLE,
+        timezone=SYDNEY,
+        massing_config=MassingConfig(timezone=SYDNEY, zone_names=("Apartment L00-A",)),
+    )
+    assert not sampled, (
+        f"a zone study sampled the {' and the '.join(sorted(set(sampled)))}, "
+        f"which is the work this exists to skip"
+    )
+    assert len(cast) == 1 and cast[0] is zone_only.scene.zone_samples, (
+        "the only rays cast are the Zone's"
     )
 
 
