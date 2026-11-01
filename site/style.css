@@ -35,25 +35,6 @@
   --measure: 72rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #1c1d1b;
-    --ink: #e6e8e2;
-    --muted: #9a9d96;
-    --line: #3a3c38;
-    --tint: #252624;
-    --notice: #372f1c;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #1c1d1b;
-  --ink: #e6e8e2;
-  --muted: #9a9d96;
-  --line: #3a3c38;
-  --tint: #252624;
-  --notice: #372f1c;
-}
-
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
@@ -91,8 +72,6 @@ header.top.front { align-items: flex-start; padding-top: clamp(2.4rem, 3.4vw, 4r
 header.top.front nav.main { padding-top: .7rem; }
 .mark { display: block; width: min(36vw, 640px); min-width: 11rem; }
 .mark img { display: block; width: 100%; height: auto; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mark img { filter: invert(.92); } }
-:root[data-theme="dark"] .mark img { filter: invert(.92); }
 .home { font-size: var(--s); font-weight: 600; text-transform: uppercase; letter-spacing: .02em; text-decoration: none; padding: .15rem 0; }
 .home:hover { color: inherit; }
 .home.mark { width: auto; min-width: 0; padding: 0; }      /* the wordmark small, where a page's bar wrote the name */
