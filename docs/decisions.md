@@ -6837,3 +6837,16 @@ being a colour operation and not a blur.
 
 *What this does not change:* the shadows' geometry (D169, D170); the sun's
 day (D169, D172); the sheet of poses (D166, D170).
+
+### D175 — The site has no dark mode
+
+Asked 1 November 2026: *"remove dark mode from the web"*.
+
+The stylesheet gave the site a dark set of colours when the reader's
+system asked for a dark scheme, and inverted the wordmark with it. Both
+are gone: the site is black on white for everyone, as the mock-ups are,
+and the wordmark is shown as drawn. Nothing in the pages switched the
+scheme by hand, so nothing else changes.
+
+*What this does not change:* the colours themselves (the light set is the
+only set now); the program's own look, which has its own themes.
