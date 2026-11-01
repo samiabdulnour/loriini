@@ -6786,3 +6786,17 @@ minutes (D169), too slow to be seen moving on a visit. It is a minute now.
 *What this does not change:* what the build contains and what the page
 says of it (D167); the program's own look (D165); the rest of the front
 (D170, D171).
+
+### D173 — Every page's top bar wears the wordmark
+
+Asked 1 November 2026, with the other pages' bars beside the front's:
+*"change the logo on whole web"*.
+
+The front had the wordmark (D166) while the other six pages still wrote
+the name in capitals in their bar, as the first site did. Now every bar
+wears the wordmark, the same file, 1.3 rem tall where the name was, so it
+sits with the tabs beside it; the front keeps it large. One picture of the
+name everywhere, on the site and in the program.
+
+*What this does not change:* the wordmark itself (D171); the front's
+layout (D166, D168); the pages' content.
