@@ -6800,3 +6800,34 @@ name everywhere, on the site and in the program.
 
 *What this does not change:* the wordmark itself (D171); the front's
 layout (D166, D168); the pages' content.
+
+### D174 — The front's ground is the day's sun-hours map, and the birds take the hour's light
+
+Asked 1 November 2026, with one of the program's own sun-hours drawings:
+*"change the colours of the lorikeet as he should have different colours
+in different sunlight? so his colours reacts to change of lights"*;
+*"change the colour of the ground. is it possible to mimic somehow the
+results from solar analysis"*.
+
+**The ground as the program would draw it.** The front's ground was plain
+khaki with the moving shadow on it. It is now the day's sun-hours map, the
+result the program exists to draw: each ground cell is coloured by the
+share of the day's arc from which the sun reaches it, worked out once at
+the start from the skyline alone, the sun stepped through forty-eight
+positions of its arc and each cell's shadow test (D170) run for every one.
+The colours are the drawings': blue where the skyline shades a cell most
+of the day, through a pale blue and a khaki to yellow and, in the open,
+orange. The moving shadow of the hour, the birds' too, darkens the map to
+72 per cent rather than painting over it, so the day's result and the
+moment's shadow are both there. The pointer moves the sun and its shadow,
+not the map, which is the day's.
+
+**The birds in the hour's light.** Both birds are drawn through one colour
+matrix, set every repaint from the hour: the sun's own glow colour, taken
+up to six tenths as the sun nears the horizon and not at all at noon, and
+the whole dimmed to seven tenths at the horizon. A lorikeet at sunset is
+warm and dark, at noon its own colours. The matrix keeps the pixels crisp,
+being a colour operation and not a blur.
+
+*What this does not change:* the shadows' geometry (D169, D170); the sun's
+day (D169, D172); the sheet of poses (D166, D170).

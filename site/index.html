@@ -36,10 +36,13 @@
        then to another. Everything but the skyline and the birds is drawn
        cell by cell on a small canvas, as the first front drew it, and
        scaled up whole: the sky in the hour's colour, the sun with its
-       bands of glow shimmering round it, the ground, and on the ground the
-       shadows of the skyline and of the birds, perched or in the air, all
-       thrown away from the sun in one direction, short when the sun is high
-       and long when it is low.
+       bands of glow shimmering round it, the ground coloured by how much
+       of the day the sun reaches each cell of it, as a sun-hours map is,
+       blue in the buildings' shade through to orange in the open, and on
+       it the shadows of the skyline and of the birds, perched or in the
+       air, all thrown away from the sun in one direction, short when the
+       sun is high and long when it is low. The birds take the hour's light,
+       warm and dim at the day's ends.
        The sun crosses the day's arc by itself; the pointer takes it while
        over the picture. The skyline is one outline a building, cut at the
        ground line over the ground it stands on. Each bird is a window onto
@@ -47,7 +50,10 @@
        a narrow screen the left end shows, where a bird is. -->
   <div class="picture">
     <svg viewBox="0 0 1582 583" preserveAspectRatio="xMinYMid slice" role="img" aria-label="A black Sydney skyline under a pixel sun crossing the sky, its glow in bands, on a strip of khaki ground; the buildings' shadows follow the sun, and pixel lorikeets fly from rooftop to rooftop">
-      <defs><clipPath id="above-the-ground"><rect width="1582" height="459"/></clipPath></defs>
+      <defs>
+        <clipPath id="above-the-ground"><rect width="1582" height="459"/></clipPath>
+        <filter id="daylight" color-interpolation-filters="sRGB"><feColorMatrix id="light" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter>
+      </defs>
       <rect width="1582" height="583" fill="#6bb9e7"/>
       <rect y="459" width="1582" height="124" fill="#d5cf9a"/>
       <circle id="sun-still" cx="692" cy="89.5" r="50.5" fill="#f9da49"/>
@@ -62,8 +68,8 @@
       <path d="M1180 376h224v92h-224z"/>
       <path d="M1456 224h80v16h16v228h-112v-16h-4v-212h20z"/>
       </g>
-    <g id="bird-left"><svg x="46.0" y="214" width="80" height="106" viewBox="0 0 40 53" preserveAspectRatio="none"><image href="lorikeet-sheet.png" width="1608" height="65"/></svg></g>
-    <g id="bird-right" transform="translate(2952.0 0) scale(-1 1)"><svg x="1436.0" y="138" width="80" height="106" viewBox="0 0 40 53" preserveAspectRatio="none"><image href="lorikeet-sheet.png" width="1608" height="65"/></svg></g>
+    <g id="bird-left" filter="url(#daylight)"><svg x="46.0" y="214" width="80" height="106" viewBox="0 0 40 53" preserveAspectRatio="none"><image href="lorikeet-sheet.png" width="1608" height="65"/></svg></g>
+    <g id="bird-right" filter="url(#daylight)" transform="translate(2952.0 0) scale(-1 1)"><svg x="1436.0" y="138" width="80" height="106" viewBox="0 0 40 53" preserveAspectRatio="none"><image href="lorikeet-sheet.png" width="1608" height="65"/></svg></g>
     </svg>
   </div>
 </main>
@@ -91,8 +97,15 @@
    of the skyline and of the birds: a ground cell is in shadow when the
    point the sun's light would carry onto it is solid, a building or a
    bird, everything sheared away from the sun in one direction as sunlight
-   is, as far as the sun is low. A bird that turns round, to look the
-   other way or to fly off behind it, turns frame by frame on its feet.
+   is, as far as the sun is low. Under the shadows the ground wears the
+   day's sun-hours map, as the program draws one: each cell coloured by the
+   share of the day's arc from which the sun reaches it, blue where the
+   skyline shades it most of the day through khaki and yellow to orange in
+   the open, worked out once from the skyline alone; the moving shadow
+   darkens it. The birds take the hour's light: the sun's own colour, dimmer
+   as the sun is lower, through one colour matrix on both. A bird that
+   turns round, to look the other way or to fly off behind it, turns frame
+   by frame on its feet.
 
    The birds sit, and every so often one flies to another rooftop. Every
    pose is a cell of one sheet, lorikeet-sheet.png, at the bird's own
@@ -117,7 +130,18 @@
     'M1180 376h224v92h-224z',
     'M1456 224h80v16h16v228h-112v-16h-4v-212h20z'
   ];
-  var GROUND_COLOUR = [213, 207, 154], SHADE = [166, 161, 120];
+  var GROUND_COLOUR = [213, 207, 154];
+  // The sun-hours map's colours, as the program's drawings have them: none
+  // of the day in sun, blue; all of it, orange; khaki and yellow between.
+  var RAMP = [[0, [84, 104, 198]], [.3, [146, 164, 222]], [.55, [206, 204, 168]], [.8, [236, 222, 136]], [1, [232, 170, 72]]];
+  var SHADOW_DIM = .72;                                 // a shadow on the map: that much of the colour
+  var light = document.getElementById('light');
+  function rampAt(f) {
+    var i = 1;
+    while (i < RAMP.length - 1 && f > RAMP[i][0]) i++;
+    var a = RAMP[i - 1], b = RAMP[i];
+    return mix(a[1], b[1], Math.min(Math.max((f - a[0]) / (b[0] - a[0]), 0), 1));
+  }
   var sheetAlpha = null, sheetW = 0;                   // the birds' sheet, solid or clear a pixel
   (function () {
     var img = new Image();
@@ -189,6 +213,36 @@
     var data = mc.getImageData(0, 0, COLS, ROWS).data;
     for (i = 0; i < COLS * ROWS; i++) solid[i] = data[i * 4 + 3] > 64 ? 1 : 0;
   })();
+  function shear(sun) {
+    // The shadow's shear for this sun: a point of the picture lands on the
+    // ground at (x + s h, G + d h) for its height h above the ground, one s
+    // and d for all because the light is parallel.
+    var up = Math.max(24, GROUND - sun.y);
+    return { d: Math.min(1.2, Math.max(.1, 55 / up)), s: Math.max(-3, Math.min(3, .6 * (W / 2 - sun.x) / up)) };
+  }
+  // The sun-hours map: for each ground cell, the share of the day's arc
+  // from which the skyline does not shade it, as a colour. Worked out once.
+  var ground = new Uint8Array(COLS * (ROWS - GROUND_ROW) * 3);
+  (function () {
+    var STEPS = 48, lit = new Uint16Array(COLS * (ROWS - GROUND_ROW)), n, sun, sh, x, y, j, h, X, Y, dark, idx, c;
+    for (n = 0; n < STEPS; n++) {
+      sun = arc((n + .5) / STEPS); sh = shear(sun);
+      for (y = GROUND_ROW; y < ROWS; y++) {
+        for (x = 0; x < COLS; x++) {
+          dark = 0;
+          for (j = 0; j < 9; j++) {
+            h = ((y + (j / 3 | 0) / 3 + 1 / 6) * PX - GROUND) / sh.d; X = (x + (j % 3) / 3 + 1 / 6) * PX - sh.s * h; Y = GROUND - h;
+            if (Y >= 0 && X >= 0 && X < W && solid[Math.floor(Y / PX) * COLS + Math.floor(X / PX)]) dark++;
+          }
+          if (dark < 5) lit[(y - GROUND_ROW) * COLS + x]++;
+        }
+      }
+    }
+    for (idx = 0; idx < lit.length; idx++) {
+      c = rampAt(lit[idx] / STEPS);
+      ground[idx * 3] = c[0]; ground[idx * 3 + 1] = c[1]; ground[idx * 3 + 2] = c[2];
+    }
+  })();
   function paint(sun, hour, t) {
     var day = dayAt(hour), bands = [mix(day.glow, day.sky, 0), mix(day.glow, day.sky, 1 / 3), mix(day.glow, day.sky, 2 / 3)];
     var high = Math.sin(Math.PI * Math.min(Math.max(hour, 0), 1));          // 1 at noon, 0 at the horizon
@@ -197,8 +251,12 @@
     // The shadow: a ground cell is shaded when the skyline is solid at the
     // point the light carries onto it, (x, y) <- (x - s h, G - h) with
     // h = (y - G) / d; one s and d for all, the light being parallel.
-    var up = Math.max(24, GROUND - sun.y), d = Math.min(1.2, Math.max(.1, 55 / up));
-    var s = Math.max(-3, Math.min(3, .6 * (W / 2 - sun.x) / up)), h, X, Y, i, j, b, u, v, dark;
+    var sh = shear(sun), d = sh.d, s = sh.s, h, X, Y, i, j, b, u, v, dark, g;
+    // The birds in the hour's light: the sun's colour, dimmer as it is low.
+    var glow = day.glow, top = Math.max(glow[0], glow[1], glow[2]), warm = .6 * (1 - high), dim = .7 + .3 * high;
+    light.setAttribute('values',
+      (dim * (1 - warm + warm * glow[0] / top)) + ' 0 0 0 0  0 ' + (dim * (1 - warm + warm * glow[1] / top)) + ' 0 0 0  0 0 ' +
+      (dim * (1 - warm + warm * glow[2] / top)) + ' 0 0  0 0 0 1 0');
     for (y = 0; y < ROWS; y++) {
       for (x = 0; x < COLS; x++) {
         if (y >= GROUND_ROW) {
@@ -217,7 +275,8 @@
               }
             }
           }
-          c = dark >= 5 ? SHADE : GROUND_COLOUR;
+          g = ((y - GROUND_ROW) * COLS + x) * 3;
+          c = dark >= 5 ? [ground[g] * SHADOW_DIM, ground[g + 1] * SHADOW_DIM, ground[g + 2] * SHADOW_DIM] : [ground[g], ground[g + 1], ground[g + 2]];
         } else {
           dx = x + .5 - cx; dy = y + .5 - cy; dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < r) c = SUN_COLOUR;
@@ -413,7 +472,7 @@
     BIRDS[i].node = document.getElementById(BIRDS[i].id);
     BIRDS[i].win = BIRDS[i].node && BIRDS[i].node.querySelector('svg');
   }
-  if (!window.requestAnimationFrame || !ctx || !cellsImage || !BIRDS[0].win || !BIRDS[1].win) return;
+  if (!window.requestAnimationFrame || !ctx || !cellsImage || !light || !BIRDS[0].win || !BIRDS[1].win) return;
   sunStill.setAttribute('display', 'none');            // the plain disc stands in only without the script
   var start = window.performance && performance.now ? performance.now() : Date.now();
   BIRDS[0].act = 'rest'; BIRDS[0].flyAt = start + rand(7000, 14000); BIRDS[0].turnAt = start + rand(2500, 4000);
