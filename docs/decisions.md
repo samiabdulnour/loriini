@@ -6817,9 +6817,11 @@ the start from the skyline alone, the sun stepped through forty-eight
 positions of its arc and each cell's shadow test (D170) run for every one.
 The colours are the drawings': blue where the skyline shades a cell most
 of the day, through a pale blue and a khaki to yellow and, in the open,
-orange. The moving shadow of the hour, the birds' too, darkens the map to
-72 per cent rather than painting over it, so the day's result and the
-moment's shadow are both there. The pointer moves the sun and its shadow,
+orange. The moving shadow of the hour, the birds' too, is painted over it
+in the shade's own blue, a step deeper than the map's blue so it still
+shows where the map is blue already (first tried as a darkening of the
+map, and asked blue: *"i think the shadow should be blue in this case
+too"*). The day's result and the moment's shadow are both there. The pointer moves the sun and its shadow,
 not the map, which is the day's.
 
 **The birds in the hour's light.** Both birds are drawn through one colour

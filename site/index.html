@@ -101,8 +101,8 @@
    day's sun-hours map, as the program draws one: each cell coloured by the
    share of the day's arc from which the sun reaches it, blue where the
    skyline shades it most of the day through khaki and yellow to orange in
-   the open, worked out once from the skyline alone; the moving shadow
-   darkens it. The birds take the hour's light: the sun's own colour, dimmer
+   the open, worked out once from the skyline alone; the moving shadow is
+   the shade's blue over it, a step deeper than the map's. The birds take the hour's light: the sun's own colour, dimmer
    as the sun is lower, through one colour matrix on both. A bird that
    turns round, to look the other way or to fly off behind it, turns frame
    by frame on its feet.
@@ -134,7 +134,7 @@
   // The sun-hours map's colours, as the program's drawings have them: none
   // of the day in sun, blue; all of it, orange; khaki and yellow between.
   var RAMP = [[0, [84, 104, 198]], [.3, [146, 164, 222]], [.55, [206, 204, 168]], [.8, [236, 222, 136]], [1, [232, 170, 72]]];
-  var SHADOW_DIM = .72;                                 // a shadow on the map: that much of the colour
+  var SHADOW = [62, 80, 178];                           // the hour's shadow on the map: the shade's blue, a step deeper
   var light = document.getElementById('light');
   function rampAt(f) {
     var i = 1;
@@ -276,7 +276,7 @@
             }
           }
           g = ((y - GROUND_ROW) * COLS + x) * 3;
-          c = dark >= 5 ? [ground[g] * SHADOW_DIM, ground[g + 1] * SHADOW_DIM, ground[g + 2] * SHADOW_DIM] : [ground[g], ground[g + 1], ground[g + 2]];
+          c = dark >= 5 ? SHADOW : [ground[g], ground[g + 1], ground[g + 2]];
         } else {
           dx = x + .5 - cx; dy = y + .5 - cy; dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < r) c = SUN_COLOUR;
