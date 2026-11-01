@@ -6734,3 +6734,27 @@ wider of the traced halves on both sides.
 *What this does not change:* the sun's day and arc (D169); the other
 buildings and the roofs (D168); the take-off and landing (D166); the pages
 besides the front.
+
+### D171 — The wordmark is the logo's own pixels, not a font's
+
+Asked 1 November 2026, with the mock-up and the site side by side: *"the
+mockup and now logo is different. different L different r. the logo needs
+to be exactly the same."*
+
+D165 set the wordmark in a face, and D168 and D169 chose and adjusted the
+face until its widths and dots were the logo's. Its letters never were:
+Liberation Sans Bold has Arial's metrics and its own shapes, so the L's
+foot ran longer and the r's arm further than the logo's. No face on hand
+draws the logo's letters, and the logo was supplied as the thing to use:
+*"take this exact logo and put it in"*.
+
+So the wordmark is now made from the logo image itself. Its ink, with the
+anti-aliasing the image carries, is enlarged eight times, cut at half ink
+so every edge lands where the image's grey levels put it, and brought down
+to twice the logo's size with a box filter, which gives clean edges at
+every size the site or the tool bar shows it. The L cut to the x-height
+and the round, square and round dots are the logo's own; nothing is drawn
+over it. One file serves the site and the program, as before.
+
+*What this does not change:* where the wordmark goes and how large (D166,
+D168); the tool bar's fitting of it (D165); the front's picture (D170).
