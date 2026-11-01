@@ -6758,3 +6758,31 @@ over it. One file serves the site and the program, as before.
 
 *What this does not change:* where the wordmark goes and how large (D166,
 D168); the tool bar's fitting of it (D165); the front's picture (D170).
+
+### D172 — The build follows the wordmark and the site follows the build; the front's day is a minute
+
+Asked 1 November 2026: *"this logo needs to be updated in app as well not
+only on web. also in the animation on welcome page - the sun can go
+faster."*
+
+**The program carries the wordmark it is built with.** The tool bar reads
+`assets/loriini-wordmark.png` (D165), and D171 replaced that file; but the
+*Archicad add-on* workflow, which builds the program and the handover
+folder, ran on a push only for the add-on sources, its own file, the spec,
+the build script and the icon. The wordmark is now on that list beside the
+icon, so a change to it is a new build, and the merge of this entry's
+change to the workflow builds one with the D171 wordmark.
+
+**The site follows the build.** The *Website* workflow took the newest
+successful build when it ran, but ran only for a change to the site or by
+hand, so a new build sat on its run page until someone remembered. It now
+runs itself as well when an *Archicad add-on* run on `windows` completes
+with success, and serves that run's folder: the download is the newest
+build as soon as there is one. A failed build puts nothing up.
+
+**A day a minute.** The front's sun crossed its arc in two and a half
+minutes (D169), too slow to be seen moving on a visit. It is a minute now.
+
+*What this does not change:* what the build contains and what the page
+says of it (D167); the program's own look (D165); the rest of the front
+(D170, D171).

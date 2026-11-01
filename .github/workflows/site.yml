@@ -11,8 +11,10 @@ name: Website
 # another. The deploy is flyctl's, on Fly's own builder.
 #
 # Runs itself on a push to windows that touches the site or how it is
-# served, and from the Actions tab for anything else. Needs one repository
-# secret, FLY_API_TOKEN, a deploy token for the app:
+# served, again when an Archicad add-on build on windows completes, so the
+# download is the newest build without anyone remembering to put it up, and
+# from the Actions tab for anything else. Needs one repository secret,
+# FLY_API_TOKEN, a deploy token for the app:
 #
 #   fly tokens create deploy -a loriini-site
 #
@@ -28,6 +30,10 @@ on:
       - "deploy/site/**"
       - "scripts/site_download.py"
       - ".github/workflows/site.yml"
+  workflow_run:
+    workflows: ["Archicad add-on"]
+    types: [completed]
+    branches: [windows]
   workflow_dispatch:
     inputs:
       run_id:
@@ -48,6 +54,8 @@ permissions:
 jobs:
   deploy:
     name: Put the site up
+    # A build that failed has no new folder to serve: nothing to put up.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
