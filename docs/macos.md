@@ -20,12 +20,16 @@ program is packaged, and three things about the window.
 ## Installing it
 
 The `Archicad add-on (macOS)` workflow makes the folder: `Loriini.app` beside
-`LoriiniAddOn_AC26_Mac.bundle`, with `How to install.txt` and the licence
-terms (`site/terms.html` as text, as in the PC's folder). It
-is the `Loriini_AC26_Mac` artifact on the run's page, under the Actions tab.
-The download is a zip holding `Loriini_AC26_Mac.zip`: open both. An artifact
-flattens the links inside an application and drops its execute bit, so the
-folder travels zipped by `ditto`, which keeps them.
+one add-on per Archicad version, `LoriiniAddOn_AC26_Mac.bundle` to
+`LoriiniAddOn_AC30_Mac.bundle`, with `How to install.txt` and the licence
+terms (`site/terms.html` as text, as in the PC's folder). It is the
+`Loriini_Mac` artifact on the run's page, under the Actions tab, and the
+*Website* workflow serves the newest one from the site's download page
+beside the Windows folder (website.md, D175). From the run's page the
+download is a zip holding `Loriini_Mac.zip`: open both; from the site it is
+`Loriini_Mac.zip` itself. An artifact flattens the links inside an
+application and drops its execute bit, so the folder travels zipped by
+`ditto`, which keeps them.
 
 Then, as the install note says:
 

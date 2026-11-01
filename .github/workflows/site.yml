@@ -1,26 +1,31 @@
 name: Website
 
 # The site goes up from here (docs/website.md, "Deploying it"): the pages
-# in site/, and the current build beside them, served by nginx on Fly.
+# in site/, and the current builds beside them, served by nginx on Fly.
 #
-# The build is the Loriini_Win artifact of the newest successful Archicad
-# add-on run on windows -- or of the run named when this is started by
-# hand -- put at site/download/Loriini_Win.zip as GitHub serves it. Before
-# the deploy, scripts/site_download.py writes that file's own facts under
-# Download on the page, so the page cannot say one thing and the file
-# another. The deploy is flyctl's, on Fly's own builder.
+# The builds are the Loriini_Win artifact of the newest successful Archicad
+# add-on run on windows and the Loriini_Mac artifact of the newest
+# successful Archicad add-on (macOS) run there -- or of the runs named when
+# this is started by hand. The Windows one goes to
+# site/download/Loriini_Win.zip as GitHub serves it. The Mac one is ditto's
+# zip of the folder inside what GitHub serves, the zip that keeps the
+# program's links and execute bits, and that inner zip goes to
+# site/download/Loriini_Mac.zip. Before the deploy, scripts/site_download.py
+# writes each file's own facts in its box under Download on the page, so the
+# page cannot say one thing and a file another. The deploy is flyctl's, on
+# Fly's own builder.
 #
 # Runs itself on a push to windows that touches the site or how it is
-# served, again when an Archicad add-on build on windows completes, so the
-# download is the newest build without anyone remembering to put it up, and
-# from the Actions tab for anything else. Needs one repository secret,
-# FLY_API_TOKEN, a deploy token for the app:
+# served, again when an Archicad add-on build on windows completes, on
+# either platform, so the download is the newest build without anyone
+# remembering to put it up, and from the Actions tab for anything else.
+# Needs one repository secret, FLY_API_TOKEN, a deploy token for the app:
 #
 #   fly tokens create deploy -a loriini-site
 #
 # With LORIINI_ADMIN_TOKEN set as well (the backup workflow's), the licence
-# service is told where the download is after each deploy, so a recall's
-# notice can point there.
+# service is told where the download page is after each deploy, so a
+# recall's notice can point there.
 
 on:
   push:
@@ -31,13 +36,17 @@ on:
       - "scripts/site_download.py"
       - ".github/workflows/site.yml"
   workflow_run:
-    workflows: ["Archicad add-on"]
+    workflows: ["Archicad add-on", "Archicad add-on (macOS)"]
     types: [completed]
     branches: [windows]
   workflow_dispatch:
     inputs:
       run_id:
         description: "The Archicad add-on run whose Loriini_Win folder to serve; empty for the newest successful one on windows"
+        required: false
+        default: ""
+      mac_run_id:
+        description: "The Archicad add-on (macOS) run whose Loriini_Mac folder to serve; empty for the newest successful one on windows"
         required: false
         default: ""
 
@@ -61,36 +70,63 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch the current build
+      - name: Fetch the current builds
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.inputs.run_id }}
+          MAC_RUN_ID: ${{ github.event.inputs.mac_run_id }}
         run: |
           set -euo pipefail
-          if [ -z "$RUN_ID" ]; then
-            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow archicad-addon.yml \
-                       --branch windows --status success --json databaseId --limit 1 --jq '.[0].databaseId')
-          fi
-          if [ -z "$RUN_ID" ]; then
-            echo "::error::No successful Archicad add-on run on windows to take the build from."
-            exit 1
-          fi
-          artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" \
-                       --jq '.artifacts[] | select(.name == "Loriini_Win" and .expired == false) | .id')
-          if [ -z "$artifact" ]; then
-            echo "::error::Run $RUN_ID has no Loriini_Win artifact (expired, or the package job did not run)."
-            exit 1
-          fi
-          mkdir -p site/download
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > site/download/Loriini_Win.zip
-          echo "Build from run $RUN_ID, artifact $artifact: $(stat -c %s site/download/Loriini_Win.zip) bytes"
-          echo "run_url=https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" >> "$GITHUB_ENV"
 
-      - name: Write the build's facts on the download page
+          # The run named, or else the newest successful one of the workflow on windows.
+          run_of() {
+            if [ -n "$2" ]; then echo "$2"; return; fi
+            gh run list --repo "$GITHUB_REPOSITORY" --workflow "$1" \
+              --branch windows --status success --json databaseId --limit 1 --jq '.[0].databaseId'
+          }
+
+          # The run's artifact of that name, as GitHub serves it, into the file.
+          fetch() {
+            local workflow="$1" run="$2" name="$3" into="$4" artifact
+            if [ -z "$run" ]; then
+              echo "::error::No successful $workflow run on windows to take the build from."
+              exit 1
+            fi
+            artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts" \
+                         --jq ".artifacts[] | select(.name == \"$name\" and .expired == false) | .id")
+            if [ -z "$artifact" ]; then
+              echo "::error::Run $run has no $name artifact (expired, or the package job did not run)."
+              exit 1
+            fi
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > "$into"
+            echo "$name from run $run, artifact $artifact: $(stat -c %s "$into") bytes"
+          }
+
+          mkdir -p site/download
+
+          win_run=$(run_of archicad-addon.yml "$RUN_ID")
+          fetch "Archicad add-on" "$win_run" Loriini_Win site/download/Loriini_Win.zip
+
+          mac_run=$(run_of archicad-addon-macos.yml "$MAC_RUN_ID")
+          fetch "Archicad add-on (macOS)" "$mac_run" Loriini_Mac "$RUNNER_TEMP/Loriini_Mac.artifact.zip"
+          # What was uploaded is ditto's zip of the folder, and GitHub zips that
+          # again to serve it. The inner one is the download: it opens on a Mac
+          # to the folder itself, links and execute bits kept (docs/macos.md).
+          unzip -p "$RUNNER_TEMP/Loriini_Mac.artifact.zip" Loriini_Mac.zip > site/download/Loriini_Mac.zip
+          echo "Loriini_Mac.zip inside it: $(stat -c %s site/download/Loriini_Mac.zip) bytes"
+
+          {
+            echo "win_run_url=https://github.com/$GITHUB_REPOSITORY/actions/runs/$win_run"
+            echo "mac_run_url=https://github.com/$GITHUB_REPOSITORY/actions/runs/$mac_run"
+          } >> "$GITHUB_ENV"
+
+      - name: Write each build's facts on the download page
         run: |
           set -euo pipefail
           python3 scripts/site_download.py site/download/Loriini_Win.zip | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "Build taken from $run_url" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/site_download.py site/download/Loriini_Mac.zip | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Windows build taken from $win_run_url" >> "$GITHUB_STEP_SUMMARY"
+          echo "macOS build taken from $mac_run_url" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
@@ -105,15 +141,20 @@ jobs:
           fi
           flyctl deploy . --config deploy/site/fly.toml --dockerfile deploy/site/Dockerfile --ha=false --remote-only
 
-      - name: Check the site serves it
+      - name: Check the site serves them
         run: |
           set -euo pipefail
           sleep 10
-          size=$(curl -sS -I https://loriini.app/download/Loriini_Win.zip | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}')
-          want=$(stat -c %s site/download/Loriini_Win.zip)
-          echo "served $size bytes, deployed $want"
-          [ "$size" = "$want" ] || { echo "::error::The site serves a zip of $size bytes, not the $want deployed."; exit 1; }
+          for name in Loriini_Win.zip Loriini_Mac.zip; do
+            size=$(curl -sS -I "https://loriini.app/download/$name" | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}')
+            want=$(stat -c %s "site/download/$name")
+            echo "$name: served $size bytes, deployed $want"
+            [ "$size" = "$want" ] || { echo "::error::The site serves a $name of $size bytes, not the $want deployed."; exit 1; }
+          done
 
+      # The page rather than one platform's zip, now that there are two: a
+      # recall's notice reaches Macs and PCs alike. The Windows zip's old
+      # address, in notices already sent, still redirects (deploy/site).
       - name: Tell the licence service where the download is
         env:
           LORIINI_ADMIN_TOKEN: ${{ secrets.LORIINI_ADMIN_TOKEN }}
@@ -126,4 +167,4 @@ jobs:
           pip install --quiet uv
           uv sync --no-dev
           uv run --no-dev python scripts/licence.py set --service https://licence.loriini.app \
-            download=https://loriini.app/download/Loriini_Win.zip
+            download=https://loriini.app/download
