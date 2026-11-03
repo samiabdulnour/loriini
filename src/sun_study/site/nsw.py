@@ -37,7 +37,16 @@ from sun_study.site.arcgis import (
     query_by_point,
     rings_of,
 )
-from sun_study.site.geo import Extent, Point, ring_area, ring_centroid
+from sun_study.site.geo import (
+    Extent,
+    Point,
+    interior_point,
+    lonlat_to_mercator,
+    point_in_rings,
+    ring_area,
+    ring_centroid,
+    scale_factor,
+)
 
 __all__ = [
     "Contour",
@@ -83,22 +92,107 @@ EPI = (
 # -- cadastre and planning ---------------------------------------------------
 
 
+PROPERTY_MAX_LOTS = 40
+"""More lots than this, and a property is not taken whole as a site."""
+PROPERTY_MAX_M2 = 50_000.0
+"""More ground than this, and a property is not taken whole as a site."""
+
+
 def site_lots(points: Sequence[Point]) -> FeatureCollection:
-    """The lot under each address point, de-duplicated by lot id."""
+    """Every lot of each property an address point falls on, de-duplicated by lot id.
+
+    An address point sits on one lot, but a property is often several. 99-107
+    Riley Street, Darlinghurst is three lots under one address, its point on
+    the southern one; taking only the lot under the point left the other two
+    out, and an amalgamation of 91-93, 95-97, 99-107 and 109 fell into two
+    pieces with a gap where those two lots are. The cadastre's property layer
+    (12) gives each property's outline and how many lots it dissolves from;
+    the lots are the ones whose inside lies within that outline. The cadastre
+    has no join from lot to property, and the server's own "within" test fails
+    on edges the two layers share, so a point inside each lot is tested here.
+
+    A property of more lots or more ground than any one development site (a
+    campus, a rail corridor, a farm) keeps only the lot under the address.
+    """
     seen: set[str] = set()
     features: list[dict[str, Any]] = []
-    for point in points:
-        collection = query_by_point(f"{CADASTRE}/8", point, "lotidstring,plannumber")
-        for feature in collection["features"]:
-            identifier = str(
-                feature["properties"].get("lotidstring")
-                or ((feature.get("geometry") or {}).get("coordinates") or [[None]])[0][0]
-            )
-            if identifier in seen:
-                continue
+
+    def add(feature: dict[str, Any]) -> None:
+        identifier = str(
+            feature["properties"].get("lotidstring")
+            or ((feature.get("geometry") or {}).get("coordinates") or [[None]])[0][0]
+        )
+        if identifier not in seen:
             seen.add(identifier)
             features.append(feature)
+
+    properties: dict[str, dict[str, Any]] = {}
+    for point in points:
+        for feature in query_by_point(f"{CADASTRE}/8", point, "lotidstring,plannumber")["features"]:
+            add(feature)
+        # The lot under the point is enough to draw a site, so a failed
+        # property query costs only the rest of its lots.
+        try:
+            found = query_by_point(
+                f"{CADASTRE}/12", point, "propid,address,dissolveparcelcount,valnetlotcount"
+            )
+        except Exception:
+            continue
+        for feature in found["features"]:
+            if feature.get("geometry"):
+                key = str(feature["properties"].get("propid") or rings_of(feature["geometry"])[0])
+                properties[key] = feature
+
+    for prop in properties.values():
+        rings = rings_of(prop["geometry"])
+        if not rings:
+            continue
+        count = max(
+            _whole(prop["properties"].get("dissolveparcelcount")),
+            _whole(prop["properties"].get("valnetlotcount")),
+        )
+        if count == 1:
+            continue  # the lot under the point is the property
+        if count > PROPERTY_MAX_LOTS or _ground_m2(rings) > PROPERTY_MAX_M2:
+            continue
+        try:
+            candidates = query_by_extent(
+                f"{CADASTRE}/8", _extent_of(rings), "lotidstring,plannumber"
+            )
+        except Exception:
+            continue
+        for feature in candidates["features"]:
+            inside = interior_point(rings_of(feature.get("geometry")))
+            if inside is not None and point_in_rings(inside[0], inside[1], rings):
+                add(feature)
     return {"type": "FeatureCollection", "features": features}
+
+
+def _whole(value: Any) -> int:
+    """A count from the register, 0 where it is missing or not a number."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _extent_of(rings: Sequence[Sequence[Point]]) -> Extent:
+    """The Web Mercator window around lon/lat rings, as ``query_by_extent`` takes it."""
+    projected = [lonlat_to_mercator(lon, lat) for ring in rings for lon, lat in ring]
+    return Extent(
+        min(x for x, _ in projected),
+        min(y for _, y in projected),
+        max(x for x, _ in projected),
+        max(y for _, y in projected),
+    )
+
+
+def _ground_m2(rings: Sequence[Sequence[Point]]) -> float:
+    """Ground area of lon/lat rings, holes taken out by their winding."""
+    lat = rings[0][0][1]
+    k = scale_factor(lat)
+    total = sum(ring_area([lonlat_to_mercator(lon, la) for lon, la in ring]) for ring in rings)
+    return abs(total) / (k * k)
 
 
 def rail_corridors(extent: Extent) -> FeatureCollection:

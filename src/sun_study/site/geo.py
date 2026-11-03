@@ -34,12 +34,14 @@ __all__ = [
     "convex_hull",
     "dissolve",
     "extent_for",
+    "interior_point",
     "lonlat_to_mercator",
     "lonlat_to_mga",
     "mercator_to_lonlat",
     "mga_to_lonlat",
     "mga_zone",
     "point_in_ring",
+    "point_in_rings",
     "polyline_length",
     "ring_area",
     "ring_centroid",
@@ -371,6 +373,46 @@ def point_in_ring(x: float, y: float, ring: Sequence[Point]) -> bool:
             inside = not inside
         j = i
     return inside
+
+
+def point_in_rings(x: float, y: float, rings: Sequence[Sequence[Point]]) -> bool:
+    """Inside a polygon of several rings, by the even-odd rule.
+
+    A hole and a separate part both come out right without telling them apart.
+    """
+    inside = False
+    for ring in rings:
+        if point_in_ring(x, y, ring):
+            inside = not inside
+    return inside
+
+
+def interior_point(rings: Sequence[Sequence[Point]]) -> Point | None:
+    """A point well inside a polygon: the middle of the widest span a level line cuts.
+
+    The line is tried at mid-height first. A centroid can fall outside an
+    L-shaped lot; this cannot. ``None`` for a polygon with no area.
+    """
+    ys = [y for ring in rings for _, y in ring]
+    if not ys:
+        return None
+    low, high = min(ys), max(ys)
+    for t in (0.5, 0.37, 0.63, 0.25, 0.75):
+        y = low + (high - low) * t
+        xs: list[float] = []
+        for ring in rings:
+            for (xa, ya), (xb, yb) in zip(ring, [*ring[1:], ring[0]], strict=True):
+                if (ya > y) != (yb > y):
+                    xs.append((xb - xa) * (y - ya) / (yb - ya) + xa)
+        xs.sort()
+        best: Point | None = None
+        width = 0.0
+        for left, right in zip(xs[0::2], xs[1::2], strict=False):
+            if right - left > width:
+                width, best = right - left, ((left + right) / 2.0, y)
+        if best is not None:
+            return best
+    return None
 
 
 def polyline_length(points: Sequence[Point]) -> float:

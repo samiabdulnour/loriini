@@ -41,7 +41,7 @@ from sun_study.site.geo import (
     ring_area,
     scale_factor,
 )
-from sun_study.site.geocode import Geocode, geocode
+from sun_study.site.geocode import Geocode, geocode, site_address_of
 from sun_study.site.imagery import Aerial, aerial
 
 __all__ = [
@@ -930,7 +930,7 @@ def run_summary(
     lon, _ = mercator_to_lonlat(*found.centre)
     bundle = SummaryBundle(
         address=address,
-        site_address=found.matched[0] if found.matched else address,
+        site_address=site_address_of(found.matched) or address,
         lot_description=describe_lots(site),
         site_area_m2=lots_area_m2(site, mga_zone(lon)),
         controls=controls,
