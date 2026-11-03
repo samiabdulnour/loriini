@@ -965,14 +965,39 @@ def test_a_favourite_the_project_does_not_have_is_refused() -> None:
         draw_shadow_series(connection, series(["9AM"]), favourite="Nope")
 
 
-def test_the_adg_envelope_wears_its_own_colour_and_not_a_fourth_blue() -> None:
-    from sun_study.archicad.shadows import ADG_ENVELOPE_RGB, LEGEND, SCENARIO_RAMP, legend_colour
+def test_proposed_3_wears_its_own_colour_and_not_a_fourth_blue() -> None:
+    from sun_study.archicad.shadows import LEGEND, PROPOSED_3_RGB, SCENARIO_RAMP, legend_colour
 
-    assert legend_colour("ADG ENVELOPE") == ADG_ENVELOPE_RGB
-    assert legend_colour("adg building envelope") == ADG_ENVELOPE_RGB
-    assert ADG_ENVELOPE_RGB not in SCENARIO_RAMP
+    assert legend_colour("PROPOSED 3") == PROPOSED_3_RGB
+    assert legend_colour("proposed 3 building envelope") == PROPOSED_3_RGB
+    assert PROPOSED_3_RGB not in SCENARIO_RAMP
     shorts = [short for short, _words, _role, _rgb in LEGEND]
-    assert shorts.index("ADG ENVELOPE") == shorts.index("PROPOSED") - 1
+    assert shorts.index("PROPOSED 3") == shorts.index("PROPOSED") - 1
+
+
+def test_the_compared_rows_are_named_for_no_one_control() -> None:
+    """Proposed, Proposed 2 and Proposed 3 (D178), each its own colour, and
+    Proposed 2 in the colour a second proposal takes by position, so a stack's
+    numbered proposals never share one."""
+    from sun_study.archicad.shadows import LEGEND, SCENARIO_RAMP, legend_colour
+    from sun_study.core.shadow import SCENARIO
+
+    compared = [short for short, _words, role, _rgb in LEGEND if role == SCENARIO]
+    assert compared == ["PROPOSED 2", "PROPOSED 3", "PROPOSED"]
+    colours = [legend_colour(short) for short in compared]
+    assert len(set(colours)) == 3
+    assert legend_colour("PROPOSED 2") == SCENARIO_RAMP[1]
+    assert legend_colour("PROPOSED") == SCENARIO_RAMP[2]
+    assert legend_colour("Proposed 1") is None
+
+
+def test_the_older_names_keep_their_colours() -> None:
+    """A run that still names the TOD, SEARs or ADG envelope draws it as before."""
+    from sun_study.archicad.shadows import ADG_ENVELOPE_RGB, SCENARIO_RAMP, legend_colour
+
+    assert legend_colour("TOD") == SCENARIO_RAMP[0]
+    assert legend_colour("SEARS BUILDING ENVELOPE") == SCENARIO_RAMP[1]
+    assert legend_colour("adg building envelope") == ADG_ENVELOPE_RGB
 
 
 # -- the every-hour drawing's edges and labels (D161) -----------------------------

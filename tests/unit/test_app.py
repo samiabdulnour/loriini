@@ -3071,39 +3071,76 @@ def test_every_hour_on_one_drawing_is_asked_for_only_when_ticked(hidden_window: 
     assert flag(hidden_window.jobs()[1].args, "--shadow-all-hours-colour") == ["blue"]
 
 
-def test_the_legend_rows_are_the_legends_own_in_its_order(hidden_window: Any) -> None:
-    """Three that accumulate, then four that are compared; the short names are
-    what the drawing matches to the legend's colours."""
+def test_the_legend_rows_are_the_legends_own(hidden_window: Any) -> None:
+    """Three that accumulate, then three that are compared, Proposed first on
+    the page; the short names are what the drawing matches to the legend's
+    colours (D178)."""
     from sun_study.archicad.shadows import LEGEND
 
-    assert [(short, role) for short, role, _box in hidden_window.shadow_rows] == [
-        (short, role) for short, _words, role, _rgb in LEGEND
+    rows = [(short, role) for short, role, _box in hidden_window.shadow_rows]
+    assert [short for short, _role in rows] == [
+        "EXISTING",
+        "FUTURE",
+        "EXISTING ON SITE",
+        "PROPOSED",
+        "PROPOSED 2",
+        "PROPOSED 3",
+    ]
+    assert sorted(rows) == sorted((short, role) for short, _words, role, _rgb in LEGEND)
+
+
+def test_the_proposals_are_compared_and_proposed_is_drawn_on_top(
+    hidden_window: Any,
+) -> None:
+    """Proposed 2 and 3 are scenarios, compared rather than added. Listed
+    after Proposed on the page, they are sent before it, in the legend's
+    order, so Proposed is drawn last and lies on top."""
+    rows = {short: (role, box) for short, role, box in hidden_window.shadow_rows}
+    assert rows["PROPOSED 2"][0] == rows["PROPOSED 3"][0] == "scenario"
+
+    hidden_window.do_shadows.set(True)
+    rows["PROPOSED"][1].insert(0, "20 | Massing")
+    rows["PROPOSED 2"][1].insert(0, "20 | Massing.Option")
+    rows["PROPOSED 3"][1].insert(0, "01 | Floor.Structural")
+    job = next(job for job in hidden_window.jobs() if job.args[0] == "shadow-plans")
+
+    assert flag(job.args, "--shadow-scenario") == [
+        "PROPOSED 2=20 | Massing.Option",
+        "PROPOSED 3=01 | Floor.Structural",
+        "PROPOSED=20 | Massing",
     ]
 
 
-def test_the_adg_envelope_is_compared_like_the_proposal_and_drawn_under_it(
+def test_a_preset_with_the_older_envelope_rows_opens_in_the_proposals(
     hidden_window: Any,
 ) -> None:
-    """The proposal with room to move: a scenario, so it is compared rather
-    than added, and named just before the proposal so the proposal is drawn
-    on top and what shows of the envelope is the extra it would cost."""
-    rows = {short: (role, box) for short, role, box in hidden_window.shadow_rows}
-    shorts = [short for short, _role, _box in hidden_window.shadow_rows]
-    assert rows["ADG ENVELOPE"][0] == "scenario"
-    assert shorts.index("ADG ENVELOPE") == shorts.index("PROPOSED") - 1
+    """The TOD, SEARs and ADG envelope rows of an older preset move into
+    Proposed 2 and 3, the first two filled, and the log names a third rather
+    than dropping it unseen (D178)."""
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+    hidden_window.apply(
+        {
+            "shadow_layers_tod": "20 | Massing.TOD",
+            "shadow_layers_sears": "20 | Massing.SEARs",
+            "shadow_layers_adg envelope": "20 | Massing.ADG",
+            "shadow_layers_proposed": "20 | Massing",
+        }
+    )
+    assert rows["PROPOSED"].get() == "20 | Massing"
+    assert rows["PROPOSED 2"].get() == "20 | Massing.TOD"
+    assert rows["PROPOSED 3"].get() == "20 | Massing.SEARs"
+    assert "ADG ENVELOPE row (20 | Massing.ADG)" in hidden_window.lines[-1]
 
-    hidden_window.do_shadows.set(True)
-    rows["ADG ENVELOPE"][1].insert(0, "01 | Floor.Structural")
-    job = next(job for job in hidden_window.jobs() if job.args[0] == "shadow-plans")
-
-    assert flag(job.args, "--shadow-scenario") == ["ADG ENVELOPE=01 | Floor.Structural"]
+    # A preset of this version is read as it is.
+    hidden_window.apply({"shadow_layers_proposed 2": "", "shadow_layers_tod": "20 | Massing.TOD"})
+    assert rows["PROPOSED 2"].get() == ""
 
 
 def test_the_legend_rows_survive_a_save(hidden_window: Any) -> None:
     rows = {short: box for short, _role, box in hidden_window.shadow_rows}
-    rows["TOD"].insert(0, "01 | Floor.Structural")
+    rows["PROPOSED 2"].insert(0, "01 | Floor.Structural")
     saved = hidden_window.settings()
-    assert saved["shadow_layers_tod"] == "01 | Floor.Structural"
+    assert saved["shadow_layers_proposed 2"] == "01 | Floor.Structural"
 
 
 def test_the_shadow_study_sends_only_what_was_filled_in(hidden_window: Any) -> None:
@@ -4678,8 +4715,8 @@ def test_run_asks_for_the_design_before_the_every_hour_drawing(
     assert "Every hour on one drawing needs the design" in hidden_window.lines[-1]
     assert hidden_window._designed_row() == ""
 
-    rows["TOD"].insert(0, "20 | Massing.TOD")
-    assert hidden_window._designed_row() == "TOD"
+    rows["PROPOSED 2"].insert(0, "20 | Massing.Option")
+    assert hidden_window._designed_row() == "PROPOSED 2"
     rows["PROPOSED"].insert(0, "20 | Massing.Envelope")
     assert hidden_window._designed_row() == "PROPOSED"
     hidden_window._start()
@@ -4696,9 +4733,9 @@ def test_the_every_hour_panel_says_which_massing_it_draws(hidden_window: Any) ->
 
     rows = {short: box for short, _role, box in hidden_window.shadow_rows}
     rows["EXISTING"].insert(0, "03 | Site Context.Buildings")
-    rows["TOD"].insert(0, "20 | Massing.TOD")
+    rows["PROPOSED 2"].insert(0, "20 | Massing.Option")
     hidden_window._sync()
-    assert said.cget("text") == "TOD envelope: 20 | Massing.TOD"
+    assert said.cget("text") == "Proposed 2: 20 | Massing.Option"
 
     rows["PROPOSED"].insert(0, "20 | Massing.Envelope, 20 | Massing.Podium")
     hidden_window._sync()

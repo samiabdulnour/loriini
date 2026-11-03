@@ -95,6 +95,7 @@ __all__ = [
     "BASELINE_RAMP",
     "DEFAULT_SHEETS",
     "LEGEND",
+    "OLDER_LEGEND",
     "SCENARIO_RAMP",
     "ShadowDrawReport",
     "ShadowSheetReport",
@@ -138,12 +139,13 @@ SCENARIO_RAMP: tuple[tuple[int, int, int], ...] = (
     (156, 172, 191),
 )
 
-#: The ADG envelope's colour: a lilac, not a fourth blue. It is the proposal
-#: with room to move -- the same building a little larger -- so it is drawn
-#: just under the proposal and what shows of it is the fringe the extra room
-#: would add; in a fourth blue that fringe could not be told from the
-#: proposal's own edge.
-ADG_ENVELOPE_RGB: tuple[int, int, int] = (192, 182, 214)
+#: Proposed 3's colour: a lilac, not a fourth blue. It is drawn just under
+#: the proposal, and what shows of it is often only a fringe beside the
+#: proposal's own edge; in a fourth blue that fringe could not be told apart.
+#: It was the ADG envelope's, the proposal with room to move, before the rows
+#: took universal names (D178).
+PROPOSED_3_RGB: tuple[int, int, int] = (192, 182, 214)
+ADG_ENVELOPE_RGB = PROPOSED_3_RGB
 
 #: The office's shadow legend, row by row: the short name a run is given, the
 #: words on the sheet, whether it accumulates or is compared, and its colour.
@@ -155,21 +157,34 @@ ADG_ENVELOPE_RGB: tuple[int, int, int] = (192, 182, 214)
 #: Matched by name rather than dealt out by position, so a project that has no
 #: future context still draws its proposal in the proposal's blue. By
 #: position, leaving a row out would have shifted every later row one colour.
+#:
+#: The compared rows are named for no one control (D178): Proposed, the one
+#: being applied for, last so it is drawn on top, and Proposed 2 and 3 under
+#: it. Proposed 2 takes the middle blue, the one a second proposal takes by
+#: position, so the numbered proposals of a stack (``Proposed 1``,
+#: ``Proposed 2``) never share a colour.
 LEGEND: tuple[tuple[str, str, str, tuple[int, int, int]], ...] = (
     ("EXISTING", "EXISTING NEIGHBOURING BUILDINGS", BASELINE, BASELINE_RAMP[0]),
     ("FUTURE", "FUTURE NEIGHBOURING CONTEXT BUILDINGS", BASELINE, BASELINE_RAMP[1]),
     ("EXISTING ON SITE", "EXISTING STRUCTURES WITHIN THE SITE", BASELINE, BASELINE_RAMP[2]),
+    ("PROPOSED 2", "PROPOSED 2 BUILDING ENVELOPE", SCENARIO, SCENARIO_RAMP[1]),
+    ("PROPOSED 3", "PROPOSED 3 BUILDING ENVELOPE", SCENARIO, PROPOSED_3_RGB),
+    ("PROPOSED", "PROPOSED BUILDING ENVELOPE", SCENARIO, SCENARIO_RAMP[2]),
+)
+
+#: The rows' names before they were universal, still matched for a run that
+#: gives them -- a command line, a preset, the agent -- in their own colours.
+OLDER_LEGEND: tuple[tuple[str, str, str, tuple[int, int, int]], ...] = (
     ("TOD", "TOD BUILDING ENVELOPE", SCENARIO, SCENARIO_RAMP[0]),
     ("SEARS", "SEARS BUILDING ENVELOPE", SCENARIO, SCENARIO_RAMP[1]),
     ("ADG ENVELOPE", "ADG BUILDING ENVELOPE", SCENARIO, ADG_ENVELOPE_RGB),
-    ("PROPOSED", "PROPOSED BUILDING ENVELOPE", SCENARIO, SCENARIO_RAMP[2]),
 )
 
 
 def legend_colour(label: str) -> tuple[int, int, int] | None:
     """The legend's colour for a row named either way, or ``None``."""
     wanted = " ".join(label.split()).casefold()
-    for short, words, _role, rgb in LEGEND:
+    for short, words, _role, rgb in LEGEND + OLDER_LEGEND:
         if wanted in (short.casefold(), words.casefold()):
             return rgb
     return None
