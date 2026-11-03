@@ -6932,3 +6932,38 @@ outline (`pipeline._site_rings`), which already kept every piece; a corner
 or through site whose lots front two streets, which still cannot be typed
 as one address; the planning controls, still read at the centre of the
 address points. The same change is in the web tool (au-site-analysis#121).
+
+### D178 — The compared rows are Proposed, Proposed 2 and Proposed 3
+
+Asked 3 November 2026, of the shadow diagram's Layers and hours: *"instead
+of TOD envelope, SEARs envelope, ADG envelope. proposed. Lets name them
+Proposed, Proposed 2, Proposed 3. so we keep it universal."*
+
+**Named for no one control.** The rows being compared were named for the
+controls one job tested: a TOD envelope, a SEARs massing, an ADG envelope.
+The next job tests something else, and its rows then said the wrong thing
+on the page and on the sheet. They are now Proposed, Proposed 2 and
+Proposed 3, on the page in that order, and on the sheet as PROPOSED,
+PROPOSED 2 and PROPOSED 3 BUILDING ENVELOPE. Three rows where there were
+four: Proposed kept its name and is still the design the every-hour drawing
+outlines.
+
+**Proposed still lies on top.** The page lists Proposed first, but the rows
+are sent in the legend's order, which is the order drawn, back to front:
+Proposed 2, Proposed 3, then Proposed, in the strongest blue, over them.
+Proposed 3 takes the lilac that was the ADG envelope's, drawn just under the
+proposal. Proposed 2 takes the middle blue, which is what a second proposal
+takes by position, so a stack's own numbered proposals (`Proposed 1`,
+`Proposed 2`, from `--proposed`) never land in the same colour.
+
+**The older names still draw.** TOD, SEARS and ADG ENVELOPE stay in the
+legend's colours as `OLDER_LEGEND`, for a command line or an agent that
+still names them. A preset saved with those rows opens with the first two
+filled in Proposed 2 and Proposed 3; a third filled has no row now, and the
+log names its layers rather than dropping them unseen.
+
+*What this does not change:* the grey rows; how a row is cast (a baseline
+accumulates, a scenario is compared against every baseline and no other
+scenario); the shadow plans' `--existing` and `--proposed` route, whose
+proposals are still `Proposed 1`, `Proposed 2` and on, so a project's
+layers and combinations keep their names.

@@ -96,6 +96,7 @@ from sun_study.app import (
 )
 from sun_study.app.runner import Run
 from sun_study.archicad import naming
+from sun_study.archicad.shadows import LEGEND as SHADOW_LEGEND
 from sun_study.archicad.sheeting import cells_for, parse_sheet_mode, sheet_chunks, sheet_title
 from sun_study.cli import DEFAULT_SHADOW_HOURS
 from sun_study.core.solar import UnknownTimezoneError, resolve_timezone, solar_position
@@ -880,8 +881,13 @@ MIX_ROWS: tuple[tuple[str, str, str], ...] = (
 #: The shadow diagram's legend, one row each: the short name the run is given
 #: (and matches to the legend's colour in ``archicad.shadows.LEGEND``),
 #: whether it accumulates or is compared, and the row's label, hint and
-#: explanation on the page. The order is the legend's, which is also the order
-#: drawn, back to front.
+#: explanation on the page. Listed as a person reads them, Proposed first;
+#: sent in the legend's order, which is the order drawn, back to front, so
+#: Proposed goes last and lies on top (``_legend_args``).
+#:
+#: The compared rows are named for no one control (D178): an office tests a
+#: TOD envelope on one job, a SEARs massing or an ADG envelope on the next,
+#: and Proposed 2 and 3 hold whichever this project compares.
 SHADOW_LEGEND_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
     (
         "EXISTING",
@@ -909,42 +915,37 @@ SHADOW_LEGEND_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
         "is read against the old one.",
     ),
     (
-        "TOD",
-        "scenario",
-        "TOD envelope",
-        "The envelope the TOD controls allow.",
-        "The palest blue. A scenario: cast against every grey row and against "
-        "no other blue one, so the blues overlap on the sheet — which is the "
-        "comparison.",
-    ),
-    (
-        "SEARS",
-        "scenario",
-        "SEARs envelope",
-        "The envelope the SEARs ask to be tested.",
-        "The middle blue. Compared, not accumulated: putting this under a grey "
-        "row instead tests it against itself and reads as a much smaller "
-        "shadow.",
-    ),
-    (
-        "ADG ENVELOPE",
-        "scenario",
-        "ADG envelope",
-        "The proposal with room to move: the envelope the ADG allows the site.",
-        "A lilac, drawn just under the proposal: the scheme is compared against "
-        "it, not added to it, so what shows is the fringe of extra shadow the "
-        "room to move would cost -- the answer to 'how much bigger could it be "
-        "before the neighbours notice'. Model it on layers of its own and name "
-        "them here; left empty, the row is left off the sheet.",
-    ),
-    (
         "PROPOSED",
         "scenario",
         "Proposed",
         "Proposed building envelope.",
         "The strongest blue, drawn last so it is on top: this is the one being applied for.",
     ),
+    (
+        "PROPOSED 2",
+        "scenario",
+        "Proposed 2",
+        "A second envelope to compare, if there is one.",
+        "The middle blue. A scenario: cast against every grey row and against "
+        "no other blue one, so the proposals overlap on the sheet — which is "
+        "the comparison. Drawn under Proposed and Proposed 3. Left empty, the "
+        "row is left off the sheet.",
+    ),
+    (
+        "PROPOSED 3",
+        "scenario",
+        "Proposed 3",
+        "A third envelope to compare, if there is one.",
+        "A lilac, drawn just under Proposed, so what shows of it is the fringe "
+        "it adds beyond the proposal. Compared, not accumulated: putting this "
+        "under a grey row instead tests it against itself and reads as a much "
+        "smaller shadow. Left empty, the row is left off the sheet.",
+    ),
 )
+
+#: A preset's rows from before the names were universal, and the rows they
+#: are read into, in order: the first two filled take Proposed 2 and 3.
+OLDER_SHADOW_ROWS: tuple[str, ...] = ("TOD", "SEARS", "ADG ENVELOPE")
 
 
 def _wrap(row: tk.Misc, room: int) -> None:
@@ -7510,6 +7511,7 @@ class Window:
                 state.set(ticked)
         self._yield_from_older(saved)
         self._shadows_from_older(saved)
+        self._proposals_from_older(saved)
         opened = saved.get(self.OPEN_SECTION)
         if isinstance(opened, str):
             # A title this version does not have -- a file saved before the
@@ -7536,6 +7538,34 @@ class Window:
             self.do_shadows.set(True)
         if saved.get("study_shadows") is True and saved.get("shadow_all_hours") is True:
             self.do_shadow_hours.set(True)
+
+    def _proposals_from_older(self, saved: Mapping[str, str | bool]) -> None:
+        """A preset saved while the compared rows were the TOD, SEARs and ADG
+        envelopes, read as what it meant (D178).
+
+        Their layers move into Proposed 2 and Proposed 3, the first two
+        filled in the order the rows stood; Proposed kept its name and is
+        restored as it was. A third filled row has nowhere to go, and the log
+        names its layers rather than dropping them unseen. A preset that knows
+        the new rows is this version's, and is left alone.
+        """
+        if any(f"shadow_layers_{short.lower()}" in saved for short in ("PROPOSED 2", "PROPOSED 3")):
+            return
+        older = [
+            (short, value.strip())
+            for short in OLDER_SHADOW_ROWS
+            if isinstance(value := saved.get(f"shadow_layers_{short.lower()}"), str)
+            and value.strip()
+        ]
+        boxes = {short: box for short, _role, box in self.shadow_rows}
+        for (_short, layers), target in zip(older, ("PROPOSED 2", "PROPOSED 3"), strict=False):
+            boxes[target].delete(0, "end")
+            boxes[target].insert(0, layers)
+        for short, layers in older[2:]:
+            self._write(
+                f"The preset's {short} row ({layers}) has no row now: Proposed 2 and "
+                "Proposed 3 hold its first two. Choose its layers again to draw it."
+            )
 
     def _yield_from_older(self, saved: Mapping[str, str | bool]) -> None:
         """A preset saved before the Slabs and Renovation rows, read as what
@@ -8979,7 +9009,11 @@ class Window:
         so one legend is chosen once for both.
         """
         args: list[str] = []
-        for short, role, box in self.shadow_rows:
+        drawn = [short for short, _words, _role, _rgb in SHADOW_LEGEND]
+        for short, role, box in sorted(
+            self.shadow_rows,
+            key=lambda row: drawn.index(row[0]) if row[0] in drawn else len(drawn),
+        ):
             layers = self._listed(box)
             if layers:
                 flag = "--shadow-source" if role == "baseline" else "--shadow-scenario"

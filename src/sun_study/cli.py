@@ -180,6 +180,9 @@ from sun_study.archicad.shadows import (
 from sun_study.archicad.shadows import (
     LEGEND as SHADOW_LEGEND,
 )
+from sun_study.archicad.shadows import (
+    OLDER_LEGEND as OLDER_SHADOW_LEGEND,
+)
 from sun_study.archicad.sheeting import (
     SHEETS_HELP,
     cells_for,
@@ -8366,8 +8369,9 @@ def _legend_pens(
 
     The ones given win; the rest are the nearest pens in ``pens`` to the
     row's colour, one to a row, as the shadow diagram's rows are matched: a
-    row the legend knows by name -- EXISTING, FUTURE, TOD, SEARS, PROPOSED,
-    in its short words or its sheet words -- takes the legend's colour, and
+    row the legend knows by name -- EXISTING, FUTURE, PROPOSED, PROPOSED 2,
+    PROPOSED 3 or an older name such as TOD, in its short words or its sheet
+    words -- takes the legend's colour, and
     any other row takes the next grey for a source or the next blue for a
     scenario.
     """
@@ -8397,7 +8401,7 @@ def _legend_pens(
 def _legend_words(label: str) -> str:
     """The legend's own words for a row named either way, or the row's name."""
     tidy = " ".join(label.split()).casefold()
-    for short, words, _role, _rgb in SHADOW_LEGEND:
+    for short, words, _role, _rgb in SHADOW_LEGEND + OLDER_SHADOW_LEGEND:
         if tidy in (short.casefold(), words.casefold()):
             return words
     return label.upper()

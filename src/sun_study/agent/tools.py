@@ -353,8 +353,9 @@ class ShadowPlanArguments(SheetedArguments):
         default_factory=dict,
         description=(
             "With sources: each proposal, cast against every source and no other "
-            "scenario, the row's short name to its layers, e.g. {'TOD': ['20 | Massing.TOD'], "
-            "'PROPOSED': ['20 | Massing']}. The last named lies over the earlier ones."
+            "scenario, the row's short name to its layers, e.g. {'PROPOSED 2': "
+            "['20 | Massing.Option'], 'PROPOSED': ['20 | Massing']}. The last named lies "
+            "over the earlier ones."
         ),
     )
     existing: list[str] | None = Field(
