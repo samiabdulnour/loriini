@@ -6896,3 +6896,39 @@ the page rather than the system.
 *What this does not change:* the colours themselves (D166 onwards); the
 front's picture, which never had a dark version; the program's window,
 which has one appearance of its own (app/theme.py).
+
+### D177 — A site is every lot of the properties its addresses name
+
+Asked 3 November 2026, of an amalgamation of 91-93, 95-97, 99-107 and 109
+Riley Street, Darlinghurst: *"I tried multiple sites connected, but it does
+not work"*, with the four properties outlined as the site.
+
+**A property, not the lot under its point.** An address point sits on one
+lot, and the site was the lots under the points. 99-107 is three lots under
+one address, its point on the southern one, so the other two were left out
+and the amalgamation fell into two pieces with a gap between 95-97 and
+99-107. `nsw.site_lots` now reads each address's property from the
+cadastre's property layer (12) and takes every lot with a point inside its
+outline (`geo.interior_point`, `geo.point_in_rings`). The cadastre has no
+join from lot to property, and the server's own "within" test returns
+nothing on the edges the two layers share, so the test runs here. A
+property of more than 40 lots or 5 ha, a campus or a corridor rather than a
+site, keeps only the lot under the address. A failed property query costs
+the rest of its lots, never the site.
+
+**Named by every address.** An amalgamation's title is all its addresses in
+street order, `91-93, 95-97, 99-107, 109 RILEY STREET DARLINGHURST`
+(`geocode.site_address_of`), not whichever the register returned first; on
+the site analysis's frame and in the development summary.
+
+**A range found is not asked again.** The geocoder's second stage asked
+for every number of a range, eight at most, though "91-107" is filed as
+91-93, 95-97 and 99-107: three lookups find all nine. It now skips a
+number a range already found covers, so a long range is found in fewer
+lookups and reaches further.
+
+*What this does not change:* how the lots are dissolved into the site's
+outline (`pipeline._site_rings`), which already kept every piece; a corner
+or through site whose lots front two streets, which still cannot be typed
+as one address; the planning controls, still read at the centre of the
+address points. The same change is in the web tool (au-site-analysis#121).

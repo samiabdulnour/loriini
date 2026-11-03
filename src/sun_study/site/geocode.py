@@ -17,6 +17,7 @@ wildcard is a full scan (31 s).
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
@@ -31,6 +32,7 @@ __all__ = [
     "expand_numbers",
     "geocode",
     "parse_address",
+    "site_address_of",
     "suggest",
 ]
 
@@ -262,8 +264,17 @@ def geocode(text: str) -> Geocode:
         return [n for n in wanted if not any(covers(c.house_number, n) for c in found.values())]
 
     # Stage B: ranged parents and suffixed numbers whose address starts with
-    # the wanted number. One query per number, never an OR.
-    for number in outstanding()[:8]:
+    # the wanted number. One query per number, never an OR. A number a range
+    # found earlier already covers is not asked again: "91-107 Riley St" is
+    # filed as 91-93, 95-97 and 99-107, so three numbers find all nine, and
+    # the eight a lookup may ask reach further along a long range.
+    asked = 0
+    for number in wanted:
+        if asked >= 8:
+            break
+        if number not in outstanding():
+            continue
+        asked += 1
         for anchor in _anchors(number):
             pool = _candidates(
                 f"address LIKE '{_sql(anchor)}' AND address LIKE '%{_sql(tail)}'"
@@ -339,6 +350,47 @@ def geocode(text: str) -> Geocode:
         sum(p[1] for p in points) / len(points),
     )
     return Geocode(points=points, centre=centre, matched=tuple(found), query=text)
+
+
+_NUMBER = re.compile(r"\d+[A-Z]?(?:-\d+[A-Z]?)?")
+
+
+def site_address_of(matched: Sequence[str]) -> str | None:
+    """The site's address as a sheet names it.
+
+    One address is itself. Several on one street, an amalgamation, are their
+    numbers in street order before the street they share -- "91-93, 95-97,
+    99-107, 109 RILEY STREET DARLINGHURST" -- not whichever the register
+    returned first; on different streets, each in full. ``None`` when nothing
+    matched.
+    """
+    every = list(dict.fromkeys(a for a in matched if a))
+    if len(every) <= 1:
+        return every[0] if every else None
+
+    def split(address: str) -> tuple[list[str], str]:
+        # The register writes a list with commas ("134, 136, 136A, 138 ..."),
+        # so a number is the last of its list where no comma follows: "7 7
+        # HILLS ROAD" is number 7 of 7 Hills Road, not numbers 7 and 7.
+        tokens = address.split(" ")
+        i = 0
+        while i < len(tokens) - 1 and tokens[i].endswith(",") and _NUMBER.fullmatch(tokens[i][:-1]):
+            i += 1
+        if i < len(tokens) - 1 and _NUMBER.fullmatch(tokens[i]):
+            i += 1
+        return [t.rstrip(",") for t in tokens[:i]], " ".join(tokens[i:])
+
+    def first(address: str) -> int:
+        lead = re.match(r"\d+", address)
+        return int(lead.group(0)) if lead else 0
+
+    parts = sorted(
+        (split(a) for a in every), key=lambda p: (first(p[0][0]) if p[0] else 0, ",".join(p[0]))
+    )
+    if all(numbers and rest == parts[0][1] for numbers, rest in parts):
+        numbers = list(dict.fromkeys(n for ns, _ in parts for n in ns))
+        return f"{', '.join(numbers)} {parts[0][1]}"
+    return "; ".join(sorted(every, key=first))
 
 
 def suggest(text: str, limit: int = 8) -> list[str]:

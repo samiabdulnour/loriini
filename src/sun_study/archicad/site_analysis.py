@@ -95,6 +95,7 @@ from sun_study.site.geo import (
     ring_area,
     ring_centroid,
 )
+from sun_study.site.geocode import site_address_of
 from sun_study.site.ground import Ground
 from sun_study.site.imagery import toned
 from sun_study.site.pipeline import (
@@ -1454,7 +1455,7 @@ def _furniture_of_sheet(
     left = min(x for x, _ in corners)
     drawing.text(
         "Frame",
-        f"{title}   1:{bundle.scale:g}   {bundle.matched[0] if bundle.matched else bundle.address}",
+        f"{title}   1:{bundle.scale:g}   {site_address_of(bundle.matched) or bundle.address}",
         (left, top + drawing.mm(8)),
         height_mm=TITLE_MM,
         justification="Left",
