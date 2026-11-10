@@ -71,13 +71,16 @@ from sun_study.archicad.sheets import LEGEND_COLUMN_MM, TITLE_BLOCK_MM
 from sun_study.archicad.site_analysis import attribute_index, ensure_worksheet
 from sun_study.archicad.sun_eyes import sheet_cells_for
 from sun_study.archicad.views import StoreyView, three_d_sources, views_for_sources
+from sun_study.core.shadow import ShadowInstant, ShadowSeries
 
 __all__ = [
     "FLAT_LABEL",
+    "EveryHour",
     "FlatReport",
     "FlatRow",
     "draw_flat_worksheet",
     "drawable",
+    "every_hour_series",
     "make_base_document",
     "make_flat_sheets",
     "merged",
@@ -130,8 +133,9 @@ JOIN_M = 1.5
 REACH_MARGIN_M = 2.0
 #: What the rows under the designed one are outlined in, nearest the
 #: designed row first: the office's magenta for the envelope it is compared
-#: with, then an orange and a green.
-OTHER_OUTLINES: tuple[tuple[int, int, int], ...] = ((214, 0, 170), (230, 120, 0), (0, 150, 80))
+#: with, then a soft orange -- a strong one took the eye from the
+#: proposal's own blue -- and a green.
+OTHER_OUTLINES: tuple[tuple[int, int, int], ...] = ((214, 0, 170), (200, 140, 90), (0, 150, 80))
 #: An outline is a line to be read at 1:500 and smaller, not a survey.
 OUTLINE_SIMPLIFY_M = 0.15
 #: The gap between one hour's plan and the next in the worksheet, as a share
@@ -193,7 +197,77 @@ class FlatReport:
         return "\n".join(lines)
 
 
+@dataclass(frozen=True)
+class EveryHour:
+    """The every-hour drawing asked of a run of the documents: the designed
+    row's own shadow at every hour, as fills on the floor plan.
+
+    ``only`` makes that drawing and no diagram; ``colour`` is red or blue;
+    ``storey`` is the storey whose plan it is drawn on.
+    """
+
+    only: bool = False
+    colour: str = "red"
+    storey: int = 0
+
+
 # -- geometry: nothing here asks Archicad anything ---------------------------
+
+
+def every_hour_series(
+    label: str,
+    plans: Sequence[Any],
+    alone: Mapping[tuple[str, dt.datetime], BaseGeometry],
+) -> ShadowSeries:
+    """The designed row's own shadow at every hour, as the series the
+    every-hour drawing is drawn from (``shadows.draw_shadow_series``).
+
+    The drawing was Loriini's own cast of the massing; this is the same
+    drawing from Archicad's shadow, read out of the documents that show the
+    row alone -- one outline an hour, in project metres. ``plans`` are the
+    hours (``when`` and ``label``). Each hour's shadow runs from the
+    building, which is the ground every hour's shadow covers, towards the
+    middle of that hour's shadow; that way is where the hour is written, at
+    the shadow's tip.
+    """
+    shadows = {plan.when: own_shadow(alone.get((label, plan.when), Polygon())) for plan in plans}
+    common: BaseGeometry = Polygon()
+    for shadow in shadows.values():
+        if shadow.is_empty:
+            continue
+        common = shadow if common.is_empty else common.intersection(shadow)
+    instants: list[ShadowInstant] = []
+    for plan in plans:
+        shadow = shadows[plan.when]
+        runs: tuple[float, float] | None = None
+        if not shadow.is_empty and not common.is_empty:
+            dx = shadow.centroid.x - common.centroid.x
+            dy = shadow.centroid.y - common.centroid.y
+            far = (dx * dx + dy * dy) ** 0.5
+            if far > 0.5:
+                runs = (dx / far, dy / far)
+        rings = tuple(
+            tuple((float(x), float(y)) for x, y in ring) for ring in outline_rings(shadow)
+        )
+        instants.append(
+            ShadowInstant(
+                moment=plan.when,
+                label=plan.label,
+                regions={},
+                areas_m2={label: float(shadow.area)},
+                below_horizon=False,
+                outlines={label: rings},
+                shadow_direction=runs,
+            )
+        )
+    return ShadowSeries(
+        instants=tuple(instants),
+        sources=(),
+        spacing_m=0.0,
+        datum_m=0.0,
+        sample_count=0,
+        permanently_dark_share=0.0,
+    )
 
 
 def shadow_pieces(

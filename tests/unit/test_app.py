@@ -3006,7 +3006,8 @@ def test_a_chosen_band_becomes_the_two_storey_flags(hidden_window: Any) -> None:
 def test_the_shadow_study_sends_one_flag_per_legend_row_by_layer(hidden_window: Any) -> None:
     """Layers out of the open project, one legend row each, and the native
     model rather than an IFC or a folder of published views (D113). The
-    every-hour drawing, which Loriini casts, takes the ground as well."""
+    every-hour drawing of a named design is read out of 3D Documents, so it
+    is the documents' command that takes the rows."""
     rows = {short: box for short, _role, box in hidden_window.shadow_rows}
     hidden_window.do_facade.set(False)
     hidden_window.do_shadow_hours.set(True)
@@ -3016,13 +3017,12 @@ def test_the_shadow_study_sends_one_flag_per_legend_row_by_layer(hidden_window: 
 
     (job,) = hidden_window.jobs()
 
-    assert job.args[0] == "shadows"
+    assert job.args[0] == "shadow-plans"
+    assert "--every-hour-only" in job.args
     assert flag(job.args, "--shadow-source") == [
         "EXISTING=01 | Wall.External,01 | Floor.Structural"
     ]
     assert flag(job.args, "--shadow-scenario") == ["PROPOSED=06 | Zone.Units"]
-    assert flag(job.args, "--shadow-terrain") == ["05 | Dims/Notes.DA"]
-    assert flag(job.args, "--export") == ["native"]
     assert "--shadow-from-views" not in job.args
     assert "--shadow-favourite" not in job.args
 
@@ -4622,7 +4622,7 @@ def test_run_asks_for_the_shadow_diagrams_combination_rather_than_guessing_one(
     hidden_window._start()
 
     assert started == [], "nothing was run"
-    assert "The shadow diagram needs a layer combination" in hidden_window.lines[-1]
+    assert "The shadow documents need a layer combination" in hidden_window.lines[-1]
 
     hidden_window.shadow_plan_combination.set("01 | Plans - DA")
     hidden_window._start()
@@ -4660,10 +4660,9 @@ def test_the_shadow_diagram_stacks_its_legend_rows(
 def test_the_every_hour_drawing_is_one_sheet_a_day_from_the_same_legend(
     hidden_window: Any,
 ) -> None:
-    """Loriini's fills, kept for the design's every hour on one drawing
-    (D144): the legend's rows say what the design is and what it lands on,
-    the ground and the storey are its own, and a day is one sheet fitted to
-    its shadows, not a sheet per hour."""
+    """The design's every hour on one drawing (D144), read out of 3D
+    Documents of the design alone: the legend's rows say what the design is,
+    and a day is one sheet fitted to its shadows, not a sheet per hour."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
     hidden_window.do_shadow_hours.set(True)
@@ -4677,13 +4676,11 @@ def test_the_every_hour_drawing_is_one_sheet_a_day_from_the_same_legend(
     (job,) = hidden_window.jobs()
 
     assert job.label == window.SHADOW_HOURS_JOB
-    assert job.args[0] == "shadows"
-    assert "--shadow-all-hours-only" in job.args
+    assert job.args[0] == "shadow-plans"
+    assert "--every-hour-only" in job.args
     assert flag(job.args, "--shadow-source") == ["EXISTING=03 | Site Context.Buildings"]
     assert flag(job.args, "--shadow-scenario") == ["PROPOSED=20 | Massing.Envelope"]
-    assert flag(job.args, "--shadow-terrain") == ["03 | Site Context.Terrain"]
     assert flag(job.args, "--shadow-date") == ["06-21,12-21"]
-    assert "--layer-combination" not in job.args, "the documents' combination is theirs"
 
     sheets = hidden_window.planned()
     assert [(sheet.study, sheet.day, sheet.scale) for sheet in sheets] == [
@@ -4719,6 +4716,11 @@ def test_run_asks_for_the_design_before_the_every_hour_drawing(
     assert hidden_window._designed_row() == "PROPOSED 2"
     rows["PROPOSED"].insert(0, "20 | Massing.Envelope")
     assert hidden_window._designed_row() == "PROPOSED"
+    # Its documents are pinned to a layer combination, asked for like the diagram's.
+    hidden_window._start()
+    assert started == []
+    assert "need a layer combination" in hidden_window.lines[-1]
+    hidden_window.shadow_plan_combination.set("Shadow Diagrams")
     hidden_window._start()
     assert started == ["run"]
 
@@ -5184,3 +5186,39 @@ def test_a_preset_saved_before_the_slabs_row_opens_as_what_it_meant(hidden_windo
     assert made.yield_slabs.get() == "A layer per use"
     made.apply({"yield_slabs": "Every slab showing", "yield_massing_layers": "x"})
     assert made.yield_slabs.get() == "Every slab showing", "a saved answer is kept as it is"
+
+
+def test_the_shadow_diagram_is_drawn_as_worksheet_fills_unless_live_documents_is_picked(
+    hidden_window: Any,
+) -> None:
+    hidden_window.do_facade.set(False)
+    hidden_window.do_shadows.set(True)
+    # No legend rows: the plain set, which has one route.
+    if not hidden_window._legend_args():
+        (job,) = hidden_window.jobs()
+        assert "--flat" not in job.args
+    hidden_window._legend_args = lambda: ["--shadow-scenario", "PROPOSED=Massing"]
+    assert hidden_window.shadow_plan_route.get() == "Worksheet fills"
+    (job,) = hidden_window.jobs()
+    assert "--flat" in job.args
+    hidden_window.shadow_plan_route.set("Live 3D Documents")
+    (job,) = hidden_window.jobs()
+    assert "--flat" not in job.args
+
+
+def test_every_hour_is_read_out_of_the_documents_when_the_legend_names_a_design(
+    hidden_window: Any,
+) -> None:
+    hidden_window.do_facade.set(False)
+    hidden_window._legend_args = lambda: ["--shadow-scenario", "PROPOSED=Massing"]
+    hidden_window.do_shadows.set(False)
+    hidden_window.do_shadow_hours.set(True)
+    (job,) = hidden_window.jobs()
+    assert job.label == window.SHADOW_HOURS_JOB
+    assert job.args[0] == "shadow-plans"
+    assert "--every-hour-only" in job.args
+    # With the diagram ticked it rides on the diagram's run.
+    hidden_window.do_shadows.set(True)
+    (job,) = hidden_window.jobs()
+    assert job.label == window.SHADOW_JOB
+    assert "--every-hour" in job.args and "--every-hour-only" not in job.args

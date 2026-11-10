@@ -183,3 +183,22 @@ def test_the_smaller_own_shadow_is_put_over_the_larger() -> None:
     assert seen["PROPOSED"].area == 100.0
     # Already the smaller on top: left as it is.
     assert smaller_above(ordered, {"LEP": 120.0, "PROPOSED": 220.0}) == ordered
+
+
+def test_every_hour_series_carries_one_outline_an_hour_and_the_way_it_runs() -> None:
+    import datetime as dt
+    from types import SimpleNamespace
+
+    from shapely.geometry import box
+
+    from sun_study.archicad.shadow_flat import every_hour_series
+
+    nine = dt.datetime(2026, 6, 21, 9)
+    noon = dt.datetime(2026, 6, 21, 12)
+    plans = [SimpleNamespace(when=nine, label="9AM"), SimpleNamespace(when=noon, label="12PM")]
+    alone = {("PROPOSED", nine): box(-60, 0, 10, 10), ("PROPOSED", noon): box(0, 0, 10, 40)}
+    series = every_hour_series("PROPOSED", plans, alone)
+    first, second = series.instants
+    assert first.label == "9AM" and len(first.outlines["PROPOSED"]) == 1
+    assert first.shadow_direction is not None and first.shadow_direction[0] < -0.9
+    assert second.shadow_direction is not None and second.shadow_direction[1] > 0.9

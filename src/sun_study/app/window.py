@@ -5200,6 +5200,24 @@ class Window:
             "drawing, each in its colour, with Archicad's own shadows.",
         )
         row += 1
+        #: The two routes from the documents to the sheet. Either way the
+        #: 3D Documents cast the shadows; what differs is what the sheet holds.
+        self.shadow_plan_route, row = self._tiles(
+            frame,
+            row,
+            "Drawn as",
+            "Worksheet fills: fast, redrawn by running again. Live documents: slow, "
+            "but they update themselves.",
+            "Both routes make a 3D Document per legend row and hour, and Archicad casts "
+            "every shadow. Worksheet fills reads the shadows out of the documents and "
+            "draws them as plain fills in one worksheet per day, which the sheet shows: "
+            "it opens at once, a row that might be built gets a dashed outline of its "
+            "whole shadow, and it changes only when the study is run again. Live "
+            "documents stacks the documents themselves in every cell of the sheet: they "
+            "follow the model on their own, and seven hours of four rows is twenty-eight "
+            "live drawings on one layout, which a large project may not open. Worksheet "
+            "fills needs legend rows; without them the plain set is drawn either way.",
+        )
         self.shadow_plan_combination, row = self._combo(
             frame,
             row,
@@ -5271,14 +5289,17 @@ class Window:
             box,
             "The design's massing -- the Proposed row above -- at every hour "
             "ticked above, on one plan: each hour a fill labelled by its hour, "
-            "with its own view and a sheet per day. Cast by Loriini and imported "
-            "as fills, because a 3D Document is one hour.",
+            "with its own view and a sheet per day. Archicad casts each hour in a "
+            "3D Document of the design alone, and Loriini copies the shadow onto "
+            "the plan as a fill. With no layers chosen for the legend rows, "
+            "Loriini casts it itself.",
         )
         row += 1
         self._caption(
             frame,
             row,
-            "The design's massing at every hour above, imported as fills into one drawing.",
+            "The design's massing at every hour above: Archicad's shadows, copied as "
+            "fills into one drawing.",
         )
         row += 1
         name = ttk.Label(frame, text="Massing", anchor="e")
@@ -7497,6 +7518,7 @@ class Window:
             "shadow_storey": self.shadow_storey,
             "shadow_study_subset": self.shadow_study_subset,
             "shadow_plan_combination": self.shadow_plan_combination,
+            "shadow_plan_route": self.shadow_plan_route,
             "shadow_plan_label": self.shadow_plan_label,
             "shadow_plan_pen_set": self.shadow_plan_pen_set,
             "shadow_plan_pen": self.shadow_plan_pen,
@@ -8252,6 +8274,10 @@ class Window:
             "A layer per use": "Layer per use",
             "A layer per option": "Layer per option",
         },
+        "Drawn as": {
+            "Worksheet fills": "Worksheet fills",
+            "Live 3D Documents": "Live documents",
+        },
         "Renovation": {
             "Any status": "Any",
             "New only": "New only",
@@ -8445,6 +8471,20 @@ class Window:
                 "A layer per option",
                 "site",
                 "Layer per option: each layer one whole option, a sheet and a workbook page each.",
+            ),
+        ),
+        "Drawn as": (
+            (
+                "Worksheet fills",
+                "site",
+                "Worksheet fills: the documents' shadows read out and drawn as fills in a "
+                "worksheet. Fast; run again to update.",
+            ),
+            (
+                "Live 3D Documents",
+                "site",
+                "Live documents: the documents themselves stacked on the sheet. They "
+                "update themselves, and are slow.",
             ),
         ),
         "Renovation": (
@@ -9372,7 +9412,16 @@ class Window:
                     )
                 )
 
-        if self.do_shadows.get():
+        # The every-hour drawing is read out of the documents too, when the
+        # legend names a design: Archicad's shadow of it, copied onto the
+        # plan as fills. With the diagram ticked it rides on the diagram's
+        # run, whose documents it shares; alone, the same command makes it
+        # and nothing else. Without legend rows there is no document of the
+        # design to read, and Loriini's own cast draws it as it always has.
+        hours_from_documents = (
+            self.do_shadow_hours.get() and "--shadow-scenario" in self._legend_args()
+        )
+        if self.do_shadows.get() or hours_from_documents:
             # The shadow diagram: the documents, on the diagram's own days
             # and hours (D144).
             args = [
@@ -9390,6 +9439,17 @@ class Window:
             # plain set and are not sent with them.
             legend = self._legend_args()
             args += legend
+            # The worksheet route is the stacked one drawn flat, so it is
+            # asked for only with legend rows; live documents is the
+            # command's own default and sends nothing.
+            if legend and self.shadow_plan_route.get() != "Live 3D Documents":
+                args += ["--flat"]
+            if hours_from_documents:
+                args += ["--every-hour" if self.do_shadows.get() else "--every-hour-only"]
+                if self.shadow_hours_colour.get():
+                    args += ["--every-hour-colour", self.shadow_hours_colour.get()]
+                if self._shadow_storey_index():
+                    args += ["--every-hour-storey", self._shadow_storey_index()]
             plain_only = ("--label", "--shadow-pen")
             for flag, field in (
                 ("--shadow-hour", self.shadow_hours),
@@ -9404,9 +9464,9 @@ class Window:
                     args += [flag, field.get().strip()]
             args += ["--year", self.year.get().strip() or "2024"]
             args += self._sheet_args()
-            made.append(Job(SHADOW_JOB, args))
+            made.append(Job(SHADOW_JOB if self.do_shadows.get() else SHADOW_HOURS_JOB, args))
 
-        if self.do_shadow_hours.get():
+        if self.do_shadow_hours.get() and not hours_from_documents:
             # The design's every hour on one drawing, cast by Loriini and
             # drawn as fills, and nothing else: no fill, view or sheet per
             # hour, which the documents above draw (D144, D160). The same
@@ -9688,12 +9748,18 @@ class Window:
             return
         if any(tick.get() for _name, tick, _section in self._studies()) and not self._have_master():
             return
-        if self.do_shadows.get() and not self.shadow_plan_combination.get().strip():
+        # The every-hour drawing of a named design is read out of documents
+        # too, and they are pinned to the same combination.
+        documents = self.do_shadows.get() or (
+            self.do_shadow_hours.get() and "--shadow-scenario" in self._legend_args()
+        )
+        if documents and not self.shadow_plan_combination.get().strip():
             # No office combination to fall back on (D156): the documents are
             # pinned to this one, so it is asked for rather than guessed.
             self._write(
-                "The shadow diagram needs a layer combination: pick the one with "
-                "the buildings and the ground under them, in its Layers row."
+                "The shadow documents need a layer combination: pick the one with "
+                "the buildings and the ground under them, in the Shadow diagram's "
+                "Layers row."
             )
             return
         if self.do_shadow_hours.get() and not self._designed_row():

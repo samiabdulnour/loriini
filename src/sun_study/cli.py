@@ -8049,6 +8049,36 @@ def shadow_plan_documents(
             ),
         ),
     ] = None,
+    every_hour: Annotated[
+        bool,
+        typer.Option(
+            "--every-hour",
+            help=(
+                "Also draw the designed row's own shadow at every hour on one plan: "
+                "Archicad's shadow, read out of documents that show the row alone, each "
+                "hour a dotted fill labelled with its hour at its tip, on the floor plan, "
+                "with its view and a sheet a day. The designed row is the last "
+                "--shadow-scenario."
+            ),
+        ),
+    ] = False,
+    every_hour_only: Annotated[
+        bool,
+        typer.Option(
+            "--every-hour-only",
+            help="Draw the every-hour drawing and no diagram: no sheet of hours.",
+        ),
+    ] = False,
+    every_hour_colour: Annotated[
+        str,
+        typer.Option("--every-hour-colour", help="The every-hour drawing's colour: red or blue."),
+    ] = "red",
+    every_hour_storey: Annotated[
+        int,
+        typer.Option(
+            "--every-hour-storey", help="The storey whose plan the every-hour drawing is on."
+        ),
+    ] = 0,
     flat: Annotated[
         bool,
         typer.Option(
@@ -8273,8 +8303,19 @@ def shadow_plan_documents(
             flat=flat,
             filters=_row_filters(scenario_filter or [], legend),
             hatches=_row_filters(scenario_fill or [], legend, flag="--scenario-fill", what="FILL"),
+            every_hour=shadow_flat.EveryHour(
+                only=every_hour_only, colour=every_hour_colour, storey=every_hour_storey
+            )
+            if every_hour or every_hour_only
+            else None,
         )
         return
+    if every_hour or every_hour_only:
+        typer.secho(
+            "  --every-hour draws the designed row's shadow, and no legend row is named: "
+            "name the design with --shadow-scenario. Not drawn.",
+            fg=typer.colors.YELLOW,
+        )
     if wanted:
         pinned = ensure_layer_combination(
             connection,
@@ -8566,6 +8607,7 @@ def _stacked_shadow_plans(
     flat: bool = False,
     filters: Mapping[str, str] | None = None,
     hatches: Mapping[str, str] | None = None,
+    every_hour: shadow_flat.EveryHour | None = None,
 ) -> None:
     """The stacked mode of ``shadow-plans``: every legend row in one drawing.
 
@@ -8634,6 +8676,22 @@ def _stacked_shadow_plans(
     ]
     for label, guid in (filters or {}).items():
         typer.echo(f"  {label}: seen under the renovation filter {guid}")
+    designed = next((row.label for row in reversed(legend) if row.role == SCENARIO), None)
+    if every_hour is not None and designed is None:
+        typer.secho(
+            "  --every-hour draws the designed row's own shadow, and no row here might be "
+            "built: name it with --shadow-scenario. Not drawn.",
+            fg=typer.colors.YELLOW,
+        )
+        if every_hour.only:
+            raise typer.Exit(code=2)
+        every_hour = None
+    only_hours = every_hour is not None and every_hour.only
+    if only_hours:
+        # The drawing is the designed row's alone: its set with what stands
+        # is still made, for the window and the documents' settings, and no
+        # other row's.
+        members = [member for member in members if member.label == designed]
     fitted, window, master_layout = _plan_fit(
         connection,
         plans,
@@ -8692,13 +8750,21 @@ def _stacked_shadow_plans(
                 "polyline",
                 fg=typer.colors.YELLOW,
             )
-    if layout and flat and window is None:
+    if only_hours and window is None:
+        typer.secho(
+            "  the every-hour drawing needs the window of the plan, which could not be "
+            "measured. Not drawn.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if layout and flat and window is None and not only_hours:
         typer.secho(
             "  --flat needs the window of the plan, which could not be measured; the "
             "documents are stacked on the sheets instead",
             fg=typer.colors.YELLOW,
         )
-    if layout and flat and window is not None:
+    if (only_hours or (layout and flat)) and window is not None:
         _flat_shadow_plans(
             connection,
             plans,
@@ -8720,9 +8786,36 @@ def _stacked_shadow_plans(
             clock=clock,
             filters=filters or {},
             hatches=hatches or {},
+            every_hour=every_hour,
         )
         typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
         return
+    if every_hour is not None and window is not None:
+        # The documents stay stacked on their sheets, and the every-hour
+        # drawing is read out of the designed row's own beside them.
+        _flat_shadow_plans(
+            connection,
+            plans,
+            stack=stack,
+            legend=legend,
+            pens=pens,
+            swatches=swatches,
+            settings=settings,
+            base=base,
+            also_show=also_show,
+            window=window,
+            scale=fitted,
+            sheets=sheets,
+            master_layout=master_layout,
+            subset=subset,
+            title_block_mm=title_block_mm,
+            rings=rings,
+            outline_pen=outline_pen,
+            clock=clock,
+            filters=filters or {},
+            hatches={},
+            every_hour=replace(every_hour, only=True),
+        )
     if layout:
         try:
             placed, removed, notes = make_stack_sheets(
@@ -8789,6 +8882,59 @@ def _row_filters(
     return found
 
 
+def _every_hour_from_documents(
+    connection: ArchicadConnection,
+    plans: Sequence[ShadowPlan],
+    designed: str,
+    own: Mapping[tuple[str, dt.datetime], Any],
+    *,
+    every_hour: shadow_flat.EveryHour,
+    master_layout: str | None,
+    subset: str | None,
+    sheets: str,
+    clock: Stopwatch,
+) -> None:
+    """The every-hour drawing from the documents: the designed row's own
+    shadow at every hour, Archicad's, as dotted fills on the floor plan with
+    the hour at each tip, its view and a sheet a day.
+
+    The drawing the ``shadows`` command makes from Loriini's own cast, made
+    here from the shadows read out of the documents that show the row alone
+    -- so it agrees with the diagram's dashed outline, which is the same
+    shadow.
+    """
+    series = shadow_flat.every_hour_series(designed, plans, own)
+    ensure_model_database(connection)
+    drawn = draw_shadow_series(
+        connection,
+        series,
+        storey_index=every_hour.storey,
+        all_hours=designed,
+        only_all_hours=True,
+        all_hours_colour=every_hour.colour,
+    )
+    # The report's table is by source, and this series has none: the
+    # design's own area an hour is said instead.
+    for line in drawn.describe().splitlines():
+        if not line.rstrip().endswith(":  m2"):
+            typer.echo(line)
+    for instant in series.instants:
+        typer.echo(f"  {instant.label:>5}: {instant.areas_m2.get(designed, 0.0):,.0f} m2")
+    built = build_shadow_sheets(
+        connection,
+        series,
+        storey_index=every_hour.storey,
+        master_layout=master_layout,
+        subset=subset,
+        sheets=sheets,
+        all_hours=True,
+        only_all_hours=True,
+        all_hours_extents=dict(drawn.all_hours_extents),
+    )
+    typer.echo(built.describe())
+    typer.echo(clock.said(f"drew every hour of {designed} on the floor plan"))
+
+
 def _flat_shadow_plans(
     connection: ArchicadConnection,
     plans: Sequence[ShadowPlan],
@@ -8811,6 +8957,7 @@ def _flat_shadow_plans(
     clock: Stopwatch,
     filters: Mapping[str, str],
     hatches: Mapping[str, str],
+    every_hour: shadow_flat.EveryHour | None = None,
 ) -> None:
     """The flat mode of the stacked shadow plans (``archicad.shadow_flat``).
 
@@ -8824,6 +8971,8 @@ def _flat_shadow_plans(
     every = [layer for row in legend for layer in row.layers]
     standing = [layer for row in legend if row.role == BASELINE for layer in row.layers]
     scenarios = [row for row in legend if row.role == SCENARIO]
+    only_hours = every_hour is not None and every_hour.only
+    designed = scenarios[-1].label if scenarios else ""
     alone: dict[str, tuple[MadePlan, ...]] = {}
     # Only what a cell of the sheet shows is read and drawn. The window is
     # everything the combinations show, which on a project with half a
@@ -8859,7 +9008,7 @@ def _flat_shadow_plans(
         None,
     )
     try:
-        for row in scenarios:
+        for row in scenarios[-1:] if only_hours else scenarios:
             word = f"{row.label} {shadow_flat.ALONE_WORD}"
             on = [*also_show, *row.layers]
             shown = {layer.casefold() for layer in on}
@@ -8898,6 +9047,41 @@ def _flat_shadow_plans(
                 f"  {row.label}: {len(made)} documents of it alone, on {combination!r}, for "
                 f"its dashed outline"
             )
+        if only_hours and every_hour is not None:
+            mended, looked, _note = mend_document_filters(connection)
+            if mended:
+                typer.echo(f"  took the storey filter off {mended} of {looked} documents")
+            alone_rows = [
+                shadow_flat.FlatRow(
+                    label=designed,
+                    rgb=swatches[designed],
+                    shadow_pen=pens[designed],
+                    documents=(),
+                    alone=alone[designed],
+                )
+            ]
+            typer.echo("  reading the design's own shadow out of its documents:")
+            _whole, own_alone = shadow_flat.read_shadows(
+                connection,
+                alone_rows,
+                scale=scale,
+                window=window,
+                master_layout=master_layout,
+                say=typer.echo,
+            )
+            typer.echo(clock.said("read the shadows"))
+            _every_hour_from_documents(
+                connection,
+                plans,
+                designed,
+                own_alone,
+                every_hour=every_hour,
+                master_layout=master_layout,
+                subset=subset,
+                sheets=sheets,
+                clock=clock,
+            )
+            return
         # The linework: what stands and the last row that might be built,
         # which is the designed one, with no shadows.
         last = scenarios[-1].layers if scenarios else ()
@@ -8969,6 +9153,18 @@ def _flat_shadow_plans(
             outlines += lines
             lost += refused
         typer.echo(clock.said("drew them as fills"))
+        if every_hour is not None:
+            _every_hour_from_documents(
+                connection,
+                plans,
+                designed,
+                own,
+                every_hour=every_hour,
+                master_layout=master_layout,
+                subset=subset,
+                sheets=sheets,
+                clock=clock,
+            )
         placed, removed, notes = shadow_flat.make_flat_sheets(
             connection,
             stack.piles[0][1],
