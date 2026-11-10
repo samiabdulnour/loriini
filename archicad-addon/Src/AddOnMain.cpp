@@ -175,6 +175,7 @@ GSErrCode Initialize (void)
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetPlaceCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetDrawingsCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ArrangeDrawingsCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetDrawingPrimitivesCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::Set3DFilterCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ExportModelCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetIfcPropertiesCommand> ()); },

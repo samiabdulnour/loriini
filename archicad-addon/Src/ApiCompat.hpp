@@ -142,6 +142,16 @@ inline GSErrCode GetFullDrawingContentBox (API_Box* content, const API_Guid* dra
 #endif
 }
 
+// An element drawn as primitives, each handed to ``proc``.
+inline GSErrCode ShapePrims (const API_Elem_Head& head, ShapePrimsProc* proc)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_DrawingPrimitive_ShapePrims (head, proc);
+#else
+	return ACAPI_Element_ShapePrims (head, proc);
+#endif
+}
+
 // --- 3D window and documents --------------------------------------------------
 
 inline GSErrCode Get3DProjectionSets (API_3DProjectionInfo* info)
