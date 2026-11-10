@@ -4980,6 +4980,35 @@ def test_switching_one_study_on_keeps_the_miniatures_of_the_others(hidden_window
     assert made.dock.pane.content.pack_slaves() == made.dock._drawn
 
 
+def test_a_page_is_raised_over_the_others_and_tab_keeps_to_the_one_on_top(
+    hidden_window: Any,
+) -> None:
+    """The pages lie one over another and the open one is raised, since taking
+    one off the screen and putting the next on was a blink on every click. A
+    page underneath is still on the screen as far as Tk's Tab knows, so the
+    window says which controls can be seen."""
+    made = hidden_window
+    made._show_section(made.SHADOWS)
+    made._show_section(made.YIELD)
+    made.root.update_idletasks()
+    shadows, yields = made.pane_of[made.SHADOWS], made.pane_of[made.YIELD]
+    assert shadows.winfo_manager() == "place" and yields.winfo_manager() == "place"
+    stacked = [
+        str(one)
+        for one in made.stack.tk.splitlist(made.stack.tk.call("winfo", "children", made.stack))
+    ]
+    assert made.showing == made.YIELD
+    assert made._on_this_page(made.study_bars[window.YIELD_JOB])
+    assert not made._on_this_page(made.study_bars[window.SHADOW_JOB])
+    assert made._on_this_page(made.go), "the run bar is on no page"
+    assert str(yields) in stacked
+    # Every page is made ready under the open one, one at a time.
+    for _ in made.panes:
+        made._warm_pages()
+    assert all(pane.winfo_manager() == "place" for pane in made.panes)
+    assert made.showing == made.YIELD
+
+
 def test_a_widget_is_told_only_what_it_does_not_already_have(hidden_window: Any) -> None:
     """Tk lays a widget out and paints it again when told the style it
     already wears, so a sync that changed nothing repainted the page."""

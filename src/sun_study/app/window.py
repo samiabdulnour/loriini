@@ -3773,6 +3773,9 @@ class Window:
                 self._fold(self.study_boxes[name][0], True)
         self.refresh()
         self.root.after(80, self._drain)
+        self.root.after(self.WARM_AFTER_MS, self._warm_pages)
+        self.root.bind_all("<Tab>", self._tab_on)
+        self.root.bind_all("<<PrevWindow>>", partial(self._tab_on, back=True))
 
     def _on_the_screen(self, want_wide: int, want_tall: int) -> str:
         """A size that fits the display this window opened on.
@@ -7124,8 +7127,16 @@ class Window:
         leaving = self.showing
         for pane in self.panes:
             pane.settle()
-            pane.pack_forget()
-        self.pane_of[title].pack(side="top", fill="both", expand=True)
+        # The pages lie one over another, each the size of the room there is,
+        # and the open one is raised. They used to be taken off the screen and
+        # put back: every click on the sidebar unmapped a hundred widgets and
+        # mapped a hundred more, with the bare page showing between the two
+        # -- 80 to 100 ms on Windows where raising one takes 45, and the blink
+        # that made a change of page look like the window being redrawn.
+        opening = self.pane_of[title]
+        if not opening.winfo_manager():
+            opening.place(x=0, y=0, relwidth=1, relheight=1)
+        opening.lift()
         self.showing = title
         # The page settles in from the side you came from (D134): a few
         # pixels, under a fifth of a second, and only on a screen -- a window
@@ -7152,6 +7163,55 @@ class Window:
             self.SECTION_BLURB[title],
             "Point at anything, or tab to it, for what it is and what happens when it is wrong.",
         )
+
+    #: How long after the window opens the pages not yet seen start being put
+    #: under the open one, and how long between one and the next.
+    WARM_AFTER_MS = 600
+    WARM_EVERY_MS = 150
+
+    def _warm_pages(self) -> None:
+        """Put the next page nobody has opened yet under the open one.
+
+        A page costs twice as much the first time it is shown as every time
+        after, since that is when the system makes its widgets -- 190 ms for
+        Yield on Windows. So the pages are made ready one at a time once the
+        window is up, where nobody is waiting for them, and the first click
+        on the sidebar is as quick as the tenth.
+        """
+        for pane in self.panes:
+            if not pane.winfo_manager():
+                pane.place(x=0, y=0, relwidth=1, relheight=1)
+                pane.lower()
+                self.root.after(self.WARM_EVERY_MS, self._warm_pages)
+                return
+
+    def _on_this_page(self, widget: tk.Misc) -> bool:
+        """Whether a widget can be seen: not on a page under the open one."""
+        hidden = {str(pane) for title, pane in self.pane_of.items() if title != self.showing}
+        at: tk.Misc | None = widget
+        while at is not None:
+            if str(at) in hidden:
+                return False
+            at = at.master
+        return True
+
+    def _tab_on(self, event: tk.Event[tk.Misc], back: bool = False) -> str:
+        """Tab, and Shift-Tab: to the next control that can be seen.
+
+        Tk's own traversal goes to the next widget on the screen, and a page
+        lying under the open one is on the screen as far as Tk knows. Left to
+        it, Tab walked from the last field of a page into the first field of
+        a page nobody could see.
+        """
+        at: tk.Misc | None = event.widget
+        for _ in range(4000):
+            if at is None:
+                break
+            at = at.tk_focusPrev() if back else at.tk_focusNext()
+            if at is not None and self._on_this_page(at):
+                at.focus_set()
+                break
+        return "break"
 
     def ask_for(self, study: str) -> bool:
         """Tick one study and open the section it lives in. True if it took.
