@@ -4955,6 +4955,48 @@ def test_the_sheets_panel_is_not_redrawn_when_nothing_on_it_changed(
     assert not any(a is b for a, b in zip(made.dock._drawn, drawn, strict=False))
 
 
+def test_switching_one_study_on_keeps_the_miniatures_of_the_others(hidden_window: Any) -> None:
+    """Every miniature was destroyed and drawn again whenever any of them
+    changed, with the panel blank in between: the flash down the right of the
+    window on every click. What is still wanted is kept, in its place."""
+    made = hidden_window
+    made.do_shadows.set(True)
+    made._sync()
+    shadows = [one for one in made.dock._drawn if isinstance(one, tk.Canvas)]
+    assert shadows
+    made.do_sun_eyes.set(True)
+    made._sync()
+    now = [one for one in made.dock._drawn if isinstance(one, tk.Canvas)]
+    assert len(now) > len(shadows), "the sun views' sheets joined them"
+    assert all(any(one is kept for one in now) for kept in shadows), "drawn again"
+    assert all(one.winfo_exists() for one in made.dock._drawn)
+    # In the order the sheets are planned in, whatever was kept or made.
+    made.root.update_idletasks()
+    packed = made.dock.pane.content.pack_slaves()
+    assert packed == made.dock._drawn
+    made.do_shadows.set(False)
+    made._sync()
+    assert not any(one.winfo_exists() for one in shadows), "and gone when not wanted"
+    assert made.dock.pane.content.pack_slaves() == made.dock._drawn
+
+
+def test_a_widget_is_told_only_what_it_does_not_already_have(hidden_window: Any) -> None:
+    """Tk lays a widget out and paints it again when told the style it
+    already wears, so a sync that changed nothing repainted the page."""
+    made = hidden_window
+    told: list[dict[str, object]] = []
+    button = made.go
+    real = button.configure
+    button.configure = lambda **options: (told.append(options), real(**options))[1]
+    try:
+        window.put(button, text=str(button.cget("text")), state=str(button.cget("state")))
+        assert told == []
+        window.put(button, text="Run 99 sheets", state=str(button.cget("state")))
+        assert told == [{"text": "Run 99 sheets"}]
+    finally:
+        del button.configure
+
+
 def test_the_project_picker_is_as_wide_as_the_longest_project(
     hidden_window: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:

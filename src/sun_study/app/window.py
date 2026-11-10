@@ -378,6 +378,23 @@ class Tooltip:
             Tooltip.band.rest()
 
 
+def put(widget: Any, **options: object) -> None:
+    """Configure a widget with only what it does not already have.
+
+    Tk does not look: told the style, the text or the state it already
+    wears, a widget asks to be laid out and painted again all the same. The
+    window says what it will do after every click, to some two hundred
+    widgets of which a click changes a handful, and measured on Windows that
+    was 45 ms of laying out and repainting a page nothing had changed on --
+    the flicker under every click. So each is asked what it has first.
+    """
+    changed = {
+        name: value for name, value in options.items() if str(widget.cget(name)) != str(value)
+    }
+    if changed:
+        widget.configure(**changed)
+
+
 class Scroller(ttk.Frame):
     """A pane whose contents may be taller than the screen.
 
@@ -1066,7 +1083,7 @@ class Tiles(ttk.Frame):
 
     def _paint(self) -> None:
         for value, button in self._buttons.items():
-            button.configure(style="TileOn.TButton" if value in self._on else "Tile.TButton")
+            put(button, style="TileOn.TButton" if value in self._on else "Tile.TButton")
 
     def get(self) -> str:
         """The chosen value, spelled exactly as the caller listed it."""
@@ -1191,7 +1208,7 @@ class Ticks(ttk.Frame):
     def _paint(self) -> None:
         lit = self._lit()
         for value, button in self._buttons.items():
-            button.configure(style="TileOn.TButton" if value in lit else "Tile.TButton")
+            put(button, style="TileOn.TButton" if value in lit else "Tile.TButton")
 
     def get(self) -> str:
         """The field's text, exactly as it would be sent."""
@@ -1261,7 +1278,7 @@ class Toggles(ttk.Frame):
 
     def paint(self) -> None:
         for variable, button in self._items:
-            button.configure(style="TileOn.TButton" if variable.get() else "Tile.TButton")
+            put(button, style="TileOn.TButton" if variable.get() else "Tile.TButton")
 
 
 class Chips(ttk.Frame):
@@ -1663,6 +1680,9 @@ class Dock(ttk.Frame):
         self._on_pick = on_pick
         self._on_fold = on_fold
         self._drawn: list[tk.Misc] = []
+        #: The same widgets by what each one is, so the next refill keeps
+        #: the ones it still wants: see ``refill``.
+        self._kept: dict[object, tk.Widget] = {}
         #: The sheets and filing line last drawn, so a refill that would draw
         #: the same panel again does nothing.
         self._shown: tuple[tuple[Sheet, ...], str] | None = None
@@ -1789,9 +1809,6 @@ class Dock(ttk.Frame):
         if shown == self._shown:
             return
         self._shown = shown
-        for old in self._drawn:
-            old.destroy()
-        self._drawn = []
         # The count is of sheets. A model in the panel is drawn there because
         # the run makes it, and not counted here because it is not one.
         papers = sum(1 for sheet in sheets if sheet.paper)
@@ -1803,47 +1820,87 @@ class Dock(ttk.Frame):
         else:
             self.filed.pack_forget()
 
-        if not sheets:
-            empty = ttk.Label(
-                self.pane.content,
-                text=(
-                    "Nothing ticked.\n\nThe sheets a run would make appear here as "
-                    "you switch studies on."
-                ),
-                style="DockHint.TLabel",
-                justify="center",
-                wraplength=self.SHEET_W - 20,
-            )
-            empty.pack(pady=24, padx=10)
-            self._drawn.append(empty)
-            return
+        # What the panel holds now, top to bottom, each thing under a key
+        # that says what it is. Whatever was drawn last time under the same
+        # key is kept where it is and whatever was not is made: switching one
+        # study on used to destroy and draw again every miniature of every
+        # other, 110 ms on Windows with the whole panel blank in between,
+        # which was the flash down the right of the window on every click.
+        wanted: list[tuple[object, Callable[[], tk.Widget]]] = []
+        seen: dict[object, int] = {}
 
+        def want(key: object, make: Callable[[], tk.Widget]) -> None:
+            # Counted, so two things that would share a key stay two.
+            seen[key] = seen.get(key, 0) + 1
+            wanted.append(((key, seen[key]), make))
+
+        if not sheets:
+            want("nothing ticked", self._nothing_ticked)
         study = ""
         day = ""
         for sheet in sheets:
             if sheet.study != study:
                 study = sheet.study
                 day = ""
-                # A hairline over each study, then its name and its count:
-                # the groups of the panel, the way the sidebar groups pages.
-                rule = ttk.Frame(self.pane.content, style="Rule.TFrame", height=1)
-                rule.pack(side="top", fill="x", padx=16, pady=(10, 0))
-                self._drawn.append(rule)
-                head = ttk.Frame(self.pane.content, style="Dock.TFrame")
-                head.pack(side="top", fill="x", padx=16, pady=(8, 2))
-                ttk.Label(head, text=sheet.study, style="DockStudy.TLabel").pack(side="left")
-                ttk.Label(
-                    head,
-                    text=str(sum(1 for other in sheets if other.study == sheet.study)),
-                    style="DockCount.TLabel",
-                ).pack(side="right")
-                self._drawn.append(head)
+                count = sum(1 for other in sheets if other.study == study)
+                want(("rule", study), self._rule)
+                want(("head", study, count), partial(self._study_head, study, count))
             if sheet.day and sheet.day != day:
                 day = sheet.day
-                line = ttk.Label(self.pane.content, text=day, style="DockDay.TLabel")
-                line.pack(side="top", anchor="w", padx=16, pady=(0, 6))
-                self._drawn.append(line)
-            self._drawn.append(self._draw(sheet))
+                want(("day", study, day), partial(self._day_line, day))
+            want(sheet, partial(self._draw, sheet))
+
+        kept = self._kept
+        self._kept = {}
+        self._drawn = []
+        above: tk.Widget | None = None
+        for key, make in wanted:
+            widget = kept.pop(key, None)
+            if widget is None:
+                widget = make()
+            # In its place under the one before it. A widget already packed
+            # is moved, not taken off the screen and put back; and what is
+            # left above the first of them is what is destroyed below.
+            if above is not None:
+                widget.pack_configure(after=above)
+            above = widget
+            self._kept[key] = widget
+            self._drawn.append(widget)
+        for old in kept.values():
+            old.destroy()
+
+    def _nothing_ticked(self) -> tk.Widget:
+        empty = ttk.Label(
+            self.pane.content,
+            text=(
+                "Nothing ticked.\n\nThe sheets a run would make appear here as "
+                "you switch studies on."
+            ),
+            style="DockHint.TLabel",
+            justify="center",
+            wraplength=self.SHEET_W - 20,
+        )
+        empty.pack(pady=24, padx=10)
+        return empty
+
+    def _rule(self) -> tk.Widget:
+        """A hairline over each study, then its name and its count: the
+        groups of the panel, the way the sidebar groups pages."""
+        rule = ttk.Frame(self.pane.content, style="Rule.TFrame", height=1)
+        rule.pack(side="top", fill="x", padx=16, pady=(10, 0))
+        return rule
+
+    def _study_head(self, study: str, count: int) -> tk.Widget:
+        head = ttk.Frame(self.pane.content, style="Dock.TFrame")
+        head.pack(side="top", fill="x", padx=16, pady=(8, 2))
+        ttk.Label(head, text=study, style="DockStudy.TLabel").pack(side="left")
+        ttk.Label(head, text=str(count), style="DockCount.TLabel").pack(side="right")
+        return head
+
+    def _day_line(self, day: str) -> tk.Widget:
+        line = ttk.Label(self.pane.content, text=day, style="DockDay.TLabel")
+        line.pack(side="top", anchor="w", padx=16, pady=(0, 6))
+        return line
 
     #: How far the paper sits in from the canvas edge: room for the pixel of
     #: lift under it and the rim's antialiasing round it.
@@ -4289,17 +4346,16 @@ class Window:
                 made[page] = made.get(page, 0) + 1
         for title, (row, pill, switch, lit) in self.side_rows.items():
             open_here = title == self.showing
-            row.configure(style="SideRowOpen.TFrame" if open_here else "SideRow.TFrame")
-            self.tabs[title].configure(style="SideOpen.TButton" if open_here else "Side.TButton")
+            put(row, style="SideRowOpen.TFrame" if open_here else "SideRow.TFrame")
+            put(self.tabs[title], style="SideOpen.TButton" if open_here else "Side.TButton")
             if switch is not None:
-                lit.set(title in running)
-                switch.configure(
-                    style="SwitchOpen.TCheckbutton" if open_here else "Switch.TCheckbutton"
-                )
+                if lit.get() != (title in running):
+                    lit.set(title in running)
+                put(switch, style="SwitchOpen.TCheckbutton" if open_here else "Switch.TCheckbutton")
             words = str(made[title]) if made.get(title) else ""
             if title == self.REFERENCE and self._picture_open():
                 words = "open"
-            pill.configure(text=words, style="BadgeOpen.TLabel" if open_here else "Badge.TLabel")
+            put(pill, text=words, style="BadgeOpen.TLabel" if open_here else "Badge.TLabel")
             if words and not pill.winfo_manager():
                 pill.pack(side="right", padx=(4, 8))
             elif not words and pill.winfo_manager():
@@ -7163,7 +7219,7 @@ class Window:
         this" -- the one question a run of several minutes had better not get
         wrong. A picture of the sheets answers it better than a list of names.
         """
-        self.floors_box.config(state="normal" if self.do_facade.get() else "disabled")
+        put(self.floors_box, state="normal" if self.do_facade.get() else "disabled")
 
         # A page whose study will run says so, without anybody opening it.
         sheets = self.planned()
@@ -7174,17 +7230,16 @@ class Window:
             on = tick.get()
             bar = self.study_bars.get(name)
             if bar is not None:
-                bar.configure(
-                    style="SwitchHead.TCheckbutton" if on else "SwitchHeadOff.TCheckbutton"
-                )
+                put(bar, style="SwitchHead.TCheckbutton" if on else "SwitchHeadOff.TCheckbutton")
             title = self.study_titles.get(name)
             if title is not None:
-                title.configure(style="StudyTitle.TLabel" if on else "StudyTitleOff.TLabel")
+                put(title, style="StudyTitle.TLabel" if on else "StudyTitleOff.TLabel")
             if name in self.study_boxes:
                 box, says = self.study_boxes[name]
-                box.configure(style="Box.TFrame" if on else "BoxOff.TFrame")
-                self.folders[str(box)].configure(
-                    style="DiscloseOn.TButton" if on else "Disclose.TButton"
+                put(box, style="Box.TFrame" if on else "BoxOff.TFrame")
+                put(
+                    self.folders[str(box)],
+                    style="DiscloseOn.TButton" if on else "Disclose.TButton",
                 )
                 # A study switched on opens to show what it will be run with;
                 # one switched off is left as it was, open or folded.
@@ -7201,7 +7256,8 @@ class Window:
                 if models:
                     parts.append(f"{models} model" + ("" if models == 1 else "s"))
                 worth = ", ".join(parts)
-                says.configure(
+                put(
+                    says,
                     text=worth if on else "off",
                     style="PanelSays.TLabel" if on else "PanelSaysOff.TLabel",
                 )
@@ -7237,7 +7293,7 @@ class Window:
         else:
             text = f"Run {len(queued)} studies"
         off = self._running or self._tapir_missing or not queued
-        self.go.config(text=text, state="disabled" if off else "normal")
+        put(self.go, text=text, state="disabled" if off else "normal")
 
         said = []
         for name in queued:
@@ -7252,7 +7308,7 @@ class Window:
             # Past this it runs into the build's line; the sidebar and the
             # panel say which, so the bar says how many.
             line = f"Queued: {len(said)} studies, {paper} sheets"
-        self.queue_line.config(text=line)
+        put(self.queue_line, text=line)
 
     #: The longest the run bar's line of queued studies is let run.
     QUEUE_LONGEST = 64

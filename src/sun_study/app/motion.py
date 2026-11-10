@@ -11,8 +11,12 @@ Tk has no animation of its own. What it has is ``after`` and a canvas item
 that can be moved, and that is enough: every page sits in a canvas (the
 ``Scroller``), so sliding the page is moving one item, which Tk does
 without laying anything out again. The frames are paced by the clock, not
-counted, so a page that is slow to paint arrives in the same time as one
-that is quick, with fewer steps.
+counted -- but a single frame is charged for no more than ``HITCH_MS`` of
+it. A page is painted for the first time just after it opens, and on
+Windows that one paint took 30 to 60 ms of a 180 ms slide: measured, the
+page was seen at 12 px, at 9, and next at 3, which is a jerk and not a
+movement. With the charge capped, the paint costs the slide a frame and
+the page still travels the whole way.
 
 And none of it where the person has asked for none: macOS's Reduce Motion
 and Windows' client-area animation setting are read once, and a page then
@@ -38,6 +42,9 @@ DISTANCE = 12
 #: A frame. Sixteen milliseconds is a screen's own beat; Tk may deliver
 #: fewer, and the clock, not the count, says where the page is.
 FRAME_MS = 16
+#: The most of the slide's time one frame may use up, however long it took
+#: to arrive: two beats. What a slow paint costs the movement.
+HITCH_MS = 32
 #: Held as a plain string, so the branch for the other system is read as
 #: code and not, by a type checker on this one, as unreachable.
 _PLATFORM: str = sys.platform
@@ -118,7 +125,10 @@ class Slide:
         self.offset = offset
         self.duration = max(duration_ms, 1) / 1000.0
         self._done = done
-        self._began = time.monotonic()
+        #: How much of its time the slide has used, and when it was last
+        #: asked: the clock, with each frame's share of it capped.
+        self._spent = 0.0
+        self._last = time.monotonic()
         self._pending: str | None = None
         self.finished = False
         self._place(offset)
@@ -132,7 +142,10 @@ class Slide:
         self._pending = None
         if self.finished:
             return
-        along = (time.monotonic() - self._began) / self.duration
+        now = time.monotonic()
+        self._spent += min(now - self._last, HITCH_MS / 1000.0)
+        self._last = now
+        along = self._spent / self.duration
         if along >= 1.0:
             self._finish()
             return
