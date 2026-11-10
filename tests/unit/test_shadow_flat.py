@@ -143,3 +143,25 @@ def test_only_what_a_cell_shows_is_read() -> None:
     assert shadow_flat.window_a_cell_shows(small, (175.0, 158.0), 1500.0) == small
     assert shadow_flat.hour_pitch(shown) == pytest.approx(262.5 * 1.25)
     assert shadow_flat.hour_pitch(small) == pytest.approx(60.0), "never nearer than 20 m"
+
+
+def test_a_rows_own_shadow_is_its_largest_part_whole() -> None:
+    """A road set into the terrain was drawn dark at every hour, the same
+    shape each time, a block from the building; and the building shades its
+    own roofs. Neither is the shadow the outline is of."""
+    cast = box(0.0, 0.0, 60.0, 30.0).difference(box(20.0, 10.0, 30.0, 20.0))
+    beside = box(60.5, 0.0, 70.0, 30.0)  # all but touching: the same shadow
+    road = box(-200.0, 0.0, -170.0, 12.0)
+    own = shadow_flat.own_shadow(cast.union(beside).union(road))
+    assert own.geom_type == "Polygon" and not own.interiors
+    assert own.bounds == pytest.approx((0.0, 0.0, 70.0, 30.0), abs=0.01)
+    assert len(shadow_flat.outline_rings(own)) == 1
+    assert shadow_flat.own_shadow(Polygon()).is_empty
+
+
+def test_an_outline_is_the_rows_colour_at_full_strength() -> None:
+    """The proposal's legend blue is pale, to be read through, and came out a
+    green pen when it was only darkened."""
+    red, green, blue = shadow_flat.outline_colour((156, 172, 191))
+    assert blue > 200 and blue > green > red and red < 30
+    assert shadow_flat.outline_colour((235, 235, 235)) == (60, 60, 60)

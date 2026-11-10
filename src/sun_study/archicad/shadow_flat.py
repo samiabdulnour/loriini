@@ -31,6 +31,7 @@ hundred fills where the stack was fourteen documents.
 
 from __future__ import annotations
 
+import colorsys
 import datetime as dt
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -80,7 +81,9 @@ __all__ = [
     "make_base_document",
     "make_flat_sheets",
     "merged",
+    "outline_colour",
     "outline_rings",
+    "own_shadow",
     "read_shadows",
     "seen_of_each",
     "shadow_pieces",
@@ -118,8 +121,13 @@ HAIR_M = 0.004
 CUTS_DEEP = 6
 #: Fills in one ``CreateFills``, and polylines in one ``CreatePolylines``.
 BATCH = 200
-#: An outline is the row's colour this much darker, so it reads over the fill.
-OUTLINE_SHADE = 0.55
+#: Parts of a row's own shadow nearer than twice this are one part.
+JOIN_M = 1.5
+#: How far past its own shadow a row's added shadow is still believed: the
+#: two come from two documents, and do not agree to the millimetre.
+REACH_MARGIN_M = 2.0
+#: An outline is a line to be read at 1:500 and smaller, not a survey.
+OUTLINE_SIMPLIFY_M = 0.15
 #: The gap between one hour's plan and the next in the worksheet, as a share
 #: of the plan's width, and the least it is in metres.
 GAP_SHARE = 0.25
@@ -293,6 +301,47 @@ def outline_rings(shape: BaseGeometry) -> list[Ring]:
     ):
         rings.append([(float(x), float(y)) for x, y in part.exterior.coords])
     return rings
+
+
+def own_shadow(shape: BaseGeometry) -> BaseGeometry:
+    """A row's own shadow from what its document alone draws: the largest
+    part, whole, and nothing else.
+
+    The document shows the row on the bare ground, so its shadow is one
+    shape reaching from the building. What else is in the shadow's pen is
+    the ground's own doing -- a road set into the terrain was drawn dark at
+    every hour of the day, the same shape each time, a block from the
+    building -- and the row's shadow on its own roofs, which is inside the
+    building. So the parts are joined where they all but touch, the largest
+    is kept, and the lit courts inside it are filled: one outline.
+    """
+    if shape.is_empty:
+        return Polygon()
+    closed = shape.buffer(JOIN_M, join_style="mitre").buffer(-JOIN_M, join_style="mitre")
+    parts = _polygons(closed, least=LEAST_OUTLINED_M2)
+    if not parts:
+        return Polygon()
+    largest = max(parts, key=lambda part: part.area)
+    whole = Polygon(largest.exterior).simplify(OUTLINE_SIMPLIFY_M)
+    # On the grid here, and the largest again: snapped, a shape that narrows
+    # to a point parts there, and the outline was two rings touching.
+    snapped = _polygons(set_precision(whole, GRID_M), least=0.0)
+    return max(snapped, key=lambda part: part.area) if snapped else Polygon()
+
+
+def outline_colour(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
+    """The colour a row is outlined in: its legend colour at full strength.
+
+    The legend's colours are pale, to be read through; an outline is a line,
+    and a line in a pale colour is lost on the fill it runs across. The hue
+    is kept, so the proposal's outline is the blue of its fill and a second
+    row's is its own; a grey, which has no hue, is drawn dark.
+    """
+    hue, _lightness, saturation = colorsys.rgb_to_hls(*(channel / 255.0 for channel in rgb))
+    if saturation < 0.05:
+        return (60, 60, 60)
+    red, green, blue = colorsys.hls_to_rgb(hue, 0.42, 1.0)
+    return (round(red * 255), round(green * 255), round(blue * 255))
 
 
 def window_a_cell_shows(
@@ -590,18 +639,21 @@ def draw_flat_worksheet(
         ]
         seen = seen_of_each(present)
         for row in rows:
-            for part in drawable(seen.get(row.label, Polygon())):
-                parts.append((part, row, dx, dy, f"{row.label} {when:%H:%M}"))
+            added = seen.get(row.label, Polygon())
             own = alone.get((row.label, when))
-            if own is None:
+            reach = own_shadow(own) if own is not None else None
+            if reach is not None and not reach.is_empty:
+                # A row that might be built adds shadow only where its own
+                # shadow reaches. Two documents of one hour do not draw the
+                # shadows they share piece for piece alike, and the scraps
+                # between them were filled in the row's colour a street away.
+                added = added.intersection(reach.buffer(REACH_MARGIN_M))
+            for part in drawable(added):
+                parts.append((part, row, dx, dy, f"{row.label} {when:%H:%M}"))
+            if reach is None:
                 continue
-            shade = (
-                int(row.rgb[0] * OUTLINE_SHADE),
-                int(row.rgb[1] * OUTLINE_SHADE),
-                int(row.rgb[2] * OUTLINE_SHADE),
-            )
-            pen = nearest_pen(pens, shade)
-            for ring in outline_rings(own):
+            pen = nearest_pen(pens, outline_colour(row.rgb))
+            for ring in outline_rings(reach):
                 line: dict[str, Any] = {
                     "coordinates": [{"x": x + dx, "y": y + dy} for x, y in ring],
                     "layerIndex": layer.index,
