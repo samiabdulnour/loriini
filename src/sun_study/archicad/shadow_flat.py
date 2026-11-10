@@ -126,6 +126,10 @@ JOIN_M = 1.5
 #: How far past its own shadow a row's added shadow is still believed: the
 #: two come from two documents, and do not agree to the millimetre.
 REACH_MARGIN_M = 2.0
+#: What the rows under the designed one are outlined in, nearest the
+#: designed row first: the office's magenta for the envelope it is compared
+#: with, then an orange and a green.
+OTHER_OUTLINES: tuple[tuple[int, int, int], ...] = ((214, 0, 170), (230, 120, 0), (0, 150, 80))
 #: An outline is a line to be read at 1:500 and smaller, not a survey.
 OUTLINE_SIMPLIFY_M = 0.15
 #: The gap between one hour's plan and the next in the worksheet, as a share
@@ -630,6 +634,19 @@ def draw_flat_worksheet(
     cx, cy = window.centre
     pitch = hour_pitch(window)
 
+    # The outlines' colours. The designed row -- the topmost with a shadow
+    # of its own -- is outlined in its legend colour at full strength; the
+    # rows under it are every one a pale blue in the legend, which at full
+    # strength is the same blue, so each takes a colour of its own instead.
+    outlined = [row for row in rows if row.alone]
+    outline_of: dict[str, tuple[int, int, int]] = {}
+    for depth, row in enumerate(reversed(outlined)):
+        outline_of[row.label] = (
+            outline_colour(row.rgb)
+            if depth == 0
+            else OTHER_OUTLINES[(depth - 1) % len(OTHER_OUTLINES)]
+        )
+
     parts: list[tuple[Polygon, FlatRow, float, float, str]] = []
     lines: list[dict[str, Any]] = []
     for position, when in enumerate(hours):
@@ -652,7 +669,7 @@ def draw_flat_worksheet(
                 parts.append((part, row, dx, dy, f"{row.label} {when:%H:%M}"))
             if reach is None:
                 continue
-            pen = nearest_pen(pens, outline_colour(row.rgb))
+            pen = nearest_pen(pens, outline_of[row.label])
             for ring in outline_rings(reach):
                 line: dict[str, Any] = {
                     "coordinates": [{"x": x + dx, "y": y + dy} for x, y in ring],

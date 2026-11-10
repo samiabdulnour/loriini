@@ -8019,6 +8019,20 @@ def shadow_plan_documents(
         bool,
         typer.Option("--shadow-contours/--no-shadow-contours", help="Outline each shadow."),
     ] = False,
+    scenario_filter: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--scenario-filter",
+            help=(
+                "LABEL=GUID: the renovation filter one legend row's documents are seen "
+                "under, for a row an office keeps as a renovation filter -- an envelope "
+                "modelled on the floor layer and shown under its own filter only. The "
+                "label is a --shadow-scenario or --shadow-source row's; the GUID is the "
+                "filter's, as a view that pins it reports it. Repeat per row. A row "
+                "without one is seen under --renovation-filter."
+            ),
+        ),
+    ] = None,
     flat: Annotated[
         bool,
         typer.Option(
@@ -8241,6 +8255,7 @@ def shadow_plan_documents(
             scale=scale,
             clock=clock,
             flat=flat,
+            filters=_row_filters(scenario_filter or [], legend),
         )
         return
     if wanted:
@@ -8532,6 +8547,7 @@ def _stacked_shadow_plans(
     scale: float | None,
     clock: Stopwatch,
     flat: bool = False,
+    filters: Mapping[str, str] | None = None,
 ) -> None:
     """The stacked mode of ``shadow-plans``: every legend row in one drawing.
 
@@ -8590,9 +8606,16 @@ def _stacked_shadow_plans(
         off = ", ".join(repr(layer) for layer in hide) or "nothing"
         typer.echo(f"  {label}: views on {name!r}, which is {base!r} with {on} on and {off} off")
     members = [
-        PlanSet(label=row.label, layer_combination=combos[row.label], shadow_pen=pens[row.label])
+        PlanSet(
+            label=row.label,
+            layer_combination=combos[row.label],
+            shadow_pen=pens[row.label],
+            renovation_filter_guid=(filters or {}).get(row.label),
+        )
         for row in stack_order(legend)
     ]
+    for label, guid in (filters or {}).items():
+        typer.echo(f"  {label}: seen under the renovation filter {guid}")
     fitted, window, master_layout = _plan_fit(
         connection,
         plans,
@@ -8677,6 +8700,7 @@ def _stacked_shadow_plans(
             rings=rings,
             outline_pen=outline_pen,
             clock=clock,
+            filters=filters or {},
         )
         typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
         return
@@ -8722,6 +8746,24 @@ def _stacked_shadow_plans(
     typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
 
 
+def _row_filters(given: Sequence[str], legend: Sequence[LegendRow]) -> dict[str, str]:
+    """``--scenario-filter`` as the filter each legend row is seen under, by
+    the row's own spelling of its label."""
+    rows = {" ".join(row.label.split()).casefold(): row.label for row in legend}
+    found: dict[str, str] = {}
+    for entry in given:
+        label, sep, guid = entry.rpartition("=")
+        key = " ".join(label.split()).casefold()
+        if not sep or not guid.strip() or key not in rows:
+            raise typer.BadParameter(
+                f"--scenario-filter takes LABEL=GUID, the label one of "
+                f"{', '.join(row.label for row in legend) or 'the legend rows'}. "
+                f"{entry!r} is not that."
+            )
+        found[rows[key]] = guid.strip()
+    return found
+
+
 def _flat_shadow_plans(
     connection: ArchicadConnection,
     plans: Sequence[ShadowPlan],
@@ -8742,6 +8784,7 @@ def _flat_shadow_plans(
     rings: Sequence[Sequence[tuple[float, float]]],
     outline_pen: int | None,
     clock: Stopwatch,
+    filters: Mapping[str, str],
 ) -> None:
     """The flat mode of the stacked shadow plans (``archicad.shadow_flat``).
 
@@ -8813,6 +8856,8 @@ def _flat_shadow_plans(
                     shadow_fill=fill,
                     fill_uncut_surfaces=None,
                     uncut_surfaces=dict(STACK_SURFACES),
+                    renovation_filter_guid=filters.get(row.label)
+                    or settings.renovation_filter_guid,
                 ),
                 set_label=word,
                 fresh=fresh,
