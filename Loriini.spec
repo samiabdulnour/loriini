@@ -101,7 +101,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['rhino3dm', 'shapely', 'mypy', 'pydantic.v1.mypy', 'pydantic.mypy'],
+    excludes=['rhino3dm', 'mypy', 'pydantic.v1.mypy', 'pydantic.mypy'],
     noarchive=False,
     optimize=0,
 )
