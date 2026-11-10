@@ -6967,3 +6967,70 @@ accumulates, a scenario is compared against every baseline and no other
 scenario); the shadow plans' `--existing` and `--proposed` route, whose
 proposals are still `Proposed 1`, `Proposed 2` and on, so a project's
 layers and combinations keep their names.
+
+### D179 — A sample project and a tutorial, and what the first run on a stock template found
+
+Asked 10 November 2026: *"i need to create sample project to create overview
+and tutorial for loriini"*, then *"just build the good sample project with
+all residental aspects"*, the shadow analysis left for later.
+
+**The project.** 26-30 Campsie Street, Campsie, in an untitled Archicad 30
+file from Graphisoft's Australian template, built through the add-on: the
+site tools' sheets and a context model 150 m each way; a massing of nine
+storey-thick slabs on `Massing - Option 1` (FSR 2.39 against the LEP's
+2.4); and the building it becomes -- nine storeys of 21 by 24 m, five
+apartments a floor round a south-side core, a lobby on the ground floor,
+rooms, doors, balconies with balustrades, a Zone per apartment, per balcony
+and per room, `_L` on the living-room sliders, and a communal open space
+Zone behind. 44 apartments, of which 34 have two hours (77.3 %); 38 % of
+the communal space has two hours. The file, its fetched data, the scripts
+that built it and the sheets as PDFs are in
+`Documents/Loriini/sample-project`, outside the repository.
+
+**The page.** `site/tutorial.html`, a fifth tab: four steps, each the
+window's page, the command, the figures and the sheets. Nothing on it is
+drawn for the page; every image is a sheet saved from the project.
+
+**What a stock template found, fixed here.**
+
+- *Results written to no Zone.* The add-on's own export names an apartment
+  by its Archicad GUID, and Archicad 30's `GetElementsByIFCIds` matches the
+  22-character GlobalId only: all 45 apartments came back unmatched, and
+  nothing was written or drawn. `elements_by_ifc_ids` now offers a plain
+  GUID in its compressed spelling too (`compressed_ifc_guid`), as it already
+  offered a GlobalId expanded.
+- *Result fills nobody could see.* A result fill took the Fill tool's
+  default, which on this template is `Background` -- the background pen
+  alone, white. The fills are now drawn in the project's solid fill, named
+  (`draw.solid_fill`: `Solid Fill`, `Foreground`, `100 %`), and take the
+  default only where a project has none of those.
+
+**What it found, not fixed.** Each was worked round by hand for the sample,
+by the scripts beside the project, and is the next thing to do here:
+
+- A project opened on the template's views keeps a layer state per tab, and
+  per layout. Layers a run sets from the floor plan come back when the
+  export switches to the 3D window, so `--hide-layer` and
+  `--layer-combination` stop with "the export is not of the model as this
+  run set it"; and a run leaves the layouts' text and line layers as it
+  found the plan's, so a sheet drawn on a layout can print empty.
+- The apartment plans' sheet (`--draw --sheet`) clones its storey views to
+  the View Map's root with no layer combination, a new set on every run,
+  and its drawings take the Drawing tool's pen set, black and white here;
+  nine plans at 1:200 on an A1 run over the title block.
+- An apartment run removes the communal run's sheets and views, both being
+  under `Solar |`; the communal run has to follow it.
+- The shadow plans fit their scale to everything the context model holds:
+  with 500 m of context that was 1:10000, each redraw of the sheet took
+  Archicad ten minutes, and the file grew from 43 MB to 2.7 GB until the
+  documents were rebuilt on a smaller context.
+- `GetDetailsOfElements` on slabs brought Archicad 30 down once
+  (`APIElement_ShapePrims`, no window content) with the 3D window in front.
+- `--square-to-site` turns the site sheet under an aerial that stays
+  north-up, so the sheet's corners fall outside the photograph, where the
+  Heron theme's white lines are on white.
+
+*What this does not change:* any study's figures; the IFC route, whose
+identifiers were already offered both ways; a project whose template has no
+fill by a name `solid_fill` knows, which draws as before.
+

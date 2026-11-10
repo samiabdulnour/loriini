@@ -77,6 +77,7 @@ from sun_study.archicad.read import (
     EMPTY_EXPORT_BYTES,
     GeoreferencingMismatchError,
     classification_items_of,
+    compressed_ifc_guid,
     cross_check_georeferencing,
     elements_by_ifc_ids,
     expanded_ifc_guid,
@@ -832,6 +833,34 @@ def test_an_ifc_global_id_is_offered_as_a_plain_guid_too() -> None:
         "0UHJKXnLzA2OlQcIwF4FFe",
         "1E453521-C55F-4A09-8BDA-992E8F10F3E8",
     ], "both spellings go in one request, not two"
+
+
+def test_a_plain_guid_is_also_asked_for_in_its_compressed_spelling() -> None:
+    """The add-on's own export names an apartment by its Archicad GUID, and
+    Archicad 30 matches the compressed GlobalId only (the sample project, 10
+    November 2026: 45 apartments unmatched, nothing written or drawn)."""
+    assert compressed_ifc_guid("354A2424-6345-A74A-A4E5-6E3B48661520") == "0rIYGaOqMdIgJbRZj8PXKW"
+    assert compressed_ifc_guid("0rIYGaOqMdIgJbRZj8PXKW") is None
+    assert compressed_ifc_guid("not a guid, though it is thirty-six.") is None
+    connection, transport = connect(
+        {
+            "GetElementsByIFCIds": {
+                "elementsByIFCIds": [
+                    {"ifcId": "354A2424-6345-A74A-A4E5-6E3B48661520", "elements": []},
+                    {
+                        "ifcId": "0rIYGaOqMdIgJbRZj8PXKW",
+                        "elements": [{"elementId": {"guid": "zone-1"}}],
+                    },
+                ]
+            }
+        }
+    )
+    asked = "354A2424-6345-A74A-A4E5-6E3B48661520"
+    assert elements_by_ifc_ids(connection, [asked]) == {asked: ["zone-1"]}
+    assert transport.parameters_for("GetElementsByIFCIds")["ifcIds"] == [
+        asked,
+        "0rIYGaOqMdIgJbRZj8PXKW",
+    ]
 
 
 def test_elements_by_ifc_ids_reports_missing_and_ambiguous_matches() -> None:
@@ -2444,7 +2473,8 @@ def test_layers_are_enumerated_not_asked_for_by_id() -> None:
     )
 
     # GetLayers may be called, but only once an identifier is in hand.
-    assert transport.parameters_for("GetAttributesByType") == {"attributeType": "Layer"}
+    # The layers, and once more for the solid fill the result fills are drawn in.
+    assert {"attributeType": "Layer"} in transport.all_parameters_for("GetAttributesByType")
     assert transport.parameters_for("GetLayers") == {
         "attributeIds": [{"attributeId": {"guid": "l"}}]
     }, "GetLayers requires attributeIds; calling it bare is rejected as code 4002"
@@ -5325,3 +5355,30 @@ def test_a_refused_element_without_a_contour_is_reported_without_measurements() 
     message = str(raised.value)
     assert "[0] no such layer" in message
     assert "vertices" not in message
+
+
+def test_result_fills_are_drawn_in_the_projects_solid_fill() -> None:
+    """Left to the Fill tool's default a result fill took ``Background`` on the
+    Australian template and drew white (the sample project, 10 November 2026)."""
+    from sun_study.archicad.draw import solid_fill
+
+    connection, _ = connect(
+        {
+            "GetAttributesByType": {
+                "attributes": [
+                    {"attributeId": {"guid": "bg"}, "index": 65, "name": "Background"},
+                    {"attributeId": {"guid": "fg"}, "index": 64, "name": "Foreground"},
+                    {"attributeId": {"guid": "half"}, "index": 23, "name": "50 %"},
+                ]
+            }
+        }
+    )
+    assert solid_fill(connection) == {"guid": "fg"}
+    connection, _ = connect(
+        {
+            "GetAttributesByType": {
+                "attributes": [{"attributeId": {"guid": "x"}, "index": 1, "name": "Brick"}]
+            }
+        }
+    )
+    assert solid_fill(connection) is None

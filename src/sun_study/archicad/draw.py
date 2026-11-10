@@ -724,6 +724,41 @@ def clear_layer(connection: ArchicadConnection, layer_index: int) -> int:
     return len(removed)
 
 
+#: The project's solid fill, by the names templates give it, in order of
+#: preference. A result fill is a band's colour and nothing else, so it is
+#: drawn in the solid fill, named: left to the Fill tool's default it took
+#: ``Background`` on the Australian template -- the background pen alone,
+#: white -- and 88 fills were drawn that nobody could see (the sample project,
+#: 10 November 2026).
+SOLID_FILLS = ("Solid Fill", "Foreground", "100 %", "100%")
+
+
+def solid_fill(connection: ArchicadConnection) -> dict[str, str] | None:
+    """The attribute id of the project's solid fill, or ``None`` when it has
+    none by a name known here -- the fills then take the tool's default, as
+    they did."""
+    try:
+        response = connection.run_tapir("GetAttributesByType", {"attributeType": "Fill"})
+    except ArchicadError:
+        return None
+    attributes = response.get("attributes") if isinstance(response, dict) else None
+    if not isinstance(attributes, list):
+        return None
+    by_name: dict[str, str] = {}
+    for attribute in attributes:
+        if not isinstance(attribute, dict):
+            continue
+        guid = (attribute.get("attributeId") or {}).get("guid")
+        if guid:
+            by_name.setdefault(
+                " ".join(str(attribute.get("name", "")).split()).casefold(), str(guid)
+            )
+    for name in SOLID_FILLS:
+        if name.casefold() in by_name:
+            return {"guid": by_name[name.casefold()]}
+    return None
+
+
 def _fill_for(zone: ArchicadZone, band: BandStyle, layer_index: int) -> dict[str, Any]:
     data: dict[str, Any] = {
         "coordinates": [{"x": x, "y": y} for x, y in zone.outline],
@@ -919,6 +954,10 @@ def draw_assessment(
         # without an ID: a schedule totalling every fill whose ID contains
         # SOLAR must not add seven legend squares to the assessed area. Only
         # what was measured is tagged, so the filter is the answer.
+        solid = solid_fill(connection)
+        if solid is not None:
+            for fill in (*fills, *legend_fills):
+                fill.setdefault("fillId", solid)
         made = create_elements(connection, "CreateHatches", "hatchesData", fills + legend_fills)
         # The legend swatches are passed as ``None`` so they are created and
         # never tagged: see ``ids.stamp_in_order``.

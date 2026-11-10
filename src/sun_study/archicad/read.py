@@ -814,6 +814,30 @@ def expanded_ifc_guid(ifc_id: str) -> str | None:
     return "-".join(parts).upper()
 
 
+def compressed_ifc_guid(ifc_id: str) -> str | None:
+    """The 22-character IFC GlobalId a plain GUID packs into, or None if it is not one.
+
+    The other direction of ``expanded_ifc_guid``. The add-on's own export
+    names an element by its Archicad GUID, hyphenated, and on Archicad 30
+    ``GetElementsByIFCIds`` matches the compressed form only: asked for
+    ``354A2424-6345-A74A-A4E5-6E3B48661520`` it found nothing, asked for
+    ``0rIYGaOqMdIgJbRZj8PXKW`` it found that very element (10 November 2026,
+    the sample project, where all 45 apartments came back unmatched and
+    nothing was written or drawn).
+    """
+    plain = ifc_id.replace("-", "")
+    if len(plain) != 32 or len(ifc_id) != 36:
+        return None
+    try:
+        int(plain, 16)
+        import ifcopenshell.guid
+
+        compressed = ifcopenshell.guid.compress(plain.lower())
+    except Exception:  # not a GUID
+        return None
+    return str(compressed) if len(compressed) == 22 else None
+
+
 def elements_by_ifc_ids(connection: ArchicadConnection, ifc_ids: list[str]) -> dict[str, list[str]]:
     """IFC GlobalId -> the Archicad element GUIDs carrying it.
 
@@ -822,10 +846,10 @@ def elements_by_ifc_ids(connection: ArchicadConnection, ifc_ids: list[str]) -> d
     it can be empty when the element no longer exists. Callers decide what to
     do with each case; this function does not pretend either away.
 
-    Each identifier is offered in both spellings -- as given, and expanded to
-    the plain GUID -- in one request, because which one a build matches on is
-    not something the caller can be expected to know. See
-    ``expanded_ifc_guid``.
+    Each identifier is offered in every spelling -- as given, expanded to the
+    plain GUID, and compressed to the 22 characters -- in one request, because
+    which one a build matches on is not something the caller can be expected
+    to know. See ``expanded_ifc_guid`` and ``compressed_ifc_guid``.
     """
     if not ifc_ids:
         return {}
@@ -836,6 +860,9 @@ def elements_by_ifc_ids(connection: ArchicadConnection, ifc_ids: list[str]) -> d
         expanded = expanded_ifc_guid(ifc_id)
         if expanded is not None:
             asked.setdefault(expanded, ifc_id)
+        compressed = compressed_ifc_guid(ifc_id)
+        if compressed is not None:
+            asked.setdefault(compressed, ifc_id)
 
     response = connection.run_tapir("GetElementsByIFCIds", {"ifcIds": list(asked)})
     rows = response.get("elementsByIFCIds") if isinstance(response, dict) else None

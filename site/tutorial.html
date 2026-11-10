@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loriini — tutorial</title>
+<meta name="description" content="One project from an address to an Apartment Design Guide solar study: the site sheets, the yield, the apartments&#39; sun hours and the communal open space, on a sample site in Campsie.">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top wrap wide">
+  <a class="home mark" href="/"><img src="wordmark.png" alt="Loriini" width="2072" height="604"></a>
+  <nav class="main">
+    <a href="makes.html">What it makes</a>
+    <a href="works.html">How it works</a>
+    <a href="tutorial.html" aria-current="page">Tutorial</a>
+    <a href="price.html">Price</a>
+    <a href="download.html">Download</a>
+  </nav>
+</header>
+
+<main class="wrap wide page">
+  <div class="kicker">Tutorial</div>
+  <h1>From an address to the apartments' sun hours, in one project.</h1>
+  <p class="lead">A sample project, start to finish: a corner site at 26–30 Campsie Street, Campsie, in a new Archicad file from the standard Australian template. Four steps, each a page of the Loriini window and a Run button, or one command. Every drawing below is from that project, as Loriini left it in the Layout Book.</p>
+
+  <div class="facts">
+    <div><span>Site</span>26, 28, 30 Campsie Street, Campsie NSW 2194 · 4 lots · 1,378 m²</div>
+    <div><span>Controls</span>Canterbury-Bankstown LEP 2023 · R4 High Density Residential · FSR 2.4:1 · height 30 m</div>
+    <div><span>Proposal</span>9 storeys, 27.9 m · 44 apartments, 8 one-bed and 36 two-bed · GFA 3,289 m², FSR 2.39:1</div>
+  </div>
+
+  <section class="step" id="site">
+    <div class="step-text">
+      <div class="step-no">1</div>
+      <h2>The site, from its address</h2>
+      <p>Open the <strong>Site analysis</strong> page, type the address, switch on the panels wanted and press Run. Loriini finds the lots, reads the planning controls at them, and draws the sheets a DA starts with into the project, as native fills, lines and texts at true scale.</p>
+      <ul>
+        <li><strong>Context Analysis</strong> at 1:3000: zoning, schools, shops and parks by name, the station and bus stops, five and ten minute walks.</li>
+        <li><strong>Site Analysis</strong> at 1:300: the boundary with its dimensions and levels, contours, neighbours, the sun path and the winds.</li>
+        <li><strong>Summary of Controls</strong>: zone, height, FSR and the GFA it allows, and the Apartment Design Guide's figures worked for this site's area.</li>
+        <li><strong>3D context</strong>: the terrain from the state's 2 m contours, the street blocks, and the neighbouring buildings as slabs. Here 70 of them, 150 m each way.</li>
+      </ul>
+      <p class="tag">The site's corner becomes the project origin, its longest boundary runs level across the plan, and the project's location and north are set to match, so the sun is right from here on.</p>
+      <pre><code>sun-study site "26-30 Campsie St, Campsie NSW 2194"
+  --model --model-radius 150 --anchor site --square-to-site
+  --master-layout "A1 Landscape Titleblock"</code></pre>
+    </div>
+    <div class="step-figs">
+      <figure><a href="tutorial/context-analysis.jpg"><img src="tutorial/context-analysis.jpg" alt="The Context Analysis sheet for the Campsie site" width="2000" height="1413" loading="lazy"></a><figcaption>Context Analysis</figcaption></figure>
+      <figure><a href="tutorial/site-analysis.jpg"><img src="tutorial/site-analysis.jpg" alt="The Site Analysis sheet" width="2000" height="1413" loading="lazy"></a><figcaption>Site Analysis</figcaption></figure>
+      <figure><a href="tutorial/summary-of-controls.jpg"><img src="tutorial/summary-of-controls.jpg" alt="The Summary of Controls table" width="1600" height="1410" loading="lazy"></a><figcaption>Summary of Controls</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="step" id="yield">
+    <div class="step-text">
+      <div class="step-no">2</div>
+      <h2>A massing, and what it comes to</h2>
+      <p>Model the massing as slabs, one per floor, each as thick as its storey, on a layer of its own. Here that is nine slabs of 21 by 24 m on <code>Massing - Option 1</code>.</p>
+      <p>On the <strong>Yield</strong> page choose <em>Chosen layers</em>, pick the massing layer and press Run. Loriini measures the slabs, reads the site area and the FSR at the address, and works the feasibility sheet: areas by level, FSR and GFA against what is permissible, an apartment mix and the parking it needs. It lands as a sheet in the Layout Book and as a live workbook.</p>
+      <table class="figures">
+        <tr><th></th><th>Permissible</th><th>Proposed</th></tr>
+        <tr><td>FSR</td><td>2.40</td><td>2.39</td></tr>
+        <tr><td>GFA</td><td>3,307 m²</td><td>3,289 m²</td></tr>
+        <tr><td>Storeys</td><td></td><td>9</td></tr>
+        <tr><td>Apartments, at the sheet's mix</td><td>38.8</td><td>38.6</td></tr>
+        <tr><td>Parking spaces, SEPP</td><td></td><td>40.5</td></tr>
+      </table>
+      <pre><code>sun-study yield --massing-layer "Massing - Option 1"
+  --address "26-30 Campsie St, Campsie NSW 2194" --xlsx yield.xlsx</code></pre>
+    </div>
+    <div class="step-figs">
+      <figure><a href="tutorial/massing.jpg"><img src="tutorial/massing.jpg" alt="The massing among its neighbours" width="1800" height="1094" loading="lazy"></a><figcaption>The massing in the 3D context</figcaption></figure>
+      <figure><a href="tutorial/yield.jpg"><img src="tutorial/yield.jpg" alt="The Preliminary Yield Analysis sheet" width="1400" height="1747" loading="lazy"></a><figcaption>Preliminary Yield Analysis, Option 01</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="step" id="apartments">
+    <div class="step-text">
+      <div class="step-no">3</div>
+      <h2>The apartments' sun hours</h2>
+      <p>The massing becomes a building: five apartments a floor round a core on the south side, a lobby on the ground floor, balconies with balustrades. Three conventions carry the study.</p>
+      <ul>
+        <li>One Zone per apartment on a layer of their own, here <code>Zone - Apartments</code>, the Zone's number its unit number and its name its type.</li>
+        <li>One Zone per balcony on another, <code>Zone - Balconies</code>.</li>
+        <li><code>_L</code> at the end of the ID of every living-room window and sliding door, <code>SD-101_L</code>.</li>
+      </ul>
+      <p>On the <strong>Solar analysis</strong> page choose those layers and press Run. Loriini measures the direct sun on each apartment's living-room glazing and on its balcony on 21 June between 9 and 3, every ten minutes, with the neighbours, the balconies above and the balustrades in the way, and assesses it against the Apartment Design Guide.</p>
+      <table class="figures">
+        <tr><th></th><th>ADG 4A-1</th><th>This scheme</th></tr>
+        <tr><td>Apartments with 2 hours or more</td><td>at least 70 %</td><td>34 of 44, 77.3 %</td></tr>
+        <tr><td>Apartments with no direct sun</td><td>at most 15 %</td><td>0 of 44</td></tr>
+      </table>
+      <p>The plans say which ten fall short: the south-west corner apartment on every floor, in blue, with half an hour, and the east corner one on the ground floor, a few minutes under two hours behind its neighbours.</p>
+      <p>The answer is in the project three ways: the hours and the verdict as properties on each apartment's Zone, for a schedule; a coloured fill per apartment and balcony on every storey's plan; and a sheet of the plans, with a summary sheet beside it.</p>
+      <pre><code>sun-study archicad-run --timezone Australia/Sydney --livable-suffix "_L"
+  --apartment-zone-layer "Zone - Apartments"
+  --open-space-zone-layer "Zone - Balconies"
+  --layer-combination "Sample - Apartments" --write --draw --sheet</code></pre>
+    </div>
+    <div class="step-figs">
+      <figure><a href="tutorial/building.jpg"><img src="tutorial/building.jpg" alt="The building among its neighbours" width="1800" height="1094" loading="lazy"></a><figcaption>The building, from above Campsie Street</figcaption></figure>
+      <figure><a href="tutorial/solar-plans.jpg"><img src="tutorial/solar-plans.jpg" alt="The Solar Analysis sheet, a plan per storey coloured by sun hours" width="2000" height="1431" loading="lazy"></a><figcaption>Solar Analysis: each apartment coloured by its hours of sun, a plan per storey</figcaption></figure>
+      <figure><a href="tutorial/solar-plan-level.jpg"><img src="tutorial/solar-plan-level.jpg" alt="Level 1, each apartment coloured by its sun hours" width="795" height="824" loading="lazy"></a><figcaption>Level 1. Yellow has three to four hours, blue under one</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="step" id="communal">
+    <div class="step-text">
+      <div class="step-no">4</div>
+      <h2>The communal open space</h2>
+      <p>Draw the communal open space as a Zone on a layer of its own, here <code>Zone - Communal Open Space</code>: 457 m² behind the building, a third of the site. The <strong>Communal</strong> part of the Solar analysis page measures it as a surface in its own right: how many hours of sun each square metre gets, and what is in sun at each hour.</p>
+      <table class="figures">
+        <tr><th></th><th>Area</th><th>Share</th></tr>
+        <tr><td>2 hours or more</td><td>173.9 m²</td><td>38.0 %</td></tr>
+        <tr><td>Under 2 hours</td><td>283.3 m²</td><td>62.0 %</td></tr>
+        <tr><td>In sun at 9am</td><td>350.9 m²</td><td>76.7 %</td></tr>
+        <tr><td>In sun at noon</td><td>60.6 m²</td><td>13.3 %</td></tr>
+      </table>
+      <p>The space sits to the south-east of nine storeys, so it has the morning and loses the middle of the day. The Apartment Design Guide asks for half of the principal usable part to have two hours; the plans show where that half would have to be.</p>
+      <p>It makes the banded plan, the two-hour plan, a plan at every hour, an areas sheet, and a schedule as a workbook.</p>
+      <pre><code>sun-study massing -z Australia/Sydney
+  --zone-layer "Zone - Communal Open Space" --zone-hours 2
+  --zone-draw --zone-sheet --zone-hourly --zone-stats --zone-fill "25 %"
+  --context-layer "Site Context.Buildings" --subject-layer "Wall - External"
+  --subject-layer "Slab - General" --require-layer "Zone - Apartments"
+  --zone-table cos.xlsx</code></pre>
+    </div>
+    <div class="step-figs">
+      <figure><a href="tutorial/communal.jpg"><img src="tutorial/communal.jpg" alt="The communal open space banded by hours of sun" width="1800" height="892" loading="lazy"></a><figcaption>Hours of direct sun by area, 21 June</figcaption></figure>
+      <figure><a href="tutorial/communal-hourly.jpg"><img src="tutorial/communal-hourly.jpg" alt="The communal open space at each hour from 9 to 3" width="2000" height="1120" loading="lazy"></a><figcaption>In sun, yellow, and in shade, blue, at each hour from 9 to 3</figcaption></figure>
+    </div>
+  </section>
+
+  <p class="tag">Shadow diagrams and sun views on the same project are the next two steps of this tutorial, and are not written yet.</p>
+
+  <div class="notice">
+    <strong>Prototype, not validated for submission.</strong> Loriini is for design-stage iteration. The figures on this page are from a sample building made for the tutorial; they must not be used as a compliance figure in a DA submission, which rests on a consultant's report.
+  </div>
+</main>
+
+<footer>
+  <div class="wrap wide">
+    <div class="cols">
+      <div>
+        <strong>Loriini</strong><br>
+        Sami Abdulnour · Žofia Kosová, trading as Loriini.app · Czech Republic<br>
+        IČO 19785283 · DIČ CZ0154024321<br>
+        212 Bondi Road 708, Bondi NSW 2026, Australia
+      </div>
+      <div>
+        <a href="terms.html">Licence terms</a><br>
+        <a href="privacy.html">Privacy</a><br>
+        <a href="mailto:hi@loriini.app">hi@loriini.app</a>
+      </div>
+      <div>
+        Loriini runs on Windows and macOS with Archicad 26 to 30. Archicad is a trademark of Graphisoft SE. Site and context sheets draw on open data whose publishers each sheet credits. Loriini is made by Sami Abdulnour, an architect, for the practices he has worked in.
+      </div>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
