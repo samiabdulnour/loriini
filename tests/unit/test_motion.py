@@ -73,7 +73,7 @@ def test_a_frame_that_came_late_does_not_swallow_the_slide(
         frame = tk.Frame(canvas)
         item = canvas.create_window((0, 0), window=frame, anchor="nw")
         clock = [100.0]
-        monkeypatch.setattr(motion.time, "monotonic", lambda: clock[0])
+        monkeypatch.setattr("time.monotonic", lambda: clock[0])
         slide = motion.Slide(canvas, item, 12)
         clock[0] += 0.150  # the paint: most of the slide's 180 ms
         slide._frame()

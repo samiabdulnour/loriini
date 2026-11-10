@@ -5018,7 +5018,12 @@ def test_a_widget_is_told_only_what_it_does_not_already_have(hidden_window: Any)
     told: list[dict[str, object]] = []
     button = made.go
     real = button.configure
-    button.configure = lambda **options: (told.append(options), real(**options))[1]
+
+    def telling(**options: object) -> object:
+        told.append(options)
+        return real(**options)
+
+    button.configure = telling
     try:
         window.put(button, text=str(button.cget("text")), state=str(button.cget("state")))
         assert told == []
