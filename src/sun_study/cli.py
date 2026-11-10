@@ -8946,6 +8946,7 @@ def _flat_shadow_plans(
             rings=rings,
             outline_pen=outline_pen,
             aspect=aspect,
+            legend_outlines=[shadow_flat.outline_colours(rows).get(row.label) for row in legend],
         )
     except ArchicadError as error:
         typer.secho(f"  the flat diagram stopped: {error}", fg=typer.colors.RED, err=True)

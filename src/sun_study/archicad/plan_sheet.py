@@ -405,10 +405,15 @@ def draw_legend_and_outline(
     rings: Sequence[Sequence[tuple[float, float]]] = (),
     outline_pen: int | None = None,
     title_block_mm: float,
+    row_edges: Sequence[int | None] = (),
+    edge_line: int | None = None,
 ) -> tuple[int, int]:
     """The legend beside the title block, and the site over every drawing.
 
     ``rows`` are the legend's words and the exact colour each is printed in.
+    ``row_edges`` is, row for row, the pen its swatch is edged in or ``None``
+    for no edge, and ``edge_line`` the line type of those edges: a row whose
+    shadow is outlined on the plans shows that outline in the legend.
     ``cells`` are the sheet's filled cells, in layout metres, each holding a
     drawing whose window centre is at the cell's centre at ``scale``;
     ``rings`` are the boundary in project metres, drawn in ``outline_pen``
@@ -453,6 +458,11 @@ def draw_legend_and_outline(
         }
         if solid is not None:
             fill["fillIndex"] = solid
+        edge = row_edges[number - 1] if number <= len(row_edges) else None
+        if edge is not None:
+            fill["contourPen"] = edge
+            if edge_line is not None:
+                fill["lineTypeIndex"] = edge_line
         fills.append(fill)
         # A text is placed by its top-left corner (measured on the sample
         # project's sheet), so it is set down by half the gap between the

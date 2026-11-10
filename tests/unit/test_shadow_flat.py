@@ -165,3 +165,21 @@ def test_an_outline_is_the_rows_colour_at_full_strength() -> None:
     red, green, blue = shadow_flat.outline_colour((156, 172, 191))
     assert blue > 200 and blue > green > red and red < 30
     assert shadow_flat.outline_colour((235, 235, 235)) == (60, 60, 60)
+
+
+def test_the_smaller_own_shadow_is_put_over_the_larger() -> None:
+    from shapely.geometry import box
+
+    from sun_study.archicad.shadow_flat import seen_of_each, smaller_above
+
+    neighbours = box(0, 0, 10, 10)
+    envelope = box(8, 0, 20, 10)
+    proposal = box(8, 0, 30, 10)
+    stack = [("LEP", envelope), ("PROPOSED", proposal), ("EXISTING", neighbours)]
+    ordered = smaller_above(stack, {"LEP": 120.0, "PROPOSED": 220.0})
+    assert [label for label, _ in ordered] == ["PROPOSED", "LEP", "EXISTING"]
+    seen = seen_of_each(ordered)
+    assert seen["LEP"].area == 100.0
+    assert seen["PROPOSED"].area == 100.0
+    # Already the smaller on top: left as it is.
+    assert smaller_above(ordered, {"LEP": 120.0, "PROPOSED": 220.0}) == ordered

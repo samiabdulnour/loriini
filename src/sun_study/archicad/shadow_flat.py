@@ -82,11 +82,13 @@ __all__ = [
     "make_flat_sheets",
     "merged",
     "outline_colour",
+    "outline_colours",
     "outline_rings",
     "own_shadow",
     "read_shadows",
     "seen_of_each",
     "shadow_pieces",
+    "smaller_above",
     "window_a_cell_shows",
     "without_holes",
 ]
@@ -260,6 +262,44 @@ def seen_of_each(bottom_to_top: Sequence[tuple[str, BaseGeometry]]) -> dict[str,
         seen[label] = shadow if above.is_empty else shadow.difference(above)
         above = shadow if above.is_empty else unary_union([above, shadow])
     return seen
+
+
+def smaller_above(
+    bottom_to_top: Sequence[tuple[str, BaseGeometry]], own_m2: Mapping[str, float]
+) -> list[tuple[str, BaseGeometry]]:
+    """The stack with the rows that might be built put largest lowest.
+
+    ``own_m2`` is the area of each such row's own shadow. A row is seen only
+    where no row above it casts a shadow, so an envelope lying under a
+    taller proposal is covered by it altogether and the reader has its
+    outline and nothing else; the smaller over the larger, both are seen.
+    The rows change places among themselves only: what stands keeps its
+    place over them all.
+    """
+    stack = list(bottom_to_top)
+    places = [index for index, (label, _) in enumerate(stack) if label in own_m2]
+    ranked = sorted((stack[index] for index in places), key=lambda one: -own_m2[one[0]])
+    for index, one in zip(places, ranked, strict=True):
+        stack[index] = one
+    return stack
+
+
+def outline_colours(rows: Sequence[FlatRow]) -> dict[str, tuple[int, int, int]]:
+    """What each row with a shadow of its own is outlined in, by its label.
+
+    ``rows`` are bottom to top as named. The designed row -- the topmost of
+    them -- is outlined in its legend colour at full strength; the rows
+    under it are every one a pale blue in the legend, which at full strength
+    is the same blue, so each takes a colour of its own instead.
+    """
+    colours: dict[str, tuple[int, int, int]] = {}
+    for depth, row in enumerate(reversed([row for row in rows if row.alone])):
+        colours[row.label] = (
+            outline_colour(row.rgb)
+            if depth == 0
+            else OTHER_OUTLINES[(depth - 1) % len(OTHER_OUTLINES)]
+        )
+    return colours
 
 
 def drawable(shape: BaseGeometry) -> list[Polygon]:
@@ -614,7 +654,9 @@ def draw_flat_worksheet(
 ) -> tuple[str, int, int, float]:
     """One day's hours as fills in one worksheet, an hour beside the next.
 
-    ``rows`` are bottom to top. Hour ``n`` is drawn with the window's centre
+    ``rows`` are bottom to top, and the rows with a shadow of their own are
+    put, hour by hour, the smaller over the larger (``smaller_above``). Hour
+    ``n`` is drawn with the window's centre
     at ``(n x hour_pitch, 0)``, which is where the sheets look for it. Each
     row is filled where no row above it casts a shadow, in its legend colour
     and no contour; each row with a shadow of its own is outlined, dashed, in
@@ -634,18 +676,7 @@ def draw_flat_worksheet(
     cx, cy = window.centre
     pitch = hour_pitch(window)
 
-    # The outlines' colours. The designed row -- the topmost with a shadow
-    # of its own -- is outlined in its legend colour at full strength; the
-    # rows under it are every one a pale blue in the legend, which at full
-    # strength is the same blue, so each takes a colour of its own instead.
-    outlined = [row for row in rows if row.alone]
-    outline_of: dict[str, tuple[int, int, int]] = {}
-    for depth, row in enumerate(reversed(outlined)):
-        outline_of[row.label] = (
-            outline_colour(row.rgb)
-            if depth == 0
-            else OTHER_OUTLINES[(depth - 1) % len(OTHER_OUTLINES)]
-        )
+    outline_of = outline_colours(rows)
 
     parts: list[tuple[Polygon, FlatRow, float, float, str]] = []
     lines: list[dict[str, Any]] = []
@@ -654,11 +685,17 @@ def draw_flat_worksheet(
         present = [
             (row.label, whole[(row.label, when)]) for row in rows if (row.label, when) in whole
         ]
-        seen = seen_of_each(present)
+        reaches = {
+            row.label: own_shadow(alone[(row.label, when)])
+            for row in rows
+            if (row.label, when) in alone
+        }
+        seen = seen_of_each(
+            smaller_above(present, {label: reach.area for label, reach in reaches.items()})
+        )
         for row in rows:
             added = seen.get(row.label, Polygon())
-            own = alone.get((row.label, when))
-            reach = own_shadow(own) if own is not None else None
+            reach = reaches.get(row.label)
             if reach is not None and not reach.is_empty:
                 # A row that might be built adds shadow only where its own
                 # shadow reaches. Two documents of one hour do not draw the
@@ -772,6 +809,7 @@ def make_flat_sheets(
     rings: Sequence[Sequence[tuple[float, float]]] = (),
     outline_pen: int | None = None,
     aspect: float | None = None,
+    legend_outlines: Sequence[tuple[int, int, int] | None] = (),
 ) -> tuple[list[LayoutReport], list[str], list[str]]:
     """The flat worksheets on their sheets: in each cell a drawing of the
     day's worksheet, and the base document over it.
@@ -782,7 +820,9 @@ def make_flat_sheets(
     *Shadow | Shadow Plans Flat - JUNE 21*; the worksheet's drawing is put so
     that hour's plan is in the cell, the base document's so the window's
     centre is, its background clear, and only it keeps a title. The legend
-    and the site are drawn as on a combined sheet. ``aspect`` is the shape
+    and the site are drawn as on a combined sheet; ``legend_outlines`` is,
+    row for row of the legend, the colour its shadow is outlined in on the
+    plans or ``None``, and the swatch is edged in it, dashed. ``aspect`` is the shape
     the cells were dealt for, when it is not the window's own. Returns the sheets, the
     earlier flat sheets removed, and anything worth saying.
     """
@@ -809,6 +849,16 @@ def make_flat_sheets(
             ]
         },
     )
+
+    edges: list[int | None] = []
+    dashed: int | None = None
+    if any(legend_outlines):
+        dashed = attribute_index(connection, "Line", ("Dashed", "Dashed Line", "Dash"))
+        try:
+            pens = pen_table(connection)
+        except ArchicadError:
+            pens = ()
+        edges = [nearest_pen(pens, rgb) if rgb else None for rgb in legend_outlines]
 
     reports: list[LayoutReport] = []
     said: list[str] = []
@@ -878,6 +928,8 @@ def make_flat_sheets(
                 rings=rings,
                 outline_pen=outline_pen,
                 title_block_mm=title_block_mm,
+                row_edges=edges,
+                edge_line=dashed,
             )
         except ArchicadError as error:
             note = f"the legend and the site outline could not be drawn on the sheet: {error}"
