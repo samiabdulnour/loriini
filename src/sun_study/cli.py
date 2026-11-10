@@ -31,7 +31,7 @@ import numpy.typing as npt
 import typer
 
 from sun_study import AUTHOR, PRODUCT, STOP_FILE_VAR, __version__, licence
-from sun_study.archicad import context_model, future_context, naming
+from sun_study.archicad import context_model, future_context, naming, shadow_flat
 from sun_study.archicad import layout as sheet_layout
 from sun_study.archicad import site_analysis as site_drawing
 from sun_study.archicad.area_sheet import draw_area_sheet
@@ -148,10 +148,13 @@ from sun_study.archicad.shadow_plans import (
     PLAN_SCALE,
     SET_WORD,
     STACK_SHADOW_FILLS,
+    STACK_SURFACES,
     LegendRow,
+    MadePlan,
     PlanSet,
     ShadowPlan,
     ShadowPlanSettings,
+    Stack,
     hidden_among,
     legend_combinations,
     legend_from_existing_and_proposed,
@@ -163,6 +166,9 @@ from sun_study.archicad.shadow_plans import (
     site_context_layers,
     stack_labels,
     stack_order,
+)
+from sun_study.archicad.shadow_plans import (
+    SET_WORD as PLANS_WORD,
 )
 from sun_study.archicad.shadows import (
     BASELINE_RAMP,
@@ -8013,6 +8019,19 @@ def shadow_plan_documents(
         bool,
         typer.Option("--shadow-contours/--no-shadow-contours", help="Outline each shadow."),
     ] = False,
+    flat: Annotated[
+        bool,
+        typer.Option(
+            "--flat/--stacked",
+            help=(
+                "With legend rows: read the shadows out of the documents and draw them as "
+                "plain fills in a worksheet, so a sheet holds one drawing of that and one "
+                "document with no shadows in each cell, where --stacked lays every row's "
+                "document of an hour over the others. A row that might be built is outlined, "
+                "dashed, by its own whole shadow."
+            ),
+        ),
+    ] = False,
     scale: Annotated[
         float | None,
         typer.Option(
@@ -8221,6 +8240,7 @@ def shadow_plan_documents(
             title_block_mm=title_block_mm,
             scale=scale,
             clock=clock,
+            flat=flat,
         )
         return
     if wanted:
@@ -8511,6 +8531,7 @@ def _stacked_shadow_plans(
     title_block_mm: float,
     scale: float | None,
     clock: Stopwatch,
+    flat: bool = False,
 ) -> None:
     """The stacked mode of ``shadow-plans``: every legend row in one drawing.
 
@@ -8630,6 +8651,35 @@ def _stacked_shadow_plans(
                 "polyline",
                 fg=typer.colors.YELLOW,
             )
+    if layout and flat and window is None:
+        typer.secho(
+            "  --flat needs the window of the plan, which could not be measured; the "
+            "documents are stacked on the sheets instead",
+            fg=typer.colors.YELLOW,
+        )
+    if layout and flat and window is not None:
+        _flat_shadow_plans(
+            connection,
+            plans,
+            stack=stack,
+            legend=legend,
+            pens=pens,
+            swatches=swatches,
+            settings=settings,
+            base=base,
+            also_show=also_show,
+            window=window,
+            scale=fitted,
+            sheets=sheets,
+            master_layout=master_layout,
+            subset=subset,
+            title_block_mm=title_block_mm,
+            rings=rings,
+            outline_pen=outline_pen,
+            clock=clock,
+        )
+        typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
+        return
     if layout:
         try:
             placed, removed, notes = make_stack_sheets(
@@ -8670,6 +8720,211 @@ def _stacked_shadow_plans(
         f"rows above it cast nothing."
     )
     typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
+
+
+def _flat_shadow_plans(
+    connection: ArchicadConnection,
+    plans: Sequence[ShadowPlan],
+    *,
+    stack: Stack,
+    legend: Sequence[LegendRow],
+    pens: Mapping[str, int],
+    swatches: Mapping[str, tuple[int, int, int]],
+    settings: ShadowPlanSettings,
+    base: str,
+    also_show: Sequence[str],
+    window: PlanWindow,
+    scale: float,
+    sheets: str,
+    master_layout: str | None,
+    subset: str | None,
+    title_block_mm: float,
+    rings: Sequence[Sequence[tuple[float, float]]],
+    outline_pen: int | None,
+    clock: Stopwatch,
+) -> None:
+    """The flat mode of the stacked shadow plans (``archicad.shadow_flat``).
+
+    The stack's documents are made already. Here each row that might be built
+    is given a second set that shows it without the buildings around it, for
+    its outline; one document is made with no shadows, for the linework; the
+    shadows are read out of every document on a working layout, an hour at a
+    time; and they are drawn as fills in a worksheet a day, which the sheets
+    then place under the linework.
+    """
+    every = [layer for row in legend for layer in row.layers]
+    standing = [layer for row in legend if row.role == BASELINE for layer in row.layers]
+    scenarios = [row for row in legend if row.role == SCENARIO]
+    alone: dict[str, tuple[MadePlan, ...]] = {}
+    # Only what a cell of the sheet shows is read and drawn. The window is
+    # everything the combinations show, which on a project with half a
+    # kilometre of context each way is several times a cell at any scale
+    # worth drawing at; the rest would be clipped off by the cell's frame.
+    aspect = window.aspect
+    per_day = collections.Counter(plan.when.date() for plan in plans)
+    cells = max((cells_for(sheet_chunks(n, sheets)) for n in per_day.values()), default=1)
+    try:
+        master = choose_master(master_layouts(connection), master_layout)
+        cell = cell_size_mm(
+            connection,
+            master.identifier,
+            cells,
+            title_block_mm=title_block_mm + LEGEND_COLUMN_MM,
+            aspect=aspect,
+        )
+    except ArchicadError:
+        cell = None
+    if cell is not None:
+        window = shadow_flat.window_a_cell_shows(window, cell, scale)
+        typer.echo(
+            f"  a cell is {cell[0]:.0f} x {cell[1]:.0f} mm, so {window.width:.0f} x "
+            f"{window.height:.0f} m of the plan is read and drawn"
+        )
+    fresh = next(
+        (
+            one.effects
+            for _, made in stack.piles
+            for one in made
+            if not one.reused and one.effects is not None
+        ),
+        None,
+    )
+    try:
+        for row in scenarios:
+            word = f"{row.label} {shadow_flat.ALONE_WORD}"
+            on = [*also_show, *row.layers]
+            shown = {layer.casefold() for layer in on}
+            combination = ensure_layer_combination(
+                connection,
+                naming.named(f"{PLANS_WORD} {word}"),
+                show=on,
+                hide=[layer for layer in every if layer.casefold() not in shown],
+                base=base,
+            )
+            fill = dict(settings.shadow_fill)
+            fill["fillPen"] = pens[row.label]
+            fill["backgroundPen"] = pens[row.label]
+            made, notes = make_shadow_plans(
+                connection,
+                plans,
+                settings=replace(
+                    settings,
+                    layer_combination=combination,
+                    shadow_fill=fill,
+                    fill_uncut_surfaces=None,
+                    uncut_surfaces=dict(STACK_SURFACES),
+                ),
+                set_label=word,
+                fresh=fresh,
+            )
+            fresh = next(
+                (one.effects for one in made if not one.reused and one.effects is not None), fresh
+            )
+            for note in notes:
+                typer.secho(f"  {note}", fg=typer.colors.YELLOW)
+            alone[row.label] = tuple(made)
+            typer.echo(
+                f"  {row.label}: {len(made)} documents of it alone, on {combination!r}, for "
+                f"its dashed outline"
+            )
+        # The linework: what stands and the last row that might be built,
+        # which is the designed one, with no shadows.
+        last = scenarios[-1].layers if scenarios else ()
+        on = [*also_show, *standing, *last]
+        shown = {layer.casefold() for layer in on}
+        base_combination = ensure_layer_combination(
+            connection,
+            naming.named(f"{PLANS_WORD} {shadow_flat.BASE_LABEL}"),
+            show=on,
+            hide=[layer for layer in every if layer.casefold() not in shown],
+            base=base,
+        )
+        base_view = shadow_flat.make_base_document(
+            connection,
+            settings=replace(
+                settings, layer_combination=base_combination, shadow_fill={}, uncut_surfaces=None
+            ),
+        )
+        mended, looked, _note = mend_document_filters(connection)
+        if mended:
+            typer.echo(f"  took the storey filter off {mended} of {looked} documents")
+        typer.echo(clock.said("made the outline documents and the base document"))
+
+        rows = [
+            shadow_flat.FlatRow(
+                label=label,
+                rgb=swatches[label],
+                shadow_pen=pens[label],
+                documents=tuple(made),
+                alone=alone.get(label, ()),
+            )
+            for label, made in stack.piles
+        ]
+        typer.echo("  reading the shadows out of the documents, an hour at a time:")
+        whole, own = shadow_flat.read_shadows(
+            connection,
+            rows,
+            scale=scale,
+            window=window,
+            master_layout=master_layout,
+            say=typer.echo,
+        )
+        typer.echo(clock.said("read the shadows"))
+
+        days: dict[str, list[dt.datetime]] = {}
+        for plan in plans:
+            days.setdefault(plan.when.strftime("%B %d").upper(), []).append(plan.when)
+        worksheets: dict[str, tuple[str, str]] = {}
+        fills = outlines = 0
+        lost = 0.0
+        for day, hours in days.items():
+            name = shadow_flat.worksheet_name(day)
+            item, drawn, lines, refused = shadow_flat.draw_flat_worksheet(
+                connection, rows, hours, whole, own, name=name, window=window, say=typer.echo
+            )
+            worksheets[day] = (item, name)
+            fills += drawn
+            outlines += lines
+            lost += refused
+        typer.echo(clock.said("drew them as fills"))
+        placed, removed, notes = shadow_flat.make_flat_sheets(
+            connection,
+            stack.piles[0][1],
+            worksheets,
+            base_view,
+            sheets=sheets,
+            scale=scale,
+            window=window,
+            master_layout=master_layout,
+            title_block_mm=title_block_mm,
+            legend=[(_legend_words(row.label), swatches[row.label]) for row in legend],
+            rings=rings,
+            outline_pen=outline_pen,
+            aspect=aspect,
+        )
+    except ArchicadError as error:
+        typer.secho(f"  the flat diagram stopped: {error}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    report = shadow_flat.FlatReport(
+        worksheet=", ".join(name for _, name in worksheets.values()),
+        fills=fills,
+        outlines=outlines,
+        refused_m2=lost,
+        sheets=tuple(placed),
+        removed=tuple(removed),
+        notes=tuple(notes),
+    )
+    for name in removed:
+        typer.echo(f"  removed the earlier sheet {name!r}")
+    typer.echo(report.describe())
+    for note in notes:
+        typer.secho(f"  {note}", fg=typer.colors.YELLOW)
+    if subset:
+        filing = file_under_subset(
+            connection, [r.layout_name for r in placed], subset, flag="--subset"
+        )
+        typer.echo(filing.describe())
+    typer.echo(clock.said("placed them on sheets"))
 
 
 def _site_rings_of(
