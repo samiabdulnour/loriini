@@ -8674,7 +8674,15 @@ def _stacked_shadow_plans(
         )
         for row in stack_order(legend)
     ]
-    for label, guid in (filters or {}).items():
+    try:
+        filters = _filter_guids(connection, filters or {})
+    except ArchicadError as error:
+        typer.secho(f"  {error}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    members = [
+        replace(member, renovation_filter_guid=filters.get(member.label)) for member in members
+    ]
+    for label, guid in filters.items():
         typer.echo(f"  {label}: seen under the renovation filter {guid}")
     designed = next((row.label for row in reversed(legend) if row.role == SCENARIO), None)
     if every_hour is not None and designed is None:
@@ -8856,6 +8864,48 @@ def _stacked_shadow_plans(
         f"rows above it cast nothing."
     )
     typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
+
+
+_GUID = re.compile(r"^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$")
+
+
+def _filter_guids(connection: ArchicadConnection, filters: Mapping[str, str]) -> dict[str, str]:
+    """Each row's renovation filter as its GUID, whether it was given as one
+    or by the name the Renovation palette shows.
+
+    A name is looked up in the project (the add-on's ``GetRenovationFilters``),
+    so a preset can hold *LEP + 30%* and not a GUID that is another project's.
+    """
+    if all(_GUID.match(value) for value in filters.values()):
+        return dict(filters)
+    try:
+        answer = connection.run_loriini("GetRenovationFilters", {})
+    except ArchicadError as error:
+        raise ArchicadError(
+            "A renovation filter is named, and this add-on cannot list the project's "
+            f"filters to find it ({error}). Install the current add-on, or give the "
+            "filter's GUID."
+        ) from error
+    listed = [
+        (str(one.get("name", "")), str(one.get("guid", "")))
+        for one in (answer or {}).get("renovationFilters") or []
+        if isinstance(one, dict)
+    ]
+    by_name = {" ".join(name.split()).casefold(): guid for name, guid in listed}
+    found: dict[str, str] = {}
+    for label, value in filters.items():
+        if _GUID.match(value):
+            found[label] = value
+            continue
+        guid = by_name.get(" ".join(value.split()).casefold())
+        if not guid:
+            raise ArchicadError(
+                f"{label} is to be seen under the renovation filter {value!r}, and the "
+                f"project has none of that name. It has: "
+                f"{', '.join(name for name, _ in listed) or 'none'}."
+            )
+        found[label] = guid
+    return found
 
 
 def _row_filters(

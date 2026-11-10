@@ -5218,6 +5218,44 @@ class Window:
             "live drawings on one layout, which a large project may not open. Worksheet "
             "fills needs legend rows; without them the plain set is drawn either way.",
         )
+        #: What a compared row is called, seen under and hatched in, by the
+        #: row's short name: an envelope an office keeps as a renovation
+        #: filter, and wants told apart from the proposal on paper.
+        self.shadow_row_names: dict[str, ttk.Entry] = {}
+        self.shadow_row_filters: dict[str, ttk.Combobox] = {}
+        self.shadow_row_hatches: dict[str, ttk.Combobox] = {}
+        for short, role, title, _hint, _detail in SHADOW_LEGEND_ROWS:
+            if role == "baseline" or short == "PROPOSED":
+                continue
+            self.shadow_row_names[short], row = self._entry(
+                frame,
+                row,
+                f"{title} name",
+                "",
+                f"What the legend calls {title}: LEP + 30%, 12 storeys. Blank keeps {title}.",
+                "The row's name in the legend, in the documents' names and in the run's "
+                "log. A row is still chosen by its layers, in Layers and hours above.",
+            )
+            self.shadow_row_filters[short], row = self._combo(
+                frame,
+                row,
+                f"{title} filter",
+                f"The renovation filter {title} is seen under. Blank: the project's own.",
+                "For an envelope kept as a renovation filter: modelled on a layer the "
+                "proposal also uses, and shown only under its filter. The row's documents "
+                "are pinned to it. Needs the current add-on to list the filters; with an "
+                "older one, type the filter's name.",
+            )
+            self.shadow_row_hatches[short], row = self._combo(
+                frame,
+                row,
+                f"{title} hatch",
+                f"The fill type {title} is drawn in, with worksheet fills. Blank: solid.",
+                "A hatch tells an envelope from the proposal where two pale blues would "
+                "not. Its lines are the colour of the row's dashed outline. Pick a "
+                "scale-independent fill with lines well apart: one that is fine on a "
+                "plan prints solid at 1:1500.",
+            )
         self.shadow_plan_combination, row = self._combo(
             frame,
             row,
@@ -7519,6 +7557,18 @@ class Window:
             "shadow_study_subset": self.shadow_study_subset,
             "shadow_plan_combination": self.shadow_plan_combination,
             "shadow_plan_route": self.shadow_plan_route,
+            **{
+                f"shadow_row_name_{short.lower().replace(' ', '_')}": box
+                for short, box in self.shadow_row_names.items()
+            },
+            **{
+                f"shadow_row_filter_{short.lower().replace(' ', '_')}": box
+                for short, box in self.shadow_row_filters.items()
+            },
+            **{
+                f"shadow_row_hatch_{short.lower().replace(' ', '_')}": box
+                for short, box in self.shadow_row_hatches.items()
+            },
             "shadow_plan_label": self.shadow_plan_label,
             "shadow_plan_pen_set": self.shadow_plan_pen_set,
             "shadow_plan_pen": self.shadow_plan_pen,
@@ -8010,6 +8060,10 @@ class Window:
         self._fill(self.eye_base_combination, ("", *found.combinations), ())
         self._fill(self.shadow_plan_combination, found.combinations, ())
         self._fill(self.shadow_plan_pen_set, ("", *found.pen_sets), ())
+        for box in self.shadow_row_filters.values():
+            self._fill(box, ("", *found.renovation_filters), ())
+        for box in self.shadow_row_hatches.values():
+            self._fill(box, ("", *found.fills), ())
         self._fill(self.shadow_study_subset, found.subsets, ())
         self._offer_height_cut()
 
@@ -9173,7 +9227,30 @@ class Window:
             layers = self._listed(box)
             if layers:
                 flag = "--shadow-source" if role == "baseline" else "--shadow-scenario"
-                args += [flag, f"{short}={','.join(layers)}"]
+                args += [flag, f"{self._row_name(short)}={','.join(layers)}"]
+        return args
+
+    def _row_name(self, short: str) -> str:
+        """What a legend row is called in the run: the name typed for a
+        compared row, or the row's own. Never one with an ``=`` in it, which
+        is what parts the name from its layers."""
+        box = getattr(self, "shadow_row_names", {}).get(short)
+        typed = " ".join(box.get().replace("=", " ").split()) if box is not None else ""
+        return typed or short
+
+    def _row_extras(self, legend: Sequence[str]) -> list[str]:
+        """The compared rows' renovation filters and hatches, as the
+        documents' command takes them, for the rows that are in ``legend``."""
+        named = {entry.partition("=")[0] for entry in legend if "=" in entry}
+        args: list[str] = []
+        for short, box in self.shadow_row_filters.items():
+            name = self._row_name(short)
+            if name in named and box.get().strip():
+                args += ["--scenario-filter", f"{name}={box.get().strip()}"]
+        for short, box in self.shadow_row_hatches.items():
+            name = self._row_name(short)
+            if name in named and box.get().strip():
+                args += ["--scenario-fill", f"{name}={box.get().strip()}"]
         return args
 
     def _designed_row(self) -> str:
@@ -9444,6 +9521,7 @@ class Window:
             # command's own default and sends nothing.
             if legend and self.shadow_plan_route.get() != "Live 3D Documents":
                 args += ["--flat"]
+            args += self._row_extras(legend)
             if hours_from_documents:
                 args += ["--every-hour" if self.do_shadows.get() else "--every-hour-only"]
                 if self.shadow_hours_colour.get():

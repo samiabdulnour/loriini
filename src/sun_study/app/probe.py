@@ -106,6 +106,14 @@ class ProjectOptions:
     pen_sets: tuple[str, ...] = ()
     """The project's pen tables, for the sun views to print in the office's."""
 
+    fills: tuple[str, ...] = ()
+    """The project's fill types, for a compared shadow row's hatch."""
+
+    renovation_filters: tuple[str, ...] = ()
+    """The project's renovation filters, in the Renovation palette's order,
+    for a compared row kept as a filter. Empty on an add-on that cannot list
+    them, and the field then takes a typed name."""
+
     overrides: tuple[str, ...] = ()
     """Graphic override combinations, for the sun views' glazing override.
 
@@ -317,6 +325,16 @@ def options(port: int) -> ProjectOptions:
         "pen sets",
         lambda: connection.run_tapir("GetAttributesByType", {"attributeType": "PenTable"}),
     )
+    fill_types = attempt(
+        "fill types",
+        lambda: connection.run_tapir("GetAttributesByType", {"attributeType": "Fill"}),
+    )
+    # Not through `attempt`, as the overrides below are not: an add-on older
+    # than the command is not a problem with the project.
+    try:
+        renovation = connection.run_loriini("GetRenovationFilters", {})
+    except ArchicadError:
+        renovation = {}
     # Not through `attempt`: an add-on older than this command is not a
     # problem with the project, and the field simply stays typed.
     try:
@@ -364,6 +382,18 @@ def options(port: int) -> ProjectOptions:
                 for entry in ((pens or {}).get("attributes") or [])
                 if str(entry.get("name", "")).strip()
             )
+        ),
+        fills=tuple(
+            sorted(
+                str(entry.get("name", "")).strip()
+                for entry in ((fill_types or {}).get("attributes") or [])
+                if str(entry.get("name", "")).strip()
+            )
+        ),
+        renovation_filters=tuple(
+            str(entry.get("name", ""))
+            for entry in ((renovation or {}).get("renovationFilters") or [])
+            if isinstance(entry, dict) and str(entry.get("name", "")).strip()
         ),
         overrides=tuple(
             sorted(

@@ -5227,3 +5227,26 @@ def test_every_hour_is_read_out_of_the_documents_when_the_legend_names_a_design(
     (job,) = hidden_window.jobs()
     assert job.label == window.SHADOW_JOB
     assert "--every-hour" in job.args and "--every-hour-only" not in job.args
+
+
+def test_a_compared_row_is_named_filtered_and_hatched_from_the_window(hidden_window: Any) -> None:
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+    hidden_window.do_facade.set(False)
+    hidden_window.do_shadows.set(True)
+    hidden_window.shadow_plan_combination.set("Shadow Diagrams")
+    rows["PROPOSED"].insert(0, "01 | Wall.External")
+    rows["PROPOSED 2"].insert(0, "01 | Floor.Structural")
+    hidden_window.shadow_row_names["PROPOSED 2"].insert(0, "LEP + 30%")
+    hidden_window.shadow_row_filters["PROPOSED 2"].set("LEP + 30% Bonus")
+    hidden_window.shadow_row_hatches["PROPOSED 2"].set("zz Brick Common")
+    # A row with no layers sends nothing, whatever is typed beside it.
+    hidden_window.shadow_row_hatches["PROPOSED 3"].set("Dashed")
+
+    (job,) = hidden_window.jobs()
+
+    assert flag(job.args, "--shadow-scenario") == [
+        "LEP + 30%=01 | Floor.Structural",
+        "PROPOSED=01 | Wall.External",
+    ]
+    assert flag(job.args, "--scenario-filter") == ["LEP + 30%=LEP + 30% Bonus"]
+    assert flag(job.args, "--scenario-fill") == ["LEP + 30%=zz Brick Common"]

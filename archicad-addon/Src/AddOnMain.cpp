@@ -173,6 +173,7 @@ GSErrCode Initialize (void)
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ModifyLayersCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetGraphicOverrideCombinationsCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetPlaceCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetRenovationFiltersCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetDrawingsCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ArrangeDrawingsCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetDrawingPrimitivesCommand> ()); },

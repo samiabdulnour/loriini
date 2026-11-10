@@ -323,6 +323,26 @@ inline GSErrCode GetOverrideCombination (API_OverrideCombination& combination)
 #endif
 }
 
+// --- Renovation filters ---------------------------------------------------------
+
+inline GSErrCode GetRenovationFilters (GS::Array<API_Guid>* filters)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_Renovation_GetRenovationFilters (filters);
+#else
+	return ACAPI_Database (APIDb_GetRenovationFiltersID, filters);
+#endif
+}
+
+inline GSErrCode GetRenovationFilterName (const API_Guid* filter, GS::UniString* name)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_Renovation_GetRenovationFilterName (filter, name);
+#else
+	return ACAPI_Goodies (APIAny_GetRenovationFilterNameID, const_cast<API_Guid*> (filter), name);
+#endif
+}
+
 // --- Menus ----------------------------------------------------------------------
 
 inline GSErrCode RegisterMenu (short menu, short prompt, APIMenuCodeID position, GSFlags flags)
