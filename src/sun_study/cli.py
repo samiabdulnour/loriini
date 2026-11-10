@@ -205,6 +205,7 @@ from sun_study.archicad.sheets import (
     legend_place,
     straighten_and_tile,
 )
+from sun_study.archicad.site_analysis import attribute_index
 from sun_study.archicad.slabs import floors_from, read_slabs
 from sun_study.archicad.sun_eyes import (
     DEFAULT_SHEETS as SUN_VIEW_SHEETS,
@@ -8033,6 +8034,21 @@ def shadow_plan_documents(
             ),
         ),
     ] = None,
+    scenario_fill: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--scenario-fill",
+            help=(
+                "LABEL=FILL: with --flat, the fill type one legend row is drawn in "
+                "instead of the solid one, by the fill's name in the project -- a "
+                "hatch, so that envelopes whose legend colours are near one another "
+                "are told apart. Its lines are the colour of the row's dashed outline, "
+                "over the row's legend colour; the legend's swatch is hatched alike. "
+                "A scale-independent fill reads the same on the plans and in the "
+                "legend. Repeat per row."
+            ),
+        ),
+    ] = None,
     flat: Annotated[
         bool,
         typer.Option(
@@ -8256,6 +8272,7 @@ def shadow_plan_documents(
             clock=clock,
             flat=flat,
             filters=_row_filters(scenario_filter or [], legend),
+            hatches=_row_filters(scenario_fill or [], legend, flag="--scenario-fill", what="FILL"),
         )
         return
     if wanted:
@@ -8548,6 +8565,7 @@ def _stacked_shadow_plans(
     clock: Stopwatch,
     flat: bool = False,
     filters: Mapping[str, str] | None = None,
+    hatches: Mapping[str, str] | None = None,
 ) -> None:
     """The stacked mode of ``shadow-plans``: every legend row in one drawing.
 
@@ -8701,6 +8719,7 @@ def _stacked_shadow_plans(
             outline_pen=outline_pen,
             clock=clock,
             filters=filters or {},
+            hatches=hatches or {},
         )
         typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
         return
@@ -8746,9 +8765,15 @@ def _stacked_shadow_plans(
     typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
 
 
-def _row_filters(given: Sequence[str], legend: Sequence[LegendRow]) -> dict[str, str]:
+def _row_filters(
+    given: Sequence[str],
+    legend: Sequence[LegendRow],
+    *,
+    flag: str = "--scenario-filter",
+    what: str = "GUID",
+) -> dict[str, str]:
     """``--scenario-filter`` as the filter each legend row is seen under, by
-    the row's own spelling of its label."""
+    the row's own spelling of its label; ``--scenario-fill`` likewise."""
     rows = {" ".join(row.label.split()).casefold(): row.label for row in legend}
     found: dict[str, str] = {}
     for entry in given:
@@ -8756,7 +8781,7 @@ def _row_filters(given: Sequence[str], legend: Sequence[LegendRow]) -> dict[str,
         key = " ".join(label.split()).casefold()
         if not sep or not guid.strip() or key not in rows:
             raise typer.BadParameter(
-                f"--scenario-filter takes LABEL=GUID, the label one of "
+                f"{flag} takes LABEL={what}, the label one of "
                 f"{', '.join(row.label for row in legend) or 'the legend rows'}. "
                 f"{entry!r} is not that."
             )
@@ -8785,6 +8810,7 @@ def _flat_shadow_plans(
     outline_pen: int | None,
     clock: Stopwatch,
     filters: Mapping[str, str],
+    hatches: Mapping[str, str],
 ) -> None:
     """The flat mode of the stacked shadow plans (``archicad.shadow_flat``).
 
@@ -8895,6 +8921,16 @@ def _flat_shadow_plans(
             typer.echo(f"  took the storey filter off {mended} of {looked} documents")
         typer.echo(clock.said("made the outline documents and the base document"))
 
+        hatch_of: dict[str, int] = {}
+        for label, fill_name in hatches.items():
+            found = attribute_index(connection, "Fill", (fill_name,))
+            if found is None:
+                raise ArchicadError(
+                    f"--scenario-fill names the fill {fill_name!r} for {label}, and the "
+                    "project has no fill of that name."
+                )
+            hatch_of[label] = found
+            typer.echo(f"  {label}: drawn in the fill {fill_name!r}")
         rows = [
             shadow_flat.FlatRow(
                 label=label,
@@ -8902,6 +8938,7 @@ def _flat_shadow_plans(
                 shadow_pen=pens[label],
                 documents=tuple(made),
                 alone=alone.get(label, ()),
+                hatch=hatch_of.get(label),
             )
             for label, made in stack.piles
         ]
@@ -8947,6 +8984,7 @@ def _flat_shadow_plans(
             outline_pen=outline_pen,
             aspect=aspect,
             legend_outlines=[shadow_flat.outline_colours(rows).get(row.label) for row in legend],
+            legend_hatches=[hatch_of.get(row.label) for row in legend],
         )
     except ArchicadError as error:
         typer.secho(f"  the flat diagram stopped: {error}", fg=typer.colors.RED, err=True)

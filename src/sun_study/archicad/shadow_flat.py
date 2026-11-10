@@ -152,7 +152,11 @@ class FlatRow:
     ``documents`` show the row with everything that stands, so their shadow
     is the whole shadow with the row built; ``alone`` show the row without
     the buildings around it, for a row that might be built, and their shadow
-    is the outline. Both are by hour, in the hours' order.
+    is the outline. Both are by hour, in the hours' order. ``hatch`` is the
+    index of the fill type the row is drawn in when it is not the solid
+    one: three envelopes in three pale blues are not told apart on paper,
+    and a hatch is. Its lines are the colour of the row's outline, over the
+    row's legend colour.
     """
 
     label: str
@@ -160,6 +164,7 @@ class FlatRow:
     shadow_pen: int
     documents: tuple[MadePlan, ...]
     alone: tuple[MadePlan, ...] = ()
+    hatch: int | None = None
 
 
 @dataclass(frozen=True)
@@ -591,8 +596,11 @@ def read_shadows(
 
 
 def _fill(part: Polygon, rgb: tuple[int, int, int], *, layer: int, solid: int | None,
-          dx: float, dy: float, element_id: str) -> dict[str, Any]:  # fmt: skip
+          dx: float, dy: float, element_id: str,
+          lines: tuple[int, int, int] | None = None) -> dict[str, Any]:  # fmt: skip
     colour = {"red": rgb[0] / 255.0, "green": rgb[1] / 255.0, "blue": rgb[2] / 255.0}
+    front = lines or rgb
+    foreground = {"red": front[0] / 255.0, "green": front[1] / 255.0, "blue": front[2] / 255.0}
     rings = [list(part.exterior.coords)[:-1], *(list(hole.coords)[:-1] for hole in part.interiors)]
     data: dict[str, Any] = {
         "contours": [
@@ -604,7 +612,7 @@ def _fill(part: Polygon, rgb: tuple[int, int, int], *, layer: int, solid: int | 
         "determination": "drafting",
         "showArea": False,
         "contourPen": 0,
-        "foregroundColour": colour,
+        "foregroundColour": foreground,
         "backgroundColour": colour,
         "elementId": element_id,
     }
@@ -722,7 +730,16 @@ def draw_flat_worksheet(
         these: Sequence[tuple[Polygon, FlatRow, float, float, str]],
     ) -> list[dict[str, Any]]:
         return [
-            _fill(part, row.rgb, layer=layer.index, solid=solid, dx=dx, dy=dy, element_id=word)
+            _fill(
+                part,
+                row.rgb,
+                layer=layer.index,
+                solid=solid if row.hatch is None else row.hatch,
+                dx=dx,
+                dy=dy,
+                element_id=word,
+                lines=None if row.hatch is None else outline_of.get(row.label, (60, 60, 60)),
+            )
             for part, row, dx, dy, word in these
         ]
 
@@ -810,6 +827,7 @@ def make_flat_sheets(
     outline_pen: int | None = None,
     aspect: float | None = None,
     legend_outlines: Sequence[tuple[int, int, int] | None] = (),
+    legend_hatches: Sequence[int | None] = (),
 ) -> tuple[list[LayoutReport], list[str], list[str]]:
     """The flat worksheets on their sheets: in each cell a drawing of the
     day's worksheet, and the base document over it.
@@ -822,7 +840,9 @@ def make_flat_sheets(
     centre is, its background clear, and only it keeps a title. The legend
     and the site are drawn as on a combined sheet; ``legend_outlines`` is,
     row for row of the legend, the colour its shadow is outlined in on the
-    plans or ``None``, and the swatch is edged in it, dashed. ``aspect`` is the shape
+    plans or ``None``, and the swatch is edged in it, dashed;
+    ``legend_hatches`` is, row for row, the fill type a hatched row is drawn
+    in, and its swatch is hatched alike. ``aspect`` is the shape
     the cells were dealt for, when it is not the window's own. Returns the sheets, the
     earlier flat sheets removed, and anything worth saying.
     """
@@ -930,6 +950,12 @@ def make_flat_sheets(
                 title_block_mm=title_block_mm,
                 row_edges=edges,
                 edge_line=dashed,
+                row_hatches=[
+                    (hatch, legend_outlines[index] or (60, 60, 60))
+                    if hatch is not None and index < len(legend_outlines)
+                    else None
+                    for index, hatch in enumerate(legend_hatches)
+                ],
             )
         except ArchicadError as error:
             note = f"the legend and the site outline could not be drawn on the sheet: {error}"
