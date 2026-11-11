@@ -142,6 +142,16 @@ inline GSErrCode GetFullDrawingContentBox (API_Box* content, const API_Guid* dra
 #endif
 }
 
+// An element drawn as primitives, each handed to ``proc``.
+inline GSErrCode ShapePrims (const API_Elem_Head& head, ShapePrimsProc* proc)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_DrawingPrimitive_ShapePrims (head, proc);
+#else
+	return ACAPI_Element_ShapePrims (head, proc);
+#endif
+}
+
 // --- 3D window and documents --------------------------------------------------
 
 inline GSErrCode Get3DProjectionSets (API_3DProjectionInfo* info)
@@ -310,6 +320,26 @@ inline GSErrCode GetOverrideCombination (API_OverrideCombination& combination)
 	return ACAPI_GraphicalOverride_GetOverrideCombination (combination);
 #else
 	return ACAPI_Override_GetOverrideCombination (combination);
+#endif
+}
+
+// --- Renovation filters ---------------------------------------------------------
+
+inline GSErrCode GetRenovationFilters (GS::Array<API_Guid>* filters)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_Renovation_GetRenovationFilters (filters);
+#else
+	return ACAPI_Database (APIDb_GetRenovationFiltersID, filters);
+#endif
+}
+
+inline GSErrCode GetRenovationFilterName (const API_Guid* filter, GS::UniString* name)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_Renovation_GetRenovationFilterName (filter, name);
+#else
+	return ACAPI_Goodies (APIAny_GetRenovationFilterNameID, const_cast<API_Guid*> (filter), name);
 #endif
 }
 

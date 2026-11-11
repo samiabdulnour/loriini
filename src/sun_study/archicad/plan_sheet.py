@@ -405,10 +405,18 @@ def draw_legend_and_outline(
     rings: Sequence[Sequence[tuple[float, float]]] = (),
     outline_pen: int | None = None,
     title_block_mm: float,
+    row_edges: Sequence[int | None] = (),
+    edge_line: int | None = None,
+    row_hatches: Sequence[tuple[int, tuple[int, int, int]] | None] = (),
 ) -> tuple[int, int]:
     """The legend beside the title block, and the site over every drawing.
 
     ``rows`` are the legend's words and the exact colour each is printed in.
+    ``row_edges`` is, row for row, the pen its swatch is edged in or ``None``
+    for no edge, and ``edge_line`` the line type of those edges: a row whose
+    shadow is outlined on the plans shows that outline in the legend.
+    ``row_hatches`` is, row for row, the fill type and the colour of its
+    lines for a row drawn hatched, over the row's own colour.
     ``cells`` are the sheet's filled cells, in layout metres, each holding a
     drawing whose window centre is at the cell's centre at ``scale``;
     ``rings`` are the boundary in project metres, drawn in ``outline_pen``
@@ -453,6 +461,21 @@ def draw_legend_and_outline(
         }
         if solid is not None:
             fill["fillIndex"] = solid
+        hatch = row_hatches[number - 1] if number <= len(row_hatches) else None
+        if hatch is not None:
+            fill["fillIndex"] = hatch[0]
+            fill["foregroundColour"] = _rgb(hatch[1])
+        edge = row_edges[number - 1] if number <= len(row_edges) else None
+        if hatch is not None and edge is not None:
+            # A hatch's lines go by pen alone: given a colour over the pen,
+            # a PDF saved from the sheet draws them black. The edge's pen is
+            # the same colour's.
+            fill["fillPen"] = edge
+            del fill["foregroundColour"]
+        if edge is not None:
+            fill["contourPen"] = edge
+            if edge_line is not None:
+                fill["lineTypeIndex"] = edge_line
         fills.append(fill)
         # A text is placed by its top-left corner (measured on the sample
         # project's sheet), so it is set down by half the gap between the

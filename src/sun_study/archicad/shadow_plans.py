@@ -613,6 +613,10 @@ class PlanSet:
     label: str
     layer_combination: str
     shadow_pen: int
+    renovation_filter_guid: str | None = None
+    """The renovation filter this row's views pin, for a row an office keeps
+    as a filter and not as layers of its own -- an envelope modelled on the
+    floor layer and shown under its own filter only. ``None`` is the run's."""
 
 
 @dataclass(frozen=True)
@@ -758,6 +762,8 @@ def make_shadow_plan_stack(
             fill_uncut_surfaces=None,
             uncut_surfaces=dict(STACK_SURFACES),
         )
+        if member.renovation_filter_guid:
+            own = replace(own, renovation_filter_guid=member.renovation_filter_guid)
         made, notes = make_shadow_plans(
             connection, plans, settings=own, set_label=member.label, fresh=fresh
         )

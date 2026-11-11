@@ -77,6 +77,7 @@ LORIINI_COMMAND (ActivateLayerCombinationCommand)
 LORIINI_COMMAND (ModifyLayersCommand)
 LORIINI_COMMAND (GetGraphicOverrideCombinationsCommand)
 LORIINI_COMMAND (GetPlaceCommand)
+LORIINI_COMMAND (GetRenovationFiltersCommand)
 
 #undef LORIINI_COMMAND
 

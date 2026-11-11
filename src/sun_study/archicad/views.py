@@ -167,6 +167,17 @@ def ensure_layer_combination(
             }
         )
 
+    # Already there and already showing what is wanted: left as it is. In a
+    # Teamwork project a combination is written over only by whoever holds
+    # the layer settings, and a second run was refused the combination its
+    # own first run had made ("Failed to modify", Darlinghurst, 11 November
+    # 2026) though nothing in it was to change.
+    standing = combination_states(connection, name)
+    if standing is not None and all(
+        standing.get(one["attributeId"]["guid"]) == one["isHidden"] for one in layers
+    ):
+        return name
+
     response = connection.run_tapir(
         "CreateLayerCombinations",
         {

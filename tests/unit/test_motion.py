@@ -61,6 +61,30 @@ def test_a_slide_starts_off_its_mark_and_ends_on_it() -> None:
         root.destroy()
 
 
+def test_a_frame_that_came_late_does_not_swallow_the_slide(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A page is painted for the first time just after it opens, and that one
+    paint used to take a third of the slide with it: the page was seen at 12
+    px, at 9, and next at 3. A late frame is charged two beats and no more."""
+    root = _root()
+    try:
+        canvas = tk.Canvas(root)
+        frame = tk.Frame(canvas)
+        item = canvas.create_window((0, 0), window=frame, anchor="nw")
+        clock = [100.0]
+        monkeypatch.setattr("time.monotonic", lambda: clock[0])
+        slide = motion.Slide(canvas, item, 12)
+        clock[0] += 0.150  # the paint: most of the slide's 180 ms
+        slide._frame()
+        along = motion.HITCH_MS / motion.DURATION_MS
+        assert canvas.coords(item) == [0.0, round(12 * (1.0 - motion.ease_out(along)))]
+        assert not slide.finished
+        slide.cancel()
+    finally:
+        root.destroy()
+
+
 def test_a_cancelled_slide_is_put_in_its_place_at_once() -> None:
     """A second page opened before the first has settled finds the first
     exactly where it belongs, and the end is told once by either road."""
