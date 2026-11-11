@@ -470,6 +470,7 @@ class ArchicadConnection:
     def __init__(self, transport: Transport | None = None) -> None:
         self._transport = transport if transport is not None else HttpTransport()
         self._tapir_version: str | None = None
+        self._archicad_version: int | None = None
         self._tapir_namespace: str | None = None
         self._database: Database | None = None
 
@@ -650,6 +651,25 @@ class ArchicadConnection:
             response = self.run_tapir("GetAddOnVersion")
             self._tapir_version = str(response.get("version", ""))
         return self._tapir_version
+
+    @property
+    def archicad_version(self) -> int | None:
+        """Archicad's own major version -- 26, 27 -- or ``None`` when it will not say.
+
+        Asked of Archicad, not of the add-on: one add-on build serves one
+        version, but which one is running is what decides whether a project
+        keeps its options as renovation filters (26) or as Design Options
+        (27 on).
+        """
+        if self._archicad_version is None:
+            try:
+                info = self.run_official("API.GetProductInfo") or {}
+            except ArchicadError:
+                return None
+            version = info.get("version") if isinstance(info, dict) else None
+            if isinstance(version, int | float) and version > 0:
+                self._archicad_version = int(version)
+        return self._archicad_version
 
     def require_tapir(self) -> str:
         """Confirm Tapir is present and new enough, or say exactly what is wrong.

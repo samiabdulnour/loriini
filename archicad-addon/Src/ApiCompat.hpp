@@ -343,6 +343,24 @@ inline GSErrCode GetRenovationFilterName (const API_Guid* filter, GS::UniString*
 #endif
 }
 
+inline GSErrCode GetActualRenovationFilter (API_Guid* filter)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_Renovation_GetActualRenovationFilter (filter);
+#else
+	return ACAPI_Database (APIDb_GetActualRenovationFilterID, filter);
+#endif
+}
+
+inline GSErrCode SetActualRenovationFilter (const API_Guid* filter)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_Renovation_SetActualRenovationFilter (filter);
+#else
+	return ACAPI_Database (APIDb_SetActualRenovationFilterID, const_cast<API_Guid*> (filter));
+#endif
+}
+
 // --- Menus ----------------------------------------------------------------------
 
 inline GSErrCode RegisterMenu (short menu, short prompt, APIMenuCodeID position, GSFlags flags)

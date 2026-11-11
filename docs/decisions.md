@@ -6994,3 +6994,49 @@ job; it never falls back to a plain copy.
 backup` by hand (a plain file on the vendor's own disk), the ninety days, or
 the schedule. The plain `licences-<run>` artifacts uploaded before this are
 not touched by it and are deleted by hand.
+
+### D180 — An option is a renovation filter in Archicad 26 and a Design Option from 27, and Loriini asks which
+
+Offices keep massing options two ways. In Archicad 26 an option is a
+renovation filter, the massing shown under its own filter only (D162); from
+27 Archicad has Design Options, and a *Design Option Combination* says which
+options a view shows. The window offered renovation filters whatever the
+Archicad, so a 27 project's options were not on the list.
+
+**Archicad is asked.** `ArchicadConnection.archicad_version` reads the major
+version off the JSON API's own `GetProductInfo`; the window's reading of the
+project (`probe.options`) keeps it, with the project's combinations (Tapir's
+`GetDesignOptionCombinations`) beside its renovation filters, and the status
+line says which Archicad it is. A version that will not read is taken as 26.
+
+**The fields say what this Archicad calls an option.** A compared shadow
+row's field is *Proposed 2 filter* listing the renovation filters on 26 and
+*Proposed 2 design option* listing the combinations on 27 and later; the
+run gets `--scenario-filter` or the new `--scenario-option LABEL=NAME`,
+whose views are pinned to the combination by the add-on's new
+`SetViewDesignOptions`. Tapir's `SetViewSettings` has no field for it. The
+kit's API moved in 28 and again in 29, and the command follows the kit's own
+example in each.
+
+**A compared row's fields appear once the row has layers.** Name, option and
+hatch of Proposed 2 and 3 are hidden while the row has none: such a row is
+not drawn, and three questions about it were noise.
+
+**The Yield's Renovation row is an option picker.** Its four tiles (any
+status, new only, existing and new, the floor plan's filter) answered a
+question about renovation *status*, which is not how an office tells one
+option from another. In their place one list: a renovation filter on 26,
+counted by showing it on the floor plan while the slabs are read and putting
+the floor plan's own filter back after (`--renovation-filter-name`, with the
+add-on's `SetRenovationFilter` and the current filter now in
+`GetRenovationFilters`); a combination on 27 and later (`--design-option`),
+counted as the main model and the options it has on. Only Archicad 29's API
+says which elements an option holds, so on 27 and 28 the Yield refuses a
+combination and says to put each option on a layer of its own (Layer per
+option). Blank counts every slab, as Any did. `--renovation-status` and
+the bare `--renovation-filter` stay on the command line.
+
+*Untested here:* only Archicad 26 is installed on the machine this was
+written on. The Design Option route compiles against the 27 to 30 kits and
+has unit tests against a scripted Archicad, but has not yet run in an
+Archicad 27 or later.

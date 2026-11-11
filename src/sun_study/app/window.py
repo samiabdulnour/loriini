@@ -96,6 +96,7 @@ from sun_study.app import (
 )
 from sun_study.app.runner import Run
 from sun_study.archicad import naming
+from sun_study.archicad.design_options import uses_design_options
 from sun_study.archicad.shadows import LEGEND as SHADOW_LEGEND
 from sun_study.archicad.sheeting import cells_for, parse_sheet_mode, sheet_chunks, sheet_title
 from sun_study.cli import DEFAULT_SHADOW_HOURS
@@ -189,13 +190,6 @@ YIELD_ROWS: dict[str, frozenset[str]] = {
     "A layer per use": frozenset({"option", "per_use"}),
     "A layer per option": frozenset({"option_layers", "levels"}),
 }
-
-#: The Renovation answers read off each slab, and what the run is told.
-RENOVATION_STATUS_FLAGS: dict[str, str] = {
-    "New only": "new",
-    "Existing and new": "existing-and-new",
-}
-
 
 #: What RL project zero stands for when the 3D context is placed, and the
 #: ``--datum`` each sends; the first is the default. Anything else typed in
@@ -3736,6 +3730,9 @@ class Window:
         self.folded: dict[str, bool] = {}
         self._kept_rows: dict[str, list[tk.Widget]] = {}
         self._spacers: dict[str, ttk.Frame] = {}
+        #: The labels of the fields that name an option, and what comes before
+        #: the word: renovation filter or design option (``_scenario_words``).
+        self.scenario_labels: dict[ttk.Label, str] = {}
         #: Each study's name on its panel's header, restyled as it is
         #: switched on and off.
         self.study_titles: dict[str, ttk.Label] = {}
@@ -5220,13 +5217,19 @@ class Window:
         )
         #: What a compared row is called, seen under and hatched in, by the
         #: row's short name: an envelope an office keeps as a renovation
-        #: filter, and wants told apart from the proposal on paper.
+        #: filter (Archicad 26) or a design option (27 on), and wants told
+        #: apart from the proposal on paper. Shown only for a row with layers
+        #: chosen (``_shadow_row_fields``): a row without them is not drawn,
+        #: and three fields about it are three questions about nothing.
         self.shadow_row_names: dict[str, ttk.Entry] = {}
         self.shadow_row_filters: dict[str, ttk.Combobox] = {}
         self.shadow_row_hatches: dict[str, ttk.Combobox] = {}
+        self.shadow_row_groups: dict[str, list[tk.Widget]] = {}
+        self.shadow_documents_panel = frame
         for short, role, title, _hint, _detail in SHADOW_LEGEND_ROWS:
             if role == "baseline" or short == "PROPOSED":
                 continue
+            before = {str(child) for child in frame.winfo_children()}
             self.shadow_row_names[short], row = self._entry(
                 frame,
                 row,
@@ -5236,16 +5239,20 @@ class Window:
                 "The row's name in the legend, in the documents' names and in the run's "
                 "log. A row is still chosen by its layers, in Layers and hours above.",
             )
+            at = row
             self.shadow_row_filters[short], row = self._combo(
                 frame,
                 row,
                 f"{title} filter",
-                f"The renovation filter {title} is seen under. Blank: the project's own.",
-                "For an envelope kept as a renovation filter: modelled on a layer the "
-                "proposal also uses, and shown only under its filter. The row's documents "
-                "are pinned to it. Needs the current add-on to list the filters; with an "
-                "older one, type the filter's name.",
+                f"The option {title} is: its renovation filter in Archicad 26, its "
+                "design option in 27 on. Blank: the project's own.",
+                "For an envelope kept as an option of its own. In Archicad 26 that is a "
+                "renovation filter: modelled on a layer the proposal also uses and shown "
+                "only under its filter. From 27 it is a Design Option, and this lists the "
+                "project's Design Option Combinations. Loriini asks Archicad which it is. "
+                "The row's documents are pinned to the one chosen.",
             )
+            self.scenario_labels[self._label_at(frame, at)] = f"{title} "
             self.shadow_row_hatches[short], row = self._combo(
                 frame,
                 row,
@@ -5256,6 +5263,13 @@ class Window:
                 "scale-independent fill with lines well apart: one that is fine on a "
                 "plan prints solid at 1:1500.",
             )
+            self.shadow_row_groups[short] = [
+                child
+                for child in frame.winfo_children()
+                if isinstance(child, tk.Widget)
+                and str(child) not in before
+                and child.winfo_manager() == "grid"
+            ]
         self.shadow_plan_combination, row = self._combo(
             frame,
             row,
@@ -5932,9 +5946,6 @@ class Window:
         """
         row = 0
         self.do_yield = tk.BooleanVar(value=False)
-        # Kept as a value, not drawn: a preset saved when the renovation filter
-        # was a checkbox still opens on "Floor plan's filter" (``apply``).
-        self.yield_renovation = tk.BooleanVar(value=False)
         outer = frame
         frame, row = self._panel(outer, row), 0
         box = ttk.Checkbutton(
@@ -5974,16 +5985,24 @@ class Window:
             "one of commercial. Layer per option: each layer one whole option, "
             "a sheet and a workbook page each.",
         )
-        self.yield_renovation_status, row = self._tiles(
+        #: Which option the massing is: a renovation filter in Archicad 26,
+        #: a Design Option Combination from 27, as Archicad says it is.
+        at = row
+        self.yield_scenario, row = self._combo(
             frame,
             row,
-            "Renovation",
-            "Which slabs count by their renovation status. Any, unless the massing is New.",
-            "Read off each slab's own Renovation Status, so nothing has to be set on the "
-            "floor plan first. New only: the proposal over a building that stays. Existing "
-            "and new: everything but what is to be demolished. Floor plan's filter: what "
-            "the floor plan's renovation filter shows, set there before Run.",
+            "Renovation filter",
+            "The option measured: its renovation filter in Archicad 26, its design "
+            "option in 27 on. Blank: every slab.",
+            "An office keeps its massing options as renovation filters in Archicad 26 "
+            "and as Design Options from 27; Loriini asks Archicad which it is and lists "
+            "those. Chosen, only the slabs that option shows are counted: under a "
+            "renovation filter, what the floor plan shows with it on (the floor plan's "
+            "own filter is put back after); under a Design Option Combination, the main "
+            "model and the options it has on, which needs Archicad 29. Blank counts every "
+            "slab, whatever filter or option it is in.",
         )
+        self.scenario_labels[self._label_at(frame, at)] = ""
         self.yield_groups: dict[str, list[tk.Misc]] = {}
 
         def rows_of(key: str, made_from: set[str]) -> None:
@@ -7381,6 +7400,7 @@ class Window:
                     style="PanelSays.TLabel" if on else "PanelSaysOff.TLabel",
                 )
         self._yield_rows()
+        self._shadow_row_fields()
         self._paint_design()
         self._refill_dock(sheets)
         self._paint_run(sheets)
@@ -7603,7 +7623,7 @@ class Window:
             "skin_grid": self.grid_m,
             "yield_option": self.yield_option,
             "yield_slabs": self.yield_slabs,
-            "yield_renovation_status": self.yield_renovation_status,
+            "yield_scenario": self.yield_scenario,
             "yield_option_layers": self.yield_option_layers,
             "yield_workbook": self.yield_workbook,
             "yield_residential_layers": self.yield_residential,
@@ -7645,7 +7665,6 @@ class Window:
             "site_future": self.do_site_future,
             "site_location": self.do_site_location,
             "study_yield": self.do_yield,
-            "yield_renovation": self.yield_renovation,
             "yield_xlsx": self.yield_xlsx,
             # The three boxes of days, one key per button, so a preset that
             # studies the equinox beside midwinter opens the same way.
@@ -7756,9 +7775,9 @@ class Window:
             )
 
     def _yield_from_older(self, saved: Mapping[str, str | bool]) -> None:
-        """A preset saved before the Slabs and Renovation rows, read as what
-        it meant: the way of choosing slabs its filled layer rows imply, and
-        the renovation checkbox as the floor plan's filter."""
+        """A preset saved before the Slabs row, read as what it meant: the way
+        of choosing slabs its filled layer rows imply. Its renovation checkbox
+        or status is not carried over: the option is chosen by name now."""
         if "yield_slabs" not in saved:
 
             def filled(key: str) -> bool:
@@ -7789,8 +7808,58 @@ class Window:
                 joined = [*self._listed(box), *(v.strip() for v in value.split(",") if v.strip())]
                 box.delete(0, "end")
                 box.insert(0, ", ".join(dict.fromkeys(joined)))
-        if "yield_renovation_status" not in saved and saved.get("yield_renovation") is True:
-            self.yield_renovation_status.set("As the floor plan's filter")
+
+    #: Archicad's major version, as the open project's reading said; ``None``
+    #: until one is read, which is taken as 26's renovation filters.
+    archicad_version: int | None = None
+
+    def _design_options(self) -> bool:
+        """Whether this Archicad keeps a project's options as Design Options."""
+        return uses_design_options(self.archicad_version)
+
+    @staticmethod
+    def _label_at(frame: ttk.Frame, row: int) -> ttk.Label:
+        """The label a row helper put in column 0 of ``row``."""
+        for child in frame.grid_slaves(row=row, column=0):
+            if isinstance(child, ttk.Label):
+                return child
+        raise LookupError(f"no label on row {row}")
+
+    def _scenario_words(self) -> None:
+        """Call the option fields what this Archicad calls an option: a
+        renovation filter in 26, a design option from 27."""
+        options = self._design_options()
+        for label, before in self.scenario_labels.items():
+            if before:
+                label.configure(text=f"{before}{'design option' if options else 'filter'}")
+            else:
+                label.configure(text="Design option" if options else "Renovation filter")
+
+    def _show_rows(self, panel: ttk.Frame, widgets: Sequence[tk.Widget], shown: bool) -> None:
+        """Put rows on the grid or take them off it. A folded panel keeps the
+        rows it will put back when it opens; while folded, that list is what
+        changes, so nothing appears inside it."""
+        kept = self._kept_rows.get(str(panel)) if self.folded.get(str(panel), False) else None
+        for widget in widgets:
+            if kept is not None:
+                if shown and widget not in kept:
+                    kept.append(widget)
+                elif not shown and widget in kept:
+                    kept.remove(widget)
+            elif shown:
+                widget.grid()
+            else:
+                widget.grid_remove()
+
+    def _shadow_row_fields(self) -> None:
+        """Show a compared row's name, option and hatch only once the row has
+        layers chosen: without them it is not drawn."""
+        groups = getattr(self, "shadow_row_groups", None)
+        if not groups:
+            return
+        chosen = {short for short, _role, picker in self.shadow_rows if self._listed(picker)}
+        for short, widgets in groups.items():
+            self._show_rows(self.shadow_documents_panel, widgets, short in chosen)
 
     def _yield_rows(self) -> None:
         """Show the Yield page's rows the Slabs answer needs, and no others.
@@ -7998,7 +8067,8 @@ class Window:
         self.status.config(
             foreground=HINT,
             text=(
-                f"Tapir {found.tapir} · {len(found.layers)} layers · "
+                (f"Archicad {found.archicad_version} · " if found.archicad_version else "")
+                + f"Tapir {found.tapir} · {len(found.layers)} layers · "
                 f"{len(found.zone_layers)} zone layers · {len(found.masters)} masters · "
                 f"{len(found.subsets)} subsets"
             ),
@@ -8060,8 +8130,14 @@ class Window:
         self._fill(self.eye_base_combination, ("", *found.combinations), ())
         self._fill(self.shadow_plan_combination, found.combinations, ())
         self._fill(self.shadow_plan_pen_set, ("", *found.pen_sets), ())
+        # The options as this Archicad keeps them: renovation filters in 26,
+        # Design Option Combinations from 27, and the fields called so.
+        self.archicad_version = found.archicad_version
+        scenarios = found.design_options if self._design_options() else found.renovation_filters
         for box in self.shadow_row_filters.values():
-            self._fill(box, ("", *found.renovation_filters), ())
+            self._fill(box, ("", *scenarios), ())
+        self._fill(self.yield_scenario, ("", *scenarios), ())
+        self._scenario_words()
         for box in self.shadow_row_hatches.values():
             self._fill(box, ("", *found.fills), ())
         self._fill(self.shadow_study_subset, found.subsets, ())
@@ -8332,12 +8408,6 @@ class Window:
             "Worksheet fills": "Worksheet fills",
             "Live 3D Documents": "Live documents",
         },
-        "Renovation": {
-            "Any status": "Any",
-            "New only": "New only",
-            "Existing and new": "Existing + new",
-            "As the floor plan's filter": "Floor plan's filter",
-        },
         "Plans": {
             "Sun at each time": "Sun at each time",
             "Floor heat map": "Floor heat map",
@@ -8539,21 +8609,6 @@ class Window:
                 "site",
                 "Live documents: the documents themselves stacked on the sheet. They "
                 "update themselves, and are slow.",
-            ),
-        ),
-        "Renovation": (
-            ("Any status", "site", "Any: every slab, whatever its renovation status."),
-            ("New only", "site", "New only: the slabs whose renovation status is New."),
-            (
-                "Existing and new",
-                "site",
-                "Existing and new: every slab but those To Be Demolished.",
-            ),
-            (
-                "As the floor plan's filter",
-                "site",
-                "Floor plan's filter: what the floor plan's renovation filter shows; set it "
-                "there before Run.",
             ),
         ),
         "Site lands at": (
@@ -9239,14 +9294,16 @@ class Window:
         return typed or short
 
     def _row_extras(self, legend: Sequence[str]) -> list[str]:
-        """The compared rows' renovation filters and hatches, as the
-        documents' command takes them, for the rows that are in ``legend``."""
+        """The compared rows' renovation filters or design options, and their
+        hatches, as the documents' command takes them, for the rows that are
+        in ``legend``."""
         named = {entry.partition("=")[0] for entry in legend if "=" in entry}
         args: list[str] = []
+        flag = "--scenario-option" if self._design_options() else "--scenario-filter"
         for short, box in self.shadow_row_filters.items():
             name = self._row_name(short)
             if name in named and box.get().strip():
-                args += ["--scenario-filter", f"{name}={box.get().strip()}"]
+                args += [flag, f"{name}={box.get().strip()}"]
         for short, box in self.shadow_row_hatches.items():
             name = self._row_name(short)
             if name in named and box.get().strip():
@@ -9751,11 +9808,10 @@ class Window:
             if group in shown:
                 for name in self._listed(box):
                     args += [flag, name]
-        status = self.yield_renovation_status.get()
-        if status == "As the floor plan's filter":
-            args.append("--renovation-filter")
-        elif status in RENOVATION_STATUS_FLAGS:
-            args += ["--renovation-status", RENOVATION_STATUS_FLAGS[status]]
+        scenario = self.yield_scenario.get().strip()
+        if scenario:
+            flag = "--design-option" if self._design_options() else "--renovation-filter-name"
+            args += [flag, scenario]
         if "option" in shown:
             args += self._flag("--option", self.yield_option)
         for flag, control in (

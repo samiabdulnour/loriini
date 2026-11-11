@@ -1381,7 +1381,7 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     # Filled, but in rows this answer does not show: they must not count.
     hidden_window.yield_residential.insert(0, "01 | Wall.External")
     hidden_window.yield_commercial.insert(0, "01 | Floor.Structural")
-    hidden_window.yield_renovation_status.set("As the floor plan's filter")
+    hidden_window.yield_scenario.set("OPTION 02")
     hidden_window.yield_site_area.insert(0, "1386.78")
     hidden_window.yield_fsr_residential.insert(0, "2.8")
     hidden_window.yield_fsr_commercial.insert(0, "0.4")
@@ -1402,7 +1402,7 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     assert flag(args, "--massing-layer") == ["01 | Massing - Main Building.3D OPT2"]
     assert flag(args, "--commercial-level") == ["Ground", "Level 01"]
     assert not any("retail" in arg for arg in args), "shops are commercial (D159)"
-    assert "--renovation-filter" in args
+    assert flag(args, "--renovation-filter-name") == ["OPTION 02"]
     assert flag(args, "--gfa-residential") == ["0.725"]
     assert flag(args, "--gfa-commercial") == ["0.85"]
     assert flag(args, "--nla-commercial") == ["0.9"]
@@ -1517,9 +1517,9 @@ def test_the_yield_page_is_saved_and_restored(hidden_window: Any) -> None:
     assert saved["yield_commercial_layers"] == "01 | Floor.Structural"
     assert saved["yield_mix_2-bed_share"] == "70"
     assert saved["yield_option"] == "Option 01"
-    hidden_window.apply({**saved, "yield_gfa_residential": "0.7", "yield_renovation": True})
+    hidden_window.apply({**saved, "yield_gfa_residential": "0.7", "yield_scenario": "OPTION 03"})
     assert hidden_window.yield_gfa_residential.get() == "0.7"
-    assert hidden_window.yield_renovation.get() is True
+    assert hidden_window.yield_scenario.get() == "OPTION 03"
 
 
 def test_a_typed_hour_is_spelled_the_way_the_sheet_is_named() -> None:
@@ -1848,6 +1848,7 @@ def test_a_project_never_saved_is_read_not_refused(monkeypatch: pytest.MonkeyPat
 
     class NewFile:
         tapir_version = "1.5.8"
+        archicad_version: int | None = None
         database = None
 
         def __init__(self, *_args: object, **_kwargs: object) -> None:
@@ -5169,24 +5170,25 @@ def test_an_older_presets_retail_joins_the_commercial_rows(hidden_window: Any) -
     assert made._listed(made.yield_commercial_levels) == ["Level 01", "Ground"]
 
 
-def test_renovation_is_read_off_each_slab_or_the_floor_plans_filter(hidden_window: Any) -> None:
+def test_the_yield_counts_the_option_chosen_as_this_archicad_keeps_it(hidden_window: Any) -> None:
     made = hidden_window
     only_yield(made)
     (job,) = made.jobs()
-    assert "--renovation-status" not in job.args and "--renovation-filter" not in job.args
-    made.yield_renovation_status.set("New only")
+    assert not any(arg.startswith(("--renovation", "--design-option")) for arg in job.args)
+    made.yield_scenario.set("OPTION 03")
     (job,) = made.jobs()
-    assert flag(job.args, "--renovation-status") == ["new"]
-    made.yield_renovation_status.set("Existing and new")
+    assert flag(job.args, "--renovation-filter-name") == ["OPTION 03"]
+    made.archicad_version = 27
     (job,) = made.jobs()
-    assert flag(job.args, "--renovation-status") == ["existing-and-new"]
+    assert flag(job.args, "--design-option") == ["OPTION 03"]
+    assert "--renovation-filter-name" not in job.args
 
 
 def test_a_preset_saved_before_the_slabs_row_opens_as_what_it_meant(hidden_window: Any) -> None:
     made = hidden_window
     made.apply({"yield_massing_layers": "01 | Massing.3D", "yield_renovation": True})
     assert made.yield_slabs.get() == "Slabs on chosen layers"
-    assert made.yield_renovation_status.get() == "As the floor plan's filter"
+    assert made.yield_scenario.get() == "", "the old checkbox names no option"
     made.apply({"yield_residential_layers": "05 | Mass.Residential"})
     assert made.yield_slabs.get() == "A layer per use"
     made.apply({"yield_slabs": "Every slab showing", "yield_massing_layers": "x"})
@@ -5250,3 +5252,81 @@ def test_a_compared_row_is_named_filtered_and_hatched_from_the_window(hidden_win
     ]
     assert flag(job.args, "--scenario-filter") == ["LEP + 30%=LEP + 30% Bonus"]
     assert flag(job.args, "--scenario-fill") == ["LEP + 30%=zz Brick Common"]
+
+
+def test_a_compared_rows_fields_show_only_once_it_has_layers(hidden_window: Any) -> None:
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+    fields = hidden_window.shadow_row_groups
+    assert set(fields) == {"PROPOSED 2", "PROPOSED 3"}
+    assert all(len(widgets) == 6 for widgets in fields.values()), "a label and a box, three times"
+
+    def shown(short: str) -> bool:
+        return all(widget.winfo_manager() == "grid" for widget in fields[short])
+
+    def hidden(short: str) -> bool:
+        return all(widget.winfo_manager() == "" for widget in fields[short])
+
+    hidden_window.do_shadows.set(True)
+    hidden_window._sync()
+    assert hidden("PROPOSED 2") and hidden("PROPOSED 3")
+    rows["PROPOSED 2"].insert(0, "01 | Floor.Structural")
+    hidden_window._sync()
+    assert shown("PROPOSED 2") and hidden("PROPOSED 3")
+    rows["PROPOSED 2"].drop("01 | Floor.Structural")
+    assert hidden("PROPOSED 2"), "dropping the last layer hides them again"
+
+    # Folded, the panel keeps the rows it will put back, and only those.
+    panel = hidden_window.shadow_documents_panel
+    hidden_window._fold(panel, True)
+    rows["PROPOSED 3"].insert(0, "01 | Floor.Structural")
+    hidden_window._sync()
+    assert hidden("PROPOSED 3"), "nothing appears inside a folded panel"
+    kept = hidden_window._kept_rows[str(panel)]
+    assert all(widget in kept for widget in fields["PROPOSED 3"])
+    assert not any(widget in kept for widget in fields["PROPOSED 2"])
+    hidden_window._fold(panel, False)
+    assert shown("PROPOSED 3") and hidden("PROPOSED 2")
+
+
+def test_archicad_27_offers_design_options_where_26_offers_renovation_filters(
+    hidden_window: Any,
+) -> None:
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+
+    def words() -> list[str]:
+        return sorted(str(one.cget("text")) for one in hidden_window.scenario_labels)
+
+    hidden_window.options = replace(
+        hidden_window.options,
+        archicad_version=26,
+        renovation_filters=("OPTION 02", "LEP + 30% Bonus"),
+        design_options=(),
+    )
+    hidden_window._offer()
+    assert words() == ["Proposed 2 filter", "Proposed 3 filter", "Renovation filter"]
+    assert tuple(hidden_window.yield_scenario.cget("values")) == (
+        "",
+        "OPTION 02",
+        "LEP + 30% Bonus",
+    )
+
+    hidden_window.options = replace(
+        hidden_window.options,
+        archicad_version=27,
+        design_options=("Main + LEP", "Main + 12 storeys"),
+    )
+    hidden_window._offer()
+    assert words() == ["Design option", "Proposed 2 design option", "Proposed 3 design option"]
+    box = hidden_window.shadow_row_filters["PROPOSED 2"]
+    assert tuple(box.cget("values")) == ("", "Main + LEP", "Main + 12 storeys")
+
+    hidden_window.do_facade.set(False)
+    hidden_window.do_shadows.set(True)
+    hidden_window.shadow_plan_combination.set("Shadow Diagrams")
+    rows["PROPOSED"].insert(0, "01 | Wall.External")
+    rows["PROPOSED 2"].insert(0, "01 | Floor.Structural")
+    hidden_window.shadow_row_names["PROPOSED 2"].insert(0, "LEP + 30%")
+    box.set("Main + LEP")
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--scenario-option") == ["LEP + 30%=Main + LEP"]
+    assert "--scenario-filter" not in job.args

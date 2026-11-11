@@ -78,6 +78,8 @@ LORIINI_COMMAND (ModifyLayersCommand)
 LORIINI_COMMAND (GetGraphicOverrideCombinationsCommand)
 LORIINI_COMMAND (GetPlaceCommand)
 LORIINI_COMMAND (GetRenovationFiltersCommand)
+LORIINI_COMMAND (SetRenovationFilterCommand)
+LORIINI_COMMAND (SetViewDesignOptionsCommand)
 
 #undef LORIINI_COMMAND
 
