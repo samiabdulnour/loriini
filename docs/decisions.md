@@ -6967,3 +6967,30 @@ accumulates, a scenario is compared against every baseline and no other
 scenario); the shadow plans' `--existing` and `--proposed` route, whose
 proposals are still `Proposed 1`, `Proposed 2` and on, so a project's
 layers and combinations keep their names.
+
+### D179 — The licence database backup is encrypted before it is uploaded
+
+The repository went public on 11 November 2026, and with it every Actions
+artifact: anyone signed in to GitHub can download one. The nightly
+*Licence database backup* had been uploading the licence service's SQLite
+file as it came, and that file holds every licence's email, holder, Stripe
+customer and the names of the computers holding its seats.
+
+**Encrypted to a key GitHub never sees.** The workflow now encrypts the copy
+with age to the public keys in the repository variable
+`LORIINI_BACKUP_RECIPIENTS` and uploads only the `.age` file, as
+`licences-encrypted-<run>`. The private half stays on the vendor's machine
+beside the signing key, so neither the repository, its workflows nor a
+leaked token can open a backup. A public key rather than a passphrase held
+as a secret: what the runner holds can only seal, never open.
+
+**No key, no copy.** The first step checks the variable before the database
+is fetched, the plain file is written outside the uploaded folder and
+removed once sealed, and the upload takes only `*.age` files after checking
+the file starts with age's own header. A missing or wrong key stops the
+job; it never falls back to a plain copy.
+
+*What this does not change:* the service's backup request, `scripts/licence.py
+backup` by hand (a plain file on the vendor's own disk), the ninety days, or
+the schedule. The plain `licences-<run>` artifacts uploaded before this are
+not touched by it and are deleted by hand.
