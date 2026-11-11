@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from sun_study.archicad import design_options
+from sun_study.archicad import design_options, naming
 from sun_study.archicad.connection import ArchicadError
 from tests.unit.test_archicad_adapter import connect
 from tests.unit.test_area_sheet import scripted_project
@@ -17,6 +17,14 @@ LEP = "11111111-1111-1111-1111-111111111111"
 TWELVE = "22222222-2222-2222-2222-222222222222"
 OPTION_LEP = "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"
 OPTION_TWELVE = "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB"
+
+
+@pytest.fixture(autouse=True)
+def naming_left_as_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The yield command sets the run's prefix and day for the whole
+    process; put them back, so a later test meets them as it would have."""
+    for held in ("_prefix", "_context_prefix", "_day"):
+        monkeypatch.setattr(naming, held, getattr(naming, held))
 
 
 def product(version: int) -> dict[str, Any]:
