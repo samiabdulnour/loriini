@@ -694,10 +694,13 @@ def _fill(part: Polygon, rgb: tuple[int, int, int], *, layer: int, solid: int | 
     if solid is not None:
         data["fillIndex"] = solid
     if pen is not None:
-        # A hatch's lines are printed in the fill's pen: the colour given
-        # over it is what the screen shows, and a PDF saved from the sheet
-        # drew the lines in the Fill tool's own pen, black.
+        # A hatch's lines go by pen and by pen alone. Given a colour over
+        # the pen, the screen drew them in it and a PDF saved from the sheet
+        # drew them black, pen named or not; by pen alone, with the
+        # background still a colour, both agree (five ways tried side by
+        # side on the Darlinghurst sheet, 11 November 2026).
         data["fillPen"] = pen
+        del data["foregroundColour"]
     return data
 
 
