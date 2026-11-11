@@ -746,6 +746,10 @@ class ArrangeTransport:
 
     def send(self, payload: dict[str, Any]) -> dict[str, Any]:
         given = payload["parameters"].get("addOnCommandParameters") or {}
+        if "drawings" not in given:
+            # The read of the drawings' levels before a stacking: none is
+            # on top yet, so the stacking is asked for.
+            return {"succeeded": True, "result": {"addOnCommandResponse": {}}}
         self.asked.append(given)
         return {
             "succeeded": True,

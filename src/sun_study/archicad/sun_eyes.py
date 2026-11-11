@@ -737,7 +737,10 @@ def arrange_drawings(
         "frameRelativeToOrigin": False,
         "autoUpdate": True,
     }
-    if stack:
+    # Imported here: plan_sheet lays its cells out with this module's own.
+    from sun_study.archicad.plan_sheet import all_on_top
+
+    if stack and not all_on_top(connection, [str(one["guid"]) for one in drawings]):
         asked["stack"] = True
     response = connection.run_loriini("ArrangeDrawings", asked)
     if not isinstance(response, dict) or not response.get("success"):
