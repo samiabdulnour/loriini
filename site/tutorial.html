@@ -30,7 +30,7 @@
   <div class="facts">
     <div><span>Site</span>26, 28, 30 Campsie Street, Campsie NSW 2194 · 4 lots · 1,378 m²</div>
     <div><span>Controls</span>Canterbury-Bankstown LEP 2023 · R4 High Density Residential · FSR 2.4:1 · height 30 m</div>
-    <div><span>Proposal</span>9 storeys, 27.9 m · 44 apartments, 8 one-bed and 36 two-bed · GFA 3,289 m², FSR 2.39:1</div>
+    <div><span>Proposal</span>9 storeys, 27.9 m · 41 apartments: 7 one-bed, 32 two-bed, 2 three-bed · GFA 3,304 m², FSR 2.40:1</div>
   </div>
 
   <section class="step" id="site">
@@ -60,15 +60,15 @@
     <div class="step-text">
       <div class="step-no">2</div>
       <h2>A massing, and what it comes to</h2>
-      <p>Model the massing as slabs, one per floor, each as thick as its storey, on a layer of its own. Here that is nine slabs of 21 by 24 m on <code>Massing - Option 1</code>.</p>
+      <p>Model the massing as slabs, one per floor, each as thick as its storey, on a layer of its own. Here that is eight slabs of 22 by 24 m and a ninth, set back, of 18.5 by 18 m, on <code>Massing - Option 1</code>.</p>
       <p>On the <strong>Yield</strong> page choose <em>Chosen layers</em>, pick the massing layer and press Run. Loriini measures the slabs, reads the site area and the FSR at the address, and works the feasibility sheet: areas by level, FSR and GFA against what is permissible, an apartment mix and the parking it needs. It lands as a sheet in the Layout Book and as a live workbook.</p>
       <table class="figures">
         <tr><th></th><th>Permissible</th><th>Proposed</th></tr>
-        <tr><td>FSR</td><td>2.40</td><td>2.39</td></tr>
-        <tr><td>GFA</td><td>3,307 m²</td><td>3,289 m²</td></tr>
+        <tr><td>FSR</td><td>2.40</td><td>2.40</td></tr>
+        <tr><td>GFA</td><td>3,307 m²</td><td>3,304 m²</td></tr>
         <tr><td>Storeys</td><td></td><td>9</td></tr>
-        <tr><td>Apartments, at the sheet's mix</td><td>38.8</td><td>38.6</td></tr>
-        <tr><td>Parking spaces, SEPP</td><td></td><td>40.5</td></tr>
+        <tr><td>Apartments, at the sheet's mix</td><td>38.8</td><td>38.7</td></tr>
+        <tr><td>Parking spaces, SEPP</td><td></td><td>40.7</td></tr>
       </table>
       <pre><code>sun-study yield --massing-layer "Massing - Option 1"
   --address "26-30 Campsie St, Campsie NSW 2194" --xlsx yield.xlsx</code></pre>
@@ -83,19 +83,20 @@
     <div class="step-text">
       <div class="step-no">3</div>
       <h2>The apartments' sun hours</h2>
-      <p>The massing becomes a building: five apartments a floor round a core on the south side, a lobby on the ground floor, balconies with balustrades. Three conventions carry the study.</p>
+      <p>The massing becomes a building: a brick block of five apartments a floor round a middle corridor, a lobby on the ground floor, and two penthouses set back behind a terrace on the ninth. Three conventions carry the study.</p>
       <ul>
         <li>One Zone per apartment on a layer of their own, here <code>Zone - Apartments</code>, the Zone's number its unit number and its name its type.</li>
-        <li>One Zone per balcony on another, <code>Zone - Balconies</code>.</li>
+        <li>One Zone per balcony, loggia or terrace on another, <code>Zone - Balconies</code>.</li>
         <li><code>_L</code> at the end of the ID of every living-room window and sliding door, <code>SD-101_L</code>.</li>
       </ul>
       <p>On the <strong>Solar analysis</strong> page choose those layers and press Run. Loriini measures the direct sun on each apartment's living-room glazing and on its balcony on 21 June between 9 and 3, every ten minutes, with the neighbours, the balconies above and the balustrades in the way, and assesses it against the Apartment Design Guide.</p>
       <table class="figures">
         <tr><th></th><th>ADG 4A-1</th><th>This scheme</th></tr>
-        <tr><td>Apartments with 2 hours or more</td><td>at least 70 %</td><td>34 of 44, 77.3 %</td></tr>
-        <tr><td>Apartments with no direct sun</td><td>at most 15 %</td><td>0 of 44</td></tr>
+        <tr><td>Apartments with 2 hours or more</td><td>at least 70 %</td><td>33 of 41, 80.5 %</td></tr>
+        <tr><td>Apartments with no direct sun</td><td>at most 15 %</td><td>0 of 41</td></tr>
       </table>
-      <p>The plans say which ten fall short: the south-west corner apartment on every floor, in blue, with half an hour, and the east corner one on the ground floor, a few minutes under two hours behind its neighbours.</p>
+      <p>The plans say which eight fall short: the south-east corner apartment on every floor below the penthouses, in blue. Its living room faces away from the winter sun and has half an hour.</p>
+      <p class="tag">The study changed this building. Its first layout had every loggia in front of its living room, and the run gave it 16 of 41: a loggia 2.2 m deep shades the glass it serves. Moving each loggia beside its living room, the glazing flush with the brick, is what made it 33.</p>
       <p>The answer is in the project three ways: the hours and the verdict as properties on each apartment's Zone, for a schedule; a coloured fill per apartment and balcony on every storey's plan; and a sheet of the plans, with a summary sheet beside it.</p>
       <pre><code>sun-study archicad-run --timezone Australia/Sydney --livable-suffix "_L"
   --apartment-zone-layer "Zone - Apartments"
@@ -105,7 +106,7 @@
     <div class="step-figs">
       <figure><a href="tutorial/building.jpg"><img src="tutorial/building.jpg" alt="The building among its neighbours" width="1800" height="1094" loading="lazy"></a><figcaption>The building, from above Campsie Street</figcaption></figure>
       <figure><a href="tutorial/solar-plans.jpg"><img src="tutorial/solar-plans.jpg" alt="The Solar Analysis sheet, a plan per storey coloured by sun hours" width="2000" height="1431" loading="lazy"></a><figcaption>Solar Analysis: each apartment coloured by its hours of sun, a plan per storey</figcaption></figure>
-      <figure><a href="tutorial/solar-plan-level.jpg"><img src="tutorial/solar-plan-level.jpg" alt="Level 1, each apartment coloured by its sun hours" width="795" height="824" loading="lazy"></a><figcaption>Level 1. Yellow has three to four hours, blue under one</figcaption></figure>
+      <figure><a href="tutorial/solar-plan-level.jpg"><img src="tutorial/solar-plan-level.jpg" alt="Level 1, each apartment coloured by its sun hours" width="795" height="824" loading="lazy"></a><figcaption>Level 1. The warm colours have three hours or more, blue under one</figcaption></figure>
     </div>
   </section>
 
@@ -113,13 +114,13 @@
     <div class="step-text">
       <div class="step-no">4</div>
       <h2>The communal open space</h2>
-      <p>Draw the communal open space as a Zone on a layer of its own, here <code>Zone - Communal Open Space</code>: 457 m² behind the building, a third of the site. The <strong>Communal</strong> part of the Solar analysis page measures it as a surface in its own right: how many hours of sun each square metre gets, and what is in sun at each hour.</p>
+      <p>Draw the communal open space as a Zone on a layer of its own, here <code>Zone - Communal Open Space</code>: 347 m² of garden behind the building, a quarter of the site. The <strong>Communal</strong> part of the Solar analysis page measures it as a surface in its own right: how many hours of sun each square metre gets, and what is in sun at each hour.</p>
       <table class="figures">
         <tr><th></th><th>Area</th><th>Share</th></tr>
-        <tr><td>2 hours or more</td><td>173.9 m²</td><td>38.0 %</td></tr>
-        <tr><td>Under 2 hours</td><td>283.3 m²</td><td>62.0 %</td></tr>
-        <tr><td>In sun at 9am</td><td>350.9 m²</td><td>76.7 %</td></tr>
-        <tr><td>In sun at noon</td><td>60.6 m²</td><td>13.3 %</td></tr>
+        <tr><td>2 hours or more</td><td>133.8 m²</td><td>38.5 %</td></tr>
+        <tr><td>Under 2 hours</td><td>213.5 m²</td><td>61.5 %</td></tr>
+        <tr><td>In sun at 9am</td><td>275.9 m²</td><td>79.4 %</td></tr>
+        <tr><td>In sun at noon</td><td>56.2 m²</td><td>16.2 %</td></tr>
       </table>
       <p>The space sits to the south-east of nine storeys, so it has the morning and loses the middle of the day. The Apartment Design Guide asks for half of the principal usable part to have two hours; the plans show where that half would have to be.</p>
       <p>It makes the banded plan, the two-hour plan, a plan at every hour, an areas sheet, and a schedule as a workbook.</p>

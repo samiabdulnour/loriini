@@ -7034,3 +7034,59 @@ by the scripts beside the project, and is the next thing to do here:
 identifiers were already offered both ways; a project whose template has no
 fill by a name `solid_fill` knows, which draws as before.
 
+**The second scheme, 11 November 2026.** Asked: *"can the building be more
+ambitious?"*, with brick mid-rise blocks, deep loggias and a planted
+courtyard for reference; *"would you be able to draw some landscaping and
+communal open space area?"*; and, of the 3D context, *"i should be able to
+distinct the difference between grass and road"*.
+
+The building was rebuilt (`build4.py`, `landscape.py` beside the project):
+eight floors of 22 by 24 m in red brick with a stone band at every slab,
+five apartments a floor round a middle corridor, then two penthouses set
+back behind a parapet under a green roof; a garden behind with paths, a
+pergola, raised beds and trees, and the driveway off Wilfred Avenue. 41
+apartments, FSR 2.40.
+
+Its first layout put every loggia in front of its living room, and the
+apartment study gave it 16 of 41 with two hours: a loggia 2.2 m deep shades
+the glass it serves. The layout that stands has each living room's glazing
+flush with the facade and its loggia beside it: 33 of 41 (80.5 %), the eight
+that fall short being the south-east corner apartment on every floor, whose
+living room faces away from the winter sun. 38.5 % of the communal space has
+two hours. The tutorial says this; it is the study doing its job.
+
+**What the second scheme found, fixed (each in its own pull request).**
+
+- *A sheet with bare corners.* The context and site sheets were drawn inside
+  the bundle's north-up extent, which is the page's rectangle only while
+  north is up the page. On a project squared to its site the two crossed.
+  The sheet's field is square to the project now, and the fetch takes the
+  square that holds it at any turn. This is the last item of the list above.
+- *A yield heading struck through.* The section rule was 1.5 mm under the
+  middle of a 4.5 mm heading. It clears the letters now.
+- *Eight apartments missing from the count.* Archicad 30 exports a slider as
+  its glazed plane alone, facing the side its wall calls outside. In a wall
+  drawn the other way round that is the room; no face looked out, the
+  opening was skipped, and the run reported 16 of 33 on a building of 41. A
+  flat sheet is read from the side asked for, and an apartment with no
+  measured opening is named above the result.
+- *Roads and lots one green.* The terrain and the street blocks were both in
+  the Mesh tool's surface. `CreateMesh` takes a surface, and the context
+  model asks for a grey and a green. Written and unit-tested; not yet run in
+  Archicad, which needs an add-on build.
+
+**What it found, not fixed.**
+
+- `sun-study site` once reported "cleared 0 elements" on the context
+  worksheet, "12885 elements from the last run could not be deleted", and
+  drew over them. Showing every layer and clearing by hand fixed it, and the
+  next run cleared as it should. The cause was not found.
+- Nothing is deleted from a hidden layer and nothing says so. A study leaves
+  the room Zones hidden, and a teardown through the API left 232 of them.
+- The building sits on the terrain mesh, which covered a lawn drawn at the
+  site's own level. The site was cut out of the mesh as a hole by hand
+  (`ModifyMeshes` applies holes only when the outline is sent with them).
+  The context model could make that hole itself: `CreateMesh` takes holes.
+- `SetCurrentDatabase` with a `floorIndex` did not change the storey shown.
+
+
