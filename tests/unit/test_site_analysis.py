@@ -1990,15 +1990,42 @@ def test_the_credit_sits_under_the_map_and_not_in_it() -> None:
     frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
     drawing = context_drawing(bundle, frame)
 
-    from sun_study.archicad.site_analysis import _map_rectangle
+    from sun_study.archicad.site_analysis import _sheet_field
 
     lines = [t for t in drawing.texts if t.height_mm == CREDIT_MM]
     assert lines, "nothing was credited at all"
-    corners = _map_rectangle(bundle, frame)
+    corners = _sheet_field(bundle, frame)
     floor = min(y for _, y in corners)
     left = min(x for x, _ in corners)
     assert all(text.at[1] < floor for text in lines), "the credit is inside the map"
     assert all(text.at[0] == pytest.approx(left) for text in lines), "it does not start at the edge"
+
+
+def test_the_sheet_field_is_square_to_the_page_on_a_turned_project() -> None:
+    """The page is the project's, so its field is too. It was the bundle's
+    north-up extent, which on a project squared to its site crossed the
+    page and left the corners bare (Campsie, 11 November 2026)."""
+    from dataclasses import replace
+
+    from sun_study.archicad.site_analysis import _fetched_field, _sheet_field
+    from sun_study.site.geo import turned_window
+    from sun_study.site.pipeline import MAP_HEIGHT_MM, MAP_WIDTH_MM
+
+    bundle = context_bundle()
+    north_up = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    frame = replace(north_up, plus_y_bearing_deg=64.58)
+
+    field = _sheet_field(bundle, frame)
+    xs, ys = sorted({round(x, 6) for x, _ in field}), sorted({round(y, 6) for _, y in field})
+    assert len(xs) == 2 and len(ys) == 2, "the field is not along the project's axes"
+    assert xs[1] - xs[0] == pytest.approx(MAP_WIDTH_MM * bundle.scale / 1000.0)
+    assert ys[1] - ys[0] == pytest.approx(MAP_HEIGHT_MM * bundle.scale / 1000.0)
+
+    # Fetched for the north-up field alone, the corners have nothing in them
+    # and the data is cut where it ends; fetched for any turn, it is whole.
+    assert len(_fetched_field(bundle, frame)) > 4
+    bundle.fetched = turned_window(bundle.extent)
+    assert _fetched_field(bundle, frame) == field
 
 
 def test_a_publisher_whose_service_was_down_is_not_credited() -> None:

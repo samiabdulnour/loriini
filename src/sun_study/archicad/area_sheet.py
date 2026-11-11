@@ -81,6 +81,8 @@ LEAST_VIEW_MM = 80.0
 _LABEL_X, _A_X, _B_X, _C_X = 0.0, 60.0, 110.0, 156.0
 _BODY_MM, _STEP_MM, _GAP_ROW_MM = 3.5, 5.2, 3.0
 _TITLE_MM, _NOTE_MM, _LEGEND_MM, _SECTION_MM = 9.0, 3.2, 5.0, 4.5
+#: Clear paper between a section heading's letters and the rule under it.
+_RULE_CLEAR_MM = 1.2
 
 
 def sheet_word(option: str) -> str:
@@ -118,13 +120,17 @@ def area_drawing(sheet: Feasibility, source: Sequence[str] = ()) -> Drawing:
         if row.kind == "section":
             text(row.label.upper(), _LABEL_X, y, _SECTION_MM)
             text(a, _A_X + 40.0, y, _SECTION_MM, right=True)
+            # The text hangs by its middle, so the rule goes half its
+            # height down and a little more: at 1.5 mm it struck the
+            # heading through (Campsie, 11 November 2026).
+            rule = y - _SECTION_MM / 2.0 - _RULE_CLEAR_MM
             drawing.line(
                 part,
-                [(mm(0.0), mm(y - 1.5)), (mm(TABLE_WIDTH_MM), mm(y - 1.5))],
+                [(mm(0.0), mm(rule)), (mm(TABLE_WIDTH_MM), mm(rule))],
                 colour=INK,
                 weight_mm=0.25,
             )
-            y -= _STEP_MM * 1.2
+            y -= _STEP_MM * 1.2 + _RULE_CLEAR_MM
             continue
         text(row.label, _LABEL_X, y)
         text(a, _A_X + 40.0, y, right=True)
