@@ -9146,12 +9146,22 @@ def site_analysis(
             raise typer.Exit(code=2) from error
 
     say: Callable[[str], None] = typer.echo
+    # A page that is not north-up needs more ground than the north-up field:
+    # its corners lie outside it. The turn itself is not known until the lot
+    # is, so the fetch allows for any.
+    north_deg = geo.project_north_bearing_deg if geo is not None else 0.0
+    any_turn = square_to_site or abs((north_deg + 180.0) % 360.0 - 180.0) > 0.5
     context_bundle = fetch_or_load(
         "context",
         context,
         site_pipeline.load_context,
         lambda: site_pipeline.run_context(
-            address or "", scale=scale, out_dir=where, with_aerial=with_aerial, log=say
+            address or "",
+            scale=scale,
+            out_dir=where,
+            with_aerial=with_aerial,
+            any_turn=any_turn,
+            log=say,
         ),
     )
     site_bundle = fetch_or_load(
@@ -9159,7 +9169,12 @@ def site_analysis(
         site,
         site_pipeline.load_site,
         lambda: site_pipeline.run_site(
-            address or "", scale=site_scale, out_dir=where, with_aerial=with_aerial, log=say
+            address or "",
+            scale=site_scale,
+            out_dir=where,
+            with_aerial=with_aerial,
+            any_turn=any_turn,
+            log=say,
         ),
     )
     summary_bundle = fetch_or_load(

@@ -139,6 +139,16 @@ def test_the_sheet_carries_the_title_the_table_the_notes_and_the_legend() -> Non
     # Two swatches, each a box of close lines in its colour; the shops' blush is gone.
     colours = {line.colour for line in drawing.lines}
     assert {"#FFF4A8", "#B894F2"} <= colours and "#F6B8C8" not in colours
+    # A heading sits on its rule, not across it, and the row under clears it.
+    rules = sorted(
+        {line.points[0][1] for line in drawing.lines if line.weight_mm == 0.25}, reverse=True
+    )
+    headings = [text for text in drawing.texts if text.height_mm == 4.5]
+    assert len(rules) == len({text.at[1] for text in headings}) > 5
+    for text in drawing.texts:
+        half = text.height_mm / 2000.0
+        for rule in rules:
+            assert not (text.at[1] - half - 0.0005 < rule < text.at[1] + half + 0.0005), text.text
 
 
 def test_the_view_goes_right_of_the_table_and_left_of_the_title_block() -> None:

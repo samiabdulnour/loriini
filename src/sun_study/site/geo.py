@@ -46,6 +46,7 @@ __all__ = [
     "ring_area",
     "ring_centroid",
     "scale_factor",
+    "turned_window",
 ]
 
 Point = tuple[float, float]
@@ -131,6 +132,22 @@ def extent_for(centre: Point, width_mm: float, height_mm: float, scale: float) -
     half_w = width_mm / 1000.0 * scale * k / 2.0
     half_h = height_mm / 1000.0 * scale * k / 2.0
     return Extent(centre[0] - half_w, centre[1] - half_h, centre[0] + half_w, centre[1] + half_h)
+
+
+def turned_window(extent: Extent, margin: float = 1.03) -> Extent:
+    """The north-up square that holds ``extent`` turned any way about its
+    centre: its side is the extent's diagonal, and a little over.
+
+    A sheet is drawn square to the project, and a project squared to its
+    site, or one whose north is not up the page, turns the sheet's field
+    away from north. Data fetched for the north-up field then leaves the
+    turned field's corners bare, which is how the first squared context
+    sheet came out (Campsie, 11 November 2026). The margin is for the grid
+    convergence and the mercator stretch, both well inside three per cent.
+    """
+    cx, cy = extent.centre
+    half = math.hypot(extent.width, extent.height) / 2.0 * margin
+    return Extent(cx - half, cy - half, cx + half, cy + half)
 
 
 # -- MGA2020 -----------------------------------------------------------------
