@@ -489,6 +489,25 @@ def views_for_storeys(
         ),
         "SetViewSettings",
     )
+    if zoom is None:
+        # Archicad turns a view to its saved rotation only when the view
+        # saves a zoom as well. Without one the zero above is kept and
+        # never used: the drawing shows the plan as the plan window is
+        # turned at that moment, and on a project worked in a rotated
+        # orientation every plan arrived on its sheet tilted, its labels
+        # with it (Penrith, 11 November 2026). SetViewRotation saves the
+        # whole plan as the zoom and the rotation with it. Best effort: an
+        # add-on without the command leaves the views as they were.
+        with suppress(ArchicadError):
+            connection.run_tapir(
+                "SetViewRotation",
+                {
+                    "navigatorItemIdsWithRotation": [
+                        {"navigatorItemId": {"guid": identifier}, "rotation": 0.0}
+                        for identifier in identifiers
+                    ]
+                },
+            )
 
     return [
         StoreyView(
