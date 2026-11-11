@@ -362,6 +362,35 @@ def test_planar_face_grid_picks_the_face_the_hint_points_at() -> None:
         np.testing.assert_allclose(samples.normals[0], hint, atol=1e-12)
 
 
+def test_planar_face_grid_reads_a_one_sided_sheet_from_its_back() -> None:
+    """Archicad 30 exports a slider as its glazed plane alone, wound to face
+    the side its wall calls outside. In a wall drawn the other way round that
+    is the room, and the opening used to be skipped."""
+    from sun_study.core.geometry import TriangleMesh
+
+    vertices = np.array([[0.0, 0.0, 0.0], [3.6, 0.0, 0.0], [3.6, 0.0, 2.4], [0.0, 0.0, 2.4]])
+    sheet = TriangleMesh(vertices, np.array([[0, 1, 2], [0, 2, 3]]))  # wound to face -Y
+    for hint in ([0.0, -1.0, 0.0], [0.0, 1.0, 0.0]):
+        samples = planar_face_grid(sheet, "w", np.array(hint), spacing_m=0.4, surface_offset_m=0.05)
+        assert samples is not None, hint
+        assert len(samples) == 9 * 6
+        np.testing.assert_allclose(samples.normals[0], hint, atol=1e-12)
+        # Off the glass on the side asked for, not the side it is wound to.
+        assert float(samples.positions[0] @ np.array(hint)) == pytest.approx(0.05)
+
+
+def test_planar_face_grid_still_refuses_a_solid_that_faces_away() -> None:
+    """Only a sheet is read from its back. A solid with no face toward the
+    hint is a wrong hint or wrong geometry, and stays unmeasured."""
+    from sun_study.core.geometry import TriangleMesh
+
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]]
+    )
+    wedge = TriangleMesh(vertices, np.array([[0, 1, 2], [0, 2, 3], [0, 4, 1]]))
+    assert planar_face_grid(wedge, "w", np.array([0.0, 1.0, 0.0])) is None
+
+
 def test_planar_face_grid_returns_none_for_empty_geometry() -> None:
     from sun_study.core.geometry import TriangleMesh
 
@@ -659,6 +688,29 @@ def test_the_suffix_route_selects_only_the_marked_openings(tmp_path: Path) -> No
         "Apartment L00-A",
         "Apartment L01-A",
     }
+
+
+def test_an_apartment_nothing_was_measured_for_is_named(tmp_path: Path) -> None:
+    """An apartment with no measured opening is not in the result at all, so
+    the percentage is of fewer apartments than the building has. The Campsie
+    sample lost eight of forty-one that way and the run said nothing."""
+    marked = _mark_openings(SAMPLE, tmp_path / "marked.ifc")
+    every = {space.name: "06 | Zone.Units" for space in read_ifc(marked).of_class("IfcSpace")}
+    layered = _put_on_layers(marked, tmp_path / "layered.ifc", every)
+
+    scene = _suffix_scene(layered, apartment_zone_layers=("06 | Zone.Units",))
+    assert scene.provenance["apartments_without_a_measured_opening"] == (
+        "Apartment L00-B",
+        "Apartment L01-B",
+    )
+    said = scene.describe()
+    assert "WARNING: 2 apartment zones have no measured living-room opening" in said
+    assert "Apartment L00-B, Apartment L01-B" in said and "'_L'" in said
+
+    # Without the layers every Zone is a candidate, and that is not news.
+    plain = _suffix_scene(marked)
+    assert plain.provenance["apartments_without_a_measured_opening"] == ()
+    assert "WARNING" not in plain.describe()
 
 
 def test_a_marked_door_is_glazing_too(tmp_path: Path) -> None:
