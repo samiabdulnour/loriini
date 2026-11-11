@@ -57,6 +57,16 @@ from sun_study.archicad.cos_schedule import (
     place_schedule,
     tag_hours,
 )
+from sun_study.archicad.design_options import (
+    combination_guids,
+    combination_named,
+    combinations,
+    left_out_by,
+    renovation_filter_guid,
+    renovation_filters,
+    require_design_options,
+    show_renovation_filter,
+)
 from sun_study.archicad.draw import (
     DEFAULT_BANDS,
     BandStyle,
@@ -8034,6 +8044,17 @@ def shadow_plan_documents(
             ),
         ),
     ] = None,
+    scenario_option: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--scenario-option",
+            help=(
+                "LABEL=COMBINATION: the Design Option Combination one legend row's "
+                "documents are seen under, by its name or guid -- Archicad 27's way of "
+                "keeping an option, as --scenario-filter is 26's. Repeat per row."
+            ),
+        ),
+    ] = None,
     scenario_fill: Annotated[
         list[str] | None,
         typer.Option(
@@ -8302,6 +8323,9 @@ def shadow_plan_documents(
             clock=clock,
             flat=flat,
             filters=_row_filters(scenario_filter or [], legend),
+            options=_row_filters(
+                scenario_option or [], legend, flag="--scenario-option", what="COMBINATION"
+            ),
             hatches=_row_filters(scenario_fill or [], legend, flag="--scenario-fill", what="FILL"),
             every_hour=shadow_flat.EveryHour(
                 only=every_hour_only, colour=every_hour_colour, storey=every_hour_storey
@@ -8608,6 +8632,7 @@ def _stacked_shadow_plans(
     filters: Mapping[str, str] | None = None,
     hatches: Mapping[str, str] | None = None,
     every_hour: shadow_flat.EveryHour | None = None,
+    options: Mapping[str, str] | None = None,
 ) -> None:
     """The stacked mode of ``shadow-plans``: every legend row in one drawing.
 
@@ -8687,6 +8712,14 @@ def _stacked_shadow_plans(
     ]
     for label, guid in filters.items():
         typer.echo(f"  {label}: seen under the renovation filter {guid}")
+    try:
+        options = combination_guids(connection, options or {})
+    except ArchicadError as error:
+        typer.secho(f"  {error}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    members = [replace(member, design_option_guid=options.get(member.label)) for member in members]
+    for label, guid in options.items():
+        typer.echo(f"  {label}: seen under the Design Option Combination {guid}")
     designed = next((row.label for row in reversed(legend) if row.role == SCENARIO), None)
     if every_hour is not None and designed is None:
         typer.secho(
@@ -8798,6 +8831,7 @@ def _stacked_shadow_plans(
             filters=filters or {},
             hatches=hatches or {},
             every_hour=every_hour,
+            options=options,
         )
         typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
         return
@@ -8826,6 +8860,7 @@ def _stacked_shadow_plans(
             filters=filters or {},
             hatches={},
             every_hour=replace(every_hour, only=True),
+            options=options,
         )
     if layout:
         try:
@@ -9011,6 +9046,7 @@ def _flat_shadow_plans(
     filters: Mapping[str, str],
     hatches: Mapping[str, str],
     every_hour: shadow_flat.EveryHour | None = None,
+    options: Mapping[str, str] | None = None,
 ) -> None:
     """The flat mode of the stacked shadow plans (``archicad.shadow_flat``).
 
@@ -9086,6 +9122,8 @@ def _flat_shadow_plans(
                     uncut_surfaces=dict(STACK_SURFACES),
                     renovation_filter_guid=filters.get(row.label)
                     or settings.renovation_filter_guid,
+                    design_option_guid=(options or {}).get(row.label)
+                    or settings.design_option_guid,
                 ),
                 set_label=word,
                 fresh=fresh,
@@ -10164,6 +10202,29 @@ def area_yield(
             ),
         ),
     ] = "any",
+    renovation_filter_name: Annotated[
+        str | None,
+        typer.Option(
+            "--renovation-filter-name",
+            help=(
+                "Archicad 26's way of keeping an option: count only the slabs this "
+                "renovation filter shows, by its name or guid. The floor plan is shown "
+                "the filter while the slabs are read, and put back after."
+            ),
+        ),
+    ] = None,
+    design_option: Annotated[
+        str | None,
+        typer.Option(
+            "--design-option",
+            help=(
+                "Archicad 27's way: count only the slabs this Design Option Combination "
+                "shows, by its name or guid -- the main model and the options it has "
+                "on. Needs Archicad 29, the first that says which slabs belong to which "
+                "option."
+            ),
+        ),
+    ] = None,
     gfa_residential: Annotated[
         float, typer.Option("--gfa-residential", help="BEA to GFA, residential.")
     ] = 0.725,
@@ -10404,17 +10465,55 @@ def area_yield(
             err=True,
         )
         raise typer.Exit(code=2)
+    if renovation_filter_name and design_option:
+        typer.secho(
+            "Give --renovation-filter-name or --design-option, not both: Archicad 26 keeps "
+            "options as renovation filters and 27 as Design Options.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
     connection = _connect(port, timeout)
+    shown_under = ""
+    put_back: str | None = None
+    left_out: set[str] = set()
     try:
+        if renovation_filter_name:
+            filters = renovation_filters(connection)
+            guid = renovation_filter_guid(renovation_filter_name, filters)
+            if filters.actual and filters.actual.casefold() != guid.casefold():
+                put_back = filters.actual
+            named = show_renovation_filter(connection, guid) or renovation_filter_name
+            shown_under = f", only those the renovation filter {named!r} shows"
+        if design_option:
+            require_design_options(connection, "The Yield")
+            chosen = combination_named(design_option, combinations(connection))
+            left_out = left_out_by(connection, chosen)
+            shown_under = f", only those the Design Option Combination {chosen.name!r} shows"
         reading = read_slabs(
             connection,
-            renovation=renovation_filter,
+            renovation=renovation_filter or bool(renovation_filter_name),
             shown_layers_only=not (residential or commercial or massing or options),
             statuses=wanted_statuses[renovation_status],
         )
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
+    finally:
+        # The floor plan as it was found: the filter was the run's to borrow.
+        if put_back is not None:
+            try:
+                show_renovation_filter(connection, put_back)
+            except ArchicadError as error:
+                typer.secho(
+                    f"  the floor plan's renovation filter could not be put back: {error}",
+                    fg=typer.colors.YELLOW,
+                )
+    dropped = 0
+    if left_out:
+        kept = tuple(slab for slab in reading.slabs if slab.guid.upper() not in left_out)
+        dropped = len(reading.slabs) - len(kept)
+        reading = replace(reading, slabs=kept)
 
     # The options this run makes: one per --option-layer, each a massing
     # layer of its own with the use told by level; or the one option the
@@ -10428,7 +10527,11 @@ def area_yield(
     status_words = {"new": "new", "existing-and-new": "existing or new"}
     typer.echo(
         f"read {_slabs(len(reading.slabs))}"
-        + (", only those the renovation filter shows" if renovation_filter else "")
+        + (
+            ", only those the renovation filter shows"
+            if renovation_filter and not shown_under
+            else shown_under
+        )
         + (
             f", only the {status_words[renovation_status]} ones"
             if renovation_status in status_words
@@ -10438,6 +10541,8 @@ def area_yield(
     )
     for status, count in sorted(reading.by_status.items()):
         typer.echo(f"  {_slabs(count)} left out as {status}")
+    if dropped:
+        typer.echo(f"  {_slabs(dropped)} left out, in design options the combination has off")
     for said, count in sorted(reading.unknown_status.items()):
         typer.secho(
             f"  {_slabs(count)} with a renovation status of {said!r}, which is none of "

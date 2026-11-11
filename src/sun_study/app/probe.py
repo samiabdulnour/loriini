@@ -19,6 +19,8 @@ from sun_study.archicad.connection import (
     project_name,
 )
 from sun_study.archicad.cos_schedule import schedule_names
+from sun_study.archicad.design_options import combinations as option_combinations
+from sun_study.archicad.design_options import uses_design_options
 from sun_study.archicad.layers import read_layers
 from sun_study.archicad.layout import _walk, master_layouts
 from sun_study.archicad.read import read_geo_location
@@ -113,6 +115,16 @@ class ProjectOptions:
     """The project's renovation filters, in the Renovation palette's order,
     for a compared row kept as a filter. Empty on an add-on that cannot list
     them, and the field then takes a typed name."""
+
+    design_options: tuple[str, ...] = ()
+    """The project's Design Option Combinations, Archicad 27 on, in Archicad's
+    order: what a compared row or the Yield is seen under there, as a
+    renovation filter is in 26."""
+
+    archicad_version: int | None = None
+    """Archicad's major version, 26 or 27 and on, which decides whether the
+    window offers renovation filters or Design Options. ``None`` when it
+    would not say."""
 
     overrides: tuple[str, ...] = ()
     """Graphic override combinations, for the sun views' glazing override.
@@ -335,6 +347,14 @@ def options(port: int) -> ProjectOptions:
         renovation = connection.run_loriini("GetRenovationFilters", {})
     except ArchicadError:
         renovation = {}
+    # Softly, as the filters are: an Archicad that will not say its version
+    # is offered 26's renovation filters, which every version has.
+    archicad = connection.archicad_version
+    design_options = (
+        tuple(one.name for one in option_combinations(connection))
+        if uses_design_options(archicad)
+        else ()
+    )
     # Not through `attempt`: an add-on older than this command is not a
     # problem with the project, and the field simply stays typed.
     try:
@@ -361,6 +381,8 @@ def options(port: int) -> ProjectOptions:
     return ProjectOptions(
         project=project,
         tapir=version,
+        archicad_version=archicad,
+        design_options=design_options,
         latitude=None if where is None else where.latitude_deg,
         longitude=None if where is None else where.longitude_deg,
         north_radians=0.0 if where is None else where.north_radians,
