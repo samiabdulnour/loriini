@@ -536,6 +536,32 @@ def draw_legend_and_outline(
 TOP_LEVEL = 14
 
 
+def all_on_top(connection: ArchicadConnection, guids: Sequence[str]) -> bool:
+    """Whether every one of these elements is at the top display level already.
+
+    Asked before drawings are brought to the front. Bringing forward what is
+    at the top already makes Archicad put up a warning -- *Cannot bring some
+    element(s) any closer. Top stack level reached.* -- and wait for its OK,
+    once a drawing, while the run and everything queued after it stands
+    still: a second run onto a sheet the first had stacked (Darlinghurst, 11
+    November 2026). Drawings at the top keep the order the first run gave
+    them, so there is nothing to bring. ``False`` when it cannot be read.
+    """
+    if not guids:
+        return True
+    try:
+        answer = connection.run_tapir(
+            "GetDetailsOfElements",
+            {"elements": [{"elementId": {"guid": guid}} for guid in guids]},
+        )
+    except ArchicadError:
+        return False
+    rows = (answer or {}).get("detailsOfElements") if isinstance(answer, dict) else None
+    if not isinstance(rows, list) or len(rows) != len(guids):
+        return False
+    return all(isinstance(row, dict) and row.get("drawIndex") == TOP_LEVEL for row in rows)
+
+
 def _to_the_top(connection: ArchicadConnection) -> None:
     """Every fill and text on the current layout to the top display level,
     after the drawings, so the outline lies over the plans. Tapir moves an

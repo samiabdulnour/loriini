@@ -7,6 +7,10 @@ namespace Loriini {
 
 namespace {
 
+// The highest display level an element has; one there cannot be brought
+// forward, and Archicad says so in a dialog.
+const char TopDrawIndex = 14;
+
 // Moves to a layout's database and remembers where we were.
 //
 // A Drawing lives in its layout's database and `ACAPI_Element_Get` reads
@@ -473,6 +477,16 @@ GS::ObjectState ArrangeDrawingsCommand::Execute (const GS::ObjectState& paramete
 		// existing set's document over the proposal's in every cell.
 		if (stack) {
 			for (const API_Guid& guid : inOrder) {
+				// One at the top already is left there. Brought forward
+				// again, Archicad puts up "Cannot bring some element(s) any
+				// closer. Top stack level reached." and waits for its OK,
+				// a drawing at a time, with the run standing behind it: a
+				// second run onto a sheet the first had stacked.
+				API_Elem_Head head = {};
+				head.guid = guid;
+				if (ACAPI_Element_GetHeader (&head) == NoError && head.drwIndex >= TopDrawIndex) {
+					continue;
+				}
 				GS::Array<API_Guid> one;
 				one.Push (guid);
 				const GSErrCode ordered = Api::ElementTool (one, APITool_BringToFront, nullptr);

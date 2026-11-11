@@ -54,7 +54,12 @@ from sun_study.archicad.layout import (
     one_title_per_pile,
     remove_stale_layouts,
 )
-from sun_study.archicad.plan_sheet import PlanWindow, draw_legend_and_outline, nearest_pen
+from sun_study.archicad.plan_sheet import (
+    PlanWindow,
+    all_on_top,
+    draw_legend_and_outline,
+    nearest_pen,
+)
 from sun_study.archicad.series import ensure_model_database
 from sun_study.archicad.shadow_plans import (
     LEGEND_TITLE,
@@ -558,7 +563,7 @@ def _arrange(
         "frameRelativeToOrigin": False,
         "autoUpdate": True,
     }
-    if stack:
+    if stack and not all_on_top(connection, [str(one["guid"]) for one in drawings]):
         asked["stack"] = True
     answer = connection.run_loriini("ArrangeDrawings", asked)
     failures = (answer or {}).get("failures") if isinstance(answer, dict) else None
