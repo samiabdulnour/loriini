@@ -671,7 +671,8 @@ def read_shadows(
 
 def _fill(part: Polygon, rgb: tuple[int, int, int], *, layer: int, solid: int | None,
           dx: float, dy: float, element_id: str,
-          lines: tuple[int, int, int] | None = None) -> dict[str, Any]:  # fmt: skip
+          lines: tuple[int, int, int] | None = None,
+          pen: int | None = None) -> dict[str, Any]:  # fmt: skip
     colour = {"red": rgb[0] / 255.0, "green": rgb[1] / 255.0, "blue": rgb[2] / 255.0}
     front = lines or rgb
     foreground = {"red": front[0] / 255.0, "green": front[1] / 255.0, "blue": front[2] / 255.0}
@@ -692,6 +693,11 @@ def _fill(part: Polygon, rgb: tuple[int, int, int], *, layer: int, solid: int | 
     }
     if solid is not None:
         data["fillIndex"] = solid
+    if pen is not None:
+        # A hatch's lines are printed in the fill's pen: the colour given
+        # over it is what the screen shows, and a PDF saved from the sheet
+        # drew the lines in the Fill tool's own pen, black.
+        data["fillPen"] = pen
     return data
 
 
@@ -813,6 +819,9 @@ def draw_flat_worksheet(
                 dy=dy,
                 element_id=word,
                 lines=None if row.hatch is None else outline_of.get(row.label, (60, 60, 60)),
+                pen=None
+                if row.hatch is None
+                else nearest_pen(pens, outline_of.get(row.label, (60, 60, 60))),
             )
             for part, row, dx, dy, word in these
         ]

@@ -8640,7 +8640,10 @@ def _stacked_shadow_plans(
     pen_index = legend_pen_set(connection, pen_set_name, source_guid, exact) if exact else None
     swatches: dict[str, tuple[int, int, int]] = {}
     for label, (pen, asked, own) in chosen.items():
-        printed = asked if (pen_index is not None and label not in given_pens) else (own or asked)
+        # Drawn flat, a row is a fill in the legend's own colour, whatever
+        # the pens are: only the stacked documents print through a pen.
+        exact_colour = pen_index is not None or flat
+        printed = asked if (exact_colour and label not in given_pens) else (own or asked)
         swatches[label] = printed
         how = "given" if label in given_pens else "matched"
         off = "" if own is None else f", the table's own {own}"

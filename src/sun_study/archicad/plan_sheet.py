@@ -466,6 +466,10 @@ def draw_legend_and_outline(
             fill["fillIndex"] = hatch[0]
             fill["foregroundColour"] = _rgb(hatch[1])
         edge = row_edges[number - 1] if number <= len(row_edges) else None
+        if hatch is not None and edge is not None:
+            # The hatch's lines print in the fill's pen, whatever colour the
+            # screen is given: the edge's pen is the same colour's.
+            fill["fillPen"] = edge
         if edge is not None:
             fill["contourPen"] = edge
             if edge_line is not None:
