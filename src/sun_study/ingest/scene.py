@@ -390,6 +390,23 @@ class Scene:
             f"  window to space resolution: {routes or 'none'}",
             f"  {self._openings_summary()}",
         ]
+        uncounted = self.provenance.get("apartments_without_a_measured_opening")
+        if isinstance(uncounted, tuple) and uncounted:
+            shown = ", ".join(str(name) for name in uncounted[:12])
+            more = f" and {len(uncounted) - 12} more" if len(uncounted) > 12 else ""
+            lines.append(
+                f"  WARNING: {len(uncounted)} apartment zones have no measured living-room "
+                f"opening and are NOT in the count below: {shown}{more}."
+            )
+            lines.append(
+                "    Each needs an opening the run can match to it"
+                + (
+                    f" (an ID ending {self.config.livable_opening_suffix!r})"
+                    if self.config.livable_opening_suffix
+                    else ""
+                )
+                + ". Until then the percentage is of fewer apartments than the building has."
+            )
         if self.provenance.get("glass"):
             lines.append(f"  {self.provenance['glass']}")
         overhead = self.provenance.get("geometry_above_building")
@@ -472,6 +489,10 @@ def planar_face_grid(
     before this. It is off by default because a window needs no clipping and
     the test is not free.
 
+    A mesh that is one flat sheet has no opposite face to choose. If it faces
+    away from the hint it is read from its back, since a pane of glass is in
+    the same place either way.
+
     Returns ``None`` when the mesh has no usable planar face.
     """
     if mesh.triangle_count == 0:
@@ -490,14 +511,28 @@ def planar_face_grid(
     # keeping only those pointing broadly the way the hint does.
     alignment = normals @ hint
     outward = usable & (alignment > 0.0)
-    if not outward.any():
-        return None
-
-    best = int(np.argmax(np.where(outward, areas * alignment, -np.inf)))
-    normal = normals[best]
-
     cosine = float(np.cos(np.radians(angle_tolerance_deg)))
-    coplanar = usable & ((normals @ normal) >= cosine)
+    if outward.any():
+        best = int(np.argmax(np.where(outward, areas * alignment, -np.inf)))
+        normal = normals[best]
+        coplanar = usable & ((normals @ normal) >= cosine)
+    else:
+        # A sheet, not a solid: one face, and it looks the other way. Archicad
+        # 30 exports a door or window as its glazed plane alone, facing the
+        # side its wall calls outside, so a slider in a wall drawn the other
+        # way round faces into the room. It was skipped for that, and its
+        # apartment left the count without a word: eight of forty-one on the
+        # Campsie sample (11 November 2026). The glass is where it is whichever
+        # way its triangles are wound, so the sheet is read from the side the
+        # hint asks for.
+        best = int(np.argmax(np.where(usable, areas * -alignment, -np.inf)))
+        if alignment[best] >= 0.0:
+            return None
+        sheet = usable & ((normals @ normals[best]) >= cosine)
+        if not np.array_equal(sheet, usable):
+            return None
+        normal = -normals[best]
+        coplanar = sheet
     vertices = mesh.triangles()[coplanar].reshape(-1, 3)
     if len(vertices) < 3:
         return None
@@ -1221,6 +1256,7 @@ def build_scene(model: IfcModel, config: SceneConfig) -> Scene:
         occluders = _clip_to_radius(model, config.context_radius_m)
 
     window_groups, assessed, skipped = [], 0, 0
+    measured_rooms: set[str] = set()
     for assignment in assignments:
         window = model.by_id(assignment.window_id)
         if window is None or assignment.space_id is None:
@@ -1245,7 +1281,18 @@ def build_scene(model: IfcModel, config: SceneConfig) -> Scene:
             skipped += 1
             continue
         window_groups.append(samples)
+        measured_rooms.add(assignment.space_id)
         assessed += 1
+
+    # An apartment nothing was measured for is not in the result at all, so
+    # the count it is missing from has to say so. Only where the apartments
+    # were named by layer: without that every Zone is a candidate, and a
+    # corridor with no slider is not news.
+    uncounted: tuple[str, ...] = ()
+    if config.apartment_zone_layers:
+        uncounted = tuple(
+            sorted(space.name for space in spaces if space.global_id not in measured_rooms)
+        )
 
     # D7. A Zone is the balcony's actual extent; a slab is whatever happened to
     # be drawn under it, and may run past the balustrade or stop short of it.
@@ -1322,6 +1369,7 @@ def build_scene(model: IfcModel, config: SceneConfig) -> Scene:
         "windows_total": len(openings),
         "windows_assessed": assessed,
         "windows_skipped": skipped,
+        "apartments_without_a_measured_opening": uncounted,
         "spaces_total": len(spaces),
         "elements_above_cut": cut_above,
         "floor_samples": len(SamplePoints.concatenate(floor_groups)) if floor_groups else 0,
