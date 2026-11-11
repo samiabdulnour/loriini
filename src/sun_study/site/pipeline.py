@@ -40,6 +40,7 @@ from sun_study.site.geo import (
     point_in_ring,
     ring_area,
     scale_factor,
+    turned_window,
 )
 from sun_study.site.geocode import Geocode, geocode, site_address_of
 from sun_study.site.imagery import Aerial, aerial
@@ -157,8 +158,18 @@ class ContextBundle:
     """Whether ``bus.stops`` came from the Transport for NSW register or from
     OpenStreetMap. The stops themselves do not say, and the sheet credits
     whoever they came from, so the run writes it down as it makes the swap."""
+    fetched: Extent | None = None
+    """The window the data and the photograph were fetched for, when that is
+    wider than ``extent``: the square that holds the sheet's field turned any
+    way, for a project whose page is not north-up. ``None`` in a bundle
+    fetched for the north-up field alone."""
     warnings: tuple[str, ...] = ()
     generated_at: str = field(default_factory=_now)
+
+    @property
+    def window(self) -> Extent:
+        """What was fetched: ``fetched``, or the sheet's own extent."""
+        return self.fetched if self.fetched is not None else self.extent
 
     @property
     def centre_lonlat(self) -> tuple[float, float]:
@@ -206,6 +217,7 @@ class ContextBundle:
             "matched": list(self.matched),
             "centre": list(self.centre),
             "extent": self.extent.as_dict(),
+            "fetched": self.fetched.as_dict() if self.fetched else None,
             "scale": self.scale,
             "site_lots": self.site_lots,
             "all_lots": self.all_lots,
@@ -236,6 +248,7 @@ class ContextBundle:
             matched=tuple(str(m) for m in data.get("matched") or []),
             centre=(float(data["centre"][0]), float(data["centre"][1])),
             extent=Extent.from_dict(data["extent"]),
+            fetched=Extent.from_dict(data["fetched"]) if data.get("fetched") else None,
             scale=float(data["scale"]),
             site_lots=data.get("site_lots") or empty(),
             all_lots=data.get("all_lots") or empty(),
@@ -293,8 +306,18 @@ class SiteBundle:
     furniture: osm.Furniture = field(default_factory=osm.Furniture)
     bus_stops: tuple[osm.Stop, ...] = ()
     aerial: Aerial | None = None
+    fetched: Extent | None = None
+    """The window the data and the photograph were fetched for, when that is
+    wider than ``extent``: the square that holds the sheet's field turned any
+    way, for a project whose page is not north-up. ``None`` in a bundle
+    fetched for the north-up field alone."""
     warnings: tuple[str, ...] = ()
     generated_at: str = field(default_factory=_now)
+
+    @property
+    def window(self) -> Extent:
+        """What was fetched: ``fetched``, or the sheet's own extent."""
+        return self.fetched if self.fetched is not None else self.extent
 
     @property
     def centre_lonlat(self) -> tuple[float, float]:
@@ -339,6 +362,7 @@ class SiteBundle:
             "matched": list(self.matched),
             "centre": list(self.centre),
             "extent": self.extent.as_dict(),
+            "fetched": self.fetched.as_dict() if self.fetched else None,
             "scale": self.scale,
             "site_lots": self.site_lots,
             "site_rings": [[list(p) for p in ring] for ring in self.site_rings],
@@ -365,6 +389,7 @@ class SiteBundle:
             matched=tuple(str(m) for m in data.get("matched") or []),
             centre=(float(data["centre"][0]), float(data["centre"][1])),
             extent=Extent.from_dict(data["extent"]),
+            fetched=Extent.from_dict(data["fetched"]) if data.get("fetched") else None,
             scale=float(data["scale"]),
             site_lots=data.get("site_lots") or empty(),
             site_rings=tuple(
@@ -506,6 +531,7 @@ def run_context(
     out_dir: Path | None = None,
     with_aerial: bool = False,
     aerial_px_width: int = 3200,
+    any_turn: bool = False,
     log: Log | None = None,
 ) -> ContextBundle:
     """Everything the context analysis draws, for the sheet extent around the site."""
@@ -516,34 +542,39 @@ def run_context(
         raise ValueError("No cadastral lots found for the site.")
 
     extent = extent_for(found.centre, map_width_mm, map_height_mm, scale)
+    window = turned_window(extent) if any_turn else extent
     lon, lat = mercator_to_lonlat(*found.centre)
     say("fetching planning layers, cadastre, transport, points of interest, isochrones...")
 
     soft = _Soft(say)
     try:
         f_rail_corridors = soft.submit(
-            "rail corridors", lambda: nsw.rail_corridors(extent), empty()
+            "rail corridors", lambda: nsw.rail_corridors(window), empty()
         )
-        f_all_lots = soft.submit("cadastral lots", lambda: nsw.all_lots(extent), empty())
-        f_zoning = soft.pool.submit(nsw.zoning, extent)
-        f_hob = soft.submit("height of building", lambda: nsw.height_of_building(extent), empty())
-        f_heritage = soft.submit("heritage", lambda: nsw.heritage(extent), empty())
-        f_roads = soft.submit("roads", lambda: nsw.roads(extent), [])
-        f_rail = soft.submit("rail lines", lambda: nsw.rail_lines(extent), nsw.RailLines())
-        f_stations = soft.submit("train stations", lambda: nsw.train_stations(extent), [])
-        f_parks = soft.submit("park points", lambda: nsw.park_points(extent), [])
-        f_areas = soft.submit("named areas", lambda: nsw.named_areas(extent), [])
-        f_complexes = soft.submit("complex points", lambda: nsw.complex_points(extent), [])
+        f_all_lots = soft.submit("cadastral lots", lambda: nsw.all_lots(window), empty())
+        f_zoning = soft.pool.submit(nsw.zoning, window)
+        f_hob = soft.submit("height of building", lambda: nsw.height_of_building(window), empty())
+        f_heritage = soft.submit("heritage", lambda: nsw.heritage(window), empty())
+        f_roads = soft.submit("roads", lambda: nsw.roads(window), [])
+        f_rail = soft.submit("rail lines", lambda: nsw.rail_lines(window), nsw.RailLines())
+        f_stations = soft.submit("train stations", lambda: nsw.train_stations(window), [])
+        f_parks = soft.submit("park points", lambda: nsw.park_points(window), [])
+        f_areas = soft.submit("named areas", lambda: nsw.named_areas(window), [])
+        f_complexes = soft.submit("complex points", lambda: nsw.complex_points(window), [])
         f_bus = soft.submit(
-            "bus/tram data (OSM)", lambda: osm.bus_data(extent, log=say), osm.BusData()
+            "bus/tram data (OSM)", lambda: osm.bus_data(window, log=say), osm.BusData()
         )
         f_iso = soft.submit("isochrones", lambda: transport.isochrones(lon, lat), [])
-        f_buildings = soft.submit("buildings (OSM)", lambda: osm.buildings(extent, log=say), ())
+        f_buildings = soft.submit("buildings (OSM)", lambda: osm.buildings(window, log=say), ())
         f_aerial: Future[Aerial | None] | None = None
         if with_aerial and out_dir is not None:
             f_aerial = soft.submit(
                 "aerial imagery",
-                lambda: aerial(extent, aerial_px_width, out_dir / "data" / "aerial-context"),
+                lambda: aerial(
+                    window,
+                    round(aerial_px_width * window.width / extent.width),
+                    out_dir / "data" / "aerial-context",
+                ),
                 None,
             )
 
@@ -554,7 +585,7 @@ def run_context(
         if key:
             stops = soft.take(
                 soft.submit(
-                    "bus stops (TfNSW)", lambda: transport.bus_stops_tfnsw(extent, key), None
+                    "bus stops (TfNSW)", lambda: transport.bus_stops_tfnsw(window, key), None
                 )
             )
             if stops is not None:
@@ -600,6 +631,7 @@ def run_context(
             matched=found.matched,
             centre=found.centre,
             extent=extent,
+            fetched=window if any_turn else None,
             scale=scale,
             site_lots=site,
             all_lots=soft.take(f_all_lots),
@@ -666,6 +698,7 @@ def run_site(
     map_height_mm: float = MAP_HEIGHT_MM,
     out_dir: Path | None = None,
     with_aerial: bool = False,
+    any_turn: bool = False,
     log: Log | None = None,
 ) -> SiteBundle:
     """The site-scale bundle: boundary, contours, neighbours, street furniture."""
@@ -700,34 +733,39 @@ def run_site(
             chosen = float(SITE_SCALES[-1])
     say(f"  site sheet scale 1:{chosen:g}")
     extent = extent_for(centre, map_width_mm, map_height_mm, chosen)
+    window = turned_window(extent) if any_turn else extent
 
     say("fetching contours, lots, roads, neighbours, street furniture, trees...")
     soft = _Soft(say)
     try:
-        f_contours = soft.submit("contours", lambda: terrain.sheet_contours(extent, log=say), [])
-        f_trees = soft.submit("council trees", lambda: trees.council_trees(extent, log=say), [])
-        f_all_lots = soft.submit("lots", lambda: nsw.all_lots(extent), empty())
-        f_roads = soft.submit("roads", lambda: nsw.roads(extent), [])
-        f_rail = soft.submit("rail lines", lambda: nsw.rail_lines(extent), nsw.RailLines())
-        f_zoning = soft.submit("zoning", lambda: nsw.zoning(extent), empty())
-        f_hob = soft.submit("height of building", lambda: nsw.height_of_building(extent), empty())
-        f_fsr = soft.submit("floor space ratio", lambda: nsw.floor_space_ratio(extent), empty())
+        f_contours = soft.submit("contours", lambda: terrain.sheet_contours(window, log=say), [])
+        f_trees = soft.submit("council trees", lambda: trees.council_trees(window, log=say), [])
+        f_all_lots = soft.submit("lots", lambda: nsw.all_lots(window), empty())
+        f_roads = soft.submit("roads", lambda: nsw.roads(window), [])
+        f_rail = soft.submit("rail lines", lambda: nsw.rail_lines(window), nsw.RailLines())
+        f_zoning = soft.submit("zoning", lambda: nsw.zoning(window), empty())
+        f_hob = soft.submit("height of building", lambda: nsw.height_of_building(window), empty())
+        f_fsr = soft.submit("floor space ratio", lambda: nsw.floor_space_ratio(window), empty())
         f_neighbours = soft.submit(
-            "neighbour addresses", lambda: nsw.neighbour_addresses(extent), []
+            "neighbour addresses", lambda: nsw.neighbour_addresses(window), []
         )
         f_furniture = soft.submit(
-            "street furniture (OSM)", lambda: osm.furniture(extent, log=say), osm.Furniture()
+            "street furniture (OSM)", lambda: osm.furniture(window, log=say), osm.Furniture()
         )
         f_aerial: Future[Aerial | None] | None = None
         if with_aerial and out_dir is not None:
             f_aerial = soft.submit(
                 "aerial imagery",
-                lambda: aerial(extent, 3600, out_dir / "data" / "aerial-site"),
+                lambda: aerial(
+                    window,
+                    round(3600 * window.width / extent.width),
+                    out_dir / "data" / "aerial-site",
+                ),
                 None,
             )
         key = transport.tfnsw_key()
         f_stops = (
-            soft.submit("bus stops (TfNSW)", lambda: transport.bus_stops_tfnsw(extent, key), [])
+            soft.submit("bus stops (TfNSW)", lambda: transport.bus_stops_tfnsw(window, key), [])
             if key
             else None
         )
@@ -748,6 +786,7 @@ def run_site(
             matched=found.matched,
             centre=centre,
             extent=extent,
+            fetched=window if any_turn else None,
             scale=chosen,
             site_lots=site,
             site_rings=tuple(tuple(ring) for ring in rings),

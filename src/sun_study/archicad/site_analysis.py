@@ -1139,18 +1139,55 @@ def _midpoint(points: Sequence[Point]) -> Point:
 
 
 def _map_rectangle(bundle: ContextBundle | SiteBundle, frame: Frame) -> list[Point]:
-    """The sheet's map field, as the project sees it: four corners, anticlockwise."""
+    """The bundle's own extent as the project sees it: four corners,
+    anticlockwise. North-up on the ground, so turned in a turned frame; the
+    model's square, which is what still asks for it."""
     e = bundle.extent
     corners = [(e.xmin, e.ymin), (e.xmax, e.ymin), (e.xmax, e.ymax), (e.xmin, e.ymax)]
     return [frame.project(*mercator_to_lonlat(x, y)) for x, y in corners]
 
 
+def _sheet_field(bundle: ContextBundle | SiteBundle, frame: Frame) -> list[Point]:
+    """The sheet's map field, as the project sees it: four corners, anticlockwise.
+
+    Square to the project, because the page is: the layout frames the
+    drawing by a rectangle along the project's axes, centred where the
+    bundle's centre lands (``place_on_layout``). It was the bundle's
+    north-up extent until 11 November 2026, which is the same rectangle
+    only while the project's north is up the page; on a project squared to
+    its site the two crossed, and the sheet printed with its corners bare.
+    """
+    cx, cy = frame.project(*bundle.centre_lonlat)
+    half_w = MAP_WIDTH_MM * bundle.scale / 1000.0 / 2.0
+    half_h = MAP_HEIGHT_MM * bundle.scale / 1000.0 / 2.0
+    return [
+        (cx - half_w, cy - half_h),
+        (cx + half_w, cy - half_h),
+        (cx + half_w, cy + half_h),
+        (cx - half_w, cy + half_h),
+    ]
+
+
+def _fetched_field(bundle: ContextBundle | SiteBundle, frame: Frame) -> list[Point]:
+    """The part of the sheet's field there is data for: the field cut to
+    the window the bundle was fetched for.
+
+    The whole field when the fetch allowed for the turn (``turned_window``).
+    A bundle fetched for the north-up field alone and drawn on a turned page
+    has none for the corners, and what it has is cut to a clean edge here
+    rather than left to end wherever each source's features happened to.
+    """
+    field = _sheet_field(bundle, frame)
+    e = bundle.window
+    corners = [(e.xmin, e.ymin), (e.xmax, e.ymin), (e.xmax, e.ymax), (e.xmin, e.ymax)]
+    cut = _clip_ring(field, [frame.project(*mercator_to_lonlat(x, y)) for x, y in corners])
+    return cut or field
+
+
 def _map_point(bundle: ContextBundle | SiteBundle, frame: Frame, x_mm: float, y_mm: float) -> Point:
-    """A point given in sheet millimetres from the map field's top-left, north up."""
-    e = bundle.extent
-    x = e.xmin + x_mm / MAP_WIDTH_MM * e.width
-    y = e.ymax - y_mm / MAP_HEIGHT_MM * e.height
-    return frame.project(*mercator_to_lonlat(x, y))
+    """A point given in sheet millimetres from the map field's top-left."""
+    (left, _), _, (_, top), _ = _sheet_field(bundle, frame)
+    return (left + x_mm * bundle.scale / 1000.0, top - y_mm * bundle.scale / 1000.0)
 
 
 def _street_labels(
@@ -1448,7 +1485,7 @@ def _furniture_of_sheet(
     title: str,
 ) -> Point:
     """Frame, title and north point. Returns where the legend should start."""
-    corners = _map_rectangle(bundle, frame)
+    corners = _sheet_field(bundle, frame)
     drawing.line("Frame", corners, colour=INK, weight_mm=0.35, closed=True)
     right = max(x for x, _ in corners)
     top = max(y for _, y in corners)
@@ -1540,7 +1577,7 @@ def _aerial(
     aerial = bundle.aerial
     if aerial is None or not aerial.tiles:
         return False
-    e = bundle.extent
+    e = bundle.window
     keep_xy = [[lonlat_to_mercator(lon, lat) for lon, lat in ring] for ring in keep]
     placed = 0
     for tile in aerial.tiles:
@@ -1955,10 +1992,9 @@ def _parted(loops: list[list[Point]]) -> list[list[Point]]:
 
 
 def _sheet_mm(bundle: ContextBundle | SiteBundle, frame: Frame, at: Point) -> tuple[float, float]:
-    """A project point as sheet millimetres from the map field's top-left, north up."""
-    x, y = lonlat_to_mercator(*frame.unproject(*at))
-    e = bundle.extent
-    return ((x - e.xmin) / e.width * MAP_WIDTH_MM, (e.ymax - y) / e.height * MAP_HEIGHT_MM)
+    """A project point in sheet millimetres from the map field's top-left."""
+    (left, _), _, (_, top), _ = _sheet_field(bundle, frame)
+    return ((at[0] - left) / bundle.scale * 1000.0, (top - at[1]) / bundle.scale * 1000.0)
 
 
 def _along_ring(points: Sequence[Point], count: int, phase: float) -> list[Point]:
@@ -2249,14 +2285,14 @@ def context_drawing(
         if wash and not grey and t.veil > 0.0:
             drawing.fill(
                 "Aerial",
-                [_map_rectangle(bundle, frame)],
+                [_sheet_field(bundle, frame)],
                 "#ffffff",
                 contour="#ffffff",
                 wash=True,
                 element_id="SA AERIAL WASH",
             )
 
-    field = _map_rectangle(bundle, frame)
+    field = _fetched_field(bundle, frame)
 
     def tint(part: str, rings: Sequence[Sequence[Point]], cat: themes.Category, ident: str) -> None:
         rings = _clipped(rings, field)
@@ -2455,7 +2491,7 @@ def context_drawing(
     for stop in bundle.bus.tram_stops:
         at = frame.project(stop.lon, stop.lat)
         _roundel(drawing, "Stations", at, "L", t.tram, "TRAM STOP", solid=solid)
-    field = _map_rectangle(bundle, frame)
+    field = _fetched_field(bundle, frame)
     centre = frame.project(*bundle.centre_lonlat)
     stations = _stations(bundle, frame, field, centre) if numbered else []
     labels = {id(station): label for station, label, _at in stations}
@@ -2690,7 +2726,7 @@ def _noise(
         for points in sources:
             drawing.line("Noise", _zigzag(points, mm(1.1), mm(2.4)), colour=look.noise_pen)
         return
-    field = _map_rectangle(bundle, frame)
+    field = _fetched_field(bundle, frame)
 
     def clear(pt: Point) -> bool:
         inside_site = bool(site) and point_in_ring(pt[0], pt[1], list(site))
@@ -3194,8 +3230,10 @@ def _winds(
             return all(math.dist(pt, (sx, sy + mm(8))) > mm(36) for sx, sy in suns)
 
         for bearing, label in WINDS:
-            a = math.radians(bearing)
-            ux, uy = math.sin(a), -math.cos(a)
+            # Sheet millimetres run down the page, and the page is the
+            # project's, so the bearing goes through the frame.
+            ux, uy = frame.direction(bearing)
+            uy = -uy
             x0, x1, y0, y1 = 90.0, MAP_WIDTH_MM - 90.0, 55.0, MAP_HEIGHT_MM - 60.0
             tx = (x1 - cx) / ux if ux > 0 else (x0 - cx) / ux if ux < 0 else math.inf
             ty = (y1 - cy) / uy if uy > 0 else (y0 - cy) / uy if uy < 0 else math.inf
@@ -3452,7 +3490,7 @@ def site_drawing(
     rows: list[Row] = []
     zone_rows: list[Row] = []
     present: dict[str, themes.Category] = {}
-    field = _map_rectangle(bundle, frame)
+    field = _fetched_field(bundle, frame)
 
     # The zoning: its boundaries, hatched over the aerial in the family
     # colours, filled in the ePlanning colours, filled on the lots as the
