@@ -10984,12 +10984,12 @@ def ifc_export(
     Archicad's through a named translator -- checking each.
     """
     from sun_study.archicad import qa_export as qa
+    from sun_study.archicad import qa_workbook
     from sun_study.archicad.connection import project_name
     from sun_study.archicad.qa_ifc import check_ifc, write_qa_ifc
     from sun_study.archicad.read import classification_items_of
     from sun_study.archicad.read import zones as read_zones
     from sun_study.archicad.write import existing_properties
-    from sun_study.report import qa_workbook
 
     try:
         groups = qa.group_names(prefix)

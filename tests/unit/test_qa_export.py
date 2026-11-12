@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from sun_study.archicad import qa_export as qa
+from sun_study.archicad import qa_workbook
 from sun_study.archicad.qa_ifc import check_ifc, write_qa_ifc
-from sun_study.report import qa_workbook
 from sun_study.report.xlsx import read_text
 
 
