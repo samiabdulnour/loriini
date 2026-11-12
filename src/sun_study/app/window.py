@@ -7904,6 +7904,7 @@ class Window:
             "qa_setup": self.qa_setup,
             "qa_fill": self.qa_fill,
             "qa_own_ifc": self.qa_own_ifc,
+            "qa_solar": self.qa_solar,
             "yield_xlsx": self.yield_xlsx,
             # The three boxes of days, one key per button, so a preset that
             # studies the equinox beside midwinter opens the same way.
@@ -10061,6 +10062,10 @@ class Window:
         self.qa_setup = tk.BooleanVar(value=True)
         self.qa_fill = tk.BooleanVar(value=True)
         self.qa_own_ifc = tk.BooleanVar(value=True)
+        #: Solar 2h and No sun measured by Loriini's own solar study, run
+        #: first, rather than copied: optional, an office may have assessed
+        #: the sun some other way.
+        self.qa_solar = tk.BooleanVar(value=False)
         frame, row = self._panel(outer, 0), 0
         box = ttk.Checkbutton(
             frame,
@@ -10139,6 +10144,22 @@ class Window:
             check.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
             Tooltip(check, tip, title=text)
             row += 1
+        solar = ttk.Checkbutton(
+            frame,
+            text="Solar 2h and No sun from Loriini's solar study",
+            variable=self.qa_solar,
+            command=self._qa_with_solar,
+        )
+        solar.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        Tooltip(
+            solar,
+            "Runs the Solar analysis first, with its own page's settings, which writes "
+            "each apartment's measured sun onto its zone; the export then takes Solar 2h "
+            "and No sun from it. Off: the two are copied from the project's properties, "
+            "as the fields below say.",
+            title="Solar from the solar study",
+        )
+        row += 1
 
         frame, row = self._panel(outer, 1, title="Areas and parking"), 0
         self._caption(frame, row, "The area zones by what they count as, and the parking spaces.")
@@ -10188,6 +10209,13 @@ class Window:
                 "that cannot be read as the field's is left blank and listed in the log.",
             )
 
+    def _qa_with_solar(self) -> None:
+        """Ticked, the solar study is queued too: it runs first and writes the
+        sun the export reads (D184)."""
+        if self.qa_solar.get():
+            self.do_plans.set(True)
+        self._sync()
+
     def _qa_args(self, common: list[str]) -> list[str]:
         """The QA export's command line, from its page."""
         args = ["ifc-export", *common]
@@ -10215,6 +10243,7 @@ class Window:
             args.append("--no-fill")
         if not self.qa_own_ifc.get():
             args.append("--no-own-ifc")
+        args.append("--solar" if self.qa_solar.get() else "--no-solar")
         tables = self.tables.get().strip()
         if tables:
             args += ["--out", str(Path(tables) / "QA")]
