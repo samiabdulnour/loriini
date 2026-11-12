@@ -7076,3 +7076,32 @@ slide is), which costs one window moved a frame; the real panel opens under
 it when it arrives. Folding is the held swap alone. No slide when the window
 folds the panel as it is dragged narrow, nor where the system has been asked
 for less movement.
+
+### D183 — The Yield's options are renovation filters or design options, several to a run; the use is told by level or by layer
+
+D140 gave the Yield four ways of saying which slabs are the massing:
+everything showing, chosen layers, a layer per use, and a layer per option.
+The user found two of them were not how the office works: "everything
+showing" counted whatever happened to be on screen, and options kept as
+layers are not how its options are kept. An option is a renovation filter in
+Archicad 26 and a Design Option from 27 (D180).
+
+**Use told by: By level, or By layer.** *By level* is D140's chosen layers:
+the massing layers, commercial on the commercial levels and residential on
+the rest. *By layer* is its layer per use. "Everything showing" and "Layer
+per option" are gone from the page; a settings file that saved any of the
+four opens on the nearer of the two (the tiles' aliases). The command line
+keeps `--option-layer` and counting what is showing.
+
+**Options: several renovation filters or design options, a sheet each.** The
+single filter of D180 becomes a list ticked from the project's renovation
+filters (26) or Design Option Combinations (27 on). Each one chosen is an
+option named after it, with its own sheet and workbook page, and the options
+are compared at the foot of the log, as option layers were. Under renovation
+filters the floor plan is shown each filter in turn and the slabs read again,
+then given back its own filter; under combinations the slabs are read once
+and each combination keeps the main model and its options' slabs (Archicad
+29 on). The layers, levels and figures are the same for every option. None
+chosen is one option, named in the Option box, every slab on the layers.
+`--renovation-filter-name` and `--design-option` repeat; they and
+`--option-layer` are refused together.

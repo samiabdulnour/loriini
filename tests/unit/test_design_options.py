@@ -10,7 +10,8 @@ import pytest
 
 from sun_study.archicad import design_options, naming
 from sun_study.archicad.connection import ArchicadError
-from tests.unit.test_archicad_adapter import connect
+from sun_study.report.area_table import options_in
+from tests.unit.test_archicad_adapter import Sequential, connect
 from tests.unit.test_area_sheet import scripted_project
 
 LEP = "11111111-1111-1111-1111-111111111111"
@@ -242,3 +243,89 @@ def test_a_shadow_colour_is_drawn_in_the_pen_that_looks_most_like_it() -> None:
         cli.parse_colour("blue")
     assert cli._pen_for_colour(connection, "#3366cc", None) == 70
     assert cli._pen_for_colour(connection, "#cc2222", "office") == 45
+
+
+def test_each_renovation_filter_is_an_option_of_its_own_from_one_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    filters = {
+        "GetRenovationFilters": {
+            "success": True,
+            "renovationFilters": [
+                {"guid": LEP, "name": "OPTION 03"},
+                {"guid": TWELVE, "name": "OPTION 10"},
+            ],
+            "actual": "33333333-3333-3333-3333-333333333333",
+        },
+        "SetRenovationFilter": Sequential(
+            {"success": True, "name": "OPTION 03"},
+            {"success": True, "name": "OPTION 10"},
+            {"success": True, "name": "OPTION 01"},
+        ),
+    }
+    result, transport = run_yield(
+        monkeypatch,
+        tmp_path,
+        filters,
+        "--renovation-filter-name",
+        "OPTION 03",
+        "--renovation-filter-name",
+        "OPTION 10",
+    )
+    assert result.exit_code == 0, result.output
+    assert transport.all_parameters_for("SetRenovationFilter") == [
+        {"guid": LEP},
+        {"guid": TWELVE},
+        {"guid": "33333333-3333-3333-3333-333333333333"},
+    ], "each filter in turn, then the floor plan's own"
+    assert len(transport.all_parameters_for("GetElementsByType")) == 2, "read under each"
+    out = result.output
+    assert "OPTION 03: read 2 slabs, only those the renovation filter 'OPTION 03' shows" in out
+    assert "OPTION 10: read 2 slabs" in out
+    assert "\nOPTION 03\n" in out and "\nOPTION 10\n" in out, "an option each"
+    assert "Total GFA" in out and "Option" in out.split("OPTION 10\n")[-1], "compared at the foot"
+    assert [option.option for option in options_in(tmp_path / "yield.xlsx")] == [
+        "OPTION 03",
+        "OPTION 10",
+    ]
+
+
+def test_each_combination_is_an_option_counted_from_one_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    extra = {**product(29), **listed(active=True), **options_project()}
+    result, transport = run_yield(
+        monkeypatch,
+        tmp_path,
+        extra,
+        "--design-option",
+        "Main + LEP",
+        "--design-option",
+        "Main + 12 storeys",
+    )
+    assert result.exit_code == 0, result.output
+    assert len(transport.all_parameters_for("GetElementsByType")) == 1, "the slabs read once"
+    assert "Main + LEP: read 1 slab" in result.output
+    assert "Main + 12 storeys: read 1 slab" in result.output
+
+
+def test_options_are_layers_or_filters_not_both(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from typer.testing import CliRunner
+
+    import sun_study.cli as cli
+
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "yield",
+            "--option-layer",
+            "05 | Mass.Residential",
+            "--renovation-filter-name",
+            "OPTION 03",
+            "--no-sheet",
+        ],
+    )
+    assert result.exit_code == 2
+    assert "not both" in result.output

@@ -403,7 +403,6 @@ BY_LABEL: dict[str, str] = {
     "Set name": "subset",
     # Yield -- the feasibility sheet
     "Option": "yield",
-    "Option layers": "combination",
     "Residential layers": "yield",
     "Commercial layers": "yield",
     "Layers": "model",
