@@ -10740,7 +10740,7 @@ def area_yield(
             slab.bottom_m
             for *_layers, got in runs
             for slab in got.slabs
-            if tidy(slab.layer) in gridded
+            if tidy(slab.layer) in gridded or (len(runs) > 1 and not gridded)
         }
     )
     results: list[tuple[Feasibility, list[str]]] = []
@@ -10881,8 +10881,8 @@ def ifc_export(
         str,
         typer.Option(
             "--prefix",
-            help="What the three property groups are named from: FUSE_ makes FUSE_UNIT, "
-            "FUSE_AREA and FUSE_PARKING.",
+            help="What the three property groups are named from: QA_ makes QA_UNIT, "
+            "QA_AREA and QA_PARKING.",
         ),
     ] = "QA_",
     apartment_layer: Annotated[
@@ -10973,7 +10973,7 @@ def ifc_export(
     ] = None,
     name: Annotated[
         str | None,
-        typer.Option("--name", help="What the IFC is named from: 2518 gives 2518_QA_<yymmdd>.ifc."),
+        typer.Option("--name", help="What the IFC is named from: 1234 gives 1234_QA_<yymmdd>.ifc."),
     ] = None,
 ) -> None:
     """The IFC export (D184): the per-apartment data a QA council schedules from.
@@ -11026,11 +11026,18 @@ def ifc_export(
             return qa.zones_on(connection, layers, storeys=storeys, within=within, every=every)
 
         apartments, doubled = qa.drop_doubles(on(apartment_layer))
-        balconies = on(balcony_layer or [])
-        area_zones = [
-            (zone, kind) for layer, kind in areas_by_layer.items() for zone in on([layer])
-        ]
-        spaces = [(zone, kind) for layer, kind in parking_by_layer.items() for zone in on([layer])]
+        balconies, twice = qa.drop_doubles(on(balcony_layer or []))
+        doubled += twice
+        area_zones = []
+        for layer, kind in areas_by_layer.items():
+            kept_zones, twice = qa.drop_doubles(on([layer]))
+            doubled += twice
+            area_zones += [(zone, kind) for zone in kept_zones]
+        spaces = []
+        for layer, kind in parking_by_layer.items():
+            kept_zones, twice = qa.drop_doubles(on([layer]))
+            doubled += twice
+            spaces += [(zone, kind) for zone in kept_zones]
         typer.echo(
             f"{project}: {len(apartments)} apartments, {len(balconies)} balconies, "
             f"{len(area_zones)} area zones, {len(spaces)} parking spaces"
@@ -11038,7 +11045,7 @@ def ifc_export(
         )
         if doubled:
             typer.secho(
-                f"  {len(doubled)} apartment zones lie over another on their storey and are "
+                f"  {len(doubled)} zones lie over another on their layer and storey and are "
                 "counted once: "
                 + ", ".join(f"{zone.name or zone.number} ({zone.storey})" for zone in doubled[:6]),
                 fg=typer.colors.YELLOW,
@@ -11054,7 +11061,9 @@ def ifc_export(
             raise typer.Exit(code=2)
 
         paths = qa.property_paths(connection)
-        unknown = [path for path in copies.values() if path not in paths]
+        unknown = [
+            path for path in copies.values() if path not in paths and path not in qa.ZONE_SOURCES
+        ]
         if unknown:
             typer.secho(
                 "  The project has no property "
@@ -11065,7 +11074,9 @@ def ifc_export(
             )
             raise typer.Exit(code=2)
         guids = [zone.guid for zone in apartments]
-        copied = qa.read_values(connection, guids, [paths[path] for path in copies.values()])
+        copied = qa.read_values(
+            connection, guids, [paths[path] for path in copies.values() if path in paths]
+        )
         measured: dict[str, dict[str, str | None]] = {}
         if solar:
             own = existing_properties(connection)
@@ -11219,13 +11230,27 @@ def ifc_export(
             if refused:
                 _say_refusals(connection, refused)
 
-        lowest = storeys.between(from_storey, None) if from_storey else None
-        order = sorted(
-            {zone.storey_index for zone in apartments if zone.storey_index is not None},
-            key=lambda index: storeys.levels.get(index, 0.0),
+        # ADG 4B's first nine storeys are the building's, whether or not each
+        # holds an apartment: nine storeys up from the lowest counted, which
+        # is --from-storey when one is given.
+        ladder = sorted(storeys.levels, key=lambda index: storeys.levels[index])
+        if from_storey:
+            foot = min(
+                storeys.between(from_storey, from_storey) or {ladder[0]},
+                key=lambda index: storeys.levels[index],
+            )
+        else:
+            foot = min(
+                (zone.storey_index for zone in apartments if zone.storey_index is not None),
+                key=lambda index: storeys.levels.get(index, 0.0),
+            )
+        order = ladder[ladder.index(foot) :] if foot in ladder else ladder
+        typer.echo(
+            "  first nine storeys, for cross ventilation: "
+            f"{storeys.names.get(order[0]) or order[0]} to "
+            f"{storeys.names.get(order[:9][-1]) or order[:9][-1]}"
+            + ("" if from_storey else "; name the ground with --from-storey if that is not it")
         )
-        if lowest is not None:
-            order = [index for index in order if index in lowest]
         totals = qa.summary(rows, area_zones, spaces, first_nine=set(order[:9]))
         today = dt.date.today()
         source = f"{project}, read from the model on {today:%d %B %Y} by Loriini"
@@ -11233,8 +11258,12 @@ def ifc_export(
         if xlsx:
             for path in (
                 qa_workbook.write_units(folder, rows),
-                qa_workbook.write_areas(folder, area_zones),
-                qa_workbook.write_parking(folder, spaces),
+                qa_workbook.write_areas(
+                    folder, area_zones, _one_field(connection, area_zones, identifiers, "AREA")
+                ),
+                qa_workbook.write_parking(
+                    folder, spaces, _one_field(connection, spaces, identifiers, "PARKING")
+                ),
                 qa_workbook.write_summary(folder, totals, source=source),
             ):
                 typer.echo(f"  wrote {path}")
@@ -11280,6 +11309,23 @@ def ifc_export(
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
+
+
+def _one_field(
+    connection: ArchicadConnection,
+    members: Sequence[tuple[Any, str]],
+    identifiers: Mapping[tuple[str, str], str],
+    suffix: str,
+) -> dict[str, str | None]:
+    """The second field of the area or parking group -- the one a person
+    fills -- as it stands on each zone, for the spreadsheet."""
+    from sun_study.archicad import qa_export as qa
+
+    ident = identifiers.get((suffix, qa.GROUPS[suffix][1].name))
+    if ident is None or not members:
+        return {}
+    read = qa.read_values(connection, [zone.guid for zone, _kind in members], [ident])
+    return {guid: row.get(ident) for guid, row in read.items()}
 
 
 def _say_refusals(connection: ArchicadConnection, refused: Sequence[str]) -> None:

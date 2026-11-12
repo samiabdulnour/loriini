@@ -65,10 +65,10 @@ def test_a_projects_own_words_are_read_as_the_briefs() -> None:
 
 
 def test_the_prefix_names_the_three_groups() -> None:
-    assert qa.group_names("FUSE_") == {
-        "UNIT": "FUSE_UNIT",
-        "AREA": "FUSE_AREA",
-        "PARKING": "FUSE_PARKING",
+    assert qa.group_names("ACME_") == {
+        "UNIT": "ACME_UNIT",
+        "AREA": "ACME_AREA",
+        "PARKING": "ACME_PARKING",
     }
     with pytest.raises(ValueError, match="prefix"):
         qa.group_names("  ")
@@ -164,13 +164,13 @@ def test_loriinis_own_ifc_holds_a_space_per_zone_with_its_group(tmp_path: Path) 
         project="0001",
         storeys=storeys,
         spaces=[
-            (flat, "FUSE_UNIT", {"Unit No": "01", "Unit Type": "2B", "Bedrooms": 2, "Core": None}),
-            (cos, "FUSE_AREA", {"Area Type": "Communal open space"}),
+            (flat, "ACME_UNIT", {"Unit No": "01", "Unit Type": "2B", "Bedrooms": 2, "Core": None}),
+            (cos, "ACME_AREA", {"Area Type": "Communal open space"}),
         ],
     )
-    report = check_ifc(path, ["FUSE_UNIT", "FUSE_AREA"], "FUSE_UNIT", ["Unit No", "Core"])
+    report = check_ifc(path, ["ACME_UNIT", "ACME_AREA"], "ACME_UNIT", ["Unit No", "Core"])
     assert report.spaces == 2 and report.proxies == 0
-    assert report.with_groups == {"FUSE_UNIT": 1, "FUSE_AREA": 1}
+    assert report.with_groups == {"ACME_UNIT": 1, "ACME_AREA": 1}
     assert report.empty == {"Core": 1}, "a blank field is counted, not written"
     assert not any("NO SPACES" in line for line in report.lines())
 
@@ -185,7 +185,7 @@ def test_an_ifc_with_no_spaces_says_why(tmp_path: Path) -> None:
         ifcopenshell.api.root.create_entity(model, ifc_class="IfcBuildingElementProxy")
     path = tmp_path / "office.ifc"
     model.write(str(path))
-    lines = check_ifc(path, ["FUSE_UNIT"], "FUSE_UNIT", []).lines()
+    lines = check_ifc(path, ["ACME_UNIT"], "ACME_UNIT", []).lines()
     assert any("NO SPACES" in line for line in lines)
     assert any("MOSTLY PROXIES" in line for line in lines)
 
@@ -210,16 +210,16 @@ def test_the_spreadsheets_are_written_from_the_rows(tmp_path: Path) -> None:
 
 
 def test_an_offices_own_setup_of_the_groups_is_found_and_used() -> None:
-    """2524's by hand: Fuse_Unit, 'Unit Number', 'Internal area  m²', Y and N."""
-    assert qa.group_names("Fuse_")["UNIT"] == "Fuse_Unit", "the suffix in the prefix's case"
+    """an office's by hand: Acme_Unit, 'Unit Number', 'Internal area  m²', Y and N."""
+    assert qa.group_names("Acme_")["UNIT"] == "Acme_Unit", "the suffix in the prefix's case"
     paths = {
-        "Fuse_Unit/Unit Number": "no",
-        "Fuse_Unit/Internal area  m²": "area",
+        "Acme_Unit/Unit Number": "no",
+        "Acme_Unit/Internal area  m²": "area",
         "Apartments/Unit Number": "other",
     }
-    assert qa.find_field(paths, "FUSE_UNIT", "Unit No") == "no"
-    assert qa.find_field(paths, "FUSE_UNIT", "Internal area m²") == "area"
-    assert qa.find_field(paths, "FUSE_UNIT", "Core") is None
+    assert qa.find_field(paths, "ACME_UNIT", "Unit No") == "no"
+    assert qa.find_field(paths, "ACME_UNIT", "Internal area m²") == "area"
+    assert qa.find_field(paths, "ACME_UNIT", "Core") is None
     assert qa.fit_option("Yes", ("Y", "N")) == "Y"
     assert qa.fit_option("No", ("Y", "N")) == "N"
     assert qa.fit_option("2B", ("1B", "2B")) == "2B"

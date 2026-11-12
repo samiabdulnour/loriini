@@ -5446,29 +5446,29 @@ def test_the_ifc_export_page_is_the_command_line_the_office_would_type(
         tick.set(False)
     made.do_qa.set(True)
     made.qa_prefix.delete(0, "end")
-    made.qa_prefix.insert(0, "FUSE_")
+    made.qa_prefix.insert(0, "ACME_")
     made.qa_apartments.insert(0, "06 | Zone.Units")
     made.qa_balconies.insert(0, "06 | Zone.Balcony")
     made.qa_areas["Communal open space"].insert(0, "10 | Calc.COS")
     made.qa_from_storey.set("LOWER GROUND")
     made.qa_copies["Bedrooms"].set("Apartments/Beds")
-    made.qa_translator.insert(0, "Fuse QA export")
+    made.qa_translator.insert(0, "QA export")
     made.qa_fill.set(False)
     made.tables.delete(0, "end")
     made.tables.insert(0, str(tmp_path))
     (job,) = made.jobs()
     assert job.label == "IFC export" and job.args[0] == "ifc-export"
-    assert flag(job.args, "--prefix") == ["FUSE_"]
+    assert flag(job.args, "--prefix") == ["ACME_"]
     assert flag(job.args, "--apartment-layer") == ["06 | Zone.Units"]
     assert flag(job.args, "--balcony-layer") == ["06 | Zone.Balcony"]
     assert flag(job.args, "--area-layer") == ["10 | Calc.COS=Communal open space"]
     assert flag(job.args, "--from-storey") == ["LOWER GROUND"] and "--to-storey" not in job.args
     assert flag(job.args, "--copy") == ["Bedrooms=Apartments/Beds"]
-    assert flag(job.args, "--translator") == ["Fuse QA export"]
+    assert flag(job.args, "--translator") == ["QA export"]
     assert "--no-fill" in job.args and "--no-setup" not in job.args
     assert flag(job.args, "--out") == [str(tmp_path / "QA")]
     saved = made.settings()
-    assert saved["qa_prefix"] == "FUSE_" and saved["qa_copy_bedrooms"] == "Apartments/Beds"
+    assert saved["qa_prefix"] == "ACME_" and saved["qa_copy_bedrooms"] == "Apartments/Beds"
 
 
 def test_the_ifc_export_is_a_tool_and_not_a_study(hidden_window: Any) -> None:

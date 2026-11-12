@@ -366,7 +366,7 @@ def options(port: int) -> ProjectOptions:
             sorted(
                 f"{detail.group}/{detail.name}"
                 for detail in all_properties(connection)
-                if detail.kind == "UserDefined"
+                if detail.kind == "Custom"
             )
         ),
     )
