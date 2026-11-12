@@ -946,4 +946,150 @@ GS::ObjectState SetViewDesignOptionsCommand::Execute (const GS::ObjectState& par
 
 
 
+// -- SetProjectData / GetProjectData ----------------------------------------
+//
+// A text kept inside the project file, out of sight: an AddOnObject named
+// "Loriini/<name>", saved with the .pln and sent to the server in Teamwork.
+// The solar study keeps its verdicts here, every apartment's, so that an IFC
+// export run long after reads them -- the hotlinked apartments' as well,
+// whose zones the host cannot write a property onto (D185).
+
+namespace {
+
+GS::UniString StoredName (const GS::UniString& name)
+{
+	return "Loriini/" + name;
+}
+
+}
+
+GS::String SetProjectDataCommand::GetName () const		{ return "SetProjectData"; }
+
+GS::Optional<GS::UniString> SetProjectDataCommand::GetInputParametersSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"name": { "type": "string", "description": "What the text is kept under." },
+			"content": { "type": "string", "description": "The text, JSON as a rule." }
+		},
+		"additionalProperties": false,
+		"required": ["name", "content"]
+	})");
+}
+
+GS::Optional<GS::UniString> SetProjectDataCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"created": { "type": "boolean" },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState SetProjectDataCommand::Execute (const GS::ObjectState& parameters,
+												GS::ProcessControl& /*processControl*/) const
+{
+	GS::UniString name;
+	GS::UniString content;
+	if (!parameters.Get ("name", name) || name.IsEmpty ()) {
+		return Failed ("Project data needs a name.", APIERR_BADPARS);
+	}
+	parameters.Get ("content", content);
+
+	const GS::UniString stored = StoredName (name);
+	const auto utf8 = content.ToCStr (CC_UTF8);
+	const char* bytes = utf8.Get ();
+	GSHandle handle = nullptr;
+	if (BMPtrToHandle (bytes, &handle, static_cast<GSSize> (strlen (bytes))) != NoError) {
+		return Failed ("Out of memory for the project data.", APIERR_MEMFULL);
+	}
+
+	API_Guid guid = APINULLGuid;
+	const bool known = ACAPI_AddOnObject_GetObjectGuidFromName (stored, &guid) == NoError && guid != APINULLGuid;
+	const GSErrCode err = ACAPI_CallUndoableCommand ("Keep Loriini's data in the project", [&] () -> GSErrCode {
+		if (known) {
+			// Teamwork: the object is reserved first. Alone, the reservation
+			// answers as it may, and the change is made either way.
+			GS::Array<API_Guid> reserve;
+			reserve.Push (guid);
+			ACAPI_AddOnObject_ReserveObjects (reserve, nullptr);
+			return ACAPI_AddOnObject_ModifyObject (guid, nullptr, &handle);
+		}
+		return ACAPI_AddOnObject_CreateObject (stored, handle, &guid);
+	});
+	BMKillHandle (&handle);
+	if (err != NoError) {
+		return Failed ("Archicad would not keep '" + name + "' in the project.", err);
+	}
+	GS::ObjectState result = Succeeded ();
+	result.Add ("created", !known);
+	return result;
+}
+
+GS::String GetProjectDataCommand::GetName () const		{ return "GetProjectData"; }
+
+GS::Optional<GS::UniString> GetProjectDataCommand::GetInputParametersSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"name": { "type": "string", "description": "What the text was kept under." }
+		},
+		"additionalProperties": false,
+		"required": ["name"]
+	})");
+}
+
+GS::Optional<GS::UniString> GetProjectDataCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"found": { "type": "boolean" },
+			"content": { "type": "string" },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState GetProjectDataCommand::Execute (const GS::ObjectState& parameters,
+												GS::ProcessControl& /*processControl*/) const
+{
+	GS::UniString name;
+	if (!parameters.Get ("name", name) || name.IsEmpty ()) {
+		return Failed ("Project data needs a name.", APIERR_BADPARS);
+	}
+	API_Guid guid = APINULLGuid;
+	if (ACAPI_AddOnObject_GetObjectGuidFromName (StoredName (name), &guid) != NoError || guid == APINULLGuid) {
+		GS::ObjectState result = Succeeded ();
+		result.Add ("found", false);
+		return result;
+	}
+	GS::UniString objectName;
+	GSHandle content = nullptr;
+	const GSErrCode err = ACAPI_AddOnObject_GetObjectContent (guid, &objectName, &content);
+	if (err != NoError || content == nullptr) {
+		BMKillHandle (&content);
+		return Failed ("Archicad would not hand over '" + name + "'.", err != NoError ? err : APIERR_GENERAL);
+	}
+	const GSSize size = BMGetHandleSize (content);
+	GS::Array<char> bytes;
+	bytes.SetSize (static_cast<USize> (size) + 1);
+	if (size > 0) {
+		memcpy (bytes.GetContent (), *content, static_cast<size_t> (size));
+	}
+	bytes[static_cast<UIndex> (size)] = '\0';
+	BMKillHandle (&content);
+
+	GS::ObjectState result = Succeeded ();
+	result.Add ("found", true);
+	result.Add ("content", GS::UniString (bytes.GetContent (), CC_UTF8));
+	return result;
+}
+
 }		// namespace Loriini

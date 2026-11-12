@@ -260,6 +260,7 @@ from sun_study.archicad.write import (
     init_properties,
     match_apartments,
     property_group_name,
+    store_assessment,
     write_assessment,
 )
 from sun_study.core.analysis import (
@@ -6378,6 +6379,18 @@ def archicad_run(
                         "built on them will be missing rows.",
                         fg=typer.colors.RED,
                     )
+            # Every verdict kept inside the project too, the hotlinked
+            # apartments' with the rest, for an IFC export run later (D185).
+            try:
+                kept = store_assessment(connection, result.assessment, match=match, licensee=who)
+            except ArchicadError as error:
+                typer.secho(
+                    "  the results were not kept in the project for a later IFC export "
+                    f"({error}); install the current add-on",
+                    fg=typer.colors.YELLOW,
+                )
+            else:
+                typer.echo(f"  kept {kept} apartments' results in the project for the IFC export")
 
         # One clearing out and one folder for the whole run, before any sheet
         # is made: the sheet-building steps would otherwise delete each
@@ -11046,6 +11059,20 @@ def ifc_export(
                     for guid, row in read.items()
                     if any(text for text in row.values())
                 }
+            # What the zones could not hold -- a hotlinked apartment's -- from
+            # the verdicts the solar study kept inside the project (D185).
+            from sun_study.archicad.write import stored_assessment
+
+            kept_run, kept = stored_assessment(connection)
+            lacking = [zone for zone in apartments if zone.guid not in measured]
+            if kept and lacking:
+                recovered = qa.from_store(lacking, kept)
+                for guid, verdict in recovered.items():
+                    measured[guid] = {**verdict, "Solar Analysis Run": kept_run or "kept"}
+                typer.echo(
+                    f"  solar study kept in the project ({kept_run}): "
+                    f"{len(recovered)} more apartments from it"
+                )
             runs = collections.Counter(
                 str(row.get("Solar Analysis Run") or "undated") for row in measured.values()
             )

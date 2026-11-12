@@ -176,6 +176,8 @@ GSErrCode Initialize (void)
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetRenovationFiltersCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::SetRenovationFilterCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::SetViewDesignOptionsCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::SetProjectDataCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetProjectDataCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetDrawingsCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ArrangeDrawingsCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetDrawingPrimitivesCommand> ()); },

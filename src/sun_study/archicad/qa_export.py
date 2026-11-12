@@ -414,6 +414,38 @@ def pair_balconies(
     return open_space, alone
 
 
+def from_store(
+    apartments: Sequence[QaZone], records: Sequence[Mapping[str, Any]], *, reach_m: float = 1.5
+) -> dict[str, dict[str, str | None]]:
+    """Each apartment's kept solar verdict (D185), as ``unit_rows`` takes a
+    measured one: found by the zone's id, or -- a hotlinked zone renumbered by
+    its module's reload -- by its storey, name, number and a centre within
+    ``reach_m``."""
+    by_guid = {str(row.get("guid", "")).upper(): row for row in records}
+    found: dict[str, dict[str, str | None]] = {}
+    for zone in apartments:
+        row = by_guid.get(zone.guid.upper())
+        if row is None and zone.outline:
+            cx = sum(x for x, _y in zone.outline) / len(zone.outline)
+            cy = sum(y for _x, y in zone.outline) / len(zone.outline)
+            near = [
+                candidate
+                for candidate in records
+                if candidate.get("storey") == zone.storey_index
+                and str(candidate.get("name", "")).strip() == zone.name
+                and str(candidate.get("number", "")).strip() == zone.number
+                and abs(float(candidate.get("x", 1e9)) - cx) <= reach_m
+                and abs(float(candidate.get("y", 1e9)) - cy) <= reach_m
+            ]
+            row = near[0] if len(near) == 1 else None
+        if row is not None:
+            found[zone.guid] = {
+                "Meets Minimum": row.get("meets"),
+                "No Direct Sunlight": row.get("noSun"),
+            }
+    return found
+
+
 # -- the properties ------------------------------------------------------------------------
 
 

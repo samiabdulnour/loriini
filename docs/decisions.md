@@ -7158,3 +7158,24 @@ translator chosen by name (the add-on's new `ExportIfc`; `GetIfcTranslators`
 lists them), since the API can pick a translator but not make or change one.
 Both are opened again and counted, and the two faults the brief found in the
 office's IFCs -- no spaces, everything a proxy -- are said in words.
+
+### D185 — The solar study keeps every apartment's verdict inside the project, for an IFC export run long after
+
+The solar study is run early and the QA's IFC export much later. The study
+writes its verdicts onto the apartment zones as properties (D21), saved with
+the project -- except a zone in a hotlinked module, which the host cannot
+write: on 0001, 44 of 119 apartments. Their verdicts were lost.
+
+**Kept as hidden add-on data.** A run that writes also keeps every matched
+apartment's verdict -- zone id, storey, name, number, centre, Meets Minimum,
+No Direct Sunlight, the governing hours, and the run's stamp -- as one JSON
+text in an AddOnObject named `Loriini/solar` (the add-on's new
+`SetProjectData` / `GetProjectData`). It is saved in the .pln and sent to
+the server in Teamwork, out of sight in the user interface; nothing is
+written to a folder. A later run replaces it.
+
+**Found again by id, or by where the apartment is.** The IFC export takes a
+zone's own properties first, then the kept verdicts for the zones without:
+by the zone's id, or -- a module's reload can renumber its elements -- by the
+same storey, name and number with the centre within 1.5 m. The log says the
+run's date and how many apartments came from the kept record.

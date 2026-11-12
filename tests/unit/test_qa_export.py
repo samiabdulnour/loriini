@@ -235,3 +235,69 @@ def test_an_apartment_drawn_twice_is_counted_once() -> None:
     kept, dropped = qa.drop_doubles([one, two, upstairs, beside])
     assert [z.guid for z in kept] == ["A", "C", "D"], "in their own order, the larger kept"
     assert [z.guid for z in dropped] == ["B"]
+
+
+def test_a_kept_verdict_is_found_by_id_or_by_where_the_apartment_is() -> None:
+    """D185: a hotlinked zone may be renumbered when its module reloads, so a
+    verdict kept in the project is found by storey, name, number and centre
+    when the id no longer answers."""
+    same = zone("A", "01", "1B", 17, square(0, 0, 8), 64.0)
+    renumbered = zone("NEW", "09", "1B", 17, square(20, 0, 8), 64.0)
+    moved = zone("M", "10", "3B", 17, square(40, 0, 8), 64.0)
+    records = [
+        {
+            "guid": "a",
+            "storey": 17,
+            "name": "01",
+            "number": "1B",
+            "x": 4,
+            "y": 4,
+            "meets": "Yes",
+            "noSun": "No",
+        },
+        {
+            "guid": "OLD",
+            "storey": 17,
+            "name": "09",
+            "number": "1B",
+            "x": 24,
+            "y": 4,
+            "meets": "No",
+            "noSun": "Yes",
+        },
+        {
+            "guid": "GONE",
+            "storey": 17,
+            "name": "10",
+            "number": "3B",
+            "x": 80,
+            "y": 4,
+            "meets": "Yes",
+            "noSun": "No",
+        },
+    ]
+    found = qa.from_store([same, renumbered, moved], records)
+    assert found["A"] == {"Meets Minimum": "Yes", "No Direct Sunlight": "No"}
+    assert found["NEW"] == {"Meets Minimum": "No", "No Direct Sunlight": "Yes"}
+    assert "M" not in found, "a centre too far off is not the same apartment"
+
+
+def test_the_kept_verdicts_are_read_back_from_the_project() -> None:
+    import json
+
+    from sun_study.archicad.write import stored_assessment
+    from tests.unit.test_archicad_adapter import connect
+
+    kept = {
+        "version": 1,
+        "run": "2026-11-12 03:00 UTC",
+        "apartments": [{"guid": "a", "meets": "Yes"}],
+    }
+    connection, transport = connect(
+        {"GetProjectData": {"success": True, "found": True, "content": json.dumps(kept)}}
+    )
+    run, rows = stored_assessment(connection)
+    assert run == "2026-11-12 03:00 UTC" and rows == [{"guid": "a", "meets": "Yes"}]
+    assert transport.parameters_for("GetProjectData") == {"name": "solar"}
+    nothing, _ = connect({"GetProjectData": {"success": True, "found": False}})
+    assert stored_assessment(nothing) == ("", [])
