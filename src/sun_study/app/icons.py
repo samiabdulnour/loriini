@@ -365,8 +365,7 @@ BY_LABEL: dict[str, str] = {
     "Balcony zones": "balcony",
     "Living-room glazing": "glazing",
     "Plan times": "plan_times",
-    "Subset — time-of-day sheets": "subset",
-    "Subset — ADG sheets": "subset",
+    "Layout Book subset": "subset",
     "Communal zones": "communal",
     "Communal window": "communal_window",
     "Communal threshold": "threshold",
@@ -383,7 +382,6 @@ BY_LABEL: dict[str, str] = {
     "Ignore ground below (m)": "ground_cut",
     "Hours": "plan_times",
     "Draw on storey": "storey_draw",
-    "Subset — shadow sheets": "subset",
     # Sun views
     "Pen set": "pen_set",
     "Graphic override": "override",

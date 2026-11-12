@@ -2219,6 +2219,31 @@ def _clock_text(text: str) -> str:
     return f"{hours:02d}:{int(minute or 0):02d}"
 
 
+#: The Every row's answers, in minutes (D186).
+STEP_MINUTES = {"1 hour": 60, "30 minutes": 30, "15 minutes": 15}
+
+
+def _stepped(text: str, step: int) -> str:
+    """The hours lit, as times every ``step`` minutes between two lit hours:
+    9,10,11 at 30 is 09:00, 09:30, 10:00, 10:30, 11:00. An hour with none lit
+    after it is the last of its run and stands alone."""
+    if step >= 60:
+        return text
+    hours = sorted(
+        {
+            int(clock[:2])
+            for part in text.split(",")
+            if (clock := _clock_text(part))[:2].isdigit() and part.strip()
+        }
+    )
+    out: list[str] = []
+    for hour in hours:
+        out.append(f"{hour:02d}:00")
+        if hour + 1 in hours:
+            out += [f"{hour:02d}:{minute:02d}" for minute in range(step, 60, step)]
+    return ",".join(out)
+
+
 def _hour_choices(clock: bool) -> list[tuple[str, str, str]]:
     """Six in the morning to seven at night, as a row of buttons.
 
@@ -4176,7 +4201,7 @@ class Window:
         # ticked, so the panel of sheets hears about keystrokes too.
         for typed in (self.communal_hours, self.year, self.custom_day, self.eye_custom_day):
             typed.bind("<KeyRelease>", lambda _event: self._sync(), add="+")
-        for chosen in (self.adg_subset, self.shadow_subset):
+        for chosen in (self.subset,):
             chosen.bind("<<ComboboxSelected>>", lambda _event: self._sync(), add="+")
         self._sync()
 
@@ -4614,6 +4639,19 @@ class Window:
             "master it was made on — nothing in the add-on can change it — so "
             "delete old study sheets before changing this.",
         )
+        self.subset, row = self._combo(
+            frame,
+            row,
+            "Layout Book subset",
+            "Where every study's sheets are filed. Blank: the root of the Layout Book.",
+            "One subset for all the sheets; one that belongs elsewhere is moved in "
+            "Archicad. The subset has to exist already -- the run does not make one, "
+            "the Layout Book being the office's to organise -- and a missing one is "
+            "reported, with the sheets left at the root.",
+        )
+        #: The three subsets of before -- ADG, time of day, shadow -- are one
+        #: now (D186), under the names the run's code reads them by.
+        self.adg_subset = self.shadow_subset = self.shadow_study_subset = self.subset
         self.eye_title_block, row = self._entry(
             frame,
             row,
@@ -4991,18 +5029,7 @@ class Window:
         )
         assert year is not None
         self.year = year
-        frame, row = self._panel(outer, 1, title="Layout Book filing, and what the plans show"), 0
-        self.adg_subset, row = self._combo(
-            frame,
-            row,
-            "Subset — ADG sheets",
-            "Layout Book subset the banded sheets go into.",
-            "So the sheets sit with the practice's own drawings of that kind "
-            "instead of at the root of the book. The subset has to exist "
-            "already — the run will not create one, because the Layout Book is "
-            "the office's structure to organise — and a missing one is "
-            "reported rather than invented, with the sheets left at the root.",
-        )
+        frame, row = self._panel(outer, 1, title="What the plans show"), 0
 
         self.plan_combination, row = self._combo(
             frame,
@@ -5143,18 +5170,6 @@ class Window:
             "casts more rays: 0.1 m is over six times the rays of 0.25 m.",
         )
         self.floor_grid.set("0.25")
-        self.shadow_subset, row = self._combo(
-            frame,
-            row,
-            "Subset — time-of-day sheets",
-            "Layout Book subset the clock-time sheets go into.",
-            "A sheet that is a time of day belongs with the practice's own, "
-            "which is usually a different subset from the banded plans. Same "
-            "rule as those: it has to exist already. This files the sun-patch "
-            "sheets this study draws; the Shadow diagram study files its own "
-            "under its own setting, because the two are different drawings "
-            "and a practice does not always keep them together.",
-        )
 
         # Out of the apartments' box, and on down the page. The boxes part
         # the studies by themselves, so the rules that used to do it are gone.
@@ -5337,15 +5352,14 @@ class Window:
             key=_clock_text,
             initial=DEFAULT_SHADOW_HOURS,
         )
-        self.shadow_study_subset, row = self._combo(
+        self.shadow_step, row = self._tiles(
             frame,
             row,
-            "Subset — shadow sheets",
-            "Layout Book subset both drawings' sheets go into.",
-            "Same rule as the other two: the subset has to exist already, "
-            "because the Layout Book is the office's structure to organise. A "
-            "missing one is reported rather than invented, with the sheets "
-            "left at the root of the book.",
+            "Every",
+            "How often between the hours lit: every hour, or every 30 or 15 minutes.",
+            "Between two hours that are both lit, a document every 30 or 15 minutes as "
+            "well: 9 to 3 every 15 minutes is 25 a day where it was 7. Finer is slower "
+            "and makes more sheets.",
         )
         # The days, the same three buttons the other two sun studies press,
         # in a box of their own above everything: the day is the first thing
@@ -5750,6 +5764,15 @@ class Window:
             _hour_choices(clock=False),
             key=_clock_text,
             initial=DEFAULT_SHADOW_HOURS,
+        )
+        self.eye_step, row = self._tiles(
+            frame,
+            row,
+            "Every",
+            "How often between the hours lit: every hour, or every 30 or 15 minutes.",
+            "Between two hours that are both lit, a view every 30 or 15 minutes as "
+            "well: 9 to 3 every 15 minutes is 25 a day where it was 7. Finer is slower "
+            "and makes more sheets.",
         )
         # The views' own days, on this page and not on another tab. They
         # used to run on whatever the solar analysis was ticked for. Above
@@ -6183,28 +6206,6 @@ class Window:
             "on the commercial levels and residential on every other. By layer: a layer "
             "of residential slabs and one of commercial, wherever they stand.",
         )
-        #: The massing options: renovation filters in Archicad 26, Design
-        #: Option Combinations from 27, as Archicad says it is (D183).
-        at = row
-        self.yield_options, row = self._picker(
-            frame,
-            row,
-            "Renovation filters",
-            "The massing options, each its own sheet. None: one option, every slab.",
-            "An office keeps its massing options as renovation filters in Archicad 26 and "
-            "as Design Options from 27; Loriini asks Archicad which it is and lists those. "
-            "Each one chosen is an option of its own, named after it, with a sheet and a "
-            "workbook page, all from one run: under a renovation filter the slabs it shows "
-            "(the floor plan's own filter is put back after); under a Design Option "
-            "Combination the main model and the options it has on, which needs Archicad "
-            "29. The layers and levels above are the same for every option.",
-            available=self._scenarios,
-            empty="none chosen: one option",
-        )
-        self.scenario_labels[self._label_at(frame, at)] = (
-            "Renovation filters",
-            "Design options",
-        )
         self.yield_groups: dict[str, list[tk.Misc]] = {}
 
         def rows_of(key: str, made_from: set[str]) -> None:
@@ -6217,17 +6218,6 @@ class Window:
                 if str(child) not in made_from and child.winfo_manager() == "grid"
             ]
 
-        before = {str(child) for child in frame.winfo_children()}
-        self.yield_option, row = self._entry(
-            frame,
-            row,
-            "Option",
-            "Option 01",
-            "What this massing is called: its sheet in the workbook and its layout.",
-            "A run with the same name replaces that option's sheet in the workbook and "
-            "its layout; another name adds an option beside the ones already there.",
-        )
-        rows_of("option", before)
         before = {str(child) for child in frame.winfo_children()}
         self.yield_massing, row = self._picker(
             frame,
@@ -6268,6 +6258,39 @@ class Window:
             "ground storey -- as the run names them in its log: Ground, Level 01, B 01.",
         )
         rows_of("levels", before)
+        #: The massing options: renovation filters in Archicad 26, Design
+        #: Option Combinations from 27, as Archicad says it is (D183).
+        at = row
+        self.yield_options, row = self._picker(
+            frame,
+            row,
+            "Renovation filters",
+            "The massing options, each its own sheet. None: one option, every slab.",
+            "An office keeps its massing options as renovation filters in Archicad 26 and "
+            "as Design Options from 27; Loriini asks Archicad which it is and lists those. "
+            "Each one chosen is an option of its own, named after it, with a sheet and a "
+            "workbook page, all from one run: under a renovation filter the slabs it shows "
+            "(the floor plan's own filter is put back after); under a Design Option "
+            "Combination the main model and the options it has on, which needs Archicad "
+            "29. The layers and levels above are the same for every option.",
+            available=self._scenarios,
+            empty="none chosen: one option",
+        )
+        self.scenario_labels[self._label_at(frame, at)] = (
+            "Renovation filters",
+            "Design options",
+        )
+        before = {str(child) for child in frame.winfo_children()}
+        self.yield_option, row = self._entry(
+            frame,
+            row,
+            "Option",
+            "Option 01",
+            "What this massing is called: its sheet in the workbook and its layout.",
+            "A run with the same name replaces that option's sheet in the workbook and "
+            "its layout; another name adds an option beside the ones already there.",
+        )
+        rows_of("option", before)
         self.yield_view, row = self._entry(
             frame,
             row,
@@ -6280,13 +6303,16 @@ class Window:
         )
 
         self.yield_xlsx = tk.BooleanVar(value=True)
+        ttk.Label(frame, text="Excel workbook", anchor="e").grid(
+            row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0)
+        )
         workbook = ttk.Checkbutton(
             frame,
-            text="Excel workbook: Preliminary Yield Analysis",
+            text="Preliminary Yield Analysis",
             variable=self.yield_xlsx,
             command=self._sync,
         )
-        workbook.grid(row=row, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        workbook.grid(row=row, column=1, sticky="w", pady=(6, 0))
         Tooltip(
             workbook,
             "Writes the office's feasibility template, filled: one sheet per option, the "
@@ -6305,6 +6331,7 @@ class Window:
             "write is left alone, and the run says so.",
             kinds=(("Excel workbook", "*.xlsx"),),
             default=AREA_TABLE,
+            width=self.NAME_WIDTH,
         )
 
         frame, row = self._panel(outer, 1, title="Site and controls"), 0
@@ -6446,13 +6473,13 @@ class Window:
         cells = ttk.Frame(parent)
         cells.flows = True  # type: ignore[attr-defined]
         cells.grid(row=row, column=1, sticky="w", pady=(6, 0))
-        share_box = ttk.Entry(cells, width=6)
+        share_box = ttk.Entry(cells, width=self.NUMBER_WIDTH)
         share_box.insert(0, share)
         share_box.grid(row=0, column=0)
         ttk.Label(cells, text="% of the units, at", foreground=HINT).grid(
             row=0, column=1, padx=(6, 8)
         )
-        size_box = ttk.Entry(cells, width=6)
+        size_box = ttk.Entry(cells, width=self.NUMBER_WIDTH)
         size_box.insert(0, size)
         size_box.grid(row=0, column=2)
         ttk.Label(cells, text="m² NLA each", foreground=HINT).grid(row=0, column=3, padx=(6, 0))
@@ -6507,6 +6534,7 @@ class Window:
         *,
         kinds: Sequence[tuple[str, str]],
         default: str,
+        width: int | None = None,
     ) -> tuple[ttk.Entry, int]:
         """A file to write, chosen with a Save dialog, with a Choose beside it.
 
@@ -6518,9 +6546,9 @@ class Window:
         name = ttk.Label(parent, text=label, anchor="e")
         name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(3, 0))
         holder = ttk.Frame(parent)
-        holder.grid(row=row, column=1, sticky="ew", pady=(3, 0))
+        holder.grid(row=row, column=1, sticky="w" if width else "ew", pady=(3, 0))
         holder.columnconfigure(0, weight=1)
-        box = ttk.Entry(holder)
+        box = ttk.Entry(holder, width=width) if width else ttk.Entry(holder)
         box.grid(row=0, column=0, sticky="ew")
         button = ttk.Button(
             holder,
@@ -7051,11 +7079,12 @@ class Window:
         {
             "Address",
             "Custom day",
-            "Option",
             "Set name",
-            "View beside the table",
         }
     )
+    #: Typed fields that hold a name, as wide as a list of the project's
+    #: names beside them: an option, a view.
+    NAME_FIELDS = frozenset({"Option", "View beside the table"})
     #: How many characters wide a number's field is: room for ``1:3000`` or
     #: ``0.725`` with a margin, and the same on every page.
     NUMBER_WIDTH = 12
@@ -7077,7 +7106,8 @@ class Window:
         name = ttk.Label(parent, text=label, anchor="e")
         name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
         wide = label in self.TEXT_FIELDS
-        box = ttk.Entry(parent) if wide else ttk.Entry(parent, width=self.NUMBER_WIDTH)
+        width = self.NAME_WIDTH if label in self.NAME_FIELDS else self.NUMBER_WIDTH
+        box = ttk.Entry(parent) if wide else ttk.Entry(parent, width=width)
         box.insert(0, initial)
         box.grid(row=row, column=1, sticky="ew" if wide else "w", pady=(6, 0))
         line = self._hint(parent, row + 1, hint)
@@ -7786,7 +7816,7 @@ class Window:
             "plan_kinds": self.plan_kinds,
             "floor_grid": self.floor_grid,
             "see_through_glass": self.see_glass,
-            "shadow_subset": self.shadow_subset,
+            "layout_subset": self.subset,
             **{f"shadow_layers_{short.lower()}": box for short, _role, box in self.shadow_rows},
             "shadow_terrain_layers": self.terrain_layers,
             "shadow_terrain_floor": self.terrain_floor,
@@ -7794,8 +7824,8 @@ class Window:
             # restores into the custom-day field, which reads a comma list.
             "shadow_dates": self.shadow_custom_day,
             "shadow_hours": self.shadow_hours,
+            "shadow_step": self.shadow_step,
             "shadow_storey": self.shadow_storey,
-            "shadow_study_subset": self.shadow_study_subset,
             "shadow_plan_combination": self.shadow_plan_combination,
             "shadow_plan_route": self.shadow_plan_route,
             **{
@@ -7822,6 +7852,7 @@ class Window:
             "sheets": self.sheets,
             "eye_title_block": self.eye_title_block,
             "eye_hours": self.eye_hours,
+            "eye_step": self.eye_step,
             "site_address": self.site_address,
             "site_scale": self.site_scale,
             "site_theme": self.site_theme,
@@ -7835,7 +7866,6 @@ class Window:
             "site_model_north": self.site_model_north,
             "site_levels": self.site_levels,
             "site_radius": self.site_radius,
-            "adg_subset": self.adg_subset,
             "layer_prefix": self.prefix_solar,
             "shadow_layer_prefix": self.prefix_shadow,
             "sun_view_layer_prefix": self.prefix_sun,
@@ -7958,6 +7988,13 @@ class Window:
             if isinstance(ticked, bool):
                 state.set(ticked)
         self._yield_from_older(saved)
+        # The three subsets of a settings file saved before D186, as the one.
+        if "layout_subset" not in saved:
+            for older in ("adg_subset", "shadow_subset", "shadow_study_subset"):
+                value = saved.get(older)
+                if isinstance(value, str) and value.strip():
+                    self.subset.set(value.strip())
+                    break
         self._shadows_from_older(saved)
         self._proposals_from_older(saved)
         opened = saved.get(self.OPEN_SECTION)
@@ -8662,6 +8699,7 @@ class Window:
             "By level": "By level",
             "By layer": "By layer",
         },
+        "Every": {"1 hour": "1 hour", "30 minutes": "30 min", "15 minutes": "15 min"},
         "Drawn as": {
             "Worksheet fills": "Worksheet fills",
             "Live 3D Documents": "Live documents",
@@ -8844,6 +8882,11 @@ class Window:
                 "site",
                 "By layer: a layer of residential slabs and one of commercial.",
             ),
+        ),
+        "Every": (
+            ("1 hour", "site", "Every hour: the hours lit above."),
+            ("30 minutes", "site", "Every 30 minutes between the hours lit above."),
+            ("15 minutes", "site", "Every 15 minutes between the hours lit above."),
         ),
         "Drawn as": (
             (
@@ -9263,7 +9306,11 @@ class Window:
         if SHADOW_JOB in queued:
             # The documents, dealt by day. A stack of legend rows is fitted
             # to the whole site (D143); a plain set is at the plans' 1:1000.
-            hours = self._clocks(self.shadow_hours, DEFAULT_SHADOW_HOURS.split(","))
+            hours = self._clocks(
+                self.shadow_hours,
+                DEFAULT_SHADOW_HOURS.split(","),
+                STEP_MINUTES.get(self.shadow_step.get(), 60),
+            )
             stacked = "to fit" if self._legend_args() else shadow_scale
             for day in self._shadow_days():
                 deal(
@@ -9294,7 +9341,11 @@ class Window:
                 )
 
         if SUN_EYE_JOB in queued:
-            hours = self._clocks(self.eye_hours, [f"{hour:02d}:00" for hour in range(9, 16)])
+            hours = self._clocks(
+                self.eye_hours,
+                [f"{hour:02d}:00" for hour in range(9, 16)],
+                STEP_MINUTES.get(self.eye_step.get(), 60),
+            )
             for day in self.chosen_view_days():
                 deal(
                     SUN_EYE_JOB,
@@ -9381,11 +9432,19 @@ class Window:
         return [f"{hour:02d}:00" for hour in range(first, last + 1)]
 
     @staticmethod
-    def _clocks(box: ttk.Entry | Ticks, fallback: Sequence[str]) -> list[str]:
+    def _clocks(box: ttk.Entry | Ticks, fallback: Sequence[str], step: int = 60) -> list[str]:
         """The times in a field, or the ones the study runs without them,
-        each spelled the way a sheet is named for it."""
+        every ``step`` minutes between two lit hours, each spelled the way a
+        sheet is named for it."""
         times = [part.strip() for part in box.get().split(",") if part.strip()]
-        return [_clock_text(part) for part in (times or list(fallback))]
+        text = _stepped(",".join(times or list(fallback)), step)
+        return [_clock_text(part) for part in text.split(",") if part.strip()]
+
+    def _shadow_times(self) -> str:
+        """The shadow hours as the run takes them, every 15 or 30 minutes
+        when the Every row says so."""
+        hours = self.shadow_hours.get().strip()
+        return _stepped(hours, STEP_MINUTES.get(self.shadow_step.get(), 60)) if hours else ""
 
     def _day_name(self, day: str) -> str:
         """How a day reads on a sheet: the date, not the season's name.
@@ -9842,7 +9901,6 @@ class Window:
             if shadow and not legend:
                 args += ["--shadow-colour" if colour_hex(shadow) else "--shadow-pen", shadow]
             for flag, field in (
-                ("--shadow-hour", self.shadow_hours),
                 ("--layer-combination", self.shadow_plan_combination),
                 ("--label", self.shadow_plan_label),
                 ("--pen-set", self.shadow_plan_pen_set),
@@ -9851,6 +9909,8 @@ class Window:
             ):
                 if field.get().strip() and not (legend and flag in plain_only):
                     args += [flag, field.get().strip()]
+            if self._shadow_times():
+                args += ["--shadow-hour", self._shadow_times()]
             args += ["--year", self.year.get().strip() or "2024"]
             args += self._sheet_args()
             made.append(Job(SHADOW_JOB if self.do_shadows.get() else SHADOW_HOURS_JOB, args))
@@ -9881,8 +9941,8 @@ class Window:
             if self.terrain_floor.get().strip():
                 args += ["--shadow-terrain-floor", self.terrain_floor.get().strip()]
             args += ["--shadow-date", ",".join(self._shadow_days())]
-            if self.shadow_hours.get().strip():
-                args += ["--shadow-hour", self.shadow_hours.get().strip()]
+            if self._shadow_times():
+                args += ["--shadow-hour", self._shadow_times()]
             if self._shadow_storey_index():
                 args += ["--shadow-storey", self._shadow_storey_index()]
             args += self._band_args()
@@ -9919,7 +9979,10 @@ class Window:
             # what will be drawn. Lit exactly so, nothing is sent: the
             # ruleset's own window stands, and follows it if it ever moves.
             hours = self.eye_hours.get().strip()
-            if hours and _hours_in(hours) != _hours_in(DEFAULT_SHADOW_HOURS):
+            step = STEP_MINUTES.get(self.eye_step.get(), 60)
+            if step < 60:
+                args += ["--hour", _stepped(hours or DEFAULT_SHADOW_HOURS, step)]
+            elif hours and _hours_in(hours) != _hours_in(DEFAULT_SHADOW_HOURS):
                 args += ["--hour", hours]
             if self.master.get():
                 args += ["--master-layout", self.master.get()]

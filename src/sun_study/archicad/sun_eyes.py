@@ -170,7 +170,7 @@ def sun_eyes(
     geo: GeoLocation,
     *,
     date: dt.date,
-    hours: Sequence[int],
+    hours: Sequence[int | dt.time],
     timezone: str,
     clock_minutes: int | None = None,
 ) -> list[SunEye]:
@@ -182,7 +182,10 @@ def sun_eyes(
     date it hands over (``clock.read_archicad_clock``, D135).
     """
     zone = ZoneInfo(timezone)
-    times = [dt.datetime.combine(date, dt.time(hour), tzinfo=zone) for hour in hours]
+    times = [
+        dt.datetime.combine(date, hour if isinstance(hour, dt.time) else dt.time(hour), tzinfo=zone)
+        for hour in hours
+    ]
     if not times:
         return []
     position = solar_position(times, geo.latitude_deg, geo.longitude_deg)
