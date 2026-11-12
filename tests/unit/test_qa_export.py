@@ -207,3 +207,31 @@ def test_the_spreadsheets_are_written_from_the_rows(tmp_path: Path) -> None:
     totals = qa.summary(rows, [], [], first_nine=None)
     summary = qa_workbook.write_summary(tmp_path, totals, source="0001, read on 12 November 2026")
     assert read_text(summary, "QA_Summary", "A2") == "0001, read on 12 November 2026"
+
+
+def test_an_offices_own_setup_of_the_groups_is_found_and_used() -> None:
+    """2524's by hand: Fuse_Unit, 'Unit Number', 'Internal area  m²', Y and N."""
+    assert qa.group_names("Fuse_")["UNIT"] == "Fuse_Unit", "the suffix in the prefix's case"
+    paths = {
+        "Fuse_Unit/Unit Number": "no",
+        "Fuse_Unit/Internal area  m²": "area",
+        "Apartments/Unit Number": "other",
+    }
+    assert qa.find_field(paths, "FUSE_UNIT", "Unit No") == "no"
+    assert qa.find_field(paths, "FUSE_UNIT", "Internal area m²") == "area"
+    assert qa.find_field(paths, "FUSE_UNIT", "Core") is None
+    assert qa.fit_option("Yes", ("Y", "N")) == "Y"
+    assert qa.fit_option("No", ("Y", "N")) == "N"
+    assert qa.fit_option("2B", ("1B", "2B")) == "2B"
+    assert qa.fit_option("Silver", ("Y", "N")) is None
+    assert qa.fit_option("Yes", ()) == "Yes", "no option set, nothing to fit"
+
+
+def test_an_apartment_drawn_twice_is_counted_once() -> None:
+    one = zone("A", "G04", "2B", 10, square(0, 0, 9.7), 94.57)
+    two = zone("B", "G04", "2B", 10, square(0.1, 0, 9.7), 94.52)
+    upstairs = zone("C", "104", "2B", 11, square(0, 0, 9.7), 94.5)
+    beside = zone("D", "G05", "2B", 10, square(10, 0, 9), 81.0)
+    kept, dropped = qa.drop_doubles([one, two, upstairs, beside])
+    assert [z.guid for z in kept] == ["A", "C", "D"], "in their own order, the larger kept"
+    assert [z.guid for z in dropped] == ["B"]

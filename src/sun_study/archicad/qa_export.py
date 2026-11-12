@@ -109,11 +109,84 @@ MIN_POS_M2 = {"Studio": 4.0, "1B": 8.0, "2B": 10.0, "3B": 12.0, "4B": 12.0}
 
 
 def group_names(prefix: str) -> dict[str, str]:
-    """Each group's name from the office's prefix: ``FUSE_`` gives ``FUSE_UNIT``."""
+    """Each group's name from the office's prefix: ``FUSE_`` gives ``FUSE_UNIT``
+    and ``Fuse_`` gives ``Fuse_Unit``, the suffix in the prefix's own case."""
     tidy = prefix.strip()
     if not tidy:
         raise ValueError("The QA property groups need a prefix, such as FUSE_ or QA_.")
-    return {suffix: f"{tidy}{suffix}" for suffix in GROUPS}
+    capitals = tidy == tidy.upper()
+    return {suffix: f"{tidy}{suffix if capitals else suffix.title()}" for suffix in GROUPS}
+
+
+def _norm(text: str) -> str:
+    """A name as it is compared: case, spaces and their kinds aside."""
+    return " ".join(text.replace("\u00a0", " ").split()).casefold()
+
+
+#: Other spellings an office's own setup of the brief uses for a field.
+SPELLINGS: dict[str, tuple[str, ...]] = {
+    "unit no": ("unit number", "unit no.", "unit nr"),
+    "bedrooms": ("beds", "bedroom"),
+    "pos area m²": ("pos area", "pos m²", "private open space m²"),
+}
+
+
+def find_field(paths: Mapping[str, str], group: str, field_name: str) -> str | None:
+    """The identifier of ``group``'s ``field_name`` among ``paths``, matched
+    without regard to case or spacing (``Fuse_Unit/Internal area  m²`` is
+    ``FUSE_UNIT/Internal area m²``), and by the spellings an office uses."""
+    wanted = {_norm(field_name), *SPELLINGS.get(_norm(field_name), ())}
+    for path, ident in paths.items():
+        owner, _slash, name = path.partition("/")
+        if _norm(owner) == _norm(group) and _norm(name) in wanted:
+            return ident
+    return None
+
+
+def fit_option(value: Any, options: Sequence[str]) -> Any:
+    """``value`` as one of an existing option set's own options: ``Yes`` is
+    ``Y`` where the set says Y and N. ``None`` when none fits."""
+    if not options:
+        return value
+    text = str(value)
+    for option in options:
+        if _norm(option) == _norm(text):
+            return option
+    if text in ("Yes", "No"):
+        for option in options:
+            if _norm(option) in ({"y", "true"} if text == "Yes" else {"n", "false"}):
+                return option
+    return None
+
+
+def drop_doubles(
+    zones_: Sequence[QaZone], *, share: float = 0.5
+) -> tuple[list[QaZone], list[QaZone]]:
+    """The zones with any drawn over another on its storey left out: a zone
+    covering more than ``share`` of a larger one's area is the same apartment
+    drawn twice -- once in a module and once in the host, say. Returns the
+    kept and the dropped."""
+    from shapely.geometry import Polygon
+
+    kept: list[QaZone] = []
+    dropped: list[QaZone] = []
+    shapes: dict[str, Any] = {}
+    for zone in sorted(zones_, key=lambda one: -one.area_m2):
+        shape = Polygon(zone.outline).buffer(0) if len(zone.outline) >= 3 else None
+        twin = shape is not None and any(
+            other.storey_index == zone.storey_index
+            and shapes.get(other.guid) is not None
+            and shape.intersection(shapes[other.guid]).area
+            > share * min(shape.area, shapes[other.guid].area)
+            for other in kept
+        )
+        if twin:
+            dropped.append(zone)
+            continue
+        kept.append(zone)
+        shapes[zone.guid] = shape
+    order = {zone.guid: index for index, zone in enumerate(zones_)}
+    return sorted(kept, key=lambda one: order[one.guid]), dropped
 
 
 # -- reading a project's own values as the brief's -----------------------------------
@@ -424,15 +497,16 @@ def ensure_groups(
     names = group_names(prefix)
     said: list[str] = []
     paths = property_paths(connection)
-    groups = property_groups(connection)
+    groups = {_norm(name): ident for name, ident in property_groups(connection).items()}
+    spelt = {_norm(path.partition("/")[0]): path.partition("/")[0] for path in paths}
     made: dict[tuple[str, str], str] = {}
     for suffix, fields in GROUPS.items():
-        group = names[suffix]
+        group = spelt.get(_norm(names[suffix]), names[suffix])
         items = list(availability.get(suffix) or [])
         have = {
-            spec.name: paths[f"{group}/{spec.name}"]
+            spec.name: ident
             for spec in fields
-            if f"{group}/{spec.name}" in paths
+            if (ident := find_field(paths, group, spec.name)) is not None
         }
         missing = [spec for spec in fields if spec.name not in have]
         if missing and not items:
@@ -440,7 +514,7 @@ def ensure_groups(
             made.update({(suffix, name): ident for name, ident in have.items()})
             continue
         if missing:
-            group_id = groups.get(group)
+            group_id = groups.get(_norm(group))
             if group_id is None:
                 answer = connection.run_tapir(
                     "CreatePropertyGroups",

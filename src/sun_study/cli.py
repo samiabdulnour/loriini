@@ -10989,7 +10989,7 @@ def ifc_export(
         def on(layers: list[str]) -> list[qa.QaZone]:
             return qa.zones_on(connection, layers, storeys=storeys, within=within, every=every)
 
-        apartments = on(apartment_layer)
+        apartments, doubled = qa.drop_doubles(on(apartment_layer))
         balconies = on(balcony_layer or [])
         area_zones = [
             (zone, kind) for layer, kind in areas_by_layer.items() for zone in on([layer])
@@ -11000,6 +11000,13 @@ def ifc_export(
             f"{len(area_zones)} area zones, {len(spaces)} parking spaces"
             + (f", storeys {from_storey or 'lowest'} to {to_storey or 'highest'}" if within else "")
         )
+        if doubled:
+            typer.secho(
+                f"  {len(doubled)} apartment zones lie over another on their storey and are "
+                "counted once: "
+                + ", ".join(f"{zone.name or zone.number} ({zone.storey})" for zone in doubled[:6]),
+                fg=typer.colors.YELLOW,
+            )
         if not apartments:
             typer.secho(
                 "  No zone on the apartment layers"
@@ -11097,10 +11104,10 @@ def ifc_export(
                 typer.echo(f"  {line}")
         else:
             identifiers = {
-                (suffix, spec.name): paths[f"{groups[suffix]}/{spec.name}"]
+                (suffix, spec.name): ident
                 for suffix, fields in qa.GROUPS.items()
                 for spec in fields
-                if f"{groups[suffix]}/{spec.name}" in paths
+                if (ident := qa.find_field(paths, groups[suffix], spec.name)) is not None
             }
         if fill:
             values: dict[str, dict[str, object]] = {}
@@ -11117,6 +11124,33 @@ def ifc_export(
                 ident = identifiers.get(("PARKING", "Space Type"))
                 if ident is not None:
                     values.setdefault(zone.guid, {})[ident] = kind
+            # An option set the office made itself may say Y and N, not Yes
+            # and No: each value is written as one of its own options.
+            from sun_study.archicad.write import enum_values
+
+            enums = {
+                ident: options
+                for ident, options in enum_values(
+                    connection,
+                    sorted({ident for cells in values.values() for ident in cells}),
+                ).items()
+                if options
+            }
+            unfitted = 0
+            for cells in values.values():
+                for ident in list(cells):
+                    if ident in enums:
+                        fitted = qa.fit_option(cells[ident], enums[ident])
+                        if fitted is None:
+                            unfitted += 1
+                            del cells[ident]
+                        else:
+                            cells[ident] = fitted
+            if unfitted:
+                typer.secho(
+                    f"  {unfitted} values fit none of their option set's options; left out",
+                    fg=typer.colors.YELLOW,
+                )
             landed, refused = qa.write_values(connection, values)
             typer.echo(f"  wrote {landed} values on {len(values)} zones")
             if refused:
