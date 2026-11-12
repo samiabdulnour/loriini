@@ -6997,6 +6997,9 @@ def shadows(
             ),
         ),
     ] = False,
+    see_through_glass: Annotated[
+        int | None, typer.Option("--see-through-glass", help=SEE_THROUGH_GLASS_HELP)
+    ] = None,
     drawing_scale: Annotated[
         float | None,
         typer.Option(
@@ -7076,6 +7079,7 @@ def shadows(
         port, timeout, above=exclude_above_storey, below=exclude_below_storey, metres=exclude_above
     )
     config = MassingConfig(
+        see_through_glass_pct=glass_percent(see_through_glass),
         timezone=timezone,
         exclude_above_m=exclude_above,
         exclude_below_m=exclude_below,
@@ -7305,6 +7309,13 @@ def _shadow_report(
             )
         else:
             model = read_model(exported)
+            # Glass that lets the sun through casts no shadow here either: a
+            # glass balustrade drawn as a dark band along every balcony was
+            # this drawing ignoring the option the other studies take.
+            wanted_glass = config.see_through_glass_pct
+            if wanted_glass is not None:
+                model, let_through = model.without_glass(wanted_glass)
+                typer.echo(f"  {let_through.describe()}")
             # Before any number reaches the screen. A mismatch means the live
             # project and its export place the site differently, and every
             # figure below would be plausible and wrong. Archicad rotating the

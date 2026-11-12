@@ -9941,6 +9941,7 @@ class Window:
                 "--timezone",
                 TIMEZONE,
                 *common,
+                *self._glass_args(),
                 *self._prefix_flag(self.prefix_shadow),
             ]
             args += self._legend_args()
