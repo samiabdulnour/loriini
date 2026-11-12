@@ -185,10 +185,8 @@ def _style_id(label: str, *, site: bool) -> str:
 #: (D140): the option's name unless each layer is an option, the layers the
 #: answer reads, and the levels wherever the use is told by level.
 YIELD_ROWS: dict[str, frozenset[str]] = {
-    "Every slab showing": frozenset({"option", "levels"}),
-    "Slabs on chosen layers": frozenset({"option", "layers", "levels"}),
-    "A layer per use": frozenset({"option", "per_use"}),
-    "A layer per option": frozenset({"option_layers", "levels"}),
+    "By level": frozenset({"option", "layers", "levels"}),
+    "By layer": frozenset({"option", "per_use"}),
 }
 
 #: What RL project zero stands for when the 3D context is placed, and the
@@ -1096,10 +1094,13 @@ class Tiles(ttk.Frame):
         In a ``multi`` row the value is a comma list, each part a tile or an
         alias for some; a value that names none of them is held the same way.
         """
-        self._chosen = value
         if not self._multi:
+            # An older spelling is the tile it now means (D183's Use row).
+            value = self._aliases.get(value, (value,))[0]
+            self._chosen = value
             self._on = {value}
         else:
+            self._chosen = value
             wanted: set[str] = set()
             for part in (piece.strip() for piece in value.split(",")):
                 wanted.update(self._aliases.get(part, (part,)))
@@ -3920,7 +3921,7 @@ class Window:
         self._spacers: dict[str, ttk.Frame] = {}
         #: The labels of the fields that name an option, and what comes before
         #: the word: renovation filter or design option (``_scenario_words``).
-        self.scenario_labels: dict[ttk.Label, str] = {}
+        self.scenario_labels: dict[ttk.Label, tuple[str, str]] = {}
         #: Each study's name on its panel's header, restyled as it is
         #: switched on and off.
         self.study_titles: dict[str, ttk.Label] = {}
@@ -5440,7 +5441,10 @@ class Window:
                 "project's Design Option Combinations. Loriini asks Archicad which it is. "
                 "The row's documents are pinned to the one chosen.",
             )
-            self.scenario_labels[self._label_at(frame, at)] = f"{title} "
+            self.scenario_labels[self._label_at(frame, at)] = (
+                f"{title} filter",
+                f"{title} design option",
+            )
             self.shadow_row_hatches[short], row = self._combo(
                 frame,
                 row,
@@ -6158,40 +6162,40 @@ class Window:
         )
         row += 1
         self.yield_panel = frame
-        # Which slabs are the massing, and how each one's use is told, is one
-        # question with four answers, and the page shows only the rows the
-        # answer needs (D140): a page of seven layer and level rows asked
-        # every question at once, most of them for a way of modelling the
-        # person was not using.
+        # How each slab's use is told, and the page shows only the rows the
+        # answer needs (D140, D183): by the level it stands on, on the layers
+        # chosen as massing, or by a layer of its own per use.
         self.yield_slabs, row = self._tiles(
             frame,
             row,
-            "Slabs",
-            "Which slabs are the massing. Everything showing is the usual answer.",
-            "Everything showing: every slab on a layer that is showing, its use told by "
-            "the level it stands on. Chosen layers: the slabs on the layers you choose, "
-            "the use told the same way. Layer per use: a layer of residential slabs and "
-            "one of commercial. Layer per option: each layer one whole option, "
-            "a sheet and a workbook page each.",
+            "Use told by",
+            "How a slab's use is told: by the level it stands on, or by its layer.",
+            "By level: the slabs on the massing layers you choose, each one commercial "
+            "on the commercial levels and residential on every other. By layer: a layer "
+            "of residential slabs and one of commercial, wherever they stand.",
         )
-        #: Which option the massing is: a renovation filter in Archicad 26,
-        #: a Design Option Combination from 27, as Archicad says it is.
+        #: The massing options: renovation filters in Archicad 26, Design
+        #: Option Combinations from 27, as Archicad says it is (D183).
         at = row
-        self.yield_scenario, row = self._combo(
+        self.yield_options, row = self._picker(
             frame,
             row,
-            "Renovation filter",
-            "The option measured: its renovation filter in Archicad 26, its design "
-            "option in 27 on. Blank: every slab.",
-            "An office keeps its massing options as renovation filters in Archicad 26 "
-            "and as Design Options from 27; Loriini asks Archicad which it is and lists "
-            "those. Chosen, only the slabs that option shows are counted: under a "
-            "renovation filter, what the floor plan shows with it on (the floor plan's "
-            "own filter is put back after); under a Design Option Combination, the main "
-            "model and the options it has on, which needs Archicad 29. Blank counts every "
-            "slab, whatever filter or option it is in.",
+            "Renovation filters",
+            "The massing options, each its own sheet. None: one option, every slab.",
+            "An office keeps its massing options as renovation filters in Archicad 26 and "
+            "as Design Options from 27; Loriini asks Archicad which it is and lists those. "
+            "Each one chosen is an option of its own, named after it, with a sheet and a "
+            "workbook page, all from one run: under a renovation filter the slabs it shows "
+            "(the floor plan's own filter is put back after); under a Design Option "
+            "Combination the main model and the options it has on, which needs Archicad "
+            "29. The layers and levels above are the same for every option.",
+            available=self._scenarios,
+            empty="none chosen: one option",
         )
-        self.scenario_labels[self._label_at(frame, at)] = ""
+        self.scenario_labels[self._label_at(frame, at)] = (
+            "Renovation filters",
+            "Design options",
+        )
         self.yield_groups: dict[str, list[tk.Misc]] = {}
 
         def rows_of(key: str, made_from: set[str]) -> None:
@@ -6215,17 +6219,6 @@ class Window:
             "its layout; another name adds an option beside the ones already there.",
         )
         rows_of("option", before)
-        before = {str(child) for child in frame.winfo_children()}
-        self.yield_option_layers, row = self._picker(
-            frame,
-            row,
-            "Option layers",
-            "Each layer chosen is one whole option, named after its OPT number.",
-            "One option a layer, a sheet in the workbook and a layout each, named after "
-            "the layer's OPT number -- '...3D OPT1' is Option 01 -- with the use of each "
-            "slab told by its level. The levels, the site and the efficiencies are shared.",
-        )
-        rows_of("option_layers", before)
         before = {str(child) for child in frame.winfo_children()}
         self.yield_massing, row = self._picker(
             frame,
@@ -7191,7 +7184,15 @@ class Window:
         return field, row + 1
 
     def _picker(
-        self, parent: ttk.Frame, row: int, label: str, hint: str, detail: str
+        self,
+        parent: ttk.Frame,
+        row: int,
+        label: str,
+        hint: str,
+        detail: str,
+        *,
+        available: Callable[[], Sequence[str]] | None = None,
+        empty: str = "no layers chosen",
     ) -> tuple[Chips, int]:
         """A layer list: ticked out of the project, shown as chips.
 
@@ -7205,9 +7206,11 @@ class Window:
         name.grid(row=row, column=0, sticky="ne", padx=(0, 12), pady=(6, 0))
         box = Chips(
             parent,
-            add=lambda: self._choose(box, label, hint),
+            add=lambda: self._choose(
+                box, label, hint, available() if available is not None else None
+            ),
             on_change=self._sync,
-            empty="no layers chosen",
+            empty=empty,
             label=label,
         )
         box.grid(row=row, column=1, sticky="ew", pady=(6, 0))
@@ -7831,8 +7834,7 @@ class Window:
             "skin_grid": self.grid_m,
             "yield_option": self.yield_option,
             "yield_slabs": self.yield_slabs,
-            "yield_scenario": self.yield_scenario,
-            "yield_option_layers": self.yield_option_layers,
+            "yield_options": self.yield_options,
             "yield_workbook": self.yield_workbook,
             "yield_residential_layers": self.yield_residential,
             "yield_commercial_layers": self.yield_commercial,
@@ -7983,18 +7985,17 @@ class Window:
             )
 
     def _yield_from_older(self, saved: Mapping[str, str | bool]) -> None:
-        """A preset saved before the Slabs row, read as what it meant: the way
-        of choosing slabs its filled layer rows imply. Its renovation checkbox
-        or status is not carried over: the option is chosen by name now."""
+        """A preset saved before the Use row, read as what it meant: by layer
+        if it filled the layer-per-use rows, by level otherwise. Its renovation
+        checkbox or status is not carried over: the options are chosen by name
+        now, and a single option chosen before is the first of them."""
         if "yield_slabs" not in saved:
 
             def filled(key: str) -> bool:
                 value = saved.get(key)
                 return isinstance(value, str) and bool(value.strip())
 
-            if filled("yield_option_layers"):
-                self.yield_slabs.set("A layer per option")
-            elif any(
+            if any(
                 filled(key)
                 for key in (
                     "yield_residential_layers",
@@ -8002,9 +8003,14 @@ class Window:
                     "yield_retail_layers",
                 )
             ):
-                self.yield_slabs.set("A layer per use")
-            elif filled("yield_massing_layers"):
-                self.yield_slabs.set("Slabs on chosen layers")
+                self.yield_slabs.set("By layer")
+            else:
+                self.yield_slabs.set("By level")
+        # One option chosen before there could be several.
+        single = saved.get("yield_scenario")
+        if "yield_options" not in saved and isinstance(single, str) and single.strip():
+            self.yield_options.delete(0, "end")
+            self.yield_options.insert(0, single.strip())
         # Retail is commercial now (D159): an older file's retail layers and
         # levels join the commercial ones rather than being dropped.
         for retail, box in (
@@ -8037,11 +8043,13 @@ class Window:
         """Call the option fields what this Archicad calls an option: a
         renovation filter in 26, a design option from 27."""
         options = self._design_options()
-        for label, before in self.scenario_labels.items():
-            if before:
-                label.configure(text=f"{before}{'design option' if options else 'filter'}")
-            else:
-                label.configure(text="Design option" if options else "Renovation filter")
+        for label, (filtered, optioned) in self.scenario_labels.items():
+            label.configure(text=optioned if options else filtered)
+
+    def _scenarios(self) -> list[str]:
+        """The project's options as this Archicad keeps them."""
+        found = self.options
+        return list(found.design_options if self._design_options() else found.renovation_filters)
 
     def _show_rows(self, panel: ttk.Frame, widgets: Sequence[tk.Widget], shown: bool) -> None:
         """Put rows on the grid or take them off it. A folded panel keeps the
@@ -8078,7 +8086,10 @@ class Window:
         groups = getattr(self, "yield_groups", None)
         if not groups:
             return
-        shown = YIELD_ROWS.get(self.yield_slabs.get(), YIELD_ROWS["Every slab showing"])
+        shown = YIELD_ROWS.get(self.yield_slabs.get(), YIELD_ROWS["By level"])
+        if self._listed(self.yield_options):
+            # Each option is named after its filter or combination.
+            shown = shown - {"option"}
         panel = str(self.yield_panel)
         kept = self._kept_rows.get(panel) if self.folded.get(panel, False) else None
         for key, widgets in groups.items():
@@ -8344,7 +8355,6 @@ class Window:
         scenarios = found.design_options if self._design_options() else found.renovation_filters
         for box in self.shadow_row_filters.values():
             self._fill(box, ("", *scenarios), ())
-        self._fill(self.yield_scenario, ("", *scenarios), ())
         self._scenario_words()
         for box in self.shadow_row_hatches.values():
             self._fill(box, ("", *found.fills), ())
@@ -8588,6 +8598,13 @@ class Window:
     #: "Bands and times" was a tile of its own, and "Bands by hour" was the
     #: heat map and the apartment total together before they were two.
     TILE_ALIASES: ClassVar[dict[str, dict[str, tuple[str, ...]]]] = {
+        # The four answers of D140, saved before D183, as the two now.
+        "Use told by": {
+            "Every slab showing": ("By level",),
+            "Slabs on chosen layers": ("By level",),
+            "A layer per use": ("By layer",),
+            "A layer per option": ("By level",),
+        },
         "Plans": {
             "Bands and times": ("Sun at each time", "Floor heat map", "Apartment total"),
             "Bands by hour": ("Floor heat map", "Apartment total"),
@@ -8606,11 +8623,9 @@ class Window:
     #: that a row of three still fits beside its label, and the same words
     #: the tooltip opens with so the two never disagree.
     TILE_WORDS: ClassVar[dict[str, dict[str, str]]] = {
-        "Slabs": {
-            "Every slab showing": "Everything showing",
-            "Slabs on chosen layers": "Chosen layers",
-            "A layer per use": "Layer per use",
-            "A layer per option": "Layer per option",
+        "Use told by": {
+            "By level": "By level",
+            "By layer": "By layer",
         },
         "Drawn as": {
             "Worksheet fills": "Worksheet fills",
@@ -8782,27 +8797,17 @@ class Window:
                 "tinted and frosted glass still cast shade.",
             ),
         ),
-        "Slabs": (
+        "Use told by": (
             (
-                "Every slab showing",
+                "By level",
                 "site",
-                "Everything showing: every slab on a layer that is showing, its use "
-                "told by its level.",
+                "By level: the slabs on the massing layers you choose, commercial on the "
+                "commercial levels and residential on the rest.",
             ),
             (
-                "Slabs on chosen layers",
+                "By layer",
                 "site",
-                "Chosen layers: the slabs on the layers you choose, the use told by level.",
-            ),
-            (
-                "A layer per use",
-                "site",
-                "Layer per use: a layer of residential slabs and one of commercial.",
-            ),
-            (
-                "A layer per option",
-                "site",
-                "Layer per option: each layer one whole option, a sheet and a workbook page each.",
+                "By layer: a layer of residential slabs and one of commercial.",
             ),
         ),
         "Drawn as": (
@@ -9118,8 +9123,10 @@ class Window:
                     )
 
         if YIELD_JOB in queued:
-            # One sheet, at no hour: the table, and the massing beside it.
-            deal(YIELD_JOB, "Yield", "yield", "AC", AREA_SHEET, "", [""])
+            # A sheet an option, at no hour: the table, and the massing beside
+            # it. One when no option is chosen by name.
+            for named in self._listed(self.yield_options) or [""]:
+                deal(YIELD_JOB, "Yield", "yield", "AC", AREA_SHEET, named, [""])
 
         if FACADE_JOB in queued:
             for day in days:
@@ -10008,23 +10015,22 @@ class Window:
         args = ["yield", *common]
         # Only the rows the Slabs answer shows: a layer left in a row that is
         # hidden must not quietly change what is counted.
-        shown = YIELD_ROWS.get(self.yield_slabs.get(), YIELD_ROWS["Every slab showing"])
+        shown = YIELD_ROWS.get(self.yield_slabs.get(), YIELD_ROWS["By level"])
+        chosen = self._listed(self.yield_options)
         pickers: list[tuple[str, Any, str]] = [
             ("--residential-layer", self.yield_residential, "per_use"),
             ("--commercial-layer", self.yield_commercial, "per_use"),
             ("--massing-layer", self.yield_massing, "layers"),
-            ("--option-layer", self.yield_option_layers, "option_layers"),
             ("--commercial-level", self.yield_commercial_levels, "levels"),
         ]
         for flag, box, group in pickers:
             if group in shown:
                 for name in self._listed(box):
                     args += [flag, name]
-        scenario = self.yield_scenario.get().strip()
-        if scenario:
-            flag = "--design-option" if self._design_options() else "--renovation-filter-name"
-            args += [flag, scenario]
-        if "option" in shown:
+        flag = "--design-option" if self._design_options() else "--renovation-filter-name"
+        for name in chosen:
+            args += [flag, name]
+        if "option" in shown and not chosen:
             args += self._flag("--option", self.yield_option)
         for flag, control in (
             ("--gfa-residential", self.yield_gfa_residential),

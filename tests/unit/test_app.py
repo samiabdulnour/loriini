@@ -1375,13 +1375,12 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     only_yield(hidden_window)
     hidden_window.yield_option.delete(0, "end")
     hidden_window.yield_option.insert(0, "Option 02")
-    hidden_window.yield_slabs.set("Slabs on chosen layers")
+    hidden_window.yield_slabs.set("By level")
     hidden_window.yield_massing.insert(0, "01 | Massing - Main Building.3D OPT2")
     hidden_window.yield_commercial_levels.insert(0, "Ground, Level 01")
     # Filled, but in rows this answer does not show: they must not count.
     hidden_window.yield_residential.insert(0, "01 | Wall.External")
     hidden_window.yield_commercial.insert(0, "01 | Floor.Structural")
-    hidden_window.yield_scenario.set("OPTION 02")
     hidden_window.yield_site_area.insert(0, "1386.78")
     hidden_window.yield_fsr_residential.insert(0, "2.8")
     hidden_window.yield_fsr_commercial.insert(0, "0.4")
@@ -1402,7 +1401,7 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     assert flag(args, "--massing-layer") == ["01 | Massing - Main Building.3D OPT2"]
     assert flag(args, "--commercial-level") == ["Ground", "Level 01"]
     assert not any("retail" in arg for arg in args), "shops are commercial (D159)"
-    assert flag(args, "--renovation-filter-name") == ["OPTION 02"]
+    assert not any(arg.startswith(("--renovation", "--design-option")) for arg in args)
     assert flag(args, "--gfa-residential") == ["0.725"]
     assert flag(args, "--gfa-commercial") == ["0.85"]
     assert flag(args, "--nla-commercial") == ["0.9"]
@@ -1458,16 +1457,19 @@ def test_the_workbook_is_chosen_with_a_save_dialog(
     assert hidden_window.yield_workbook.get() == str(tmp_path / "Yield.xlsx")
 
 
-def test_option_layers_and_a_workbook_of_their_own(hidden_window: Any, tmp_path: Path) -> None:
+def test_options_by_filter_and_a_workbook_of_their_own(hidden_window: Any, tmp_path: Path) -> None:
     only_yield(hidden_window)
-    hidden_window.yield_slabs.set("A layer per option")
-    hidden_window.yield_option_layers.insert(0, "01 | Massing.3D OPT1, 01 | Massing.3D OPT2")
+    hidden_window.yield_massing.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_options.insert(0, "OPTION 03, OPTION 10")
     hidden_window.yield_workbook.insert(0, r"P:³3\Yield.xlsx")
     hidden_window.tables.delete(0, "end")
     hidden_window.tables.insert(0, str(tmp_path))
     (job,) = hidden_window.jobs()
-    assert flag(job.args, "--option-layer") == ["01 | Massing.3D OPT1", "01 | Massing.3D OPT2"]
-    assert "--option" not in job.args, "each option is named after its layer"
+    assert flag(job.args, "--renovation-filter-name") == ["OPTION 03", "OPTION 10"]
+    assert "--option" not in job.args, "each option is named after its filter"
+    assert "--option-layer" not in job.args
+    yields = [sheet for sheet in hidden_window.planned() if sheet.study == "Yield"]
+    assert [sheet.day for sheet in yields] == ["OPTION 03", "OPTION 10"], "a sheet an option"
     assert flag(job.args, "--xlsx") == [r"P:³3\Yield.xlsx"], "the typed path over the folder"
     hidden_window.yield_xlsx.set(False)
     (job,) = hidden_window.jobs()
@@ -1517,9 +1519,11 @@ def test_the_yield_page_is_saved_and_restored(hidden_window: Any) -> None:
     assert saved["yield_commercial_layers"] == "01 | Floor.Structural"
     assert saved["yield_mix_2-bed_share"] == "70"
     assert saved["yield_option"] == "Option 01"
-    hidden_window.apply({**saved, "yield_gfa_residential": "0.7", "yield_scenario": "OPTION 03"})
+    hidden_window.apply(
+        {**saved, "yield_gfa_residential": "0.7", "yield_options": "OPTION 03, OPTION 10"}
+    )
     assert hidden_window.yield_gfa_residential.get() == "0.7"
-    assert hidden_window.yield_scenario.get() == "OPTION 03"
+    assert hidden_window._listed(hidden_window.yield_options) == ["OPTION 03", "OPTION 10"]
 
 
 def test_a_typed_hour_is_spelled_the_way_the_sheet_is_named() -> None:
@@ -5120,25 +5124,27 @@ def test_the_drawn_table_is_offered_first_and_no_schedule_is_picked_by_its_name(
     assert "--zone-hourly" in communal.args and "--zone-schedule" not in communal.args
 
 
-def test_the_yield_page_shows_only_the_rows_its_slabs_answer_needs(hidden_window: Any) -> None:
-    """One question, four answers, and the rows each one reads (D140)."""
+def test_the_yield_page_shows_only_the_rows_its_use_answer_needs(hidden_window: Any) -> None:
+    """Two answers, and the rows each one reads (D140, D183)."""
     made = hidden_window
     only_yield(made)
 
     def showing(widget: Any) -> bool:
         return bool(widget.winfo_manager())
 
-    made.yield_slabs.set("Every slab showing")
+    assert made.yield_slabs.get() == "By level", "by level unless asked"
     made._sync()
-    assert showing(made.yield_commercial_levels) and not showing(made.yield_massing)
-    assert not showing(made.yield_residential) and not showing(made.yield_option_layers)
-    made.yield_slabs.set("A layer per use")
+    assert showing(made.yield_massing) and showing(made.yield_commercial_levels)
+    assert not showing(made.yield_residential) and showing(made.yield_option)
+    made.yield_slabs.set("By layer")
     made._sync()
     assert showing(made.yield_residential) and showing(made.yield_commercial)
     assert not showing(made.yield_commercial_levels), "a layer per use tells the use itself"
-    made.yield_slabs.set("A layer per option")
+    assert not showing(made.yield_massing)
+    made.yield_options.insert(0, "OPTION 03")
     made._sync()
-    assert showing(made.yield_option_layers) and not showing(made.yield_option)
+    assert not showing(made.yield_option), "each option is named after its filter"
+    assert showing(made.yield_options)
     assert made._label_wide < 400, "no hint line dropped into the label column"
 
 
@@ -5175,24 +5181,34 @@ def test_the_yield_counts_the_option_chosen_as_this_archicad_keeps_it(hidden_win
     only_yield(made)
     (job,) = made.jobs()
     assert not any(arg.startswith(("--renovation", "--design-option")) for arg in job.args)
-    made.yield_scenario.set("OPTION 03")
+    made.yield_options.insert(0, "OPTION 03, OPTION 12A")
     (job,) = made.jobs()
-    assert flag(job.args, "--renovation-filter-name") == ["OPTION 03"]
+    assert flag(job.args, "--renovation-filter-name") == ["OPTION 03", "OPTION 12A"]
     made.archicad_version = 27
     (job,) = made.jobs()
-    assert flag(job.args, "--design-option") == ["OPTION 03"]
+    assert flag(job.args, "--design-option") == ["OPTION 03", "OPTION 12A"]
     assert "--renovation-filter-name" not in job.args
 
 
 def test_a_preset_saved_before_the_slabs_row_opens_as_what_it_meant(hidden_window: Any) -> None:
     made = hidden_window
     made.apply({"yield_massing_layers": "01 | Massing.3D", "yield_renovation": True})
-    assert made.yield_slabs.get() == "Slabs on chosen layers"
-    assert made.yield_scenario.get() == "", "the old checkbox names no option"
+    assert made.yield_slabs.get() == "By level"
+    assert made.yield_options.get() == "", "the old checkbox names no option"
     made.apply({"yield_residential_layers": "05 | Mass.Residential"})
-    assert made.yield_slabs.get() == "A layer per use"
-    made.apply({"yield_slabs": "Every slab showing", "yield_massing_layers": "x"})
-    assert made.yield_slabs.get() == "Every slab showing", "a saved answer is kept as it is"
+    assert made.yield_slabs.get() == "By layer"
+    # D140's four answers, saved, read as the two now (D183).
+    for older, now in (
+        ("Every slab showing", "By level"),
+        ("Slabs on chosen layers", "By level"),
+        ("A layer per use", "By layer"),
+        ("A layer per option", "By level"),
+    ):
+        made.apply({"yield_slabs": older})
+        assert made.yield_slabs.get() == now, older
+    made.yield_options.delete(0, "end")
+    made.apply({"yield_slabs": "By level", "yield_scenario": "OPTION 03"})
+    assert made._listed(made.yield_options) == ["OPTION 03"], "the one option chosen before"
 
 
 def test_the_shadow_diagram_is_drawn_as_worksheet_fills_unless_live_documents_is_picked(
@@ -5303,12 +5319,8 @@ def test_archicad_27_offers_design_options_where_26_offers_renovation_filters(
         design_options=(),
     )
     hidden_window._offer()
-    assert words() == ["Proposed 2 filter", "Proposed 3 filter", "Renovation filter"]
-    assert tuple(hidden_window.yield_scenario.cget("values")) == (
-        "",
-        "OPTION 02",
-        "LEP + 30% Bonus",
-    )
+    assert words() == ["Proposed 2 filter", "Proposed 3 filter", "Renovation filters"]
+    assert hidden_window._scenarios() == ["OPTION 02", "LEP + 30% Bonus"]
 
     hidden_window.options = replace(
         hidden_window.options,
@@ -5316,7 +5328,8 @@ def test_archicad_27_offers_design_options_where_26_offers_renovation_filters(
         design_options=("Main + LEP", "Main + 12 storeys"),
     )
     hidden_window._offer()
-    assert words() == ["Design option", "Proposed 2 design option", "Proposed 3 design option"]
+    assert words() == ["Design options", "Proposed 2 design option", "Proposed 3 design option"]
+    assert hidden_window._scenarios() == ["Main + LEP", "Main + 12 storeys"]
     box = hidden_window.shadow_row_filters["PROPOSED 2"]
     assert tuple(box.cget("values")) == ("", "Main + LEP", "Main + 12 storeys")
 

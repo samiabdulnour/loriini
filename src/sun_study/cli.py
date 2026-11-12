@@ -217,7 +217,7 @@ from sun_study.archicad.sheets import (
     straighten_and_tile,
 )
 from sun_study.archicad.site_analysis import attribute_index
-from sun_study.archicad.slabs import floors_from, read_slabs
+from sun_study.archicad.slabs import SlabReading, floors_from, read_slabs
 from sun_study.archicad.sun_eyes import (
     DEFAULT_SHEETS as SUN_VIEW_SHEETS,
 )
@@ -10268,25 +10268,26 @@ def area_yield(
         ),
     ] = "any",
     renovation_filter_name: Annotated[
-        str | None,
+        list[str] | None,
         typer.Option(
             "--renovation-filter-name",
             help=(
-                "Archicad 26's way of keeping an option: count only the slabs this "
-                "renovation filter shows, by its name or guid. The floor plan is shown "
-                "the filter while the slabs are read, and put back after."
+                "Archicad 26's way of keeping a massing option: the slabs this renovation "
+                "filter shows, by its name or guid, are one option, named after the "
+                "filter -- a sheet and a workbook page. Repeat for each option. The floor "
+                "plan is shown each filter while its slabs are read, and put back after."
             ),
         ),
     ] = None,
     design_option: Annotated[
-        str | None,
+        list[str] | None,
         typer.Option(
             "--design-option",
             help=(
-                "Archicad 27's way: count only the slabs this Design Option Combination "
-                "shows, by its name or guid -- the main model and the options it has "
-                "on. Needs Archicad 29, the first that says which slabs belong to which "
-                "option."
+                "Archicad 27's way: the slabs this Design Option Combination shows -- the "
+                "main model and the options it has on -- are one option, named after the "
+                "combination. Repeat for each. Needs Archicad 29, the first that says "
+                "which slabs belong to which option."
             ),
         ),
     ] = None,
@@ -10538,34 +10539,82 @@ def area_yield(
             err=True,
         )
         raise typer.Exit(code=2)
+    scenarios = list(renovation_filter_name or []) or list(design_option or [])
+    if scenarios and options:
+        typer.secho(
+            "The options are layers (--option-layer) or renovation filters and design "
+            "options, not both.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
     connection = _connect(port, timeout)
-    shown_under = ""
+    # The slabs each option is counted from: the option's name (None for the
+    # one --option names), what Archicad showed, what the log says of it, and
+    # how many a combination left out. Under renovation filters the floor plan
+    # shows each filter in turn and is read again; under combinations the
+    # slabs are read once and each combination keeps its own.
+    readings: list[tuple[str | None, SlabReading, str, int]] = []
     put_back: str | None = None
-    left_out: set[str] = set()
+    statuses = wanted_statuses[renovation_status]
+    shown_only = not (residential or commercial or massing or options)
     try:
         if renovation_filter_name:
             filters = renovation_filters(connection)
-            guid = renovation_filter_guid(renovation_filter_name, filters)
-            if filters.actual and filters.actual.casefold() != guid.casefold():
+            guids = [(given, renovation_filter_guid(given, filters)) for given in scenarios]
+            if filters.actual and any(
+                guid.casefold() != filters.actual.casefold() for _given, guid in guids
+            ):
                 put_back = filters.actual
-            named = show_renovation_filter(connection, guid) or renovation_filter_name
-            shown_under = f", only those the renovation filter {named!r} shows"
-        if design_option:
+            for given, guid in guids:
+                named = show_renovation_filter(connection, guid) or given
+                got = read_slabs(
+                    connection, renovation=True, shown_layers_only=shown_only, statuses=statuses
+                )
+                readings.append(
+                    (named, got, f", only those the renovation filter {named!r} shows", 0)
+                )
+        elif design_option:
             require_design_options(connection, "The Yield")
-            chosen = combination_named(design_option, combinations(connection))
-            left_out = left_out_by(connection, chosen)
-            shown_under = f", only those the Design Option Combination {chosen.name!r} shows"
-        reading = read_slabs(
-            connection,
-            renovation=renovation_filter or bool(renovation_filter_name),
-            shown_layers_only=not (residential or commercial or massing or options),
-            statuses=wanted_statuses[renovation_status],
-        )
+            listed = combinations(connection)
+            chosen = [combination_named(given, listed) for given in scenarios]
+            whole = read_slabs(
+                connection,
+                renovation=renovation_filter,
+                shown_layers_only=shown_only,
+                statuses=statuses,
+            )
+            for one in chosen:
+                left = left_out_by(connection, one)
+                kept = tuple(slab for slab in whole.slabs if slab.guid.upper() not in left)
+                readings.append(
+                    (
+                        one.name,
+                        replace(whole, slabs=kept),
+                        f", only those the Design Option Combination {one.name!r} shows",
+                        len(whole.slabs) - len(kept),
+                    )
+                )
+        else:
+            got = read_slabs(
+                connection,
+                renovation=renovation_filter,
+                shown_layers_only=shown_only,
+                statuses=statuses,
+            )
+            readings.append(
+                (
+                    None,
+                    got,
+                    ", only those the renovation filter shows" if renovation_filter else "",
+                    0,
+                )
+            )
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
     finally:
-        # The floor plan as it was found: the filter was the run's to borrow.
+        # The floor plan as it was got: the filter was the run's to borrow.
         if put_back is not None:
             try:
                 show_renovation_filter(connection, put_back)
@@ -10574,53 +10623,61 @@ def area_yield(
                     f"  the floor plan's renovation filter could not be put back: {error}",
                     fg=typer.colors.YELLOW,
                 )
-    dropped = 0
-    if left_out:
-        kept = tuple(slab for slab in reading.slabs if slab.guid.upper() not in left_out)
-        dropped = len(reading.slabs) - len(kept)
-        reading = replace(reading, slabs=kept)
+    named_options = [name.casefold() for name, *_rest in readings if name is not None]
+    if len(set(named_options)) != len(named_options):
+        typer.secho(
+            "Two of the options are the same filter or combination; name each once.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    reading = readings[0][1]
 
     # The options this run makes: one per --option-layer, each a massing
-    # layer of its own with the use told by level; or the one option the
-    # other flags describe. The slabs are read once for all of them.
-    runs: list[tuple[str, list[str], list[str], list[str]]] = (
-        [(name, [], [], [layer]) for name, layer in options]
+    # layer of its own with the use told by level; one per renovation filter
+    # or combination, each counted from its own slabs on the layers named; or
+    # the one option the other flags describe.
+    runs: list[tuple[str, list[str], list[str], list[str], SlabReading]] = (
+        [(name, [], [], [layer], reading) for name, layer in options]
         if options
-        else [(option, residential, commercial, massing)]
+        else [
+            (str(name), residential, commercial, massing, got)
+            for name, got, _said, _dropped in readings
+        ]
+        if scenarios
+        else [(option, residential, commercial, massing, reading)]
     )
-    everything = not (residential or commercial or massing or options)
+    everything = shown_only
     status_words = {"new": "new", "existing-and-new": "existing or new"}
-    typer.echo(
-        f"read {_slabs(len(reading.slabs))}"
-        + (
-            ", only those the renovation filter shows"
-            if renovation_filter and not shown_under
-            else shown_under
+    for name, got, shown_under, dropped in readings:
+        typer.echo(
+            ("" if name is None else f"{name}: ")
+            + f"read {_slabs(len(got.slabs))}"
+            + shown_under
+            + (
+                f", only the {status_words[renovation_status]} ones"
+                if renovation_status in status_words
+                else ""
+            )
+            + (", on the layers showing" if everything else "")
         )
-        + (
-            f", only the {status_words[renovation_status]} ones"
-            if renovation_status in status_words
-            else ""
-        )
-        + (", on the layers showing" if everything else "")
-    )
-    for status, count in sorted(reading.by_status.items()):
-        typer.echo(f"  {_slabs(count)} left out as {status}")
-    if dropped:
-        typer.echo(f"  {_slabs(dropped)} left out, in design options the combination has off")
-    for said, count in sorted(reading.unknown_status.items()):
-        typer.secho(
-            f"  {_slabs(count)} with a renovation status of {said!r}, which is none of "
-            "Existing, New or To Be Demolished, left out",
-            fg=typer.colors.YELLOW,
-        )
-    if reading.own:
-        typer.echo(f"  {reading.own} of Loriini's own context slabs left out")
-    if reading.unreadable:
-        typer.secho(
-            f"  {len(reading.unreadable)} slabs Archicad would not describe were left out",
-            fg=typer.colors.YELLOW,
-        )
+        for status, count in sorted(got.by_status.items()):
+            typer.echo(f"  {_slabs(count)} left out as {status}")
+        if dropped:
+            typer.echo(f"  {_slabs(dropped)} left out, in design options the combination has off")
+        for said, count in sorted(got.unknown_status.items()):
+            typer.secho(
+                f"  {_slabs(count)} with a renovation status of {said!r}, which is none of "
+                "Existing, New or To Be Demolished, left out",
+                fg=typer.colors.YELLOW,
+            )
+        if got.own:
+            typer.echo(f"  {got.own} of Loriini's own context slabs left out")
+        if got.unreadable:
+            typer.secho(
+                f"  {len(got.unreadable)} slabs Archicad would not describe were left out",
+                fg=typer.colors.YELLOW,
+            )
     if everything:
         typer.secho(
             "  No layer named: every slab showing is counted as massing, residential unless "
@@ -10632,22 +10689,34 @@ def area_yield(
 
     # Every option stands in one grid of levels: a tower option with no ground
     # floor of its own still starts above the podium option's ground.
-    option_layers = {" ".join(layer.split()).casefold() for _name, layer in options}
-    grid = [
-        slab.bottom_m
-        for slab in reading.slabs
-        if " ".join(slab.layer.split()).casefold() in option_layers
-    ]
+    def tidy(layer: str) -> str:
+        return " ".join(layer.split()).casefold()
+
+    gridded = (
+        {tidy(layer) for _name, layer in options}
+        if options
+        else {tidy(layer) for layer in (*residential, *commercial, *massing)}
+        if len(runs) > 1
+        else set()
+    )
+    grid = sorted(
+        {
+            slab.bottom_m
+            for *_layers, got in runs
+            for slab in got.slabs
+            if tidy(slab.layer) in gridded
+        }
+    )
     results: list[tuple[Feasibility, list[str]]] = []
-    for name, res_layers, com_layers, mass_layers in runs:
+    for name, res_layers, com_layers, mass_layers, run_reading in runs:
         try:
             assignment = floors_from(
-                reading.slabs,
+                run_reading.slabs,
                 res_layers,
                 com_layers,
                 mass_layers,
                 commercial_levels=commercial_levels,
-                ground_m=reading.ground_m,
+                ground_m=run_reading.ground_m,
                 others_m=grid,
             )
         except ValueError as error:
@@ -10677,7 +10746,12 @@ def area_yield(
         counted = sum(count for _use, count, _area in assignment.by_layer.values())
         source = [
             f"BEA : {_slabs(counted)}, measured to their edges"
-            + (", as the renovation filter shows them" if renovation_filter else "")
+            + (
+                f", as {'the renovation filter' if renovation_filter_name else 'the combination'}"
+                f" {name!r} shows them"
+                if scenarios
+                else (", as the renovation filter shows them" if renovation_filter else "")
+            )
             + (
                 f", the {status_words[renovation_status]} ones only"
                 if renovation_status in status_words
@@ -10696,7 +10770,7 @@ def area_yield(
                 affordable=affordable,
                 affordable_share=affordable_share / 100.0,
                 parking=rates,
-                ground_m=reading.ground_m,
+                ground_m=run_reading.ground_m,
                 source=source,
                 others_m=grid,
             )
