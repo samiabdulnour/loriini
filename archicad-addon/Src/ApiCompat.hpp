@@ -323,6 +323,19 @@ inline GSErrCode GetOverrideCombination (API_OverrideCombination& combination)
 #endif
 }
 
+// --- IFC export -----------------------------------------------------------------
+
+// The project saved as IFC through a translator chosen by the caller. 26 has
+// it behind the Automate dispatcher; 27 on as an overload of its own.
+inline GSErrCode SaveAsIfc (const API_FileSavePars* file, const API_SavePars_Ifc* ifc)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_ProjectOperation_Save (file, ifc);
+#else
+	return ACAPI_Automate (APIDo_SaveID, const_cast<API_FileSavePars*> (file), const_cast<API_SavePars_Ifc*> (ifc));
+#endif
+}
+
 // --- Renovation filters ---------------------------------------------------------
 
 inline GSErrCode GetRenovationFilters (GS::Array<API_Guid>* filters)

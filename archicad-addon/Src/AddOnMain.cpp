@@ -183,6 +183,8 @@ GSErrCode Initialize (void)
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ExportModelCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetIfcPropertiesCommand> ()); },
 		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::SetIfcPropertiesCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::GetIfcTranslatorsCommand> ()); },
+		[] { return Loriini::Api::InstallAddOnCommandHandler (GS::NewOwned<Loriini::ExportIfcCommand> ()); },
 	};
 
 	for (const std::function<GSErrCode ()>& install : installers) {

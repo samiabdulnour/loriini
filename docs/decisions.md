@@ -7105,3 +7105,48 @@ and each combination keeps the main model and its options' slabs (Archicad
 chosen is one option, named in the Option box, every slab on the layers.
 `--renovation-filter-name` and `--design-option` repeat; they and
 `--option-layer` are refused together.
+
+### D184 — The QA export: the council's per-unit data from the model, its IFC two ways
+
+The office's QA council asked, in a brief, for a schedule built from the
+model each issue: every apartment with its level, type, bedrooms, internal
+area, private open space, storage and the ADG and SEPP flags, and the totals
+of GFA, communal open space, deep soil and parking -- through three property
+groups, three interactive schedules published to Excel, and an IFC exported
+through a new translator. `sun-study qa-export` does it from a run.
+
+**Groups named from a prefix.** `FUSE_UNIT`, `FUSE_AREA`, `FUSE_PARKING` are
+the brief's; the app ships none of an office's names (D156), so the prefix
+is typed once. Fields and option sets are the brief's. A new definition's
+default is *undefined*, not 0: a 0 would read as a measured POS, and Archicad
+refuses a definition with no default at all (D21). Availability is the
+classification the zones already carry.
+
+**Filled from what the project has.** Most of the values are already in a
+project under the office's own names (on 0001, an `Apartments` group with
+`Beds`, `External Area`, `Daylight`, `Ventilation`). `--copy FIELD=GROUP/NAME`
+reads them as the brief's: `Y` is Yes, `2 BED` is 2B, `21 m3` is 21; what
+cannot be read (`Y` for Livable says livable but not Silver or Gold) is left
+blank and listed. Unit No and internal area come from the zone, POS from the
+balcony zones touching it, the unit type from the zone number, and Solar 2h
+and No sun from Loriini's own solar study when it has been written, over any
+copy: measured beats typed. Storeys outside a range are left out, which
+drops the unit-type plans an office keeps above the roof.
+
+**Hotlinked apartments are written at their source.** On 0001, 44 of 119
+apartments are in hotlinked modules, which the host cannot change; the run
+says so and names the module. The spreadsheets and Loriini's IFC count them.
+
+**Spreadsheets written, not published.** The API can make neither a schedule
+nor a Publisher set, so QA_Units, QA_Areas, QA_Parking and a QA_Summary of
+the council's totals (mix, 4D and 4E minimums, 4A solar and no-sun shares,
+4B cross ventilation in the first nine storeys, the area and parking totals)
+are written straight from the model.
+
+**The IFC two ways, each checked.** Loriini's own: a space per zone with the
+QA property sets and its area, written with ifcopenshell, which works on any
+project with no translator. Archicad's: the whole model through an export
+translator chosen by name (the add-on's new `ExportIfc`; `GetIfcTranslators`
+lists them), since the API can pick a translator but not make or change one.
+Both are opened again and counted, and the two faults the brief found in the
+office's IFCs -- no spaces, everything a proxy -- are said in words.
