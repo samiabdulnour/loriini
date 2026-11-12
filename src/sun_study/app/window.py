@@ -267,7 +267,7 @@ SITE_JOBS = (SITE_MODEL_JOB, SITE_CONTEXT_JOB, SITE_SHEET_JOB, SITE_CONTROLS_JOB
 #: The yield analysis (roadmap R3): the office's feasibility sheet from the
 #: massing slabs, an option a sheet of its own.
 YIELD_JOB = "area and yield"
-QA_JOB = "qa export"
+QA_JOB = "QA export"
 #: That sheet, as the panel draws it: a table beside the massing.
 AREA_SHEET = "Yield Analysis"
 
@@ -9154,21 +9154,6 @@ class Window:
                             paper=False,
                         )
                     )
-
-        if QA_JOB in queued:
-            # Not a sheet: spreadsheets and an IFC, beside the model.
-            made.append(
-                Sheet(
-                    study="QA export",
-                    glyph="yield",
-                    number="",
-                    kind=AREA_SHEET,
-                    day="QA_Units, QA_Areas, QA_Parking, IFC",
-                    drawings=(Drawing(kind=AREA_SHEET, day="", time=""),),
-                    job=QA_JOB,
-                    paper=False,
-                )
-            )
 
         if YIELD_JOB in queued:
             # A sheet an option, at no hour: the table, and the massing beside
