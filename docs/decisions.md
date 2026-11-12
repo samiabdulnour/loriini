@@ -7117,7 +7117,7 @@ through a new translator. `sun-study ifc-export` does it from a run; in
 the window it is **IFC export**, a page under Tools, and its own switch
 queues it for Run.
 
-**Groups named from a prefix.** `FUSE_UNIT`, `FUSE_AREA`, `FUSE_PARKING` are
+**Groups named from a prefix.** `QA_UNIT`, `QA_AREA`, `QA_PARKING` are
 the brief's; the app ships none of an office's names (D156), so the prefix
 is typed once. Fields and option sets are the brief's. A new definition's
 default is *undefined*, not 0: a 0 would read as a measured POS, and Archicad

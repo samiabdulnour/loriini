@@ -8,7 +8,7 @@ Typed by hand into a spreadsheet, those figures drift from the drawings. Here
 they come out of the model.
 
 Three property groups hold them, named from a prefix the office types once
-(``FUSE_`` makes ``FUSE_UNIT``, ``FUSE_AREA``, ``FUSE_PARKING``): Loriini
+(``QA_`` makes ``QA_UNIT``, ``QA_AREA``, ``QA_PARKING``): Loriini
 ships no office's names (D156). Their fields and option sets are the brief's.
 
 Most of the values are already in a project, under the office's own names --
@@ -109,11 +109,11 @@ MIN_POS_M2 = {"Studio": 4.0, "1B": 8.0, "2B": 10.0, "3B": 12.0, "4B": 12.0}
 
 
 def group_names(prefix: str) -> dict[str, str]:
-    """Each group's name from the office's prefix: ``FUSE_`` gives ``FUSE_UNIT``
-    and ``Fuse_`` gives ``Fuse_Unit``, the suffix in the prefix's own case."""
+    """Each group's name from the office's prefix: ``QA_`` gives ``QA_UNIT``
+    and ``Qa_`` gives ``Qa_Unit``, the suffix in the prefix's own case."""
     tidy = prefix.strip()
     if not tidy:
-        raise ValueError("The QA property groups need a prefix, such as FUSE_ or QA_.")
+        raise ValueError("The QA property groups need a prefix, such as QA_.")
     capitals = tidy == tidy.upper()
     return {suffix: f"{tidy}{suffix if capitals else suffix.title()}" for suffix in GROUPS}
 
@@ -133,8 +133,8 @@ SPELLINGS: dict[str, tuple[str, ...]] = {
 
 def find_field(paths: Mapping[str, str], group: str, field_name: str) -> str | None:
     """The identifier of ``group``'s ``field_name`` among ``paths``, matched
-    without regard to case or spacing (``Fuse_Unit/Internal area  m²`` is
-    ``FUSE_UNIT/Internal area m²``), and by the spellings an office uses."""
+    without regard to case or spacing (``Qa_Unit/Internal area  m²`` is
+    ``QA_UNIT/Internal area m²``), and by the spellings an office uses."""
     wanted = {_norm(field_name), *SPELLINGS.get(_norm(field_name), ())}
     for path, ident in paths.items():
         owner, _slash, name = path.partition("/")
@@ -177,7 +177,7 @@ def drop_doubles(
             other.storey_index == zone.storey_index
             and shapes.get(other.guid) is not None
             and shape.intersection(shapes[other.guid]).area
-            > share * min(shape.area, shapes[other.guid].area)
+            > share * max(shape.area, shapes[other.guid].area)
             for other in kept
         )
         if twin:
@@ -209,7 +209,7 @@ def unit_type(text: str | None, bedrooms: int | None = None) -> str | None:
     """``2B``, ``2 BED``, ``2BR`` are 2B; ``Studio``, ``STU``, ``0B`` are Studio.
     With nothing readable, the bedrooms say it."""
     word = (text or "").strip()
-    if re.fullmatch(r"(?i)studio|stu|0\s*b(?:ed)?|0br", word):
+    if re.fullmatch(r"(?i)studio|stu|s|0\s*b(?:ed)?|0br", word):
         return "Studio"
     found = _TYPE.search(word)
     if found:
@@ -246,6 +246,13 @@ def integer(text: str | None) -> int | None:
     value = number(text)
     return round(value) if value is not None else None
 
+
+#: A zone's own name and number, as sources a copy may name beside the
+#: project's properties: an office that keeps the type in the zone number
+#: says ``Unit Type=Zone/Number``.
+ZONE_NAME = "Zone/Name"
+ZONE_NUMBER = "Zone/Number"
+ZONE_SOURCES = (ZONE_NAME, ZONE_NUMBER)
 
 #: How a copied value is read, by the field it goes to.
 READERS: dict[str, Any] = {
@@ -690,10 +697,13 @@ def unit_rows(
         row = UnitRow(zone)
         own = copied.get(zone.guid, {})
         for field_name, path in copies.items():
-            ident = paths.get(path)
-            if ident is None:
-                continue
-            text = own.get(ident)
+            if path in ZONE_SOURCES:
+                text: str | None = zone.number if path == ZONE_NUMBER else zone.name
+            else:
+                ident = paths.get(path)
+                if ident is None:
+                    continue
+                text = own.get(ident)
             value = read_as(field_name, text)
             if value is None and text not in (None, ""):
                 row.unread.append(f"{field_name} from {path} = {text!r}")
@@ -703,7 +713,8 @@ def unit_rows(
             label = zone.number if unit_no == "number" else zone.name
             if label:
                 row.values["Unit No"] = label
-        row.values["Internal area m²"] = round(zone.area_m2, 2)
+        if "Internal area m²" not in row.values:
+            row.values["Internal area m²"] = round(zone.area_m2, 2)
         if "POS area m²" not in row.values and zone.guid in open_space:
             row.values["POS area m²"] = round(open_space[zone.guid], 2)
         if solar and zone.guid in solar:
@@ -715,7 +726,10 @@ def unit_rows(
             if none is not None:
                 row.values["No sun"] = none
         if "Unit Type" not in row.values:
-            told = unit_type(zone.number) or unit_type(zone.name, row.values.get("Bedrooms"))
+            # From the bedrooms, which are a count; never from the zone's
+            # name or number unless a copy says so: "4B" is as often level
+            # four, unit B, as it is four bedrooms.
+            told = unit_type(None, row.values.get("Bedrooms"))
             if told:
                 row.values["Unit Type"] = told
         if "Bedrooms" not in row.values and row.values.get("Unit Type") in UNIT_TYPES:

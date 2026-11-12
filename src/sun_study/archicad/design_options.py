@@ -222,7 +222,7 @@ def left_out_by(connection: ArchicadConnection, combination: Combination) -> set
             f"{ELEMENTS_OF_OPTIONS_FROM}: before it Archicad cannot say which slabs "
             f"belong to which design option"
             + (f", and this is Archicad {version}." if version else ".")
-            + " Put each option's massing on a layer of its own and use Layer per option."
+            + " Until then, measure each option from layers of its own, a run each."
         )
     answer = connection.run_tapir("GetDesignOptions", {})
     every = {

@@ -494,11 +494,12 @@ def test_a_step_from_before_the_four_is_kept_rather_than_rounded(hidden_window: 
     assert "0.2" not in hidden_window.communal_grid._on & set(hidden_window.communal_grid._buttons)
 
 
-def test_see_through_glass_goes_to_all_three_solar_studies_and_no_other(
+def test_see_through_glass_goes_to_every_study_loriini_casts_the_sun_for(
     hidden_window: Any,
 ) -> None:
     """One choice, in the card the three share. Solid sends nothing, which is
-    the command's own default; the shadow diagram is not a solar study."""
+    the command's own default. The shadow plans' shadows are Archicad's own,
+    cast by its 3D Documents, and are not Loriini's to change."""
     assert set(hidden_window.see_glass._buttons) == {"off", "30", "80"}
     assert hidden_window.see_glass.get() == "off"
     hidden_window.apartments.set("06 | Zone.Units")
@@ -515,9 +516,9 @@ def test_see_through_glass_goes_to_all_three_solar_studies_and_no_other(
     assert sent["massing"] == ["30"]
     assert sent["archicad-run"] == ["30"]
     assert sent["shadow-plans"] == []
-    assert sent["shadows"] == []
+    assert sent["shadows"] == ["30"], "the ray-cast shadow drawing sees the same building"
     assert (
-        sum(flag(job.args, "--see-through-glass") == ["30"] for job in hidden_window.jobs()) == 3
+        sum(flag(job.args, "--see-through-glass") == ["30"] for job in hidden_window.jobs()) == 4
     ), "the facade and the communal space are both massing runs"
 
     hidden_window.apply({"see_through_glass": "80"})
@@ -5446,29 +5447,29 @@ def test_the_ifc_export_page_is_the_command_line_the_office_would_type(
         tick.set(False)
     made.do_qa.set(True)
     made.qa_prefix.delete(0, "end")
-    made.qa_prefix.insert(0, "FUSE_")
+    made.qa_prefix.insert(0, "ACME_")
     made.qa_apartments.insert(0, "06 | Zone.Units")
     made.qa_balconies.insert(0, "06 | Zone.Balcony")
     made.qa_areas["Communal open space"].insert(0, "10 | Calc.COS")
     made.qa_from_storey.set("LOWER GROUND")
     made.qa_copies["Bedrooms"].set("Apartments/Beds")
-    made.qa_translator.insert(0, "Fuse QA export")
+    made.qa_translator.insert(0, "QA export")
     made.qa_fill.set(False)
     made.tables.delete(0, "end")
     made.tables.insert(0, str(tmp_path))
     (job,) = made.jobs()
     assert job.label == "IFC export" and job.args[0] == "ifc-export"
-    assert flag(job.args, "--prefix") == ["FUSE_"]
+    assert flag(job.args, "--prefix") == ["ACME_"]
     assert flag(job.args, "--apartment-layer") == ["06 | Zone.Units"]
     assert flag(job.args, "--balcony-layer") == ["06 | Zone.Balcony"]
     assert flag(job.args, "--area-layer") == ["10 | Calc.COS=Communal open space"]
     assert flag(job.args, "--from-storey") == ["LOWER GROUND"] and "--to-storey" not in job.args
     assert flag(job.args, "--copy") == ["Bedrooms=Apartments/Beds"]
-    assert flag(job.args, "--translator") == ["Fuse QA export"]
+    assert flag(job.args, "--translator") == ["QA export"]
     assert "--no-fill" in job.args and "--no-setup" not in job.args
     assert flag(job.args, "--out") == [str(tmp_path / "QA")]
     saved = made.settings()
-    assert saved["qa_prefix"] == "FUSE_" and saved["qa_copy_bedrooms"] == "Apartments/Beds"
+    assert saved["qa_prefix"] == "ACME_" and saved["qa_copy_bedrooms"] == "Apartments/Beds"
 
 
 def test_the_ifc_export_is_a_tool_and_not_a_study(hidden_window: Any) -> None:
@@ -5545,3 +5546,15 @@ def test_a_time_of_day_is_read_as_an_hour_and_a_minute() -> None:
     moments, labels = cli._shadow_moments("06-21", "9,9:30,15:15", 2026, "Australia/Sydney")
     assert [moment.minute for moment in moments] == [0, 30, 15]
     assert labels == ["9AM", "9:30AM", "3:15PM"]
+
+
+def test_the_every_hour_shadow_drawing_takes_the_glass_option_too(hidden_window: Any) -> None:
+    """A glass balustrade was drawn as solid on the ray-cast shadow drawing,
+    which was never told what the other studies are."""
+    made = hidden_window
+    for _name, tick, _where in made._studies():
+        tick.set(False)
+    made.do_shadow_hours.set(True)
+    made.see_glass.set("30")
+    jobs = [job for job in made.jobs() if job.args[0] == "shadows"]
+    assert jobs and flag(jobs[0].args, "--see-through-glass") == ["30"]

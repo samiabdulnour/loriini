@@ -9,7 +9,7 @@ same columns, and a fourth file with the totals the council builds from them.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from sun_study.archicad.qa_export import UNIT_FIELDS, QaZone, Summary, UnitRow
@@ -51,7 +51,11 @@ def write_units(folder: Path, units: Sequence[UnitRow]) -> Path:
     return write(folder / "QA_Units.xlsx", sheet)
 
 
-def write_areas(folder: Path, areas: Sequence[tuple[QaZone, str]]) -> Path:
+def write_areas(
+    folder: Path,
+    areas: Sequence[tuple[QaZone, str]],
+    deep_soil: Mapping[str, str | None] | None = None,
+) -> Path:
     sheet = _sheet(
         "QA_Areas",
         ["Zone name", "Home story", "Area", "Area Type", "Deep soil min. dimension"],
@@ -62,14 +66,20 @@ def write_areas(folder: Path, areas: Sequence[tuple[QaZone, str]]) -> Path:
         _cell(sheet, index, 2, zone.storey)
         _cell(sheet, index, 3, round(zone.area_m2, 2))
         _cell(sheet, index, 4, kind)
+        _cell(sheet, index, 5, (deep_soil or {}).get(zone.guid))
     return write(folder / "QA_Areas.xlsx", sheet)
 
 
-def write_parking(folder: Path, spaces: Sequence[tuple[QaZone, str]]) -> Path:
+def write_parking(
+    folder: Path,
+    spaces: Sequence[tuple[QaZone, str]],
+    allocated: Mapping[str, str | None] | None = None,
+) -> Path:
     sheet = _sheet("QA_Parking", ["Home story", "Space Type", "Allocated to"], [16, 16, 16])
     for index, (zone, kind) in enumerate(spaces, start=2):
         _cell(sheet, index, 1, zone.storey)
         _cell(sheet, index, 2, kind)
+        _cell(sheet, index, 3, (allocated or {}).get(zone.guid))
     return write(folder / "QA_Parking.xlsx", sheet)
 
 

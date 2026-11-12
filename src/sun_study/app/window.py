@@ -8074,6 +8074,22 @@ class Window:
                 self.yield_slabs.set("By layer")
             else:
                 self.yield_slabs.set("By level")
+        gone = [
+            words
+            for key, words in (
+                ("yield_option_layers", "its option layers"),
+                ("yield_renovation_status", "its renovation status"),
+            )
+            if isinstance(saved.get(key), str)
+            and str(saved.get(key)).strip() not in ("", "Any status")
+        ]
+        if gone:
+            self._write(
+                "These settings were saved for an earlier Yield page: "
+                + " and ".join(gone)
+                + " are no longer asked for and were not carried over. Choose the layers and "
+                "the options again before running the Yield."
+            )
         # One option chosen before there could be several.
         single = saved.get("yield_scenario")
         if "yield_options" not in saved and isinstance(single, str) and single.strip():
@@ -8430,7 +8446,7 @@ class Window:
         for box in (self.qa_from_storey, self.qa_to_storey):
             self._fill(box, ("", *found.storey_names), ())
         for box in self.qa_copies.values():
-            self._fill(box, ("", *found.properties), ())
+            self._fill(box, ("", "Zone/Name", "Zone/Number", *found.properties), ())
         self._offer_height_cut()
 
     def _offer_height_cut(self) -> None:
@@ -9925,6 +9941,7 @@ class Window:
                 "--timezone",
                 TIMEZONE,
                 *common,
+                *self._glass_args(),
                 *self._prefix_flag(self.prefix_shadow),
             ]
             args += self._legend_args()
@@ -10155,7 +10172,7 @@ class Window:
             row,
             "Group prefix",
             "QA_",
-            "What the three groups are named from: FUSE_ makes FUSE_UNIT, FUSE_AREA, FUSE_PARKING.",
+            "What the three groups are named from: QA_ makes QA_UNIT, QA_AREA, QA_PARKING.",
             "Typed once and kept with Save as default. The fields and their options "
             "are the brief's; a group already in the project is kept as it is.",
         )
