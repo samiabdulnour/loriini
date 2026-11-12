@@ -7179,3 +7179,27 @@ zone's own properties first, then the kept verdicts for the zones without:
 by the zone's id, or -- a module's reload can renumber its elements -- by the
 same storey, name and number with the centre within 1.5 m. The log says the
 run's date and how many apartments came from the kept record.
+
+### D186 — One Layout Book subset, shadows and sun views every 15 or 30 minutes, and a Yield panel in one order
+
+Asked with the window open, 12 November 2026.
+
+**One subset, on General.** The ADG sheets, the time-of-day sheets and the
+shadow sheets each asked for a subset of their own. People move a sheet in
+the Layout Book themselves when it belongs elsewhere, so there is one,
+*Layout Book subset*, under the master layout, filing every study's sheets;
+a settings file that saved any of the three opens with it.
+
+**Every 15 or 30 minutes.** Under the Hours row of the shadow diagram and of
+the sun views, an *Every* row: 1 hour, 30 min, 15 min. Between two lit hours
+the run draws a document or a view every step as well -- 9 to 3 every 15
+minutes is 25 a day where it was 7 -- and the sheets panel deals them. The
+commands take times as well as hours (`--shadow-hour 9,9:30`, `--hour 9:15`);
+a shadow plan's caption reads 9:30AM.
+
+**The Yield panel in one order.** What the massing is (use told by, its
+layers, its commercial levels), then the options (renovation filters or
+design options), then the name, the view beside the table and the workbook:
+a name field is as wide as a list of names, the workbook is a row with its
+label like the others, and the mix's share and size boxes are as wide as the
+other figures.

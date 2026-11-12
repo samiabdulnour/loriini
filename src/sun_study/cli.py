@@ -6675,15 +6675,26 @@ def _shadow_moments(
             ) from bad
         for text in (part.strip() for part in hours.split(",") if part.strip()):
             try:
-                hour = int(text)
+                hour, minute = _hour_and_minute(text)
             except ValueError as bad:
                 raise typer.BadParameter(
-                    f"--shadow-hour takes whole hours, comma separated. {text!r} is not one."
+                    f"--shadow-hour takes hours or times such as 9:30, comma separated. "
+                    f"{text!r} is not one."
                 ) from bad
-            moments.append(dt.datetime(year, month, number, hour, tzinfo=zone))
+            moments.append(dt.datetime(year, month, number, hour, minute, tzinfo=zone))
             twelve = hour if hour <= 12 else hour - 12
-            labels.append(f"{twelve}{'AM' if hour < 12 else 'PM'}")
+            past = f":{minute:02d}" if minute else ""
+            labels.append(f"{twelve}{past}{'AM' if hour < 12 else 'PM'}")
     return moments, labels
+
+
+def _hour_and_minute(text: str) -> tuple[int, int]:
+    """``9`` or ``09:30`` as an hour and a minute of the day (D186)."""
+    hour_text, _colon, minute_text = text.strip().partition(":")
+    hour, minute = int(hour_text), int(minute_text or 0)
+    if not (0 <= hour < 24 and 0 <= minute < 60):
+        raise ValueError(text)
+    return hour, minute
 
 
 def _shadow_source_rules(
@@ -6798,7 +6809,8 @@ def shadows(
         str, typer.Option("--shadow-date", help="Days to draw, MM-DD, comma separated.")
     ] = DEFAULT_SHADOW_DATES,
     shadow_hour: Annotated[
-        str, typer.Option("--shadow-hour", help="Whole hours, comma separated.")
+        str,
+        typer.Option("--shadow-hour", help="Hours, or times such as 9:30, comma separated."),
     ] = DEFAULT_SHADOW_HOURS,
     subject_layer: Annotated[
         list[str] | None, typer.Option("--subject-layer", help="Layers that are the proposal.")
@@ -7615,7 +7627,7 @@ def sun_eye_views(
         str | None,
         typer.Option(
             "--hour",
-            help="Whole hours, comma separated, instead of the ruleset's window.",
+            help="Hours, or times such as 9:30, comma separated, instead of the ruleset's window.",
         ),
     ] = None,
     base_combination: Annotated[
@@ -7722,7 +7734,17 @@ def sun_eye_views(
     when_year = year or dt.date.today().year
     when = rules.assessment.date_in(when_year)
     if hour:
-        hours = [int(part) for part in hour.split(",") if part.strip()]
+        try:
+            hours: list[int | dt.time] = [
+                dt.time(*_hour_and_minute(part)) for part in hour.split(",") if part.strip()
+            ]
+        except ValueError as error:
+            typer.secho(
+                f"--hour takes hours or times such as 9:30, comma separated; not {hour!r}.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2) from error
     else:
         hours = list(range(rules.assessment.start_time.hour, rules.assessment.end_time.hour + 1))
 
@@ -7892,7 +7914,8 @@ def shadow_plan_documents(
         str, typer.Option("--shadow-date", help="Days to draw, MM-DD, comma separated.")
     ] = DEFAULT_SHADOW_DATES,
     shadow_hour: Annotated[
-        str, typer.Option("--shadow-hour", help="Whole hours, comma separated.")
+        str,
+        typer.Option("--shadow-hour", help="Hours, or times such as 9:30, comma separated."),
     ] = DEFAULT_SHADOW_HOURS,
     layer_combination: Annotated[
         str,

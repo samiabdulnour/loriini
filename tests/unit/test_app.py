@@ -221,11 +221,11 @@ def test_the_plans_sheets_go_at_the_root_until_a_subset_is_picked(
     assert "--adg-subset" not in plans.args
     assert flag(plans.args, "--plan-instant") == ["09:00", "12:00", "15:00"]
 
-    hidden_window.shadow_subset.set("SHADOW DIAGRAMS")
-    hidden_window.adg_subset.set("ADG DIAGRAMS")
+    # One subset for every study now (D186), on General.
+    hidden_window.subset.set("SHADOW DIAGRAMS")
     (plans,) = hidden_window.jobs()
     assert flag(plans.args, "--layout-subset") == ["SHADOW DIAGRAMS"]
-    assert flag(plans.args, "--adg-subset") == ["ADG DIAGRAMS"]
+    assert flag(plans.args, "--adg-subset") == ["SHADOW DIAGRAMS"]
 
 
 def test_the_chosen_archicad_is_the_one_the_study_runs_against(hidden_window: Any) -> None:
@@ -5499,3 +5499,49 @@ def test_the_ifc_export_reads_the_stored_sun_and_may_run_the_study_again_first(
     jobs = made.jobs()
     assert jobs[0].args[0] == "archicad-run" and jobs[-1].label == window.QA_JOB
     assert "--solar" in jobs[-1].args
+
+
+def test_shadows_and_sun_views_may_be_drawn_every_15_or_30_minutes(hidden_window: Any) -> None:
+    """D186: an Every row under each Hours row, between two lit hours."""
+    assert window._stepped("9,10,11", 30) == "09:00,09:30,10:00,10:30,11:00"
+    assert window._stepped("9,10,12", 15) == "09:00,09:15,09:30,09:45,10:00,12:00"
+    assert window._stepped("9,10", 60) == "9,10", "every hour: as typed"
+    made = hidden_window
+    for _name, tick, _where in made._studies():
+        tick.set(False)
+    made.do_shadows.set(True)
+    made.shadow_plan_combination.set("01 | Plans - DA")
+    made.shadow_hours.delete(0, "end")
+    made.shadow_hours.insert(0, "9,10")
+    made.shadow_step.set("15 minutes")
+    (job,) = made.jobs()
+    assert flag(job.args, "--shadow-hour") == ["09:00,09:15,09:30,09:45,10:00"]
+    made.do_shadows.set(False)
+    made.do_sun_eyes.set(True)
+    made.eye_step.set("30 minutes")
+    (job,) = made.jobs()
+    assert flag(job.args, "--hour")[0].startswith("09:00,09:30,10:00")
+    saved = made.settings()
+    assert saved["shadow_step"] == "15 minutes" and saved["eye_step"] == "30 minutes"
+
+
+def test_one_layout_book_subset_files_every_study(hidden_window: Any) -> None:
+    """D186: the three subsets of before are one, on General; an older
+    settings file's own is read into it."""
+    made = hidden_window
+    assert made.adg_subset is made.subset and made.shadow_study_subset is made.subset
+    made.apply({"shadow_study_subset": "SHADOW DIAGRAMS"})
+    assert made.subset.get() == "SHADOW DIAGRAMS"
+    assert "layout_subset" in made.settings() and "adg_subset" not in made.settings()
+
+
+def test_a_time_of_day_is_read_as_an_hour_and_a_minute() -> None:
+    import sun_study.cli as cli
+
+    assert cli._hour_and_minute("9") == (9, 0)
+    assert cli._hour_and_minute("09:45") == (9, 45)
+    with pytest.raises(ValueError):
+        cli._hour_and_minute("25:00")
+    moments, labels = cli._shadow_moments("06-21", "9,9:30,15:15", 2026, "Australia/Sydney")
+    assert [moment.minute for moment in moments] == [0, 30, 15]
+    assert labels == ["9AM", "9:30AM", "3:15PM"]
