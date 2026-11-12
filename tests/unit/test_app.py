@@ -5479,7 +5479,7 @@ def test_the_ifc_export_is_a_tool_and_not_a_study(hidden_window: Any) -> None:
     assert switch is None, "a tool's row opens its page; the page's own switch queues it"
 
 
-def test_the_ifc_exports_solar_is_optional_and_runs_the_solar_study_first(
+def test_the_ifc_export_reads_the_stored_sun_and_may_run_the_study_again_first(
     hidden_window: Any,
 ) -> None:
     made = hidden_window
@@ -5488,12 +5488,14 @@ def test_the_ifc_exports_solar_is_optional_and_runs_the_solar_study_first(
     made.do_qa.set(True)
     made.qa_apartments.insert(0, "06 | Zone.Units")
     (job,) = made.jobs()
-    assert "--no-solar" in job.args, "off unless asked: the sun is copied"
-    made.qa_solar.set(True)
+    assert "--solar" in job.args, "the sun a run left on the zones, by default"
+    assert not made.do_plans.get(), "and not the study run again"
+    made.qa_solar.set(False)
+    (job,) = made.jobs()
+    assert "--no-solar" in job.args
+    made.qa_solar_again.set(True)
     made._qa_with_solar()
-    assert made.do_plans.get(), "ticking it queues the solar study"
+    assert made.do_plans.get() and made.qa_solar.get(), "run again, and read"
     jobs = made.jobs()
-    labels = [job.label for job in jobs]
-    assert labels.index(window.QA_JOB) > 0, "the export runs after the solar study"
-    assert jobs[0].args[0] == "archicad-run"
-    assert "--solar" in jobs[-1].args and "--no-solar" not in jobs[-1].args
+    assert jobs[0].args[0] == "archicad-run" and jobs[-1].label == window.QA_JOB
+    assert "--solar" in jobs[-1].args

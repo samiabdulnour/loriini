@@ -7132,11 +7132,13 @@ cannot be read (`Y` for Livable says livable but not Silver or Gold) is left
 blank and listed. Unit No and internal area come from the zone, POS from the
 balcony zones touching it, the unit type from the zone number, and Solar 2h
 and No sun from Loriini's own solar study when it has been written, over any
-copy: measured beats typed. Taking the sun from the solar study is an
-option of the window's (off by default, since an office may have assessed it
-another way): ticked, it queues the Solar analysis too, which runs first and
-writes the sun the export reads; unticked, the export is told `--no-solar`
-and the two fields are copied. Storeys outside a range are left out, which
+copy: measured beats typed. The solar study is usually run long before the
+QA export, so what it leaves on the zones -- the verdicts and a *Solar
+Analysis Run* date, saved with the project -- is the store: the export reads
+it by default and says the run's date, and copies only for an apartment with
+none (a hotlinked one, whose zone the host could not write). Running the
+study again first is a separate, optional tick in the window, which queues
+the Solar analysis ahead of the export. Storeys outside a range are left out, which
 drops the unit-type plans an office keeps above the roof.
 
 **Hotlinked apartments are written at their source.** On 0001, 44 of 119

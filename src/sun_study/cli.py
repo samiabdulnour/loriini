@@ -11033,7 +11033,11 @@ def ifc_export(
         measured: dict[str, dict[str, str | None]] = {}
         if solar:
             own = existing_properties(connection)
-            wanted = [own[key] for key in ("Meets Minimum", "No Direct Sunlight") if key in own]
+            wanted = [
+                own[key]
+                for key in ("Meets Minimum", "No Direct Sunlight", "Solar Analysis Run")
+                if key in own
+            ]
             if wanted:
                 read = qa.read_values(connection, guids, wanted)
                 names_of = {ident: key for key, ident in own.items()}
@@ -11042,6 +11046,15 @@ def ifc_export(
                     for guid, row in read.items()
                     if any(text for text in row.values())
                 }
+            runs = collections.Counter(
+                str(row.get("Solar Analysis Run") or "undated") for row in measured.values()
+            )
+            if measured:
+                typer.echo(
+                    "  solar study written "
+                    + ", ".join(f"{when} ({count})" for when, count in runs.most_common(3))
+                    + f"; {len(apartments) - len(measured)} apartments have none and are copied"
+                )
             typer.echo(
                 f"  solar study: {len(measured)} apartments measured"
                 if measured

@@ -7905,6 +7905,7 @@ class Window:
             "qa_fill": self.qa_fill,
             "qa_own_ifc": self.qa_own_ifc,
             "qa_solar": self.qa_solar,
+            "qa_solar_again": self.qa_solar_again,
             "yield_xlsx": self.yield_xlsx,
             # The three boxes of days, one key per button, so a preset that
             # studies the equinox beside midwinter opens the same way.
@@ -10062,10 +10063,11 @@ class Window:
         self.qa_setup = tk.BooleanVar(value=True)
         self.qa_fill = tk.BooleanVar(value=True)
         self.qa_own_ifc = tk.BooleanVar(value=True)
-        #: Solar 2h and No sun measured by Loriini's own solar study, run
-        #: first, rather than copied: optional, an office may have assessed
-        #: the sun some other way.
-        self.qa_solar = tk.BooleanVar(value=False)
+        #: Solar 2h and No sun as Loriini's solar study left them on the zones,
+        #: which may have been run long before (D184); and, optionally, the
+        #: study run again first.
+        self.qa_solar = tk.BooleanVar(value=True)
+        self.qa_solar_again = tk.BooleanVar(value=False)
         frame, row = self._panel(outer, 0), 0
         box = ttk.Checkbutton(
             frame,
@@ -10148,16 +10150,31 @@ class Window:
             frame,
             text="Solar 2h and No sun from Loriini's solar study",
             variable=self.qa_solar,
-            command=self._qa_with_solar,
+            command=self._sync,
         )
         solar.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
         Tooltip(
             solar,
-            "Runs the Solar analysis first, with its own page's settings, which writes "
-            "each apartment's measured sun onto its zone; the export then takes Solar 2h "
-            "and No sun from it. Off: the two are copied from the project's properties, "
-            "as the fields below say.",
+            "A solar analysis run leaves each apartment's measured sun on its zone, "
+            "saved with the project, with the date of the run. The export reads it, "
+            "however long ago it was run, and says the date; an apartment with none is "
+            "copied as the fields below say. Off: the two are always copied.",
             title="Solar from the solar study",
+        )
+        row += 1
+        again = ttk.Checkbutton(
+            frame,
+            text="Run the solar study again first",
+            variable=self.qa_solar_again,
+            command=self._qa_with_solar,
+        )
+        again.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        Tooltip(
+            again,
+            "Queues the Solar analysis too, with its own page's settings: it runs first "
+            "and writes fresh results for the export to read. For a massing that has "
+            "changed since the last run.",
+            title="Run the solar study again",
         )
         row += 1
 
@@ -10212,8 +10229,9 @@ class Window:
     def _qa_with_solar(self) -> None:
         """Ticked, the solar study is queued too: it runs first and writes the
         sun the export reads (D184)."""
-        if self.qa_solar.get():
+        if self.qa_solar_again.get():
             self.do_plans.set(True)
+            self.qa_solar.set(True)
         self._sync()
 
     def _qa_args(self, common: list[str]) -> list[str]:
