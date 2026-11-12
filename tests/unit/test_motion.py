@@ -146,3 +146,49 @@ def test_the_setting_is_read_once(monkeypatch: pytest.MonkeyPatch) -> None:
         assert len(asked) == 1
     finally:
         motion.reduced.cache_clear()
+
+
+def test_a_tween_eases_from_nothing_to_all_and_says_so_once() -> None:
+    root = _root()
+    try:
+        seen: list[float] = []
+        ended: list[bool] = []
+        tween = motion.Tween(root, seen.append, done=lambda: ended.append(True), duration_ms=40)
+        assert seen == [0.0], "at its start at once"
+        deadline = root.tk.call("clock", "milliseconds") + 1000
+        while not tween.finished and root.tk.call("clock", "milliseconds") < deadline:
+            root.update()
+        assert tween.finished and seen[-1] == 1.0 and seen == sorted(seen)
+        assert ended == [True]
+        tween.cancel()
+        assert ended == [True], "told once"
+    finally:
+        root.destroy()
+
+
+def test_a_stopped_tween_ends_where_it_is_and_says_nothing() -> None:
+    root = _root()
+    try:
+        seen: list[float] = []
+        ended: list[bool] = []
+        tween = motion.Tween(root, seen.append, done=lambda: ended.append(True))
+        tween.stop()
+        root.update()
+        assert tween.finished and seen == [0.0] and ended == []
+        tween.cancel()
+        assert ended == [], "a stopped tween stays stopped"
+    finally:
+        root.destroy()
+
+
+def test_painting_is_held_only_for_a_window_on_screen() -> None:
+    """A withdrawn window -- every test's -- is not Windows' to hold: the
+    block simply runs."""
+    root = _root()
+    try:
+        ran: list[bool] = []
+        with motion.painting_held(root):
+            ran.append(True)
+        assert ran == [True]
+    finally:
+        root.destroy()

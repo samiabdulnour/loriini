@@ -72,6 +72,7 @@ from sun_study.archicad.draw import (
     BandStyle,
     Pen,
     _active_pen_table,
+    closest_pen,
     default_layer_name,
     draw_assessment,
     hidden_layers,
@@ -8022,6 +8023,17 @@ def shadow_plan_documents(
     shadow_pen: Annotated[
         int | None, typer.Option("--shadow-pen", help="Pen the shadow fill is drawn in.")
     ] = None,
+    shadow_colour: Annotated[
+        str | None,
+        typer.Option(
+            "--shadow-colour",
+            help=(
+                "The colour the shadows are filled in, as #rrggbb or R,G,B, instead of "
+                "--shadow-pen. A 3D Document fills its shadows with a pen, so it is "
+                "drawn in the pen of the documents' pen set nearest that colour."
+            ),
+        ),
+    ] = None,
     shadow_background_pen: Annotated[
         int | None,
         typer.Option("--shadow-background-pen", help="The fill's background pen; 0 is none."),
@@ -8261,6 +8273,13 @@ def shadow_plan_documents(
             )
         else:
             fill["fillIndex"] = index
+    if shadow_colour is not None:
+        if shadow_pen is not None:
+            typer.secho(
+                "Give --shadow-colour or --shadow-pen, not both.", fg=typer.colors.RED, err=True
+            )
+            raise typer.Exit(code=2)
+        shadow_pen = _pen_for_colour(connection, shadow_colour, pen_set)
     if shadow_pen is not None:
         fill["fillPen"] = shadow_pen
     if shadow_background_pen is not None:
@@ -8522,6 +8541,52 @@ def _legend_words(label: str) -> str:
         if tidy in (short.casefold(), words.casefold()):
             return words
     return label.upper()
+
+
+def parse_colour(text: str) -> tuple[int, int, int]:
+    """``#rrggbb``, ``#rgb`` or ``R,G,B`` as three 0-255 channels."""
+    given = text.strip()
+    if given.startswith("#"):
+        digits = given[1:]
+        if len(digits) == 3:
+            digits = "".join(c * 2 for c in digits)
+        if len(digits) == 6:
+            try:
+                return (int(digits[0:2], 16), int(digits[2:4], 16), int(digits[4:6], 16))
+            except ValueError:
+                pass
+    else:
+        parts = [part.strip() for part in given.split(",")]
+        if len(parts) == 3 and all(part.isdigit() and int(part) <= 255 for part in parts):
+            return (int(parts[0]), int(parts[1]), int(parts[2]))
+    raise typer.BadParameter(f"a colour is #rrggbb or R,G,B, not {text!r}")
+
+
+def _pen_for_colour(connection: ArchicadConnection, colour: str, pen_set: str | None) -> int:
+    """The pen of the documents' pen set nearest ``colour``, said in the log."""
+    rgb = parse_colour(colour)
+    source_guid, source_name = _pen_source(connection, pen_set)
+    try:
+        table = pen_table(connection, table=source_guid)
+    except ArchicadError as error:
+        typer.secho(
+            f"  could not read the pen set to match {colour} ({error})",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2) from error
+    # By look, not by straight RGB distance, which once put a navy on a green.
+    pen = closest_pen(table, rgb)
+    if pen is None:
+        typer.secho(
+            f"  {source_name!r} has no pens to match {colour}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=2)
+    typer.echo(
+        f"  shadows in pen {pen.index} of {source_name!r}, rgb{pen.rgb}: the nearest it has "
+        f"to rgb{rgb}"
+    )
+    return pen.index
 
 
 def _pen_source(connection: ArchicadConnection, pen_set: str | None) -> tuple[str, str]:

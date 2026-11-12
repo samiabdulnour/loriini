@@ -30,8 +30,10 @@ import subprocess
 import sys
 import time
 import tkinter as tk
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from functools import cache
+from typing import Any
 
 #: How long a page takes to settle, and how far off it starts. Both small:
 #: long enough to be seen as movement and not as a flicker, short enough
@@ -172,3 +174,147 @@ class Slide:
     def cancel(self) -> None:
         """Stop, and put the item where it belongs."""
         self._finish()
+
+
+class Tween:
+    """Something eased from 0 to 1 over ``duration_ms``, paced as ``Slide``
+    is: ``step`` is handed how far along it is, eased, on every frame, and
+    ``done`` is called once when it gets there. ``stop`` ends it where it is
+    and without ``done``; ``cancel`` ends it at 1, with it.
+    """
+
+    def __init__(
+        self,
+        widget: tk.Misc,
+        step: Callable[[float], None],
+        *,
+        done: Callable[[], None] | None = None,
+        duration_ms: int = DURATION_MS,
+    ) -> None:
+        self.widget = widget
+        self._step = step
+        self._done = done
+        self.duration = max(duration_ms, 1) / 1000.0
+        self._spent = 0.0
+        self._last = time.monotonic()
+        self.finished = False
+        step(0.0)
+        self._pending: str | None = widget.after(FRAME_MS, self._frame)
+
+    def _frame(self) -> None:
+        self._pending = None
+        if self.finished:
+            return
+        now = time.monotonic()
+        self._spent += min(now - self._last, HITCH_MS / 1000.0)
+        self._last = now
+        along = self._spent / self.duration
+        if along >= 1.0:
+            self.cancel()
+            return
+        self._step(ease_out(along))
+        self._pending = self.widget.after(FRAME_MS, self._frame)
+
+    def stop(self) -> None:
+        """End it where it is, and do not call ``done``."""
+        self.finished = True
+        if self._pending is not None:
+            try:
+                self.widget.after_cancel(self._pending)
+            except tk.TclError:  # pragma: no cover - the widget is gone
+                pass
+            self._pending = None
+
+    def cancel(self) -> None:
+        """End it where it was going, and call ``done``."""
+        if self.finished:
+            return
+        self.stop()
+        try:
+            self._step(1.0)
+        except tk.TclError:  # pragma: no cover - the widget is gone
+            return
+        if self._done is not None:
+            self._done()
+
+
+# -- painting held ------------------------------------------------------------
+#
+# A window of a few hundred widgets re-laid out to a new width -- the page,
+# when the sheets panel opens beside it -- is moved and repainted by Windows
+# one native child window at a time, and for a third of a second the screen
+# shows every half-moved state in between: labels wrapped at the old width
+# over fields at the new one. Recorded, an opening of the panel went through
+# twelve distinct screens. Telling the window not to paint while Tk lays it
+# out, and to paint everything once it has, leaves two: before and after.
+
+_WM_SETREDRAW = 0x000B
+_RDW_INVALIDATE = 0x0001
+_RDW_ERASE = 0x0004
+_RDW_ALLCHILDREN = 0x0080
+_RDW_UPDATENOW = 0x0100
+
+
+@cache
+def _user32() -> Any:
+    """Windows' user32, with the two calls typed; ``None`` anywhere else."""
+    if _PLATFORM != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        # Looked up, as ``windll`` is above: the name exists only on Windows,
+        # and a type checker on the Mac reads this branch too.
+        loader = getattr(ctypes, "WinDLL", None)
+        if loader is None:
+            return None
+        user32 = loader("user32")
+        user32.SendMessageW.argtypes = [
+            wintypes.HWND,
+            wintypes.UINT,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+        ]
+        user32.SendMessageW.restype = ctypes.c_ssize_t
+        user32.RedrawWindow.argtypes = [
+            wintypes.HWND,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            wintypes.UINT,
+        ]
+        user32.RedrawWindow.restype = wintypes.BOOL
+        return user32
+    except (OSError, AttributeError):
+        return None
+
+
+@contextmanager
+def painting_held(widget: tk.Misc) -> Iterator[None]:
+    """Lay out what the block changes with the window's painting held, then
+    paint the window once. Elsewhere than Windows, or on a window not on
+    screen, the block simply runs."""
+    user32 = _user32()
+    handle = 0
+    if user32 is not None:
+        try:
+            top = widget.winfo_toplevel()
+            if top.winfo_viewable():
+                handle = int(top.winfo_id())
+        except tk.TclError:
+            handle = 0
+    if not handle:
+        yield
+        return
+    user32.SendMessageW(handle, _WM_SETREDRAW, 0, 0)
+    try:
+        yield
+        widget.update_idletasks()
+    finally:
+        user32.SendMessageW(handle, _WM_SETREDRAW, 1, 0)
+        user32.RedrawWindow(
+            handle,
+            None,
+            None,
+            _RDW_INVALIDATE | _RDW_ERASE | _RDW_ALLCHILDREN | _RDW_UPDATENOW,
+        )

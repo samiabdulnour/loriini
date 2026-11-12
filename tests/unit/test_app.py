@@ -5330,3 +5330,95 @@ def test_archicad_27_offers_design_options_where_26_offers_renovation_filters(
     (job,) = hidden_window.jobs()
     assert flag(job.args, "--scenario-option") == ["LEP + 30%=Main + LEP"]
     assert "--scenario-filter" not in job.args
+
+
+def test_the_shadow_colour_is_picked_not_typed_as_a_pen(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tkinter import colorchooser
+
+    field = hidden_window.shadow_plan_pen
+    assert isinstance(field, window.ColourField)
+    assert field.get() == "" and "default" in str(field.words.cget("text"))
+    monkeypatch.setattr(colorchooser, "askcolor", lambda **_kw: ((51, 102, 204), "#3366CC"))
+    field.choose()
+    assert field.get() == "#3366cc"
+    assert str(field.swatch.cget("background")) == "#3366cc"
+    assert "51, 102, 204" in str(field.words.cget("text"))
+
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+    hidden_window.shadow_plan_combination.set("01 | Plans - DA")
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--shadow-colour") == ["#3366cc"]
+    assert "--shadow-pen" not in job.args
+
+    # Kept by Save as default, and a pen number an older file saved still
+    # goes as a pen.
+    saved = hidden_window.settings()
+    assert saved["shadow_plan_pen"] == "#3366cc"
+    hidden_window.apply({**saved, "shadow_plan_pen": "45"})
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--shadow-pen") == ["45"] and "--shadow-colour" not in job.args
+    assert field.words.cget("text") == "pen 45"
+    field.clear()
+    (job,) = hidden_window.jobs()
+    assert "--shadow-pen" not in job.args and "--shadow-colour" not in job.args
+
+
+def test_a_colour_is_read_in_the_three_ways_it_is_written() -> None:
+    assert window.colour_hex("#3366CC") == "#3366cc"
+    assert window.colour_hex("#36c") == "#3366cc"
+    assert window.colour_hex("51, 102, 204") == "#3366cc"
+    assert window.colour_hex("45") is None, "a pen number is not a colour"
+    assert window.colour_hex("") is None and window.colour_hex("#12345g") is None
+
+
+def test_the_sheets_panel_slides_in_and_opens_once_it_has_arrived(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sun_study.app import motion
+
+    dock = hidden_window.dock
+    dock.fold(True)
+    assert dock.shut_view.winfo_manager() == "pack"
+    # As on screen: the withdrawn test window would open at once.
+    monkeypatch.setattr(dock, "winfo_ismapped", lambda: True)
+    monkeypatch.setattr(motion, "reduced", lambda: False)
+
+    dock.fold(False)
+    assert not dock.folded, "open as far as anyone asking is concerned"
+    assert dock._ghost is not None and dock._glide is not None, "a stand-in slides in"
+    assert dock.shut_view.winfo_manager() == "pack", "the page is not laid out yet"
+    dock._glide.cancel()
+    assert dock._ghost is None and dock._glide is None
+    assert dock.open_view.winfo_manager() == "pack" and dock.shut_view.winfo_manager() == ""
+
+    # Folded again before it has arrived: the stand-in goes and nothing else
+    # changes, since nothing had.
+    dock.fold(True)
+    dock.fold(False)
+    ghost: Any = hidden_window.dock._ghost
+    assert ghost is not None
+    dock.fold(True)
+    assert dock.folded
+    assert hidden_window.dock._ghost is None and not ghost.winfo_exists()
+    assert dock.shut_view.winfo_manager() == "pack"
+
+
+def test_the_sheets_panel_does_not_slide_when_the_window_folds_it(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sun_study.app import motion
+
+    dock = hidden_window.dock
+    dock.fold(True)
+    monkeypatch.setattr(dock, "winfo_ismapped", lambda: True)
+    monkeypatch.setattr(motion, "reduced", lambda: False)
+    dock.fold(False, by_hand=False, glide=False)
+    assert dock._ghost is None and dock.open_view.winfo_manager() == "pack"
+    dock.fold(True)
+    monkeypatch.setattr(motion, "reduced", lambda: True)
+    dock.fold(False)
+    assert dock._ghost is None, "none where the system has been asked for no movement"
