@@ -1275,6 +1275,123 @@ class Toggles(ttk.Frame):
             put(button, style="TileOn.TButton" if variable.get() else "Tile.TButton")
 
 
+def colour_hex(value: str) -> str | None:
+    """``#rrggbb`` for a colour given as ``#rrggbb``, ``#rgb`` or ``R,G,B``;
+    ``None`` for anything else -- a blank, or a pen number an older settings
+    file saved."""
+    given = value.strip()
+    if given.startswith("#"):
+        digits = given[1:]
+        if len(digits) == 3:
+            digits = "".join(c * 2 for c in digits)
+        if len(digits) == 6 and all(c in "0123456789abcdefABCDEF" for c in digits):
+            return f"#{digits.lower()}"
+        return None
+    parts = [part.strip() for part in given.split(",")]
+    if len(parts) == 3 and all(part.isdigit() and int(part) <= 255 for part in parts):
+        return "#{:02x}{:02x}{:02x}".format(*(int(part) for part in parts))
+    return None
+
+
+class ColourField(ttk.Frame):
+    """A colour, chosen in the system's colour picker and shown as a swatch.
+
+    In place of a box a pen number was typed into: what a person knows is
+    the colour they want, not which of 255 pens has it. Keeps the Entry
+    interface the settings file round-trips through -- ``get``, ``delete``,
+    ``insert`` -- as ``Chips`` does. Holds ``#rrggbb`` or nothing; a pen
+    number an older settings file saved is kept, shown as that pen and still
+    sent as one.
+    """
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        *,
+        label: str,
+        empty: str = "none chosen",
+        on_change: Callable[[], None] | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._value = ""
+        self._label = label
+        self._empty = empty
+        self._changed = on_change
+        self.swatch = tk.Label(
+            self, width=4, relief="solid", borderwidth=1, cursor="hand2", background="#ffffff"
+        )
+        self.swatch.pack(side="left", padx=(0, 8), ipady=2)
+        self.swatch.bind("<Button-1>", lambda _event: self.choose())
+        self.words = ttk.Label(self, style="Hint.TLabel")
+        self.words.pack(side="left", padx=(0, 8))
+        self.picker = ttk.Button(
+            self, text="Choose…", style="Add.TButton", width=0, command=self.choose
+        )
+        self.picker.pack(side="left")
+        self.clearer = ttk.Button(
+            self,
+            text="×",  # noqa: RUF001 - the close cross, not a letter x
+            style="ChipDrop.TButton",
+            width=2,
+            command=self.clear,
+        )
+        Tooltip(
+            self.clearer,
+            f"Clears {label}, so nothing is sent and the project's own default holds.",
+            title=f"Clear {label}",
+        )
+        self._paint()
+
+    # -- what makes it a drop-in for an Entry ------------------------------
+    def get(self) -> str:
+        return self._value
+
+    def delete(self, first: object = 0, last: object = None) -> None:
+        self._value = ""
+        self._paint()
+
+    def insert(self, index: object, value: str) -> None:
+        given = str(value).strip()
+        self._value = colour_hex(given) or given
+        self._paint()
+
+    # -- and what makes it a colour ----------------------------------------
+    def choose(self) -> None:
+        """Open the system's colour picker on the colour held, if any."""
+        from tkinter import colorchooser
+
+        _rgb, picked = colorchooser.askcolor(
+            color=colour_hex(self._value), parent=self, title=self._label
+        )
+        if picked:
+            self._value = colour_hex(str(picked)) or ""
+            self._paint()
+            if self._changed is not None:
+                self._changed()
+
+    def clear(self) -> None:
+        self.delete()
+        if self._changed is not None:
+            self._changed()
+
+    def _paint(self) -> None:
+        hexed = colour_hex(self._value)
+        if hexed:
+            red, green, blue = (int(hexed[i : i + 2], 16) for i in (1, 3, 5))
+            self.swatch.configure(background=hexed, text="")
+            self.words.configure(text=f"{hexed}  ·  rgb {red}, {green}, {blue}")
+        elif self._value:
+            self.swatch.configure(background="#ffffff", text="?")
+            self.words.configure(text=f"pen {self._value}")
+        else:
+            self.swatch.configure(background="#ffffff", text="")
+            self.words.configure(text=self._empty)
+        if self._value:
+            self.clearer.pack(side="left", padx=(4, 0))
+        else:
+            self.clearer.pack_forget()
+
+
 class Chips(ttk.Frame):
     """The names chosen for a setting, each with the button that drops it.
 
@@ -1681,6 +1798,10 @@ class Dock(ttk.Frame):
         #: the same panel again does nothing.
         self._shown: tuple[tuple[Sheet, ...], str] | None = None
         self.folded = False
+        #: The panel sliding in over the page as it opens, and its movement:
+        #: see ``_glide_open``.
+        self._ghost: tk.Widget | None = None
+        self._glide: motion.Tween | None = None
 
         # -- open -----------------------------------------------------------
         self.open_view = ttk.Frame(self, style="Dock.TFrame")
@@ -1775,20 +1896,87 @@ class Dock(ttk.Frame):
         """Tint the spine's words under the pointer, as a link is."""
         self.spine.itemconfigure(self._spine_text, fill=theme.ON_ACCENT if on else theme.BODY)
 
-    def fold(self, shut: bool, *, by_hand: bool = True) -> None:
-        """Put the panel away, or bring it back."""
+    #: How long the panel takes to slide in: the page's own settle.
+    GLIDE_MS = motion.DURATION_MS
+
+    def fold(self, shut: bool, *, by_hand: bool = True, glide: bool = True) -> None:
+        """Put the panel away, or bring it back.
+
+        Either way the page beside it is laid out again at its new width, and
+        that is a third of a second of Tk moving a few hundred widgets. It is
+        done with the window's painting held (``motion.painting_held``), so
+        the page is seen before and after and never half-way. Opening, the
+        panel first slides in over the page (``_glide_open``) so that the
+        click is answered at once; ``glide`` is False for a fold the window
+        makes as it is being resized, which has its own movement.
+        """
         if shut == self.folded:
             return
         self.folded = shut
-        if shut:
-            self.open_view.pack_forget()
-            self.shut_view.pack(fill="both", expand=True)
-        else:
-            self.shut_view.pack_forget()
-            self.open_view.pack(fill="both", expand=True)
-        self.configure(width=self.FOLDED if shut else self.WIDTH)
         if by_hand and self._on_fold is not None:
             self._on_fold(shut)
+        if self._glide is not None:
+            # Folded again before it had opened: the views never changed.
+            self._glide.stop()
+            self._settle_ghost()
+            if shut:
+                return
+        if not shut and glide and self.winfo_ismapped() and not motion.reduced():
+            self._glide_open()
+            return
+        self._show(shut)
+
+    def _show(self, shut: bool) -> None:
+        """Swap the views and the width, and lay the page out once."""
+        with motion.painting_held(self):
+            if shut:
+                self.open_view.pack_forget()
+                self.shut_view.pack(fill="both", expand=True)
+            else:
+                self.shut_view.pack_forget()
+                self.open_view.pack(fill="both", expand=True)
+            self.configure(width=self.FOLDED if shut else self.WIDTH)
+            self._settle_ghost()
+
+    def _glide_open(self) -> None:
+        """Slide an empty panel in over the page, then open the real one under it.
+
+        The real one cannot slide: its width is the page's, and every frame
+        of a widening panel would lay the page out again. So a stand-in -- the
+        panel's ground and its title -- is placed over the page and moved,
+        which costs Tk one window moved a frame, and the page is laid out once
+        when it has arrived, with the painting held.
+        """
+        parent = self.master
+        right = self.winfo_x() + self.winfo_width()
+        tall = self.winfo_height()
+        ghost = ttk.Frame(parent, style="Dock.TFrame", width=self.WIDTH, height=tall)
+        ghost.pack_propagate(False)
+        head = ttk.Frame(ghost, style="Dock.TFrame", padding=(16, 12, 8, 4))
+        head.pack(side="top", fill="x")
+        ttk.Label(head, text="Sheets", style="DockTitle.TLabel").pack(side="left")
+        ttk.Label(head, text=self.tally.cget("text"), style="Badge.TLabel").pack(
+            side="left", padx=(8, 0)
+        )
+        ghost.place(x=right, y=self.winfo_y(), width=self.WIDTH, height=tall)
+        ghost.lift()
+        self._ghost = ghost
+
+        def step(along: float) -> None:
+            ghost.place_configure(x=round(right - self.WIDTH * along))
+
+        def done() -> None:
+            self._glide = None
+            self._show(False)
+
+        self._glide = motion.Tween(self, step, done=done, duration_ms=self.GLIDE_MS)
+
+    def _settle_ghost(self) -> None:
+        """Take the stand-in away, if one is there."""
+        self._glide = None
+        if self._ghost is not None:
+            self._ghost.destroy()
+            self._ghost = None
 
     def refill(self, sheets: Sequence[Sheet], *, filed: str) -> None:
         """Redraw the panel. Cheap enough to do on every tick and keystroke:
@@ -5301,15 +5489,16 @@ class Window:
             "Proposed. With legend rows each set is named for its row, and "
             "this is not used. Blank names neither.",
         )
-        self.shadow_plan_pen, row = self._entry(
+        self.shadow_plan_pen, row = self._colour_row(
             frame,
             row,
-            "Shadow pen",
-            "",
-            "The pen the shadows are filled in, for a set without the legend.",
-            "A pen number from the project's pen set. With legend rows each row "
-            "takes the pen nearest its legend colour and this is not used. "
-            "Blank keeps the project's defaults for new 3D Documents.",
+            "Shadow colour",
+            "The colour the shadows are filled in, for a set without the legend.",
+            "Choose it in the colour picker. A 3D Document fills its shadows with a "
+            "pen, so the run takes the pen of the pen set above -- or the project's "
+            "own -- nearest the colour, and says which in the log. With legend rows "
+            "each row takes the pen nearest its legend colour and this is not used. "
+            "None keeps the project's defaults for new 3D Documents.",
         )
 
     def _shadow_every_hour(self, outer: ttk.Frame, at: int) -> None:
@@ -6986,6 +7175,21 @@ class Window:
         Tooltip(name, detail, title=label, short=self._saying(line))
         return made, row + 1
 
+    def _colour_row(
+        self, parent: ttk.Frame, row: int, label: str, hint: str, detail: str
+    ) -> tuple[ColourField, int]:
+        """A colour: the label, then a swatch and the picker that sets it."""
+        name = ttk.Label(parent, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
+        field = ColourField(
+            parent, label=label, empty="none: the project's default", on_change=self._sync
+        )
+        field.grid(row=row, column=1, sticky="w", pady=(6, 0))
+        line = self._hint(parent, row + 1, hint)
+        for target in (name, field.swatch, field.picker):
+            Tooltip(target, detail, title=label, short=self._saying(line))
+        return field, row + 1
+
     def _picker(
         self, parent: ttk.Frame, row: int, label: str, hint: str, detail: str
     ) -> tuple[Chips, int]:
@@ -7477,7 +7681,11 @@ class Window:
         if narrow == self._narrow:
             return
         self._narrow = narrow
-        self.dock.fold(narrow or (self._dock_empty and not self._dock_opened_empty), by_hand=False)
+        self.dock.fold(
+            narrow or (self._dock_empty and not self._dock_opened_empty),
+            by_hand=False,
+            glide=False,
+        )
 
     def _refill_dock(self, sheets: Sequence[Sheet]) -> None:
         """Redraw the sheets panel from what is ticked and typed now.
@@ -7521,7 +7729,7 @@ class Window:
         self._dock_opened_empty = not shut and self._dock_empty
 
     # -- settings that outlive the window ------------------------------------
-    def _fields(self) -> dict[str, ttk.Entry | Tiles | Ticks | Chips]:
+    def _fields(self) -> dict[str, ttk.Entry | Tiles | Ticks | Chips | ColourField]:
         """Every typed or chosen setting, under a name that survives a rename.
 
         Written out here rather than gathered off the widget tree, because the
@@ -9585,13 +9793,17 @@ class Window:
                     args += ["--every-hour-colour", self.shadow_hours_colour.get()]
                 if self._shadow_storey_index():
                     args += ["--every-hour-storey", self._shadow_storey_index()]
-            plain_only = ("--label", "--shadow-pen")
+            plain_only = ("--label",)
+            # The colour picked, or a pen number an older settings file kept;
+            # either is for a set without the legend.
+            shadow = self.shadow_plan_pen.get().strip()
+            if shadow and not legend:
+                args += ["--shadow-colour" if colour_hex(shadow) else "--shadow-pen", shadow]
             for flag, field in (
                 ("--shadow-hour", self.shadow_hours),
                 ("--layer-combination", self.shadow_plan_combination),
                 ("--label", self.shadow_plan_label),
                 ("--pen-set", self.shadow_plan_pen_set),
-                ("--shadow-pen", self.shadow_plan_pen),
                 ("--subset", self.shadow_study_subset),
                 ("--master-layout", self.master),
             ):

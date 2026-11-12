@@ -420,6 +420,15 @@ def _looks_like(left: tuple[int, int, int], right: tuple[int, int, int]) -> floa
 INDISTINGUISHABLE_RGB = 30.0
 
 
+def closest_pen(pens: Sequence[Pen], rgb: tuple[int, int, int]) -> Pen | None:
+    """The pen that looks most like one colour, by ``_looks_like``: for a
+    colour asked for on its own, where ``match_pens``'s one-to-one claiming
+    has nothing to share out. ``None`` with no pens."""
+    if not pens:
+        return None
+    return min(pens, key=lambda pen: (_looks_like(rgb, pen.rgb), pen.index))
+
+
 def match_pens(
     bands: Sequence[BandStyle], pens: Sequence[Pen]
 ) -> tuple[tuple[BandStyle, ...], dict[str, float]]:

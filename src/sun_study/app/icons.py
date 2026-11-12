@@ -399,7 +399,7 @@ BY_LABEL: dict[str, str] = {
     "North": "site",
     # Solar analysis, the plans the apartments are drawn on
     "Plans": "plans_both",
-    "Shadow pen": "pen_set",
+    "Shadow colour": "pen_set",
     "Set name": "subset",
     # Yield -- the feasibility sheet
     "Option": "yield",

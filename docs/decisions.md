@@ -7040,3 +7040,39 @@ the bare `--renovation-filter` stay on the command line.
 written on. The Design Option route compiles against the 27 to 30 kits and
 has unit tests against a scripted Archicad, but has not yet run in an
 Archicad 27 or later.
+
+### D181 — The shadow colour is picked, and the run finds its pen
+
+A plain shadow set (one with no legend rows) took its fill pen as a typed
+number, and what a person knows is the colour they want, not which of 255
+pens holds it. The *Shadow pen* box is now **Shadow colour**: a swatch, the
+system's colour picker behind *Choose…*, and a cross to clear it. The run is
+sent `--shadow-colour #rrggbb`, and `shadow-plans` draws the shadows in the
+pen of the documents' pen set (or the project's own) that looks most like
+it, by the same measure the legend's pens are chosen by (`closest_pen`,
+`_looks_like`: hue first, since plain RGB distance once put a navy on a
+green), and says which pen in the log. A 3D Document fills its shadows with a
+pen, so the colour is matched and not made. A pen number an older settings
+file saved is kept, shown as that pen and still sent as `--shadow-pen`.
+
+### D182 — The sheets panel slides in, and the page is laid out once with its painting held
+
+Opening or folding the sheets panel changes the width of the page beside it,
+and Tk moves and repaints its few hundred native windows one at a time:
+recorded, an opening went through twelve distinct screens over a third of a
+second, labels wrapped at the old width over fields at the new one. Measured,
+any change of the panel's width costs the same 300 ms or more, so animating
+the width frame by frame would only have been slower.
+
+**The page is laid out once, unseen.** `motion.painting_held` turns the
+window's painting off (`WM_SETREDRAW`) while Tk lays it out, then repaints it
+in one pass: before and after, and nothing in between. Windows only; it does
+nothing elsewhere or on a window not on screen.
+
+**The panel answers the click at once.** Opening, a stand-in -- the panel's
+ground and its title -- is placed over the page and slides in from the edge
+over the page's own 180 ms (`motion.Tween`, paced by the clock as the page's
+slide is), which costs one window moved a frame; the real panel opens under
+it when it arrives. Folding is the held swap alone. No slide when the window
+folds the panel as it is dragged narrow, nor where the system has been asked
+for less movement.

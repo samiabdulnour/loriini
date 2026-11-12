@@ -216,3 +216,29 @@ def test_the_yield_refuses_a_design_option_on_archicad_26(
     result, _ = run_yield(monkeypatch, tmp_path, product(26), "--design-option", "Main + LEP")
     assert result.exit_code == 2
     assert "came in Archicad 27" in result.output
+
+
+def test_a_shadow_colour_is_drawn_in_the_pen_that_looks_most_like_it() -> None:
+    import typer
+
+    import sun_study.cli as cli
+
+    pens = [
+        {"index": 1, "color": {"red": 0.0, "green": 0.0, "blue": 0.0}},
+        {"index": 45, "color": {"red": 0.8, "green": 0.1, "blue": 0.1}},
+        {"index": 70, "color": {"red": 0.2, "green": 0.4, "blue": 0.8}},
+    ]
+    connection, _ = connect(
+        {
+            "GetAttributesByType": {
+                "attributes": [{"attributeId": {"guid": "PT"}, "index": 1, "name": "Office"}]
+            },
+            "GetPenTables": {"penTables": [{"penTableAttribute": {"pens": pens}}]},
+        }
+    )
+    assert cli.parse_colour("#3366cc") == (51, 102, 204)
+    assert cli.parse_colour("51,102,204") == (51, 102, 204)
+    with pytest.raises(typer.BadParameter):
+        cli.parse_colour("blue")
+    assert cli._pen_for_colour(connection, "#3366cc", None) == 70
+    assert cli._pen_for_colour(connection, "#cc2222", "office") == 45
