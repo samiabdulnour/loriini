@@ -267,7 +267,7 @@ SITE_JOBS = (SITE_MODEL_JOB, SITE_CONTEXT_JOB, SITE_SHEET_JOB, SITE_CONTROLS_JOB
 #: The yield analysis (roadmap R3): the office's feasibility sheet from the
 #: massing slabs, an option a sheet of its own.
 YIELD_JOB = "area and yield"
-QA_JOB = "QA export"
+QA_JOB = "IFC export"
 #: That sheet, as the panel draws it: a table beside the massing.
 AREA_SHEET = "Yield Analysis"
 
@@ -287,7 +287,7 @@ CHIPS: dict[str, tuple[str, str]] = {
     SITE_CONTROLS_JOB: ("Controls", "subset"),
     SITE_MODEL_JOB: ("3D context", "model"),
     YIELD_JOB: ("Yield", "yield"),
-    QA_JOB: ("QA export", "subset"),
+    QA_JOB: ("IFC export", "subset"),
 }
 
 
@@ -4007,7 +4007,7 @@ class Window:
     SHADOWS = "Shadow diagram"
     EYE = "Sun views"
     YIELD = "Yield"
-    QA = "QA export"
+    QA = "IFC export"
     #: Not an output and not set-up: a tool used on the open project, which
     #: is why it is a third group of its own.
     REFERENCE = "Reference image"
@@ -4020,8 +4020,8 @@ class Window:
     TOOLS = "TOOLS"
     GROUPS: ClassVar[tuple[tuple[str, tuple[str, ...]], ...]] = (
         (SET_UP, (GENERAL, MODEL)),
-        (DRAWS, (SITE, DIAGRAMS, SHADOWS, EYE, YIELD, QA)),
-        (TOOLS, (REFERENCE,)),
+        (DRAWS, (SITE, DIAGRAMS, SHADOWS, EYE, YIELD)),
+        (TOOLS, (REFERENCE, QA)),
     )
     #: The study a page's switch in the sidebar turns on, on a page that has
     #: more than one. The apartments are what Solar analysis is opened for,
@@ -4099,7 +4099,7 @@ class Window:
         SHADOWS: "Archicad's own shadows of each massing, hour by hour, stacked.",
         EYE: "3D documents aimed down the sun, dealt onto sheets.",
         YIELD: "The feasibility sheet from the massing slabs, and a live workbook.",
-        QA: "The QA council's per-apartment data, its spreadsheets and IFC.",
+        QA: "The QA council's per-apartment data in the model, out as IFC and spreadsheets.",
         REFERENCE: "A picture laid over Archicad, to trace or check against.",
     }
     #: The facade study lives in the Solar analysis section now; the name
@@ -10064,11 +10064,11 @@ class Window:
         frame, row = self._panel(outer, 0), 0
         box = ttk.Checkbutton(
             frame,
-            text="QA export",
+            text="IFC export",
             variable=self.do_qa,
             command=self._sync,
             style="Study.TCheckbutton",
-            **icons.study_options("QA export"),
+            **icons.study_options("IFC export"),
         )
         self._head(frame, box, QA_JOB)
         Tooltip(
@@ -10190,7 +10190,7 @@ class Window:
 
     def _qa_args(self, common: list[str]) -> list[str]:
         """The QA export's command line, from its page."""
-        args = ["qa-export", *common]
+        args = ["ifc-export", *common]
         args += ["--prefix", self.qa_prefix.get().strip() or "QA_"]
         for flag, box in (
             ("--apartment-layer", self.qa_apartments),

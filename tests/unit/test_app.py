@@ -3949,7 +3949,7 @@ def test_every_page_is_a_named_row_in_the_sidebar(hidden_window: Any) -> None:
         assert tab.cget("text") == title, f"{title} is not named"
         assert not tab.cget("image"), f"{title} still wears a drawing"
     assert [kind for kind, _group in window.Window.GROUPS] == ["SET UP", "STUDIES", "TOOLS"]
-    assert dict(window.Window.GROUPS)["TOOLS"] == (window.Window.REFERENCE,)
+    assert dict(window.Window.GROUPS)["TOOLS"] == (window.Window.REFERENCE, window.Window.QA)
 
 
 def test_the_strip_always_has_exactly_one_tab_open(hidden_window: Any) -> None:
@@ -5437,7 +5437,7 @@ def test_the_sheets_panel_does_not_slide_when_the_window_folds_it(
     assert dock._ghost is None, "none where the system has been asked for no movement"
 
 
-def test_the_qa_page_is_the_command_line_the_office_would_type(
+def test_the_ifc_export_page_is_the_command_line_the_office_would_type(
     hidden_window: Any, tmp_path: Path
 ) -> None:
     """D184: the export's groups, zones, storeys, copies and translator."""
@@ -5457,7 +5457,7 @@ def test_the_qa_page_is_the_command_line_the_office_would_type(
     made.tables.delete(0, "end")
     made.tables.insert(0, str(tmp_path))
     (job,) = made.jobs()
-    assert job.label == window.QA_JOB and job.args[0] == "qa-export"
+    assert job.label == "IFC export" and job.args[0] == "ifc-export"
     assert flag(job.args, "--prefix") == ["FUSE_"]
     assert flag(job.args, "--apartment-layer") == ["06 | Zone.Units"]
     assert flag(job.args, "--balcony-layer") == ["06 | Zone.Balcony"]
@@ -5469,3 +5469,11 @@ def test_the_qa_page_is_the_command_line_the_office_would_type(
     assert flag(job.args, "--out") == [str(tmp_path / "QA")]
     saved = made.settings()
     assert saved["qa_prefix"] == "FUSE_" and saved["qa_copy_bedrooms"] == "Apartments/Beds"
+
+
+def test_the_ifc_export_is_a_tool_and_not_a_study(hidden_window: Any) -> None:
+    tools = dict(window.Window.GROUPS)[window.Window.TOOLS]
+    studies = dict(window.Window.GROUPS)[window.Window.DRAWS]
+    assert "IFC export" in tools and "IFC export" not in studies
+    _row, _pill, switch, _lit = hidden_window.side_rows["IFC export"]
+    assert switch is None, "a tool's row opens its page; the page's own switch queues it"

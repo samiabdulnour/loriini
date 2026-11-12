@@ -10835,8 +10835,8 @@ def area_yield(
             typer.echo(report.describe())
 
 
-@app.command("qa-export")
-def qa_export(
+@app.command("ifc-export")
+def ifc_export(
     port: Annotated[int, typer.Option("--port", help="Which Archicad to talk to.")] = DEFAULT_PORT,
     timeout: Annotated[
         float, typer.Option("--timeout", help="Seconds to wait for one Archicad command.")
@@ -10940,7 +10940,7 @@ def qa_export(
         typer.Option("--name", help="What the IFC is named from: 2518 gives 2518_QA_<yymmdd>.ifc."),
     ] = None,
 ) -> None:
-    """The QA export (D184): the per-apartment data a QA council schedules from.
+    """The IFC export (D184): the per-apartment data a QA council schedules from.
 
     Makes the three property groups, fills them from the zones, the project's
     own properties and Loriini's solar study, writes the QA spreadsheets, and

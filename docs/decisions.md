@@ -7113,7 +7113,9 @@ model each issue: every apartment with its level, type, bedrooms, internal
 area, private open space, storage and the ADG and SEPP flags, and the totals
 of GFA, communal open space, deep soil and parking -- through three property
 groups, three interactive schedules published to Excel, and an IFC exported
-through a new translator. `sun-study qa-export` does it from a run.
+through a new translator. `sun-study ifc-export` does it from a run; in
+the window it is **IFC export**, a page under Tools, and its own switch
+queues it for Run.
 
 **Groups named from a prefix.** `FUSE_UNIT`, `FUSE_AREA`, `FUSE_PARKING` are
 the brief's; the app ships none of an office's names (D156), so the prefix
