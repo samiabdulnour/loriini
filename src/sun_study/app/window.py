@@ -267,6 +267,7 @@ SITE_JOBS = (SITE_MODEL_JOB, SITE_CONTEXT_JOB, SITE_SHEET_JOB, SITE_CONTROLS_JOB
 #: The yield analysis (roadmap R3): the office's feasibility sheet from the
 #: massing slabs, an option a sheet of its own.
 YIELD_JOB = "area and yield"
+QA_JOB = "qa export"
 #: That sheet, as the panel draws it: a table beside the massing.
 AREA_SHEET = "Yield Analysis"
 
@@ -286,6 +287,7 @@ CHIPS: dict[str, tuple[str, str]] = {
     SITE_CONTROLS_JOB: ("Controls", "subset"),
     SITE_MODEL_JOB: ("3D context", "model"),
     YIELD_JOB: ("Yield", "yield"),
+    QA_JOB: ("QA export", "subset"),
 }
 
 
@@ -4005,6 +4007,7 @@ class Window:
     SHADOWS = "Shadow diagram"
     EYE = "Sun views"
     YIELD = "Yield"
+    QA = "QA export"
     #: Not an output and not set-up: a tool used on the open project, which
     #: is why it is a third group of its own.
     REFERENCE = "Reference image"
@@ -4017,7 +4020,7 @@ class Window:
     TOOLS = "TOOLS"
     GROUPS: ClassVar[tuple[tuple[str, tuple[str, ...]], ...]] = (
         (SET_UP, (GENERAL, MODEL)),
-        (DRAWS, (SITE, DIAGRAMS, SHADOWS, EYE, YIELD)),
+        (DRAWS, (SITE, DIAGRAMS, SHADOWS, EYE, YIELD, QA)),
         (TOOLS, (REFERENCE,)),
     )
     #: The study a page's switch in the sidebar turns on, on a page that has
@@ -4076,6 +4079,10 @@ class Window:
             "The office's feasibility sheet from the massing slabs: BEA, GFA, NLA and "
             "FSR by use, the units, the parking -- a sheet an option, and a live workbook."
         ),
+        QA: (
+            "The QA council's per-apartment data: the property groups filled from the "
+            "model, the QA spreadsheets, and the IFC two ways, each checked."
+        ),
         REFERENCE: (
             "A photograph or a rendering laid over Archicad's 3D window, as "
             "see-through as you like, so the model can be orbited under it "
@@ -4092,6 +4099,7 @@ class Window:
         SHADOWS: "Archicad's own shadows of each massing, hour by hour, stacked.",
         EYE: "3D documents aimed down the sun, dealt onto sheets.",
         YIELD: "The feasibility sheet from the massing slabs, and a live workbook.",
+        QA: "The QA council's per-apartment data, its spreadsheets and IFC.",
         REFERENCE: "A picture laid over Archicad, to trace or check against.",
     }
     #: The facade study lives in the Solar analysis section now; the name
@@ -4441,6 +4449,7 @@ class Window:
             self.SHADOWS: self._shadows,
             self.EYE: self._sun_eyes,
             self.YIELD: self._yield,
+            self.QA: self._qa_export,
             self.REFERENCE: self._reference_page,
         }
         for title in self.titles:
@@ -7372,6 +7381,7 @@ class Window:
             (SITE_MODEL_JOB, self.do_site_model, self.SITE),
             (SITE_CONTROLS_JOB, self.do_site_summary, self.SITE),
             (YIELD_JOB, self.do_yield, self.YIELD),
+            (QA_JOB, self.do_qa, self.QA),
         ]
 
     def _open_section(self) -> str:
@@ -7835,6 +7845,21 @@ class Window:
             "yield_option": self.yield_option,
             "yield_slabs": self.yield_slabs,
             "yield_options": self.yield_options,
+            "qa_prefix": self.qa_prefix,
+            "qa_apartment_layers": self.qa_apartments,
+            "qa_balcony_layers": self.qa_balconies,
+            "qa_from_storey": self.qa_from_storey,
+            "qa_to_storey": self.qa_to_storey,
+            "qa_translator": self.qa_translator,
+            "qa_parking_layers": self.qa_parking,
+            **{
+                f"qa_area_{kind.lower().replace(' ', '_').replace('-', '_')}": box
+                for kind, box in self.qa_areas.items()
+            },
+            **{
+                f"qa_copy_{name.lower().replace(' ', '_').replace('.', '')}": box
+                for name, box in self.qa_copies.items()
+            },
             "yield_workbook": self.yield_workbook,
             "yield_residential_layers": self.yield_residential,
             "yield_commercial_layers": self.yield_commercial,
@@ -7875,6 +7900,10 @@ class Window:
             "site_future": self.do_site_future,
             "site_location": self.do_site_location,
             "study_yield": self.do_yield,
+            "study_qa": self.do_qa,
+            "qa_setup": self.qa_setup,
+            "qa_fill": self.qa_fill,
+            "qa_own_ifc": self.qa_own_ifc,
             "yield_xlsx": self.yield_xlsx,
             # The three boxes of days, one key per button, so a preset that
             # studies the equinox beside midwinter opens the same way.
@@ -8359,6 +8388,10 @@ class Window:
         for box in self.shadow_row_hatches.values():
             self._fill(box, ("", *found.fills), ())
         self._fill(self.shadow_study_subset, found.subsets, ())
+        for box in (self.qa_from_storey, self.qa_to_storey):
+            self._fill(box, ("", *found.storey_names), ())
+        for box in self.qa_copies.values():
+            self._fill(box, ("", *found.properties), ())
         self._offer_height_cut()
 
     def _offer_height_cut(self) -> None:
@@ -9121,6 +9154,21 @@ class Window:
                             paper=False,
                         )
                     )
+
+        if QA_JOB in queued:
+            # Not a sheet: spreadsheets and an IFC, beside the model.
+            made.append(
+                Sheet(
+                    study="QA export",
+                    glyph="yield",
+                    number="",
+                    kind=AREA_SHEET,
+                    day="QA_Units, QA_Areas, QA_Parking, IFC",
+                    drawings=(Drawing(kind=AREA_SHEET, day="", time=""),),
+                    job=QA_JOB,
+                    paper=False,
+                )
+            )
 
         if YIELD_JOB in queued:
             # A sheet an option, at no hour: the table, and the massing beside
@@ -9907,6 +9955,9 @@ class Window:
         if self.do_yield.get():
             made.append(Job(YIELD_JOB, self._yield_args(common)))
 
+        if self.do_qa.get():
+            made.append(Job(QA_JOB, self._qa_args(common)))
+
         return made
 
     def _site_jobs(self, common: list[str]) -> list[Job]:
@@ -10009,6 +10060,180 @@ class Window:
             sets = index == 0 and job != SITE_CONTROLS_JOB and self.do_site_location.get()
             made.append(Job(job, [*shared, *args, *([] if sets else ["--keep-location"])]))
         return made
+
+    def _qa_export(self, frame: ttk.Frame) -> None:
+        """The QA export (D184): the per-apartment data a QA council builds its
+        schedules from, written into the model and out as spreadsheets and IFC.
+
+        Three boxes: the export itself -- the groups' prefix, the apartments and
+        balconies, the storeys counted, the translator; the area and parking
+        zones by layer; and which of the project's own properties each unit
+        field is copied from, since most offices hold the values already under
+        names of their own.
+        """
+        outer = frame
+        self.do_qa = tk.BooleanVar(value=False)
+        self.qa_setup = tk.BooleanVar(value=True)
+        self.qa_fill = tk.BooleanVar(value=True)
+        self.qa_own_ifc = tk.BooleanVar(value=True)
+        frame, row = self._panel(outer, 0), 0
+        box = ttk.Checkbutton(
+            frame,
+            text="QA export",
+            variable=self.do_qa,
+            command=self._sync,
+            style="Study.TCheckbutton",
+            **icons.study_options("QA export"),
+        )
+        self._head(frame, box, QA_JOB)
+        Tooltip(
+            box,
+            "Makes the QA property groups, fills them from the zones, the project's "
+            "own properties and Loriini's solar study, writes QA_Units, QA_Areas, "
+            "QA_Parking and QA_Summary to the tables folder, and exports the IFC two "
+            "ways: Loriini's own, of the zones as spaces, and Archicad's through the "
+            "named translator. Each IFC is opened again and checked.",
+        )
+        row += 1
+        self.qa_prefix, row = self._entry(
+            frame,
+            row,
+            "Group prefix",
+            "QA_",
+            "What the three groups are named from: FUSE_ makes FUSE_UNIT, FUSE_AREA, FUSE_PARKING.",
+            "Typed once and kept with Save as default. The fields and their options "
+            "are the brief's; a group already in the project is kept as it is.",
+        )
+        self.qa_apartments, row = self._picker(
+            frame,
+            row,
+            "Apartment layers",
+            "The layers whose zones are apartments.",
+            "One zone per apartment, drawn to the inside face of the walls: its "
+            "area is the internal area, its name the unit number.",
+        )
+        self.qa_balconies, row = self._picker(
+            frame,
+            row,
+            "Balcony layers",
+            "The layers whose zones are balconies and terraces.",
+            "Each balcony is the private open space of the apartment it touches on "
+            "its storey, unless POS is copied from a property below.",
+        )
+        self.qa_from_storey, row = self._combo(
+            frame,
+            row,
+            "From storey",
+            "The lowest storey counted. Blank: the lowest.",
+            "Zones outside the two storeys -- unit-type plans kept above the roof -- "
+            "are left out of every count.",
+        )
+        self.qa_to_storey, row = self._combo(
+            frame,
+            row,
+            "To storey",
+            "The highest storey counted. Blank: the highest.",
+            "Zones outside the two storeys are left out of every count.",
+        )
+        self.qa_translator, row = self._entry(
+            frame,
+            row,
+            "IFC translator",
+            "",
+            "Archicad's export translator for the whole model, by name. Blank: Loriini's IFC only.",
+            "Archicad's API can choose a translator but not make one: set it up once "
+            "(or import the .xml) under File > Interoperability > IFC > IFC Translators. "
+            "The export is checked for spaces and for proxies either way.",
+        )
+        for text, variable, tip in (
+            ("Make the property groups", self.qa_setup, "Where they are missing."),
+            ("Write the values into the model", self.qa_fill, "Hotlinked units are named."),
+            ("Loriini's own IFC of the zones", self.qa_own_ifc, "Works with no translator."),
+        ):
+            check = ttk.Checkbutton(frame, text=text, variable=variable, command=self._sync)
+            check.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
+            Tooltip(check, tip, title=text)
+            row += 1
+
+        frame, row = self._panel(outer, 1, title="Areas and parking"), 0
+        self._caption(frame, row, "The area zones by what they count as, and the parking spaces.")
+        row += 1
+        #: Layers of area zones by the brief's area type.
+        self.qa_areas: dict[str, Chips] = {}
+        from sun_study.archicad.qa_export import AREA_TYPES
+
+        for kind in AREA_TYPES:
+            self.qa_areas[kind], row = self._picker(
+                frame,
+                row,
+                kind,
+                f"The layers whose zones are {kind.lower()}.",
+                "Each zone on these layers is written with this Area Type, and its area "
+                "goes to the totals.",
+            )
+        self.qa_parking, row = self._picker(
+            frame,
+            row,
+            "Parking layers",
+            "The layers whose zones are resident car spaces, one zone a space.",
+            "Each zone is one space, written as Resident and counted by type.",
+        )
+
+        frame, row = self._panel(outer, 2, title="Copied from the project"), 0
+        self._caption(
+            frame,
+            row,
+            "Which of the project's own properties each unit field is read from. Blank: "
+            "worked out from the zone where it can be, else left for a person.",
+        )
+        row += 1
+        #: Unit field -> the property it is copied from, as Group/Name.
+        self.qa_copies: dict[str, ttk.Combobox] = {}
+        from sun_study.archicad.qa_export import UNIT_FIELDS
+
+        for spec in UNIT_FIELDS:
+            if spec.name == "Internal area m²":
+                continue
+            self.qa_copies[spec.name], row = self._combo(
+                frame,
+                row,
+                spec.name,
+                spec.description,
+                "Y and N are read as Yes and No, '2 BED' as 2B, '21 m3' as 21. A value "
+                "that cannot be read as the field's is left blank and listed in the log.",
+            )
+
+    def _qa_args(self, common: list[str]) -> list[str]:
+        """The QA export's command line, from its page."""
+        args = ["qa-export", *common]
+        args += ["--prefix", self.qa_prefix.get().strip() or "QA_"]
+        for flag, box in (
+            ("--apartment-layer", self.qa_apartments),
+            ("--balcony-layer", self.qa_balconies),
+        ):
+            for name in self._listed(box):
+                args += [flag, name]
+        for kind, box in self.qa_areas.items():
+            for name in self._listed(box):
+                args += ["--area-layer", f"{name}={kind}"]
+        for name in self._listed(self.qa_parking):
+            args += ["--parking-layer", f"{name}=Resident"]
+        args += self._flag("--from-storey", self.qa_from_storey)
+        args += self._flag("--to-storey", self.qa_to_storey)
+        for field_name, copied in self.qa_copies.items():
+            if copied.get().strip():
+                args += ["--copy", f"{field_name}={copied.get().strip()}"]
+        args += self._flag("--translator", self.qa_translator)
+        if not self.qa_setup.get():
+            args.append("--no-setup")
+        if not self.qa_fill.get():
+            args.append("--no-fill")
+        if not self.qa_own_ifc.get():
+            args.append("--no-own-ifc")
+        tables = self.tables.get().strip()
+        if tables:
+            args += ["--out", str(Path(tables) / "QA")]
+        return args
 
     def _yield_args(self, common: list[str]) -> list[str]:
         """The yield analysis's command line, from the Yield page."""

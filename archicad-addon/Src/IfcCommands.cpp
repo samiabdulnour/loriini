@@ -296,6 +296,14 @@ GS::Optional<GS::UniString> ExportIfcCommand::GetResponseSchema () const
 	})");
 }
 
+// Where the comparison's case switch lives moved in 28: from inside
+// GS::UniString to GS itself.
+#ifdef ServerMainVers_2800
+constexpr auto IgnoringCase = GS::CaseInsensitive;
+#else
+constexpr auto IgnoringCase = GS::UniString::CaseInsensitive;
+#endif
+
 GS::ObjectState ExportIfcCommand::Execute (const GS::ObjectState& parameters,
 										   GS::ProcessControl& /*processControl*/) const
 {
@@ -316,7 +324,7 @@ GS::ObjectState ExportIfcCommand::Execute (const GS::ObjectState& parameters,
 	const API_IFCTranslatorIdentifier* chosen = nullptr;
 	GS::UniString known;
 	for (const API_IFCTranslatorIdentifier& one : translators) {
-		if (one.name.IsEqual (wanted, GS::UniString::CaseInsensitive)) {
+		if (one.name.IsEqual (wanted, IgnoringCase)) {
 			chosen = &one;
 		}
 		if (!known.IsEmpty ()) {

@@ -26,6 +26,7 @@ from sun_study.archicad.layout import _walk, master_layouts
 from sun_study.archicad.read import read_geo_location
 from sun_study.archicad.series import ensure_model_database
 from sun_study.archicad.sun_eyes import overrides_in_views
+from sun_study.archicad.write import all_properties
 
 #: Floor area, in square metres, at or above which a zone is a dwelling
 #: rather than something a dwelling contains. The ADG's smallest apartment is
@@ -122,6 +123,10 @@ class ProjectOptions:
     renovation filter is in 26."""
 
     archicad_version: int | None = None
+
+    properties: tuple[str, ...] = ()
+    """The project's own properties as ``Group/Name``, for the QA export's
+    copies (D184): what a unit field is filled from."""
     """Archicad's major version, 26 or 27 and on, which decides whether the
     window offers renovation filters or Design Options. ``None`` when it
     would not say."""
@@ -355,6 +360,16 @@ def options(port: int) -> ProjectOptions:
         if uses_design_options(archicad)
         else ()
     )
+    own_properties = attempt(
+        "properties",
+        lambda: tuple(
+            sorted(
+                f"{detail.group}/{detail.name}"
+                for detail in all_properties(connection)
+                if detail.kind == "UserDefined"
+            )
+        ),
+    )
     # Not through `attempt`: an add-on older than this command is not a
     # problem with the project, and the field simply stays typed.
     try:
@@ -382,6 +397,7 @@ def options(port: int) -> ProjectOptions:
         project=project,
         tapir=version,
         archicad_version=archicad,
+        properties=own_properties or (),
         design_options=design_options,
         latitude=None if where is None else where.latitude_deg,
         longitude=None if where is None else where.longitude_deg,
