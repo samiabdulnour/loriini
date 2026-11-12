@@ -260,6 +260,7 @@ from sun_study.archicad.write import (
     init_properties,
     match_apartments,
     property_group_name,
+    store_assessment,
     write_assessment,
 )
 from sun_study.core.analysis import (
@@ -6378,6 +6379,18 @@ def archicad_run(
                         "built on them will be missing rows.",
                         fg=typer.colors.RED,
                     )
+            # Every verdict kept inside the project too, the hotlinked
+            # apartments' with the rest, for an IFC export run later (D185).
+            try:
+                kept = store_assessment(connection, result.assessment, match=match, licensee=who)
+            except ArchicadError as error:
+                typer.secho(
+                    "  the results were not kept in the project for a later IFC export "
+                    f"({error}); install the current add-on",
+                    fg=typer.colors.YELLOW,
+                )
+            else:
+                typer.echo(f"  kept {kept} apartments' results in the project for the IFC export")
 
         # One clearing out and one folder for the whole run, before any sheet
         # is made: the sheet-building steps would otherwise delete each
@@ -10833,6 +10846,487 @@ def area_yield(
                 typer.secho(str(error), fg=typer.colors.RED, err=True)
                 raise typer.Exit(code=2) from error
             typer.echo(report.describe())
+
+
+@app.command("ifc-export")
+def ifc_export(
+    port: Annotated[int, typer.Option("--port", help="Which Archicad to talk to.")] = DEFAULT_PORT,
+    timeout: Annotated[
+        float, typer.Option("--timeout", help="Seconds to wait for one Archicad command.")
+    ] = DEFAULT_TIMEOUT_SECONDS,
+    prefix: Annotated[
+        str,
+        typer.Option(
+            "--prefix",
+            help="What the three property groups are named from: FUSE_ makes FUSE_UNIT, "
+            "FUSE_AREA and FUSE_PARKING.",
+        ),
+    ] = "QA_",
+    apartment_layer: Annotated[
+        list[str] | None,
+        typer.Option("--apartment-layer", help="A layer whose zones are apartments. Repeat."),
+    ] = None,
+    balcony_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--balcony-layer",
+            help="A layer whose zones are balconies and terraces: each is the private open "
+            "space of the apartment it touches. Repeat.",
+        ),
+    ] = None,
+    area_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--area-layer",
+            help="LAYER=AREA TYPE: the zones on a layer are communal open space, deep soil, "
+            "GFA, non-GFA, retail, plant or circulation. Repeat.",
+        ),
+    ] = None,
+    parking_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--parking-layer",
+            help="LAYER=SPACE TYPE: each zone on a layer is one parking space of that type "
+            "(resident, visitor, accessible, ...). Repeat.",
+        ),
+    ] = None,
+    from_storey: Annotated[
+        str | None,
+        typer.Option("--from-storey", help="The lowest storey counted, by name: GROUND."),
+    ] = None,
+    to_storey: Annotated[
+        str | None,
+        typer.Option(
+            "--to-storey",
+            help="The highest storey counted, by name. Zones on storeys outside the two -- "
+            "unit-type plans kept above the roof -- are left out.",
+        ),
+    ] = None,
+    copy: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--copy",
+            help="FIELD=GROUP/PROPERTY: fill a unit field from a property the project "
+            "already has, as 'Bedrooms=Apartments/Beds'. Y and N are read as Yes and No, "
+            "'2 BED' as 2B. Repeat.",
+        ),
+    ] = None,
+    unit_no: Annotated[
+        str,
+        typer.Option("--unit-no", help="Where Unit No comes from when not copied: name or number."),
+    ] = "name",
+    solar: Annotated[
+        bool,
+        typer.Option(
+            "--solar/--no-solar",
+            help="Take Solar 2h and No sun from Loriini's own solar study written on the "
+            "zones, over any copy.",
+        ),
+    ] = True,
+    setup: Annotated[
+        bool, typer.Option("--setup/--no-setup", help="Make the three groups where missing.")
+    ] = True,
+    fill: Annotated[bool, typer.Option("--fill/--no-fill", help="Write the values.")] = True,
+    xlsx: Annotated[
+        bool, typer.Option("--xlsx/--no-xlsx", help="Write QA_Units, QA_Areas, QA_Parking.")
+    ] = True,
+    own_ifc: Annotated[
+        bool,
+        typer.Option(
+            "--own-ifc/--no-own-ifc",
+            help="Write Loriini's own IFC of the zones as spaces with the QA property sets.",
+        ),
+    ] = True,
+    translator: Annotated[
+        str | None,
+        typer.Option(
+            "--translator",
+            help="Also export the whole model through Archicad's IFC export translator of "
+            "this name, set up once by hand.",
+        ),
+    ] = None,
+    out: Annotated[
+        Path | None, typer.Option("--out", help="The folder the files are written to.")
+    ] = None,
+    name: Annotated[
+        str | None,
+        typer.Option("--name", help="What the IFC is named from: 2518 gives 2518_QA_<yymmdd>.ifc."),
+    ] = None,
+) -> None:
+    """The IFC export (D184): the per-apartment data a QA council schedules from.
+
+    Makes the three property groups, fills them from the zones, the project's
+    own properties and Loriini's solar study, writes the QA spreadsheets, and
+    exports the IFC two ways -- Loriini's own, of the zones as spaces, and
+    Archicad's through a named translator -- checking each.
+    """
+    from sun_study.archicad import qa_export as qa
+    from sun_study.archicad.connection import project_name
+    from sun_study.archicad.qa_ifc import check_ifc, write_qa_ifc
+    from sun_study.archicad.read import classification_items_of
+    from sun_study.archicad.read import zones as read_zones
+    from sun_study.archicad.write import existing_properties
+    from sun_study.report import qa_workbook
+
+    try:
+        groups = qa.group_names(prefix)
+        areas_by_layer = dict(
+            _layer_kind(text, qa.AREA_TYPES, "--area-layer") for text in area_layer or []
+        )
+        parking_by_layer = dict(
+            _layer_kind(text, qa.SPACE_TYPES, "--parking-layer") for text in parking_layer or []
+        )
+        copies = dict(_copy_of(text) for text in copy or [])
+    except ValueError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    if not apartment_layer:
+        typer.secho(
+            "Name the apartments' layer with --apartment-layer.", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=2)
+    if unit_no not in ("name", "number"):
+        typer.secho("--unit-no is name or number.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2)
+
+    connection = _connect(port, timeout)
+    try:
+        ensure_model_database(connection)
+        project = project_name(connection.run_tapir("GetProjectInfo", {}) or {}) or "Project"
+        stem = (name or project.replace(" ", "_").split("_")[0] or "Project").strip()
+        folder = (out or Path.cwd() / "QA").expanduser().resolve()
+        storeys = qa.read_storeys(connection)
+        within = storeys.between(from_storey, to_storey)
+        every = read_zones(connection)
+
+        def on(layers: list[str]) -> list[qa.QaZone]:
+            return qa.zones_on(connection, layers, storeys=storeys, within=within, every=every)
+
+        apartments, doubled = qa.drop_doubles(on(apartment_layer))
+        balconies = on(balcony_layer or [])
+        area_zones = [
+            (zone, kind) for layer, kind in areas_by_layer.items() for zone in on([layer])
+        ]
+        spaces = [(zone, kind) for layer, kind in parking_by_layer.items() for zone in on([layer])]
+        typer.echo(
+            f"{project}: {len(apartments)} apartments, {len(balconies)} balconies, "
+            f"{len(area_zones)} area zones, {len(spaces)} parking spaces"
+            + (f", storeys {from_storey or 'lowest'} to {to_storey or 'highest'}" if within else "")
+        )
+        if doubled:
+            typer.secho(
+                f"  {len(doubled)} apartment zones lie over another on their storey and are "
+                "counted once: "
+                + ", ".join(f"{zone.name or zone.number} ({zone.storey})" for zone in doubled[:6]),
+                fg=typer.colors.YELLOW,
+            )
+        if not apartments:
+            typer.secho(
+                "  No zone on the apartment layers"
+                + (" on those storeys" if within else "")
+                + ". Check the layer's name.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+        paths = qa.property_paths(connection)
+        unknown = [path for path in copies.values() if path not in paths]
+        if unknown:
+            typer.secho(
+                "  The project has no property "
+                + ", ".join(repr(path) for path in unknown)
+                + ". Name it as Group/Property, as Property Manager shows it.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        guids = [zone.guid for zone in apartments]
+        copied = qa.read_values(connection, guids, [paths[path] for path in copies.values()])
+        measured: dict[str, dict[str, str | None]] = {}
+        if solar:
+            own = existing_properties(connection)
+            wanted = [
+                own[key]
+                for key in ("Meets Minimum", "No Direct Sunlight", "Solar Analysis Run")
+                if key in own
+            ]
+            if wanted:
+                read = qa.read_values(connection, guids, wanted)
+                names_of = {ident: key for key, ident in own.items()}
+                measured = {
+                    guid: {names_of[ident]: text for ident, text in row.items()}
+                    for guid, row in read.items()
+                    if any(text for text in row.values())
+                }
+            # What the zones could not hold -- a hotlinked apartment's -- from
+            # the verdicts the solar study kept inside the project (D185).
+            from sun_study.archicad.write import stored_assessment
+
+            kept_run, kept = stored_assessment(connection)
+            lacking = [zone for zone in apartments if zone.guid not in measured]
+            if kept and lacking:
+                recovered = qa.from_store(lacking, kept)
+                for guid, verdict in recovered.items():
+                    measured[guid] = {**verdict, "Solar Analysis Run": kept_run or "kept"}
+                typer.echo(
+                    f"  solar study kept in the project ({kept_run}): "
+                    f"{len(recovered)} more apartments from it"
+                )
+            runs = collections.Counter(
+                str(row.get("Solar Analysis Run") or "undated") for row in measured.values()
+            )
+            if measured:
+                typer.echo(
+                    "  solar study written "
+                    + ", ".join(f"{when} ({count})" for when, count in runs.most_common(3))
+                    + f"; {len(apartments) - len(measured)} apartments have none and are copied"
+                )
+            typer.echo(
+                f"  solar study: {len(measured)} apartments measured"
+                if measured
+                else "  solar study: none written on these zones; Solar 2h and No sun are copied"
+            )
+        open_space, alone = qa.pair_balconies(apartments, balconies)
+        if balconies:
+            typer.echo(
+                f"  private open space: {len(balconies) - alone} balconies given to "
+                f"{len(open_space)} apartments" + (f", {alone} touching none" if alone else "")
+            )
+        rows = qa.unit_rows(
+            apartments,
+            copied=copied,
+            copies=copies,
+            paths=paths,
+            open_space=open_space,
+            solar=measured,
+            unit_no=unit_no,
+        )
+        filled = collections.Counter(key for row in rows for key in row.values)
+        for spec in qa.UNIT_FIELDS:
+            count = filled.get(spec.name, 0)
+            typer.echo(f"    {spec.name:<22} {count} of {len(rows)}")
+        unread = [line for row in rows for line in row.unread]
+        if unread:
+            typer.secho(
+                f"  {len(unread)} values could not be read as the field's, left blank, e.g. "
+                + "; ".join(unread[:4]),
+                fg=typer.colors.YELLOW,
+            )
+
+        identifiers: dict[tuple[str, str], str] = {}
+        if setup:
+            items = classification_items_of(
+                connection,
+                [
+                    zone.guid
+                    for zone in (
+                        *apartments,
+                        *(z for z, _k in area_zones),
+                        *(z for z, _k in spaces),
+                    )
+                ],
+            )
+
+            def classes(members: list[qa.QaZone]) -> list[str]:
+                return sorted({item for zone in members for item in items.get(zone.guid, set())})
+
+            identifiers, said = qa.ensure_groups(
+                connection,
+                prefix,
+                {
+                    "UNIT": classes(apartments),
+                    "AREA": classes([zone for zone, _kind in area_zones]),
+                    "PARKING": classes([zone for zone, _kind in spaces]),
+                },
+            )
+            for line in said:
+                typer.echo(f"  {line}")
+        else:
+            identifiers = {
+                (suffix, spec.name): ident
+                for suffix, fields in qa.GROUPS.items()
+                for spec in fields
+                if (ident := qa.find_field(paths, groups[suffix], spec.name)) is not None
+            }
+        if fill:
+            values: dict[str, dict[str, object]] = {}
+            for row in rows:
+                for key, value in row.values.items():
+                    ident = identifiers.get(("UNIT", key))
+                    if ident is not None:
+                        values.setdefault(row.zone.guid, {})[ident] = value
+            for zone, kind in area_zones:
+                ident = identifiers.get(("AREA", "Area Type"))
+                if ident is not None:
+                    values.setdefault(zone.guid, {})[ident] = kind
+            for zone, kind in spaces:
+                ident = identifiers.get(("PARKING", "Space Type"))
+                if ident is not None:
+                    values.setdefault(zone.guid, {})[ident] = kind
+            # An option set the office made itself may say Y and N, not Yes
+            # and No: each value is written as one of its own options.
+            from sun_study.archicad.write import enum_values
+
+            enums = {
+                ident: options
+                for ident, options in enum_values(
+                    connection,
+                    sorted({ident for cells in values.values() for ident in cells}),
+                ).items()
+                if options
+            }
+            unfitted = 0
+            for cells in values.values():
+                for ident in list(cells):
+                    if ident in enums:
+                        fitted = qa.fit_option(cells[ident], enums[ident])
+                        if fitted is None:
+                            unfitted += 1
+                            del cells[ident]
+                        else:
+                            cells[ident] = fitted
+            if unfitted:
+                typer.secho(
+                    f"  {unfitted} values fit none of their option set's options; left out",
+                    fg=typer.colors.YELLOW,
+                )
+            landed, refused = qa.write_values(connection, values)
+            typer.echo(f"  wrote {landed} values on {len(values)} zones")
+            if refused:
+                _say_refusals(connection, refused)
+
+        lowest = storeys.between(from_storey, None) if from_storey else None
+        order = sorted(
+            {zone.storey_index for zone in apartments if zone.storey_index is not None},
+            key=lambda index: storeys.levels.get(index, 0.0),
+        )
+        if lowest is not None:
+            order = [index for index in order if index in lowest]
+        totals = qa.summary(rows, area_zones, spaces, first_nine=set(order[:9]))
+        today = dt.date.today()
+        source = f"{project}, read from the model on {today:%d %B %Y} by Loriini"
+        folder.mkdir(parents=True, exist_ok=True)
+        if xlsx:
+            for path in (
+                qa_workbook.write_units(folder, rows),
+                qa_workbook.write_areas(folder, area_zones),
+                qa_workbook.write_parking(folder, spaces),
+                qa_workbook.write_summary(folder, totals, source=source),
+            ):
+                typer.echo(f"  wrote {path}")
+        for what, figure, against in totals.lines:
+            typer.echo(f"    {what:<34} {figure:<22} {against}")
+
+        unit_fields = [spec.name for spec in qa.UNIT_FIELDS]
+        checked = []
+        if own_ifc:
+            ifc_path = folder / f"{stem}_QA_{today:%y%m%d}_spaces.ifc"
+            write_qa_ifc(
+                ifc_path,
+                project=project,
+                storeys=storeys,
+                spaces=[
+                    *((row.zone, groups["UNIT"], row.values) for row in rows),
+                    *((zone, groups["AREA"], {"Area Type": kind}) for zone, kind in area_zones),
+                    *((zone, groups["PARKING"], {"Space Type": kind}) for zone, kind in spaces),
+                ],
+            )
+            typer.echo(f"  wrote {ifc_path}")
+            checked.append(ifc_path)
+        if translator:
+            ifc_path = folder / f"{stem}_QA_{today:%y%m%d}.ifc"
+            try:
+                connection.run_loriini(
+                    "ExportIfc", {"path": str(ifc_path), "translator": translator}
+                )
+            except ArchicadError as error:
+                typer.secho(
+                    f"  the Archicad export through {translator!r} failed: {error}. Import the "
+                    "QA translator (File > Interoperability > IFC > IFC Translators > Import) "
+                    "or check its name.",
+                    fg=typer.colors.YELLOW,
+                )
+            else:
+                typer.echo(f"  wrote {ifc_path} through {translator!r}")
+                checked.append(ifc_path)
+        for path in checked:
+            report = check_ifc(path, list(groups.values()), groups["UNIT"], unit_fields)
+            for line in report.lines():
+                typer.echo(f"  {line}")
+    except ArchicadError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+
+
+def _say_refusals(connection: ArchicadConnection, refused: Sequence[str]) -> None:
+    """Why zones refused their values, in a line or two: most often they are
+    in a hotlinked module, whose own file is where they are written."""
+    from urllib.parse import unquote
+
+    from sun_study.archicad.write import diagnose_write_access
+
+    zones_refused = sorted({line.partition(":")[0] for line in refused})
+    typer.secho(
+        f"  {len(refused)} values refused on {len(zones_refused)} zones", fg=typer.colors.YELLOW
+    )
+    try:
+        diagnosis = diagnose_write_access(connection, zones_refused)
+    except ArchicadError:
+        diagnosis = None
+    if diagnosis is None:
+        return
+    if diagnosis.hotlink_sources:
+        modules = sorted(
+            {
+                unquote(unquote(source)).rstrip("/").split("/")[-1]
+                for source in diagnosis.hotlink_sources
+            }
+        )
+        typer.secho(
+            "  they are in hotlinked modules, which the host file cannot change: write "
+            "them in the module's own file -- "
+            + ", ".join(modules[:3])
+            + ". The spreadsheets and Loriini's own IFC include them all the same.",
+            fg=typer.colors.YELLOW,
+        )
+    if diagnosis.locked_layers:
+        typer.secho(
+            "  on locked layers: " + ", ".join(diagnosis.locked_layers), fg=typer.colors.YELLOW
+        )
+
+
+def _layer_kind(text: str, kinds: Sequence[str], flag: str) -> tuple[str, str]:
+    """``LAYER=KIND`` as the layer and the kind as the brief spells it."""
+    layer, sep, kind = text.rpartition("=")
+    match = next((one for one in kinds if one.casefold() == kind.strip().casefold()), None)
+    if not sep or not layer.strip() or match is None:
+        raise ValueError(
+            f"{flag} takes LAYER=KIND, the kind one of {', '.join(kinds)}; not {text!r}."
+        )
+    return layer.strip(), match
+
+
+def _copy_of(text: str) -> tuple[str, str]:
+    """``FIELD=GROUP/PROPERTY`` as the unit field and the property's path."""
+    from sun_study.archicad.qa_export import UNIT_FIELDS
+
+    field_name, sep, path = text.partition("=")
+    match = next(
+        (
+            spec.name
+            for spec in UNIT_FIELDS
+            if spec.name.casefold() == field_name.strip().casefold()
+        ),
+        None,
+    )
+    if not sep or match is None or "/" not in path:
+        raise ValueError(
+            f"--copy takes FIELD=GROUP/PROPERTY, the field one of "
+            f"{', '.join(spec.name for spec in UNIT_FIELDS)}; not {text!r}."
+        )
+    group, _slash, prop = path.partition("/")
+    return match, f"{group.strip()}/{prop.strip()}"
 
 
 def option_from_layer(text: str) -> tuple[str, str]:

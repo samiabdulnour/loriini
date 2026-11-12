@@ -760,6 +760,82 @@ def match_apartments(
     return ApartmentMatch(matched, tuple(unmatched), tuple(ambiguous))
 
 
+#: What the solar study keeps inside the project, out of sight (D185).
+STORE_NAME = "solar"
+
+
+def store_assessment(
+    connection: ArchicadConnection,
+    assessment: BuildingAssessment,
+    *,
+    match: ApartmentMatch | None = None,
+    run_stamp: str | None = None,
+    licensee: str = "",
+) -> int:
+    """Keep every apartment's verdict inside the project, with where it is.
+
+    The properties ``write_assessment`` writes are the visible record; this
+    is the complete one. A zone in a hotlinked module cannot take a property
+    from the host, so its verdict would be lost; kept here -- an add-on
+    object saved with the .pln (``SetProjectData``) -- with the zone's id,
+    storey, name, number and centre, an IFC export run long after finds it
+    again, by id or, where a module's reload has renumbered it, by the rest.
+    Returns how many apartments were kept.
+    """
+    import json
+
+    from sun_study.archicad.read import zones as read_zones
+
+    stamp = run_stamp or dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M UTC")
+    if licensee:
+        stamp = f"{stamp} · {licensee}"
+    resolved = match if match is not None else match_apartments(connection, assessment)
+    where = {zone.guid: zone for zone in read_zones(connection)}
+    records: list[dict[str, Any]] = []
+    for apartment in assessment.apartments:
+        guid = resolved.by_apartment.get(apartment.apartment_id)
+        zone = where.get(guid) if guid else None
+        if guid is None or zone is None:
+            continue
+        values = _values_for(assessment, apartment, stamp)
+        outline = zone.outline or ((0.0, 0.0),)
+        records.append(
+            {
+                "guid": guid,
+                "storey": zone.storey_index,
+                "name": zone.name,
+                "number": zone.number,
+                "x": round(sum(x for x, _y in outline) / len(outline), 3),
+                "y": round(sum(y for _x, y in outline) / len(outline), 3),
+                "meets": values["Meets Minimum"],
+                "noSun": values["No Direct Sunlight"],
+                "hours": values["Governing Sunlight (h)"],
+            }
+        )
+    content = json.dumps({"version": 1, "run": stamp, "apartments": records})
+    connection.run_loriini("SetProjectData", {"name": STORE_NAME, "content": content})
+    return len(records)
+
+
+def stored_assessment(connection: ArchicadConnection) -> tuple[str, list[dict[str, Any]]]:
+    """The solar study's verdicts kept inside the project: the run and the
+    apartments. Empty when none were kept or the add-on cannot say."""
+    import json
+
+    try:
+        answer = connection.run_loriini("GetProjectData", {"name": STORE_NAME})
+    except ArchicadError:
+        return "", []
+    if not isinstance(answer, dict) or not answer.get("found"):
+        return "", []
+    try:
+        data = json.loads(str(answer.get("content") or "{}"))
+    except ValueError:
+        return "", []
+    rows = data.get("apartments") if isinstance(data, dict) else None
+    return str(data.get("run", "")), [row for row in rows or [] if isinstance(row, dict)]
+
+
 def write_assessment(
     connection: ArchicadConnection,
     assessment: BuildingAssessment,

@@ -38,6 +38,8 @@ namespace Loriini {
 
 LORIINI_IFC_COMMAND (GetIfcPropertiesCommand)
 LORIINI_IFC_COMMAND (SetIfcPropertiesCommand)
+LORIINI_IFC_COMMAND (GetIfcTranslatorsCommand)
+LORIINI_IFC_COMMAND (ExportIfcCommand)
 
 #undef LORIINI_IFC_COMMAND
 

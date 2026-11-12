@@ -1,4 +1,6 @@
 #include "IfcCommands.hpp"
+#include "ApiCompat.hpp"
+#include "Location.hpp"
 
 namespace Loriini {
 
@@ -217,6 +219,142 @@ GS::ObjectState SetIfcPropertiesCommand::Execute (const GS::ObjectState& paramet
 	result.Add ("results", results);
 	return result;
 #endif
+}
+
+// -- GetIfcTranslators -------------------------------------------------------
+//
+// The project's IFC export translators by name, so a caller can say which
+// one it means -- the QA export's, set up once by hand (D184). The first
+// Archicad lists is its preview translator.
+
+GS::String GetIfcTranslatorsCommand::GetName () const		{ return "GetIfcTranslators"; }
+
+GS::Optional<GS::UniString> GetIfcTranslatorsCommand::GetInputParametersSchema () const
+{
+	return GS::NoValue;
+}
+
+GS::Optional<GS::UniString> GetIfcTranslatorsCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"translators": { "type": "array", "items": { "type": "string" } },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState GetIfcTranslatorsCommand::Execute (const GS::ObjectState& /*parameters*/,
+												   GS::ProcessControl& /*processControl*/) const
+{
+	GS::Array<API_IFCTranslatorIdentifier> translators;
+	const GSErrCode err = ACAPI_IFC_GetIFCExportTranslatorsList (translators);
+	if (err != NoError) {
+		return Failed ("Failed to list the IFC export translators.", err);
+	}
+	GS::Array<GS::UniString> names;
+	for (const API_IFCTranslatorIdentifier& one : translators) {
+		names.Push (one.name);
+	}
+	GS::ObjectState result = Succeeded ();
+	result.Add ("translators", names);
+	return result;
+}
+
+// -- ExportIfc ---------------------------------------------------------------
+//
+// The whole project saved as IFC through the export translator of the name
+// given. Tapir's IFCFileOperation saves through whichever translator is
+// selected in Archicad's dialog, and the QA export needs its own.
+
+GS::String ExportIfcCommand::GetName () const		{ return "ExportIfc"; }
+
+GS::Optional<GS::UniString> ExportIfcCommand::GetInputParametersSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"path": { "type": "string", "description": "The .ifc file to write." },
+			"translator": { "type": "string", "description": "The export translator, by name." }
+		},
+		"additionalProperties": false,
+		"required": ["path", "translator"]
+	})");
+}
+
+GS::Optional<GS::UniString> ExportIfcCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"translator": { "type": "string" },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+// Where the comparison's case switch lives moved in 28: from inside
+// GS::UniString to GS itself.
+#ifdef ServerMainVers_2800
+constexpr auto IgnoringCase = GS::CaseInsensitive;
+#else
+constexpr auto IgnoringCase = GS::UniString::CaseInsensitive;
+#endif
+
+GS::ObjectState ExportIfcCommand::Execute (const GS::ObjectState& parameters,
+										   GS::ProcessControl& /*processControl*/) const
+{
+	GS::UniString path;
+	GS::UniString wanted;
+	if (!parameters.Get ("path", path) || path.IsEmpty ()) {
+		return Failed ("An IFC export needs the file to write.", APIERR_BADPARS);
+	}
+	if (!parameters.Get ("translator", wanted) || wanted.IsEmpty ()) {
+		return Failed ("An IFC export needs a translator's name.", APIERR_BADPARS);
+	}
+
+	GS::Array<API_IFCTranslatorIdentifier> translators;
+	const GSErrCode listed = ACAPI_IFC_GetIFCExportTranslatorsList (translators);
+	if (listed != NoError) {
+		return Failed ("Failed to list the IFC export translators.", listed);
+	}
+	const API_IFCTranslatorIdentifier* chosen = nullptr;
+	GS::UniString known;
+	for (const API_IFCTranslatorIdentifier& one : translators) {
+		if (one.name.IsEqual (wanted, IgnoringCase)) {
+			chosen = &one;
+		}
+		if (!known.IsEmpty ()) {
+			known += ", ";
+		}
+		known += one.name;
+	}
+	if (chosen == nullptr) {
+		return Failed ("No IFC export translator named '" + wanted + "' in this project. It has: " + known, APIERR_BADPARS);
+	}
+
+	IO::Location location (path);
+	API_FileSavePars file = {};
+	file.fileTypeID = APIFType_IfcFile;
+	file.file = &location;
+
+	API_SavePars_Ifc ifc = {};
+	ifc.subType = API_IFC;
+	ifc.translatorIdentifier = *chosen;
+	ifc.elementsToIfcExport = API_EntireProject;
+	ifc.elementsSet = nullptr;
+	ifc.includeBoundingBoxGeometry = false;
+
+	const GSErrCode err = Api::SaveAsIfc (&file, &ifc);
+	if (err != NoError) {
+		return Failed ("Archicad would not export the IFC with '" + chosen->name + "'.", err);
+	}
+	GS::ObjectState result = Succeeded ();
+	result.Add ("translator", chosen->name);
+	return result;
 }
 
 }		// namespace Loriini
