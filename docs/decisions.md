@@ -7255,6 +7255,45 @@ named for is drawn in the project's *Dashed* fill: lines the colour of its
 outline over its own blue. *Solid Fill* named for a row leaves it unhatched;
 the designed row is solid unless a fill is named.
 
+### D189 — The hours of sun are Lorikeet's seven bands, and a fill is drawn in its band's colour, not in the nearest pen
+
+Asked 14 November 2026, with the palette: *"i want you to change the pallete
+of all solar loriini output to this, from solar acces to heatmaps"*.
+
+**The bands.** `0 h #141B70`, `0-1 h #3440BC`, `1-2 h #8590EE`,
+`2-3 h #4F9A1E`, `3-4 h #FFE04A`, `4-5 h #FFA01E`, `5 h + #FF5A3D`
+(`draw.DEFAULT_BANDS`). Three blues under two hours, deepening toward none;
+then green, the bird's wing, for the first band that passes, so 2-3 hours
+reads as "just made it"; then yellow, orange and red. The closest pair is 15
+colour-difference units apart, 10 for a reader who cannot tell red from
+green. They replace the reference study's legend, where 2-3 hours was a pale
+yellow-green a step from the 3-4 beside it. Sun at one moment (`SUN_RGB`: the
+hourly plans, the floor patch) is the palette's yellow. The window's
+`HOURS_RAMP` is the same seven.
+
+**Why the colour had to stop being a pen.** Every solar fill was a Tapir
+hatch, which takes a pen index, so each band was drawn in the nearest pen of
+the project's table. On Graphisoft's Australian template the new bands'
+nearest pens put 0 h and 0-1 h on the same blue (85, 85, 255) and the green
+33 units off. A palette that depends on the office's pens is not a palette.
+
+**What draws a fill now.** `draw.create_hatches` is the one route for the
+apartment plans and their legend, the communal bands, the hourly plans, the
+floor patches and the sheets' swatches. A fill that carries its band's
+colour goes through the add-on's `CreateFills` with `foregroundColour`, in
+the project's solid fill by name (a fill left to the Fill tool's default was
+`Background`, and invisible, on that template), and without a contour: the
+contour is a pen, and an edge in the nearest pen would outline every band in
+a near miss. A contour asked for in a pen of its own is kept.
+
+*What this does not change:* the bands' edges and labels; any figure; a band
+whose pen is chosen with `--pen`, which is drawn in that pen; an add-on with
+no `CreateFills`, which draws the same fills through Tapir in the nearest
+pens, as before, and the run still prints that mapping; the shadow diagrams,
+whose colours are their own (D150); `scripts/compare_with_ladybug.py` and the
+table in `docs/validation.md`, which read the reference study's legend, not
+ours.
+
 ### D190 — A sample project and a tutorial, and what the first run on a stock template found
 
 Asked 10 November 2026: *"i need to create sample project to create overview

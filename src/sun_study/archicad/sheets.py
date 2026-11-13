@@ -29,7 +29,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError, activate
-from sun_study.archicad.draw import create_texts
+from sun_study.archicad.draw import COLOUR_KEY, create_hatches, create_texts
 from sun_study.archicad.layout import LayoutSheet, Tiling, tile_positions
 from sun_study.archicad.paper import PaperFrame, StudyElements, onto_paper
 
@@ -419,6 +419,9 @@ class TableRow:
     share: float
     fill_pen: int | None = None
     background_pen: int = 19
+    rgb: tuple[int, int, int] | None = None
+    """The swatch's own colour, where its band is drawn in one: the legend
+    has to be the colour of what it names, not the nearest pen to it."""
     heading: bool = False
     """A line that names the drawing the rows under it belong to, on a
     sheet carrying several drawings' figures: the label alone, no numbers."""
@@ -593,6 +596,7 @@ def draw_table(
                     "fillBackgroundPenIndex": row.background_pen,
                     "contourPenIndex": row.fill_pen,
                     "showArea": False,
+                    **({COLOUR_KEY: row.rgb} if row.rgb is not None else {}),
                 }
             )
         texts.append(
@@ -605,7 +609,7 @@ def draw_table(
         )
 
     if fills:
-        connection.run_tapir("CreateHatches", {"hatchesData": fills})
+        create_hatches(connection, fills)
     create_texts(connection, texts, heights_in_metres=True)
     return len(rows)
 

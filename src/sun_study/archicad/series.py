@@ -48,7 +48,10 @@ import numpy.typing as npt
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError, activate
 from sun_study.archicad.draw import (
     DRAWING_MINIMUM_TAPIR_VERSION,
+    SUN_RGB,
     BandStyle,
+    coloured,
+    create_hatches,
     ensure_layer,
     place_texts,
 )
@@ -93,9 +96,9 @@ DEFAULT_GUTTER_M = 6.0
 #: find the patch, not the plate it lies on.
 FLOOR_STYLE = BandStyle("floor", float("inf"), fill_pen=19, rgb=(228, 228, 228))
 
-#: The patch itself. The same amber the office's own studies use for sun on a
-#: surface, and the one this tool already draws for its 3-4 hour band.
-SUNLIT_STYLE = BandStyle("in sun", float("inf"), fill_pen=124, rgb=(255, 213, 79))
+#: The patch itself: sun on a surface is yellow, the palette's own, the one
+#: this tool draws for its 3-4 hour band.
+SUNLIT_STYLE = BandStyle("in sun", float("inf"), fill_pen=124, rgb=SUN_RGB)
 
 
 @dataclass(frozen=True)
@@ -453,7 +456,7 @@ def draw_patch_series(
                     }
                 )
 
-    made = _create(connection, "CreateHatches", "hatchesData", fills)
+    made = create_hatches(connection, fills)
     stamped = stamp_in_order(connection, made, element_ids)
     grouped = (
         group_by_value(connection, list(zip(made, element_ids, strict=True)))
@@ -630,6 +633,7 @@ def _hatch(ring: Ring, dx: float, dy: float, style: BandStyle, layer_index: int)
         "fillPenIndex": style.fill_pen,
         "fillBackgroundPenIndex": style.background_pen,
         "contourPenIndex": style.fill_pen,
+        **coloured(style),
         # Explicitly off. A Fill inherits the Fill tool's current default, and
         # on a real project that default has "Show Area Text" on -- so every
         # patch cell arrives with its own square-metre figure printed across
