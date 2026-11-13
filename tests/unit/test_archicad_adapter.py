@@ -211,10 +211,20 @@ def texts_sent(transport: Any) -> list[dict[str, Any]]:
 SS = naming.prefix()
 
 
+#: An add-on built before ``CreateFills``: what a fill in its own colour is
+#: asked of first, and what sends it to Tapir's ``CreateHatches`` and a pen.
+NO_CREATE_FILLS = {
+    "error": {"code": 4010, "message": "does not have the registered Add-On command CreateFills"}
+}
+
+
 def connect(responses: dict[str, Any]) -> tuple[ArchicadConnection, FakeTransport]:
     transport = FakeTransport(
         {
             "GetAddOnVersion": {"version": "1.5.7"},
+            # Without the add-on's fills unless a test scripts them: most of
+            # these are about the request Tapir is sent.
+            "CreateFills": NO_CREATE_FILLS,
             # The add-on's own clock answer (D135): a Sydney project keeping AEST,
             # which every scripted run here is, so an hour goes over unchanged.
             "GetPlace": {"success": True, "timeZoneInMinutes": 600, "summerTime": False},
@@ -1762,6 +1772,71 @@ def test_a_fill_uses_the_zones_own_outline_and_storey() -> None:
     assert report.legend_items == len(DEFAULT_BANDS)
 
 
+def test_a_fill_is_drawn_in_its_bands_own_colour_where_the_add_on_can() -> None:
+    """The nearest pen of an office's table is not the band's colour: on a
+    stock template two bands of the palette landed on one blue. The add-on's
+    fill carries the colour itself, in the project's solid fill, with no
+    contour in a pen that is only near it."""
+    responses = _draw_responses(CreateFills={"success": True, "elements": [{"guid": "f"}] * 99})
+    # One list answers both questions here: the layer by its name, the fill by its.
+    responses["GetAttributesByType"]["attributes"] += [
+        {"index": 3, "name": "Empty Fill"},
+        {"index": 65, "name": "Solid Fill"},
+    ]
+    connection, transport = connect(responses)
+    report = draw_assessment(
+        connection,
+        _assessment(_apartment("apt-1", living=150.0, open_space=150.0)),
+        [_zone("z1", storey=3)],
+        zone_by_apartment={"apt-1": "z1"},
+    )
+
+    assert "CreateHatches" not in transport.commands()
+    fills = transport.parameters_for("CreateFills")["fills"]
+    apartment = fills[0]
+    green = next(band for band in DEFAULT_BANDS if band.label == "2-3 hrs")
+    assert green.rgb == (79, 154, 30), "the first band that passes is the wing's green"
+    assert apartment["foregroundColour"] == pytest.approx(
+        {"red": 79 / 255, "green": 154 / 255, "blue": 30 / 255}
+    )
+    assert apartment["fillIndex"] == 65, "the solid fill, by name, not the Fill tool's default"
+    assert apartment["contourPen"] == 0 and apartment["fillPen"] == green.fill_pen
+    assert apartment["floorIndex"] == 3 and apartment["layerIndex"] == 7
+    assert "_rgb" not in apartment and "coordinates" not in apartment
+    # The legend is the colours it names, every band of it.
+    swatches = fills[-len(DEFAULT_BANDS) :]
+    assert [round(s["foregroundColour"]["red"] * 255) for s in swatches] == [
+        band.rgb[0] for band in reversed(DEFAULT_BANDS)
+    ]
+    assert report.fills_drawn == 1
+
+
+def test_an_older_add_on_draws_the_same_fills_in_the_nearest_pens() -> None:
+    connection, transport = connect(_draw_responses())  # no CreateFills
+    draw_assessment(
+        connection,
+        _assessment(_apartment("apt-1")),
+        [_zone("z1")],
+        zone_by_apartment={"apt-1": "z1"},
+    )
+    assert transport.commands().count("CreateFills") == 1, "asked once, then Tapir"
+    hatches = transport.parameters_for("CreateHatches")["hatchesData"]
+    assert all("_rgb" not in hatch for hatch in hatches), "Tapir is not sent a field it lacks"
+    assert all("fillPenIndex" in hatch for hatch in hatches)
+
+
+def test_a_pen_somebody_chose_is_drawn_in_that_pen() -> None:
+    """``--pen '2-3 hrs=42'`` asks for pen 42, not for the band's colour."""
+    from sun_study.archicad.draw import coloured
+    from sun_study.cli import band_styles
+
+    styles = {band.label: band for band in band_styles(["2-3 hrs=42"])}
+    assert styles["2-3 hrs"].fill_pen == 42 and coloured(styles["2-3 hrs"]) == {}
+    assert coloured(styles["3-4 hrs"]) == {"_rgb": (255, 224, 74)}
+    # And a style given no colour is not painted black.
+    assert coloured(BandStyle("plain", 60.0, fill_pen=5)) == {}
+
+
 def test_the_band_boundary_belongs_to_the_band_above() -> None:
     """Exactly two hours is '2-3 hrs'. The ADG reads 'at least two hours', and
     disagreeing by one band at exactly the threshold is the worst place to."""
@@ -2444,7 +2519,11 @@ def test_layers_are_enumerated_not_asked_for_by_id() -> None:
     )
 
     # GetLayers may be called, but only once an identifier is in hand.
-    assert transport.parameters_for("GetAttributesByType") == {"attributeType": "Layer"}
+    # The layers, and the fills too: a fill in its own colour is the solid one, by name.
+    assert transport.all_parameters_for("GetAttributesByType") == [
+        {"attributeType": "Layer"},
+        {"attributeType": "Fill"},
+    ]
     assert transport.parameters_for("GetLayers") == {
         "attributeIds": [{"attributeId": {"guid": "l"}}]
     }, "GetLayers requires attributeIds; calling it bare is rejected as code 4002"
@@ -2578,7 +2657,13 @@ def test_an_unreadable_layer_state_does_not_stop_the_drawing() -> None:
                 return {"succeeded": False, "error": {"code": 1, "message": "nope"}}
             return super().send(payload)
 
-    transport = NoLayerDetail({"GetAddOnVersion": {"version": "1.5.7"}, **_draw_responses()})
+    transport = NoLayerDetail(
+        {
+            "GetAddOnVersion": {"version": "1.5.7"},
+            "CreateFills": NO_CREATE_FILLS,
+            **_draw_responses(),
+        }
+    )
     report = draw_assessment(
         ArchicadConnection(transport),
         _assessment(_apartment("apt-1")),

@@ -2882,11 +2882,12 @@ CONTEXT_SITE = site_theme.blend(site_theme.CORAL, theme.SURFACE, 0.6)
 #: is as rounded as the paper it is on and no more.
 SHEET_RADIUS = 8
 BLOCK_RADIUS = 2
-#: Hours of sun, none to five and more: the communal legend's seven steps,
-#: from the blue of no sun through green and yellow to the orange of a full
-#: day. The two heat maps and the facade's skin are banded on the one ramp,
-#: so the panel has one way of saying hours of sun.
-HOURS_RAMP = ("#6B8ED6", "#9BB8E3", "#B5CFAA", "#EFE39A", "#F2C86B", "#E6A04E", "#D4702E")
+#: Hours of sun, none to five and more: the seven bands the run draws
+#: (``draw.DEFAULT_BANDS``, D189), three blues under two hours, then the
+#: green of the first band that passes, yellow, orange and red. The two heat
+#: maps and the facade's skin are banded on the one ramp, so the panel says
+#: hours of sun the way the sheets do.
+HOURS_RAMP = ("#141B70", "#3440BC", "#8590EE", "#4F9A1E", "#FFE04A", "#FFA01E", "#FF5A3D")
 #: The two answers to the ADG's two hours: the sun's amber for a flat that
 #: reaches them, the grey of no sun for one that falls short. Not blue:
 #: on these sheets blue is the pin and the rail line, never an answer.
