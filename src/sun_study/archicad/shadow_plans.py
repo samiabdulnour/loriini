@@ -58,6 +58,7 @@ from typing import Any
 from sun_study.archicad import naming
 from sun_study.archicad.clock import sun_date
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError, CommandFailedError
+from sun_study.archicad.design_options import pin_views
 from sun_study.archicad.layout import (
     LayoutReport,
     layout_sheet,
@@ -268,6 +269,9 @@ class ShadowPlanSettings:
 
     layer_combination: str
     renovation_filter_guid: str | None = None
+    design_option_guid: str | None = None
+    """The Design Option Combination the views pin, Archicad 27 on: what a
+    renovation filter is to a view in 26. ``None`` leaves the views' own."""
     model_view_options: str | None = None
     pen_set: str | None = None
     graphic_override: str | None = None
@@ -414,6 +418,9 @@ def make_shadow_plans(
         ),
         "SetViewSettings",
     )
+    if settings.design_option_guid:
+        # Not a field of Tapir's view settings: the add-on's own command.
+        pin_views(connection, [view.navigator_id for view in views], settings.design_option_guid)
     return [
         MadePlan(plan=plan, view=view, reused=reused, effects=effects)
         for (plan, _, reused, effects), view in zip(reset, views, strict=True)
@@ -613,6 +620,13 @@ class PlanSet:
     label: str
     layer_combination: str
     shadow_pen: int
+    renovation_filter_guid: str | None = None
+    """The renovation filter this row's views pin, for a row an office keeps
+    as a filter and not as layers of its own -- an envelope modelled on the
+    floor layer and shown under its own filter only. ``None`` is the run's."""
+    design_option_guid: str | None = None
+    """The same in Archicad 27 on: the Design Option Combination this row's
+    views pin, for a row kept as a design option. ``None`` leaves the views'."""
 
 
 @dataclass(frozen=True)
@@ -758,6 +772,10 @@ def make_shadow_plan_stack(
             fill_uncut_surfaces=None,
             uncut_surfaces=dict(STACK_SURFACES),
         )
+        if member.renovation_filter_guid:
+            own = replace(own, renovation_filter_guid=member.renovation_filter_guid)
+        if member.design_option_guid:
+            own = replace(own, design_option_guid=member.design_option_guid)
         made, notes = make_shadow_plans(
             connection, plans, settings=own, set_label=member.label, fresh=fresh
         )

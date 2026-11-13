@@ -6968,7 +6968,294 @@ scenario); the shadow plans' `--existing` and `--proposed` route, whose
 proposals are still `Proposed 1`, `Proposed 2` and on, so a project's
 layers and combinations keep their names.
 
-### D179 — A sample project and a tutorial, and what the first run on a stock template found
+### D179 — The licence database backup is encrypted before it is uploaded
+
+The repository went public on 11 November 2026, and with it every Actions
+artifact: anyone signed in to GitHub can download one. The nightly
+*Licence database backup* had been uploading the licence service's SQLite
+file as it came, and that file holds every licence's email, holder, Stripe
+customer and the names of the computers holding its seats.
+
+**Encrypted to a key GitHub never sees.** The workflow now encrypts the copy
+with age to the public keys in the repository variable
+`LORIINI_BACKUP_RECIPIENTS` and uploads only the `.age` file, as
+`licences-encrypted-<run>`. The private half stays on the vendor's machine
+beside the signing key, so neither the repository, its workflows nor a
+leaked token can open a backup. A public key rather than a passphrase held
+as a secret: what the runner holds can only seal, never open.
+
+**No key, no copy.** The first step checks the variable before the database
+is fetched, the plain file is written outside the uploaded folder and
+removed once sealed, and the upload takes only `*.age` files after checking
+the file starts with age's own header. A missing or wrong key stops the
+job; it never falls back to a plain copy.
+
+*What this does not change:* the service's backup request, `scripts/licence.py
+backup` by hand (a plain file on the vendor's own disk), the ninety days, or
+the schedule. The plain `licences-<run>` artifacts uploaded before this are
+not touched by it and are deleted by hand.
+
+### D180 — An option is a renovation filter in Archicad 26 and a Design Option from 27, and Loriini asks which
+
+Offices keep massing options two ways. In Archicad 26 an option is a
+renovation filter, the massing shown under its own filter only (D162); from
+27 Archicad has Design Options, and a *Design Option Combination* says which
+options a view shows. The window offered renovation filters whatever the
+Archicad, so a 27 project's options were not on the list.
+
+**Archicad is asked.** `ArchicadConnection.archicad_version` reads the major
+version off the JSON API's own `GetProductInfo`; the window's reading of the
+project (`probe.options`) keeps it, with the project's combinations (Tapir's
+`GetDesignOptionCombinations`) beside its renovation filters, and the status
+line says which Archicad it is. A version that will not read is taken as 26.
+
+**The fields say what this Archicad calls an option.** A compared shadow
+row's field is *Proposed 2 filter* listing the renovation filters on 26 and
+*Proposed 2 design option* listing the combinations on 27 and later; the
+run gets `--scenario-filter` or the new `--scenario-option LABEL=NAME`,
+whose views are pinned to the combination by the add-on's new
+`SetViewDesignOptions`. Tapir's `SetViewSettings` has no field for it. The
+kit's API moved in 28 and again in 29, and the command follows the kit's own
+example in each.
+
+**A compared row's fields appear once the row has layers.** Name, option and
+hatch of Proposed 2 and 3 are hidden while the row has none: such a row is
+not drawn, and three questions about it were noise.
+
+**The Yield's Renovation row is an option picker.** Its four tiles (any
+status, new only, existing and new, the floor plan's filter) answered a
+question about renovation *status*, which is not how an office tells one
+option from another. In their place one list: a renovation filter on 26,
+counted by showing it on the floor plan while the slabs are read and putting
+the floor plan's own filter back after (`--renovation-filter-name`, with the
+add-on's `SetRenovationFilter` and the current filter now in
+`GetRenovationFilters`); a combination on 27 and later (`--design-option`),
+counted as the main model and the options it has on. Only Archicad 29's API
+says which elements an option holds, so on 27 and 28 the Yield refuses a
+combination and says to put each option on a layer of its own (Layer per
+option). Blank counts every slab, as Any did. `--renovation-status` and
+the bare `--renovation-filter` stay on the command line.
+
+*Untested here:* only Archicad 26 is installed on the machine this was
+written on. The Design Option route compiles against the 27 to 30 kits and
+has unit tests against a scripted Archicad, but has not yet run in an
+Archicad 27 or later.
+
+### D181 — The shadow colour is picked, and the run finds its pen
+
+A plain shadow set (one with no legend rows) took its fill pen as a typed
+number, and what a person knows is the colour they want, not which of 255
+pens holds it. The *Shadow pen* box is now **Shadow colour**: a swatch, the
+system's colour picker behind *Choose…*, and a cross to clear it. The run is
+sent `--shadow-colour #rrggbb`, and `shadow-plans` draws the shadows in the
+pen of the documents' pen set (or the project's own) that looks most like
+it, by the same measure the legend's pens are chosen by (`closest_pen`,
+`_looks_like`: hue first, since plain RGB distance once put a navy on a
+green), and says which pen in the log. A 3D Document fills its shadows with a
+pen, so the colour is matched and not made. A pen number an older settings
+file saved is kept, shown as that pen and still sent as `--shadow-pen`.
+
+### D182 — The sheets panel slides in, and the page is laid out once with its painting held
+
+Opening or folding the sheets panel changes the width of the page beside it,
+and Tk moves and repaints its few hundred native windows one at a time:
+recorded, an opening went through twelve distinct screens over a third of a
+second, labels wrapped at the old width over fields at the new one. Measured,
+any change of the panel's width costs the same 300 ms or more, so animating
+the width frame by frame would only have been slower.
+
+**The page is laid out once, unseen.** `motion.painting_held` turns the
+window's painting off (`WM_SETREDRAW`) while Tk lays it out, then repaints it
+in one pass: before and after, and nothing in between. Windows only; it does
+nothing elsewhere or on a window not on screen.
+
+**The panel answers the click at once.** Opening, a stand-in -- the panel's
+ground and its title -- is placed over the page and slides in from the edge
+over the page's own 180 ms (`motion.Tween`, paced by the clock as the page's
+slide is), which costs one window moved a frame; the real panel opens under
+it when it arrives. Folding is the held swap alone. No slide when the window
+folds the panel as it is dragged narrow, nor where the system has been asked
+for less movement.
+
+### D183 — The Yield's options are renovation filters or design options, several to a run; the use is told by level or by layer
+
+D140 gave the Yield four ways of saying which slabs are the massing:
+everything showing, chosen layers, a layer per use, and a layer per option.
+The user found two of them were not how the office works: "everything
+showing" counted whatever happened to be on screen, and options kept as
+layers are not how its options are kept. An option is a renovation filter in
+Archicad 26 and a Design Option from 27 (D180).
+
+**Use told by: By level, or By layer.** *By level* is D140's chosen layers:
+the massing layers, commercial on the commercial levels and residential on
+the rest. *By layer* is its layer per use. "Everything showing" and "Layer
+per option" are gone from the page; a settings file that saved any of the
+four opens on the nearer of the two (the tiles' aliases). The command line
+keeps `--option-layer` and counting what is showing.
+
+**Options: several renovation filters or design options, a sheet each.** The
+single filter of D180 becomes a list ticked from the project's renovation
+filters (26) or Design Option Combinations (27 on). Each one chosen is an
+option named after it, with its own sheet and workbook page, and the options
+are compared at the foot of the log, as option layers were. Under renovation
+filters the floor plan is shown each filter in turn and the slabs read again,
+then given back its own filter; under combinations the slabs are read once
+and each combination keeps the main model and its options' slabs (Archicad
+29 on). The layers, levels and figures are the same for every option. None
+chosen is one option, named in the Option box, every slab on the layers.
+`--renovation-filter-name` and `--design-option` repeat; they and
+`--option-layer` are refused together.
+
+### D184 — The QA export: the council's per-unit data from the model, its IFC two ways
+
+The office's QA council asked, in a brief, for a schedule built from the
+model each issue: every apartment with its level, type, bedrooms, internal
+area, private open space, storage and the ADG and SEPP flags, and the totals
+of GFA, communal open space, deep soil and parking -- through three property
+groups, three interactive schedules published to Excel, and an IFC exported
+through a new translator. `sun-study ifc-export` does it from a run; in
+the window it is **IFC export**, a page under Tools, and its own switch
+queues it for Run.
+
+**Groups named from a prefix.** `QA_UNIT`, `QA_AREA`, `QA_PARKING` are
+the brief's; the app ships none of an office's names (D156), so the prefix
+is typed once. Fields and option sets are the brief's. A new definition's
+default is *undefined*, not 0: a 0 would read as a measured POS, and Archicad
+refuses a definition with no default at all (D21). Availability is the
+classification the zones already carry.
+
+**Filled from what the project has.** Most of the values are already in a
+project under the office's own names (on 0001, an `Apartments` group with
+`Beds`, `External Area`, `Daylight`, `Ventilation`). `--copy FIELD=GROUP/NAME`
+reads them as the brief's: `Y` is Yes, `2 BED` is 2B, `21 m3` is 21; what
+cannot be read (`Y` for Livable says livable but not Silver or Gold) is left
+blank and listed. Unit No and internal area come from the zone, POS from the
+balcony zones touching it, the unit type from the zone number, and Solar 2h
+and No sun from Loriini's own solar study when it has been written, over any
+copy: measured beats typed. The solar study is usually run long before the
+QA export, so what it leaves on the zones -- the verdicts and a *Solar
+Analysis Run* date, saved with the project -- is the store: the export reads
+it by default and says the run's date, and copies only for an apartment with
+none (a hotlinked one, whose zone the host could not write). Running the
+study again first is a separate, optional tick in the window, which queues
+the Solar analysis ahead of the export. Storeys outside a range are left out, which
+drops the unit-type plans an office keeps above the roof.
+
+**Hotlinked apartments are written at their source.** On 0001, 44 of 119
+apartments are in hotlinked modules, which the host cannot change; the run
+says so and names the module. The spreadsheets and Loriini's IFC count them.
+
+**Spreadsheets written, not published.** The API can make neither a schedule
+nor a Publisher set, so QA_Units, QA_Areas, QA_Parking and a QA_Summary of
+the council's totals (mix, 4D and 4E minimums, 4A solar and no-sun shares,
+4B cross ventilation in the first nine storeys, the area and parking totals)
+are written straight from the model.
+
+**The IFC two ways, each checked.** Loriini's own: a space per zone with the
+QA property sets and its area, written with ifcopenshell, which works on any
+project with no translator. Archicad's: the whole model through an export
+translator chosen by name (the add-on's new `ExportIfc`; `GetIfcTranslators`
+lists them), since the API can pick a translator but not make or change one.
+Both are opened again and counted, and the two faults the brief found in the
+office's IFCs -- no spaces, everything a proxy -- are said in words.
+
+### D185 — The solar study keeps every apartment's verdict inside the project, for an IFC export run long after
+
+The solar study is run early and the QA's IFC export much later. The study
+writes its verdicts onto the apartment zones as properties (D21), saved with
+the project -- except a zone in a hotlinked module, which the host cannot
+write: on 0001, 44 of 119 apartments. Their verdicts were lost.
+
+**Kept as hidden add-on data.** A run that writes also keeps every matched
+apartment's verdict -- zone id, storey, name, number, centre, Meets Minimum,
+No Direct Sunlight, the governing hours, and the run's stamp -- as one JSON
+text in an AddOnObject named `Loriini/solar` (the add-on's new
+`SetProjectData` / `GetProjectData`). It is saved in the .pln and sent to
+the server in Teamwork, out of sight in the user interface; nothing is
+written to a folder. A later run replaces it.
+
+**Found again by id, or by where the apartment is.** The IFC export takes a
+zone's own properties first, then the kept verdicts for the zones without:
+by the zone's id, or -- a module's reload can renumber its elements -- by the
+same storey, name and number with the centre within 1.5 m. The log says the
+run's date and how many apartments came from the kept record.
+
+### D186 — One Layout Book subset, shadows and sun views every 15 or 30 minutes, and a Yield panel in one order
+
+Asked with the window open, 12 November 2026.
+
+**One subset, on General.** The ADG sheets, the time-of-day sheets and the
+shadow sheets each asked for a subset of their own. People move a sheet in
+the Layout Book themselves when it belongs elsewhere, so there is one,
+*Layout Book subset*, under the master layout, filing every study's sheets;
+a settings file that saved any of the three opens with it.
+
+**Every 15 or 30 minutes.** Under the Hours row of the shadow diagram and of
+the sun views, an *Every* row: 1 hour, 30 min, 15 min. Between two lit hours
+the run draws a document or a view every step as well -- 9 to 3 every 15
+minutes is 25 a day where it was 7 -- and the sheets panel deals them. The
+commands take times as well as hours (`--shadow-hour 9,9:30`, `--hour 9:15`);
+a shadow plan's caption reads 9:30AM.
+
+**The Yield panel in one order.** What the massing is (use told by, its
+layers, its commercial levels), then the options (renovation filters or
+design options), then the name, the view beside the table and the workbook:
+a name field is as wide as a list of names, the workbook is a row with its
+label like the others, and the mix's share and size boxes are as wide as the
+other figures.
+
+### D187 — The title block's width is not asked: 115 mm; a panel's fields are one width; a chip row's words sit on its middle line
+
+Asked with the window open, 13 November 2026.
+
+**115 mm, and no field for it.** *Title block width (mm)* is off General. It
+was one figure for every project, and a field on the first page invited
+changing it. Every tool that places a sheet keeps 115 mm clear down the
+right, where it kept 100; the commands still take `--title-block-mm` for a
+master that differs. A settings file that saved a width opens without it.
+
+**One width down the 3D context panel.** The *Future context* button and the
+*Radius (m)* box are as wide as the lists above and below them.
+
+**Style last.** On the Context Analysis and Site Analysis panels the Style
+row, with its link, comes after Scale.
+
+**Words on the middle line.** Beside a *+ Add* button, "no layers chosen"
+and the row's own label hung from the top of the row while the button, the
+taller, set its height. Both sit on the button's middle line now, as the
+text in every other field does.
+
+### D188 — A proposal's outline can follow its shadow where it falls; five proposals; a compared row is dashed unless told otherwise
+
+**The outline where the shadow falls (`shadow-plans --flat --outline-falls`).**
+The dashed outline of a row that might be built is its whole shadow on bare
+ground, read from documents that show it alone. A neighbour's roof catches
+the shadow short of where the ground would, so that outline ran on across
+roofs the sun was still on (Darlinghurst, 13 November 2026). Asked for, the
+outline is put together from what the documents drew (`fallen_shadow`): what
+the row adds to the shadow of what stands, on roof and street alike, so a lit
+roof drops out; the ground's reach where the street is already in shade; and
+the ground the building stands on. A neighbour's roof already in shade is
+left out: no document says whether the row's shadow lands there too. Roofs
+are told from streets by one more document, *Shadow Plan ROOFS*, of what
+stands with every other layer off. `--outline-ground`, the outline as it was,
+stays the default; the window has no switch yet.
+
+**The geometry library giving up no longer costs the drawing.** A run stopped
+on "unable to assign free hole to a shell" after a quarter of an hour's
+reading, with the worksheet already cleared. Overlays are tried again on the
+millimetre grid (`_overlaid`), and the layer is cleared only once everything
+to be drawn is worked out.
+
+**Proposed 4 and Proposed 5.** The legend and the window carry five rows that
+are compared; the rows under the designed one are outlined in four colours.
+
+**A compared row is dashed.** With worksheet fills, a compared row no fill is
+named for is drawn in the project's *Dashed* fill: lines the colour of its
+outline over its own blue. *Solid Fill* named for a row leaves it unhatched;
+the designed row is solid unless a fill is named.
+
+### D190 — A sample project and a tutorial, and what the first run on a stock template found
 
 Asked 10 November 2026: *"i need to create sample project to create overview
 and tutorial for loriini"*, then *"just build the good sample project with
@@ -7088,5 +7375,3 @@ two hours. The tutorial says this; it is the study doing its job.
   (`ModifyMeshes` applies holes only when the outline is sent with them).
   The context model could make that hole itself: `CreateMesh` takes holes.
 - `SetCurrentDatabase` with a `floorIndex` did not change the storey shown.
-
-

@@ -135,12 +135,30 @@ card, the key arriving by email, installed on a computer, and the licence under
 
 - **Backups.** The *Licence database backup* workflow
   (`.github/workflows/backup.yml`) runs nightly and keeps each copy as an
-  artifact for ninety days; it needs the repository secret
-  `LORIINI_ADMIN_TOKEN`, and *Run workflow* takes a copy now. By hand:
-  `scripts/licence.py backup --out licences.sqlite3`. The backup is the SQLite
-  file itself, copied consistently while the service runs. Fly also snapshots
-  volumes daily, kept five days.
-- **Restoring.** Stop the machine, copy the file onto the volume as
+  artifact for ninety days, `licences-encrypted-<run>`; *Run workflow* takes a
+  copy now. By hand: `scripts/licence.py backup --out licences.sqlite3`. The
+  backup is the SQLite file itself, copied consistently while the service
+  runs. Fly also snapshots volumes daily, kept five days.
+- **The backup is encrypted** (D179). The repository is public and so are its
+  artifacts, and the database holds every holder's email and name, so the
+  workflow encrypts the copy with [age](https://age-encryption.org) before it
+  uploads it. It needs, beside the secret `LORIINI_ADMIN_TOKEN`:
+  - **A key pair, made once on the vendor's own machine:**
+    `age-keygen -o D:\Private\loriini-backup.key` (age: `winget install
+    FiloSottile.age`, or `brew install age` on a Mac). It prints the public
+    key, `age1...`. The `.key` file is the private half: keep it with the
+    signing key, and a copy in the password manager. Lost, no backup made
+    with it can be opened; nothing else is lost.
+  - **The repository variable `LORIINI_BACKUP_RECIPIENTS`** (Settings >
+    Secrets and variables > Actions > Variables): the public key, one per line
+    for more than one person. It is not a secret. Without it the workflow
+    stops before it fetches anything, so a missing key never makes a plain
+    copy.
+  - **Opening one:** download the artifact, unzip it, and
+    `age --decrypt -i D:\Private\loriini-backup.key -o licences.sqlite3
+    licences-<day>.sqlite3.age`.
+- **Restoring.** Decrypt the copy as above, then stop the machine, copy the
+  file onto the volume as
   `/data/licences.sqlite3` (`fly ssh sftp shell`), and start it again. What
   happened after the backup comes back as follows:
   - Stripe's next events move each licence on;

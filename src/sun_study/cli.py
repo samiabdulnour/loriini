@@ -31,7 +31,7 @@ import numpy.typing as npt
 import typer
 
 from sun_study import AUTHOR, PRODUCT, STOP_FILE_VAR, __version__, licence
-from sun_study.archicad import context_model, future_context, naming
+from sun_study.archicad import context_model, future_context, naming, shadow_flat
 from sun_study.archicad import layout as sheet_layout
 from sun_study.archicad import site_analysis as site_drawing
 from sun_study.archicad.area_sheet import draw_area_sheet
@@ -57,11 +57,22 @@ from sun_study.archicad.cos_schedule import (
     place_schedule,
     tag_hours,
 )
+from sun_study.archicad.design_options import (
+    combination_guids,
+    combination_named,
+    combinations,
+    left_out_by,
+    renovation_filter_guid,
+    renovation_filters,
+    require_design_options,
+    show_renovation_filter,
+)
 from sun_study.archicad.draw import (
     DEFAULT_BANDS,
     BandStyle,
     Pen,
     _active_pen_table,
+    closest_pen,
     default_layer_name,
     draw_assessment,
     hidden_layers,
@@ -148,10 +159,13 @@ from sun_study.archicad.shadow_plans import (
     PLAN_SCALE,
     SET_WORD,
     STACK_SHADOW_FILLS,
+    STACK_SURFACES,
     LegendRow,
+    MadePlan,
     PlanSet,
     ShadowPlan,
     ShadowPlanSettings,
+    Stack,
     hidden_among,
     legend_combinations,
     legend_from_existing_and_proposed,
@@ -163,6 +177,9 @@ from sun_study.archicad.shadow_plans import (
     site_context_layers,
     stack_labels,
     stack_order,
+)
+from sun_study.archicad.shadow_plans import (
+    SET_WORD as PLANS_WORD,
 )
 from sun_study.archicad.shadows import (
     BASELINE_RAMP,
@@ -199,7 +216,8 @@ from sun_study.archicad.sheets import (
     legend_place,
     straighten_and_tile,
 )
-from sun_study.archicad.slabs import floors_from, read_slabs
+from sun_study.archicad.site_analysis import attribute_index
+from sun_study.archicad.slabs import SlabReading, floors_from, read_slabs
 from sun_study.archicad.sun_eyes import (
     DEFAULT_SHEETS as SUN_VIEW_SHEETS,
 )
@@ -242,6 +260,7 @@ from sun_study.archicad.write import (
     init_properties,
     match_apartments,
     property_group_name,
+    store_assessment,
     write_assessment,
 )
 from sun_study.core.analysis import (
@@ -6360,6 +6379,18 @@ def archicad_run(
                         "built on them will be missing rows.",
                         fg=typer.colors.RED,
                     )
+            # Every verdict kept inside the project too, the hotlinked
+            # apartments' with the rest, for an IFC export run later (D185).
+            try:
+                kept = store_assessment(connection, result.assessment, match=match, licensee=who)
+            except ArchicadError as error:
+                typer.secho(
+                    "  the results were not kept in the project for a later IFC export "
+                    f"({error}); install the current add-on",
+                    fg=typer.colors.YELLOW,
+                )
+            else:
+                typer.echo(f"  kept {kept} apartments' results in the project for the IFC export")
 
         # One clearing out and one folder for the whole run, before any sheet
         # is made: the sheet-building steps would otherwise delete each
@@ -6644,15 +6675,26 @@ def _shadow_moments(
             ) from bad
         for text in (part.strip() for part in hours.split(",") if part.strip()):
             try:
-                hour = int(text)
+                hour, minute = _hour_and_minute(text)
             except ValueError as bad:
                 raise typer.BadParameter(
-                    f"--shadow-hour takes whole hours, comma separated. {text!r} is not one."
+                    f"--shadow-hour takes hours or times such as 9:30, comma separated. "
+                    f"{text!r} is not one."
                 ) from bad
-            moments.append(dt.datetime(year, month, number, hour, tzinfo=zone))
+            moments.append(dt.datetime(year, month, number, hour, minute, tzinfo=zone))
             twelve = hour if hour <= 12 else hour - 12
-            labels.append(f"{twelve}{'AM' if hour < 12 else 'PM'}")
+            past = f":{minute:02d}" if minute else ""
+            labels.append(f"{twelve}{past}{'AM' if hour < 12 else 'PM'}")
     return moments, labels
+
+
+def _hour_and_minute(text: str) -> tuple[int, int]:
+    """``9`` or ``09:30`` as an hour and a minute of the day (D186)."""
+    hour_text, _colon, minute_text = text.strip().partition(":")
+    hour, minute = int(hour_text), int(minute_text or 0)
+    if not (0 <= hour < 24 and 0 <= minute < 60):
+        raise ValueError(text)
+    return hour, minute
 
 
 def _shadow_source_rules(
@@ -6767,7 +6809,8 @@ def shadows(
         str, typer.Option("--shadow-date", help="Days to draw, MM-DD, comma separated.")
     ] = DEFAULT_SHADOW_DATES,
     shadow_hour: Annotated[
-        str, typer.Option("--shadow-hour", help="Whole hours, comma separated.")
+        str,
+        typer.Option("--shadow-hour", help="Hours, or times such as 9:30, comma separated."),
     ] = DEFAULT_SHADOW_HOURS,
     subject_layer: Annotated[
         list[str] | None, typer.Option("--subject-layer", help="Layers that are the proposal.")
@@ -6954,6 +6997,9 @@ def shadows(
             ),
         ),
     ] = False,
+    see_through_glass: Annotated[
+        int | None, typer.Option("--see-through-glass", help=SEE_THROUGH_GLASS_HELP)
+    ] = None,
     drawing_scale: Annotated[
         float | None,
         typer.Option(
@@ -7033,6 +7079,7 @@ def shadows(
         port, timeout, above=exclude_above_storey, below=exclude_below_storey, metres=exclude_above
     )
     config = MassingConfig(
+        see_through_glass_pct=glass_percent(see_through_glass),
         timezone=timezone,
         exclude_above_m=exclude_above,
         exclude_below_m=exclude_below,
@@ -7262,6 +7309,13 @@ def _shadow_report(
             )
         else:
             model = read_model(exported)
+            # Glass that lets the sun through casts no shadow here either: a
+            # glass balustrade drawn as a dark band along every balcony was
+            # this drawing ignoring the option the other studies take.
+            wanted_glass = config.see_through_glass_pct
+            if wanted_glass is not None:
+                model, let_through = model.without_glass(wanted_glass)
+                typer.echo(f"  {let_through.describe()}")
             # Before any number reaches the screen. A mismatch means the live
             # project and its export place the site differently, and every
             # figure below would be plausible and wrong. Archicad rotating the
@@ -7584,7 +7638,7 @@ def sun_eye_views(
         str | None,
         typer.Option(
             "--hour",
-            help="Whole hours, comma separated, instead of the ruleset's window.",
+            help="Hours, or times such as 9:30, comma separated, instead of the ruleset's window.",
         ),
     ] = None,
     base_combination: Annotated[
@@ -7691,7 +7745,17 @@ def sun_eye_views(
     when_year = year or dt.date.today().year
     when = rules.assessment.date_in(when_year)
     if hour:
-        hours = [int(part) for part in hour.split(",") if part.strip()]
+        try:
+            hours: list[int | dt.time] = [
+                dt.time(*_hour_and_minute(part)) for part in hour.split(",") if part.strip()
+            ]
+        except ValueError as error:
+            typer.secho(
+                f"--hour takes hours or times such as 9:30, comma separated; not {hour!r}.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2) from error
     else:
         hours = list(range(rules.assessment.start_time.hour, rules.assessment.end_time.hour + 1))
 
@@ -7861,7 +7925,8 @@ def shadow_plan_documents(
         str, typer.Option("--shadow-date", help="Days to draw, MM-DD, comma separated.")
     ] = DEFAULT_SHADOW_DATES,
     shadow_hour: Annotated[
-        str, typer.Option("--shadow-hour", help="Whole hours, comma separated.")
+        str,
+        typer.Option("--shadow-hour", help="Hours, or times such as 9:30, comma separated."),
     ] = DEFAULT_SHADOW_HOURS,
     layer_combination: Annotated[
         str,
@@ -8005,6 +8070,17 @@ def shadow_plan_documents(
     shadow_pen: Annotated[
         int | None, typer.Option("--shadow-pen", help="Pen the shadow fill is drawn in.")
     ] = None,
+    shadow_colour: Annotated[
+        str | None,
+        typer.Option(
+            "--shadow-colour",
+            help=(
+                "The colour the shadows are filled in, as #rrggbb or R,G,B, instead of "
+                "--shadow-pen. A 3D Document fills its shadows with a pen, so it is "
+                "drawn in the pen of the documents' pen set nearest that colour."
+            ),
+        ),
+    ] = None,
     shadow_background_pen: Annotated[
         int | None,
         typer.Option("--shadow-background-pen", help="The fill's background pen; 0 is none."),
@@ -8012,6 +8088,106 @@ def shadow_plan_documents(
     shadow_contours: Annotated[
         bool,
         typer.Option("--shadow-contours/--no-shadow-contours", help="Outline each shadow."),
+    ] = False,
+    scenario_filter: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--scenario-filter",
+            help=(
+                "LABEL=GUID: the renovation filter one legend row's documents are seen "
+                "under, for a row an office keeps as a renovation filter -- an envelope "
+                "modelled on the floor layer and shown under its own filter only. The "
+                "label is a --shadow-scenario or --shadow-source row's; the GUID is the "
+                "filter's, as a view that pins it reports it. Repeat per row. A row "
+                "without one is seen under --renovation-filter."
+            ),
+        ),
+    ] = None,
+    scenario_option: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--scenario-option",
+            help=(
+                "LABEL=COMBINATION: the Design Option Combination one legend row's "
+                "documents are seen under, by its name or guid -- Archicad 27's way of "
+                "keeping an option, as --scenario-filter is 26's. Repeat per row."
+            ),
+        ),
+    ] = None,
+    scenario_fill: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--scenario-fill",
+            help=(
+                "LABEL=FILL: with --flat, the fill type one legend row is drawn in "
+                "instead of the solid one, by the fill's name in the project -- a "
+                "hatch, so that envelopes whose legend colours are near one another "
+                "are told apart. Its lines are the colour of the row's dashed outline, "
+                "over the row's legend colour; the legend's swatch is hatched alike. "
+                "A scale-independent fill reads the same on the plans and in the "
+                "legend. A compared row none is named for is drawn in the project's "
+                "Dashed fill, where it has one; name Solid Fill for a row with no "
+                "hatch. The designed row, the last, is solid unless one is named. "
+                "Repeat per row."
+            ),
+        ),
+    ] = None,
+    every_hour: Annotated[
+        bool,
+        typer.Option(
+            "--every-hour",
+            help=(
+                "Also draw the designed row's own shadow at every hour on one plan: "
+                "Archicad's shadow, read out of documents that show the row alone, each "
+                "hour a dotted fill labelled with its hour at its tip, on the floor plan, "
+                "with its view and a sheet a day. The designed row is the last "
+                "--shadow-scenario."
+            ),
+        ),
+    ] = False,
+    every_hour_only: Annotated[
+        bool,
+        typer.Option(
+            "--every-hour-only",
+            help="Draw the every-hour drawing and no diagram: no sheet of hours.",
+        ),
+    ] = False,
+    every_hour_colour: Annotated[
+        str,
+        typer.Option("--every-hour-colour", help="The every-hour drawing's colour: red or blue."),
+    ] = "red",
+    every_hour_storey: Annotated[
+        int,
+        typer.Option(
+            "--every-hour-storey", help="The storey whose plan the every-hour drawing is on."
+        ),
+    ] = 0,
+    flat: Annotated[
+        bool,
+        typer.Option(
+            "--flat/--stacked",
+            help=(
+                "With legend rows: read the shadows out of the documents and draw them as "
+                "plain fills in a worksheet, so a sheet holds one drawing of that and one "
+                "document with no shadows in each cell, where --stacked lays every row's "
+                "document of an hour over the others. A row that might be built is outlined, "
+                "dashed, by its own whole shadow."
+            ),
+        ),
+    ] = False,
+    outline_falls: Annotated[
+        bool,
+        typer.Option(
+            "--outline-falls/--outline-ground",
+            help=(
+                "With --flat: what a row that might be built is outlined by. --outline-ground "
+                "is its whole shadow as it would lie on bare ground, which runs on across "
+                "roofs the sun is still on; --outline-falls is the shadow where it falls -- "
+                "stepped back to the shadow's edge on a neighbour's roof, the ground's edge "
+                "in the streets. Makes one more document, of what stands with no ground "
+                "under it, to tell a roof from a street."
+            ),
+        ),
     ] = False,
     scale: Annotated[
         float | None,
@@ -8161,6 +8337,13 @@ def shadow_plan_documents(
             )
         else:
             fill["fillIndex"] = index
+    if shadow_colour is not None:
+        if shadow_pen is not None:
+            typer.secho(
+                "Give --shadow-colour or --shadow-pen, not both.", fg=typer.colors.RED, err=True
+            )
+            raise typer.Exit(code=2)
+        shadow_pen = _pen_for_colour(connection, shadow_colour, pen_set)
     if shadow_pen is not None:
         fill["fillPen"] = shadow_pen
     if shadow_background_pen is not None:
@@ -8221,8 +8404,26 @@ def shadow_plan_documents(
             title_block_mm=title_block_mm,
             scale=scale,
             clock=clock,
+            flat=flat,
+            outline_falls=outline_falls,
+            filters=_row_filters(scenario_filter or [], legend),
+            options=_row_filters(
+                scenario_option or [], legend, flag="--scenario-option", what="COMBINATION"
+            ),
+            hatches=_row_filters(scenario_fill or [], legend, flag="--scenario-fill", what="FILL"),
+            every_hour=shadow_flat.EveryHour(
+                only=every_hour_only, colour=every_hour_colour, storey=every_hour_storey
+            )
+            if every_hour or every_hour_only
+            else None,
         )
         return
+    if every_hour or every_hour_only:
+        typer.secho(
+            "  --every-hour draws the designed row's shadow, and no legend row is named: "
+            "name the design with --shadow-scenario. Not drawn.",
+            fg=typer.colors.YELLOW,
+        )
     if wanted:
         pinned = ensure_layer_combination(
             connection,
@@ -8407,6 +8608,52 @@ def _legend_words(label: str) -> str:
     return label.upper()
 
 
+def parse_colour(text: str) -> tuple[int, int, int]:
+    """``#rrggbb``, ``#rgb`` or ``R,G,B`` as three 0-255 channels."""
+    given = text.strip()
+    if given.startswith("#"):
+        digits = given[1:]
+        if len(digits) == 3:
+            digits = "".join(c * 2 for c in digits)
+        if len(digits) == 6:
+            try:
+                return (int(digits[0:2], 16), int(digits[2:4], 16), int(digits[4:6], 16))
+            except ValueError:
+                pass
+    else:
+        parts = [part.strip() for part in given.split(",")]
+        if len(parts) == 3 and all(part.isdigit() and int(part) <= 255 for part in parts):
+            return (int(parts[0]), int(parts[1]), int(parts[2]))
+    raise typer.BadParameter(f"a colour is #rrggbb or R,G,B, not {text!r}")
+
+
+def _pen_for_colour(connection: ArchicadConnection, colour: str, pen_set: str | None) -> int:
+    """The pen of the documents' pen set nearest ``colour``, said in the log."""
+    rgb = parse_colour(colour)
+    source_guid, source_name = _pen_source(connection, pen_set)
+    try:
+        table = pen_table(connection, table=source_guid)
+    except ArchicadError as error:
+        typer.secho(
+            f"  could not read the pen set to match {colour} ({error})",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2) from error
+    # By look, not by straight RGB distance, which once put a navy on a green.
+    pen = closest_pen(table, rgb)
+    if pen is None:
+        typer.secho(
+            f"  {source_name!r} has no pens to match {colour}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=2)
+    typer.echo(
+        f"  shadows in pen {pen.index} of {source_name!r}, rgb{pen.rgb}: the nearest it has "
+        f"to rgb{rgb}"
+    )
+    return pen.index
+
+
 def _pen_source(connection: ArchicadConnection, pen_set: str | None) -> tuple[str, str]:
     """The pen table the stack's pen set is copied from: the one named, or the
     model's active one, which is what a document's drawing prints in. Its
@@ -8511,6 +8758,12 @@ def _stacked_shadow_plans(
     title_block_mm: float,
     scale: float | None,
     clock: Stopwatch,
+    flat: bool = False,
+    filters: Mapping[str, str] | None = None,
+    hatches: Mapping[str, str] | None = None,
+    every_hour: shadow_flat.EveryHour | None = None,
+    options: Mapping[str, str] | None = None,
+    outline_falls: bool = False,
 ) -> None:
     """The stacked mode of ``shadow-plans``: every legend row in one drawing.
 
@@ -8543,7 +8796,10 @@ def _stacked_shadow_plans(
     pen_index = legend_pen_set(connection, pen_set_name, source_guid, exact) if exact else None
     swatches: dict[str, tuple[int, int, int]] = {}
     for label, (pen, asked, own) in chosen.items():
-        printed = asked if (pen_index is not None and label not in given_pens) else (own or asked)
+        # Drawn flat, a row is a fill in the legend's own colour, whatever
+        # the pens are: only the stacked documents print through a pen.
+        exact_colour = pen_index is not None or flat
+        printed = asked if (exact_colour and label not in given_pens) else (own or asked)
         swatches[label] = printed
         how = "given" if label in given_pens else "matched"
         off = "" if own is None else f", the table's own {own}"
@@ -8569,9 +8825,48 @@ def _stacked_shadow_plans(
         off = ", ".join(repr(layer) for layer in hide) or "nothing"
         typer.echo(f"  {label}: views on {name!r}, which is {base!r} with {on} on and {off} off")
     members = [
-        PlanSet(label=row.label, layer_combination=combos[row.label], shadow_pen=pens[row.label])
+        PlanSet(
+            label=row.label,
+            layer_combination=combos[row.label],
+            shadow_pen=pens[row.label],
+            renovation_filter_guid=(filters or {}).get(row.label),
+        )
         for row in stack_order(legend)
     ]
+    try:
+        filters = _filter_guids(connection, filters or {})
+    except ArchicadError as error:
+        typer.secho(f"  {error}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    members = [
+        replace(member, renovation_filter_guid=filters.get(member.label)) for member in members
+    ]
+    for label, guid in filters.items():
+        typer.echo(f"  {label}: seen under the renovation filter {guid}")
+    try:
+        options = combination_guids(connection, options or {})
+    except ArchicadError as error:
+        typer.secho(f"  {error}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    members = [replace(member, design_option_guid=options.get(member.label)) for member in members]
+    for label, guid in options.items():
+        typer.echo(f"  {label}: seen under the Design Option Combination {guid}")
+    designed = next((row.label for row in reversed(legend) if row.role == SCENARIO), None)
+    if every_hour is not None and designed is None:
+        typer.secho(
+            "  --every-hour draws the designed row's own shadow, and no row here might be "
+            "built: name it with --shadow-scenario. Not drawn.",
+            fg=typer.colors.YELLOW,
+        )
+        if every_hour.only:
+            raise typer.Exit(code=2)
+        every_hour = None
+    only_hours = every_hour is not None and every_hour.only
+    if only_hours:
+        # The drawing is the designed row's alone: its set with what stands
+        # is still made, for the window and the documents' settings, and no
+        # other row's.
+        members = [member for member in members if member.label == designed]
     fitted, window, master_layout = _plan_fit(
         connection,
         plans,
@@ -8630,6 +8925,75 @@ def _stacked_shadow_plans(
                 "polyline",
                 fg=typer.colors.YELLOW,
             )
+    if only_hours and window is None:
+        typer.secho(
+            "  the every-hour drawing needs the window of the plan, which could not be "
+            "measured. Not drawn.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if layout and flat and window is None and not only_hours:
+        typer.secho(
+            "  --flat needs the window of the plan, which could not be measured; the "
+            "documents are stacked on the sheets instead",
+            fg=typer.colors.YELLOW,
+        )
+    if (only_hours or (layout and flat)) and window is not None:
+        _flat_shadow_plans(
+            connection,
+            plans,
+            stack=stack,
+            legend=legend,
+            pens=pens,
+            swatches=swatches,
+            settings=settings,
+            base=base,
+            also_show=also_show,
+            window=window,
+            scale=fitted,
+            sheets=sheets,
+            master_layout=master_layout,
+            subset=subset,
+            title_block_mm=title_block_mm,
+            rings=rings,
+            outline_pen=outline_pen,
+            clock=clock,
+            filters=filters or {},
+            hatches=hatches or {},
+            every_hour=every_hour,
+            options=options,
+            outline_falls=outline_falls,
+        )
+        typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
+        return
+    if every_hour is not None and window is not None:
+        # The documents stay stacked on their sheets, and the every-hour
+        # drawing is read out of the designed row's own beside them.
+        _flat_shadow_plans(
+            connection,
+            plans,
+            stack=stack,
+            legend=legend,
+            pens=pens,
+            swatches=swatches,
+            settings=settings,
+            base=base,
+            also_show=also_show,
+            window=window,
+            scale=fitted,
+            sheets=sheets,
+            master_layout=master_layout,
+            subset=subset,
+            title_block_mm=title_block_mm,
+            rings=rings,
+            outline_pen=outline_pen,
+            clock=clock,
+            filters=filters or {},
+            hatches={},
+            every_hour=replace(every_hour, only=True),
+            options=options,
+        )
     if layout:
         try:
             placed, removed, notes = make_stack_sheets(
@@ -8670,6 +9034,445 @@ def _stacked_shadow_plans(
         f"rows above it cast nothing."
     )
     typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
+
+
+_GUID = re.compile(r"^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$")
+
+
+def _filter_guids(connection: ArchicadConnection, filters: Mapping[str, str]) -> dict[str, str]:
+    """Each row's renovation filter as its GUID, whether it was given as one
+    or by the name the Renovation palette shows.
+
+    A name is looked up in the project (the add-on's ``GetRenovationFilters``),
+    so a preset can hold *LEP + 30%* and not a GUID that is another project's.
+    """
+    if all(_GUID.match(value) for value in filters.values()):
+        return dict(filters)
+    try:
+        answer = connection.run_loriini("GetRenovationFilters", {})
+    except ArchicadError as error:
+        raise ArchicadError(
+            "A renovation filter is named, and this add-on cannot list the project's "
+            f"filters to find it ({error}). Install the current add-on, or give the "
+            "filter's GUID."
+        ) from error
+    listed = [
+        (str(one.get("name", "")), str(one.get("guid", "")))
+        for one in (answer or {}).get("renovationFilters") or []
+        if isinstance(one, dict)
+    ]
+    by_name = {" ".join(name.split()).casefold(): guid for name, guid in listed}
+    found: dict[str, str] = {}
+    for label, value in filters.items():
+        if _GUID.match(value):
+            found[label] = value
+            continue
+        guid = by_name.get(" ".join(value.split()).casefold())
+        if not guid:
+            raise ArchicadError(
+                f"{label} is to be seen under the renovation filter {value!r}, and the "
+                f"project has none of that name. It has: "
+                f"{', '.join(name for name, _ in listed) or 'none'}."
+            )
+        found[label] = guid
+    return found
+
+
+def _row_filters(
+    given: Sequence[str],
+    legend: Sequence[LegendRow],
+    *,
+    flag: str = "--scenario-filter",
+    what: str = "GUID",
+) -> dict[str, str]:
+    """``--scenario-filter`` as the filter each legend row is seen under, by
+    the row's own spelling of its label; ``--scenario-fill`` likewise."""
+    rows = {" ".join(row.label.split()).casefold(): row.label for row in legend}
+    found: dict[str, str] = {}
+    for entry in given:
+        label, sep, guid = entry.rpartition("=")
+        key = " ".join(label.split()).casefold()
+        if not sep or not guid.strip() or key not in rows:
+            raise typer.BadParameter(
+                f"{flag} takes LABEL={what}, the label one of "
+                f"{', '.join(row.label for row in legend) or 'the legend rows'}. "
+                f"{entry!r} is not that."
+            )
+        found[rows[key]] = guid.strip()
+    return found
+
+
+def _every_hour_from_documents(
+    connection: ArchicadConnection,
+    plans: Sequence[ShadowPlan],
+    designed: str,
+    own: Mapping[tuple[str, dt.datetime], Any],
+    *,
+    every_hour: shadow_flat.EveryHour,
+    master_layout: str | None,
+    subset: str | None,
+    sheets: str,
+    clock: Stopwatch,
+) -> None:
+    """The every-hour drawing from the documents: the designed row's own
+    shadow at every hour, Archicad's, as dotted fills on the floor plan with
+    the hour at each tip, its view and a sheet a day.
+
+    The drawing the ``shadows`` command makes from Loriini's own cast, made
+    here from the shadows read out of the documents that show the row alone
+    -- so it agrees with the diagram's dashed outline, which is the same
+    shadow.
+    """
+    series = shadow_flat.every_hour_series(designed, plans, own)
+    ensure_model_database(connection)
+    drawn = draw_shadow_series(
+        connection,
+        series,
+        storey_index=every_hour.storey,
+        all_hours=designed,
+        only_all_hours=True,
+        all_hours_colour=every_hour.colour,
+    )
+    # The report's table is by source, and this series has none: the
+    # design's own area an hour is said instead.
+    for line in drawn.describe().splitlines():
+        if not line.rstrip().endswith(":  m2"):
+            typer.echo(line)
+    for instant in series.instants:
+        typer.echo(f"  {instant.label:>5}: {instant.areas_m2.get(designed, 0.0):,.0f} m2")
+    built = build_shadow_sheets(
+        connection,
+        series,
+        storey_index=every_hour.storey,
+        master_layout=master_layout,
+        subset=subset,
+        sheets=sheets,
+        all_hours=True,
+        only_all_hours=True,
+        all_hours_extents=dict(drawn.all_hours_extents),
+    )
+    typer.echo(built.describe())
+    typer.echo(clock.said(f"drew every hour of {designed} on the floor plan"))
+
+
+def _flat_shadow_plans(
+    connection: ArchicadConnection,
+    plans: Sequence[ShadowPlan],
+    *,
+    stack: Stack,
+    legend: Sequence[LegendRow],
+    pens: Mapping[str, int],
+    swatches: Mapping[str, tuple[int, int, int]],
+    settings: ShadowPlanSettings,
+    base: str,
+    also_show: Sequence[str],
+    window: PlanWindow,
+    scale: float,
+    sheets: str,
+    master_layout: str | None,
+    subset: str | None,
+    title_block_mm: float,
+    rings: Sequence[Sequence[tuple[float, float]]],
+    outline_pen: int | None,
+    clock: Stopwatch,
+    filters: Mapping[str, str],
+    hatches: Mapping[str, str],
+    every_hour: shadow_flat.EveryHour | None = None,
+    options: Mapping[str, str] | None = None,
+    outline_falls: bool = False,
+) -> None:
+    """The flat mode of the stacked shadow plans (``archicad.shadow_flat``).
+
+    The stack's documents are made already. Here each row that might be built
+    is given a second set that shows it without the buildings around it, for
+    its outline; one document is made with no shadows, for the linework; the
+    shadows are read out of every document on a working layout, an hour at a
+    time; and they are drawn as fills in a worksheet a day, which the sheets
+    then place under the linework.
+    """
+    every = [layer for row in legend for layer in row.layers]
+    standing = [layer for row in legend if row.role == BASELINE for layer in row.layers]
+    scenarios = [row for row in legend if row.role == SCENARIO]
+    only_hours = every_hour is not None and every_hour.only
+    designed = scenarios[-1].label if scenarios else ""
+    alone: dict[str, tuple[MadePlan, ...]] = {}
+    # Only what a cell of the sheet shows is read and drawn. The window is
+    # everything the combinations show, which on a project with half a
+    # kilometre of context each way is several times a cell at any scale
+    # worth drawing at; the rest would be clipped off by the cell's frame.
+    aspect = window.aspect
+    per_day = collections.Counter(plan.when.date() for plan in plans)
+    cells = max((cells_for(sheet_chunks(n, sheets)) for n in per_day.values()), default=1)
+    try:
+        master = choose_master(master_layouts(connection), master_layout)
+        cell = cell_size_mm(
+            connection,
+            master.identifier,
+            cells,
+            title_block_mm=title_block_mm + LEGEND_COLUMN_MM,
+            aspect=aspect,
+        )
+    except ArchicadError:
+        cell = None
+    if cell is not None:
+        window = shadow_flat.window_a_cell_shows(window, cell, scale)
+        typer.echo(
+            f"  a cell is {cell[0]:.0f} x {cell[1]:.0f} mm, so {window.width:.0f} x "
+            f"{window.height:.0f} m of the plan is read and drawn"
+        )
+    fresh = next(
+        (
+            one.effects
+            for _, made in stack.piles
+            for one in made
+            if not one.reused and one.effects is not None
+        ),
+        None,
+    )
+    try:
+        for row in scenarios[-1:] if only_hours else scenarios:
+            word = f"{row.label} {shadow_flat.ALONE_WORD}"
+            on = [*also_show, *row.layers]
+            shown = {layer.casefold() for layer in on}
+            combination = ensure_layer_combination(
+                connection,
+                naming.named(f"{PLANS_WORD} {word}"),
+                show=on,
+                hide=[layer for layer in every if layer.casefold() not in shown],
+                base=base,
+            )
+            fill = dict(settings.shadow_fill)
+            fill["fillPen"] = pens[row.label]
+            fill["backgroundPen"] = pens[row.label]
+            made, notes = make_shadow_plans(
+                connection,
+                plans,
+                settings=replace(
+                    settings,
+                    layer_combination=combination,
+                    shadow_fill=fill,
+                    fill_uncut_surfaces=None,
+                    uncut_surfaces=dict(STACK_SURFACES),
+                    renovation_filter_guid=filters.get(row.label)
+                    or settings.renovation_filter_guid,
+                    design_option_guid=(options or {}).get(row.label)
+                    or settings.design_option_guid,
+                ),
+                set_label=word,
+                fresh=fresh,
+            )
+            fresh = next(
+                (one.effects for one in made if not one.reused and one.effects is not None), fresh
+            )
+            for note in notes:
+                typer.secho(f"  {note}", fg=typer.colors.YELLOW)
+            alone[row.label] = tuple(made)
+            typer.echo(
+                f"  {row.label}: {len(made)} documents of it alone, on {combination!r}, for "
+                f"its dashed outline"
+            )
+        if only_hours and every_hour is not None:
+            mended, looked, _note = mend_document_filters(connection)
+            if mended:
+                typer.echo(f"  took the storey filter off {mended} of {looked} documents")
+            alone_rows = [
+                shadow_flat.FlatRow(
+                    label=designed,
+                    rgb=swatches[designed],
+                    shadow_pen=pens[designed],
+                    documents=(),
+                    alone=alone[designed],
+                )
+            ]
+            typer.echo("  reading the design's own shadow out of its documents:")
+            _whole, own_alone = shadow_flat.read_shadows(
+                connection,
+                alone_rows,
+                scale=scale,
+                window=window,
+                master_layout=master_layout,
+                say=typer.echo,
+            )
+            typer.echo(clock.said("read the shadows"))
+            _every_hour_from_documents(
+                connection,
+                plans,
+                designed,
+                own_alone,
+                every_hour=every_hour,
+                master_layout=master_layout,
+                subset=subset,
+                sheets=sheets,
+                clock=clock,
+            )
+            return
+        # The linework: what stands and the last row that might be built,
+        # which is the designed one, with no shadows.
+        last = scenarios[-1].layers if scenarios else ()
+        on = [*also_show, *standing, *last]
+        shown = {layer.casefold() for layer in on}
+        base_combination = ensure_layer_combination(
+            connection,
+            naming.named(f"{PLANS_WORD} {shadow_flat.BASE_LABEL}"),
+            show=on,
+            hide=[layer for layer in every if layer.casefold() not in shown],
+            base=base,
+        )
+        base_view = shadow_flat.make_base_document(
+            connection,
+            settings=replace(
+                settings, layer_combination=base_combination, shadow_fill={}, uncut_surfaces=None
+            ),
+        )
+        roofs_document: MadePlan | None = None
+        if outline_falls and scenarios and standing:
+            roofs_document = shadow_flat.make_roofs_document(
+                connection, plans[0], settings=settings, standing=standing, base=base
+            )
+            typer.echo(
+                "  a document of what stands with no ground under it, to tell a roof from a "
+                "street: the outlines follow the shadow where it falls"
+            )
+        mended, looked, _note = mend_document_filters(connection)
+        if mended:
+            typer.echo(f"  took the storey filter off {mended} of {looked} documents")
+        typer.echo(clock.said("made the outline documents and the base document"))
+
+        hatch_of: dict[str, int] = {}
+        solid_fill = attribute_index(connection, "Fill", shadow_flat.SOLID_FILLS)
+        for label, fill_name in hatches.items():
+            found = attribute_index(connection, "Fill", (fill_name,))
+            if found is None:
+                raise ArchicadError(
+                    f"--scenario-fill names the fill {fill_name!r} for {label}, and the "
+                    "project has no fill of that name."
+                )
+            if found == solid_fill:
+                # Named so the row has no hatch: left out, and not defaulted.
+                typer.echo(f"  {label}: drawn solid, as asked")
+                continue
+            hatch_of[label] = found
+            typer.echo(f"  {label}: drawn in the fill {fill_name!r}")
+        # A compared row no fill is named for is hatched all the same, in
+        # dashed lines the colour of its outline over its own blue: several
+        # envelopes in several pale blues are not told apart on paper. The
+        # designed row, the last, stays solid.
+        dashed_fill = attribute_index(connection, "Fill", shadow_flat.DEFAULT_HATCH)
+        for row in scenarios[:-1]:
+            if row.label in hatches or dashed_fill is None or dashed_fill == solid_fill:
+                continue
+            hatch_of[row.label] = dashed_fill
+            typer.echo(f"  {row.label}: drawn in the project's dashed fill, none being named")
+        rows = [
+            shadow_flat.FlatRow(
+                label=label,
+                rgb=swatches[label],
+                shadow_pen=pens[label],
+                documents=tuple(made),
+                alone=alone.get(label, ()),
+                hatch=hatch_of.get(label),
+            )
+            for label, made in stack.piles
+        ]
+        typer.echo("  reading the shadows out of the documents, an hour at a time:")
+        whole, own = shadow_flat.read_shadows(
+            connection,
+            rows,
+            scale=scale,
+            window=window,
+            master_layout=master_layout,
+            say=typer.echo,
+        )
+        roofs = (
+            shadow_flat.read_roofs(
+                connection,
+                roofs_document,
+                scale=scale,
+                window=window,
+                master_layout=master_layout,
+                say=typer.echo,
+            )
+            if outline_falls and scenarios
+            else None
+        )
+        typer.echo(clock.said("read the shadows"))
+
+        days: dict[str, list[dt.datetime]] = {}
+        for plan in plans:
+            days.setdefault(plan.when.strftime("%B %d").upper(), []).append(plan.when)
+        worksheets: dict[str, tuple[str, str]] = {}
+        fills = outlines = 0
+        lost = 0.0
+        for day, hours in days.items():
+            name = shadow_flat.worksheet_name(day)
+            item, drawn, lines, refused = shadow_flat.draw_flat_worksheet(
+                connection,
+                rows,
+                hours,
+                whole,
+                own,
+                name=name,
+                window=window,
+                say=typer.echo,
+                roofs=roofs,
+            )
+            worksheets[day] = (item, name)
+            fills += drawn
+            outlines += lines
+            lost += refused
+        typer.echo(clock.said("drew them as fills"))
+        if every_hour is not None:
+            _every_hour_from_documents(
+                connection,
+                plans,
+                designed,
+                own,
+                every_hour=every_hour,
+                master_layout=master_layout,
+                subset=subset,
+                sheets=sheets,
+                clock=clock,
+            )
+        placed, removed, notes = shadow_flat.make_flat_sheets(
+            connection,
+            stack.piles[0][1],
+            worksheets,
+            base_view,
+            sheets=sheets,
+            scale=scale,
+            window=window,
+            master_layout=master_layout,
+            title_block_mm=title_block_mm,
+            legend=[(_legend_words(row.label), swatches[row.label]) for row in legend],
+            rings=rings,
+            outline_pen=outline_pen,
+            aspect=aspect,
+            legend_outlines=[shadow_flat.outline_colours(rows).get(row.label) for row in legend],
+            legend_hatches=[hatch_of.get(row.label) for row in legend],
+        )
+    except ArchicadError as error:
+        typer.secho(f"  the flat diagram stopped: {error}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    report = shadow_flat.FlatReport(
+        worksheet=", ".join(name for _, name in worksheets.values()),
+        fills=fills,
+        outlines=outlines,
+        refused_m2=lost,
+        sheets=tuple(placed),
+        removed=tuple(removed),
+        notes=tuple(notes),
+    )
+    for name in removed:
+        typer.echo(f"  removed the earlier sheet {name!r}")
+    typer.echo(report.describe())
+    for note in notes:
+        typer.secho(f"  {note}", fg=typer.colors.YELLOW)
+    if subset:
+        filing = file_under_subset(
+            connection, [r.layout_name for r in placed], subset, flag="--subset"
+        )
+        typer.echo(filing.describe())
+    typer.echo(clock.said("placed them on sheets"))
 
 
 def _site_rings_of(
@@ -8854,7 +9657,7 @@ def site_analysis(
     title_block_mm: Annotated[
         float,
         typer.Option("--title-block-mm", help="Width of the master's title block, kept clear."),
-    ] = 100.0,
+    ] = TITLE_BLOCK_MM,
     model: Annotated[
         bool,
         typer.Option(
@@ -9576,6 +10379,30 @@ def area_yield(
             ),
         ),
     ] = "any",
+    renovation_filter_name: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--renovation-filter-name",
+            help=(
+                "Archicad 26's way of keeping a massing option: the slabs this renovation "
+                "filter shows, by its name or guid, are one option, named after the "
+                "filter -- a sheet and a workbook page. Repeat for each option. The floor "
+                "plan is shown each filter while its slabs are read, and put back after."
+            ),
+        ),
+    ] = None,
+    design_option: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--design-option",
+            help=(
+                "Archicad 27's way: the slabs this Design Option Combination shows -- the "
+                "main model and the options it has on -- are one option, named after the "
+                "combination. Repeat for each. Needs Archicad 29, the first that says "
+                "which slabs belong to which option."
+            ),
+        ),
+    ] = None,
     gfa_residential: Annotated[
         float, typer.Option("--gfa-residential", help="BEA to GFA, residential.")
     ] = 0.725,
@@ -9816,53 +10643,153 @@ def area_yield(
             err=True,
         )
         raise typer.Exit(code=2)
-    connection = _connect(port, timeout)
-    try:
-        reading = read_slabs(
-            connection,
-            renovation=renovation_filter,
-            shown_layers_only=not (residential or commercial or massing or options),
-            statuses=wanted_statuses[renovation_status],
+    if renovation_filter_name and design_option:
+        typer.secho(
+            "Give --renovation-filter-name or --design-option, not both: Archicad 26 keeps "
+            "options as renovation filters and 27 as Design Options.",
+            fg=typer.colors.RED,
+            err=True,
         )
+        raise typer.Exit(code=2)
+    scenarios = list(renovation_filter_name or []) or list(design_option or [])
+    if scenarios and options:
+        typer.secho(
+            "The options are layers (--option-layer) or renovation filters and design "
+            "options, not both.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    connection = _connect(port, timeout)
+    # The slabs each option is counted from: the option's name (None for the
+    # one --option names), what Archicad showed, what the log says of it, and
+    # how many a combination left out. Under renovation filters the floor plan
+    # shows each filter in turn and is read again; under combinations the
+    # slabs are read once and each combination keeps its own.
+    readings: list[tuple[str | None, SlabReading, str, int]] = []
+    put_back: str | None = None
+    statuses = wanted_statuses[renovation_status]
+    shown_only = not (residential or commercial or massing or options)
+    try:
+        if renovation_filter_name:
+            filters = renovation_filters(connection)
+            guids = [(given, renovation_filter_guid(given, filters)) for given in scenarios]
+            if filters.actual and any(
+                guid.casefold() != filters.actual.casefold() for _given, guid in guids
+            ):
+                put_back = filters.actual
+            for given, guid in guids:
+                named = show_renovation_filter(connection, guid) or given
+                got = read_slabs(
+                    connection, renovation=True, shown_layers_only=shown_only, statuses=statuses
+                )
+                readings.append(
+                    (named, got, f", only those the renovation filter {named!r} shows", 0)
+                )
+        elif design_option:
+            require_design_options(connection, "The Yield")
+            listed = combinations(connection)
+            chosen = [combination_named(given, listed) for given in scenarios]
+            whole = read_slabs(
+                connection,
+                renovation=renovation_filter,
+                shown_layers_only=shown_only,
+                statuses=statuses,
+            )
+            for one in chosen:
+                left = left_out_by(connection, one)
+                kept = tuple(slab for slab in whole.slabs if slab.guid.upper() not in left)
+                readings.append(
+                    (
+                        one.name,
+                        replace(whole, slabs=kept),
+                        f", only those the Design Option Combination {one.name!r} shows",
+                        len(whole.slabs) - len(kept),
+                    )
+                )
+        else:
+            got = read_slabs(
+                connection,
+                renovation=renovation_filter,
+                shown_layers_only=shown_only,
+                statuses=statuses,
+            )
+            readings.append(
+                (
+                    None,
+                    got,
+                    ", only those the renovation filter shows" if renovation_filter else "",
+                    0,
+                )
+            )
     except ArchicadError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
+    finally:
+        # The floor plan as it was got: the filter was the run's to borrow.
+        if put_back is not None:
+            try:
+                show_renovation_filter(connection, put_back)
+            except ArchicadError as error:
+                typer.secho(
+                    f"  the floor plan's renovation filter could not be put back: {error}",
+                    fg=typer.colors.YELLOW,
+                )
+    named_options = [name.casefold() for name, *_rest in readings if name is not None]
+    if len(set(named_options)) != len(named_options):
+        typer.secho(
+            "Two of the options are the same filter or combination; name each once.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    reading = readings[0][1]
 
     # The options this run makes: one per --option-layer, each a massing
-    # layer of its own with the use told by level; or the one option the
-    # other flags describe. The slabs are read once for all of them.
-    runs: list[tuple[str, list[str], list[str], list[str]]] = (
-        [(name, [], [], [layer]) for name, layer in options]
+    # layer of its own with the use told by level; one per renovation filter
+    # or combination, each counted from its own slabs on the layers named; or
+    # the one option the other flags describe.
+    runs: list[tuple[str, list[str], list[str], list[str], SlabReading]] = (
+        [(name, [], [], [layer], reading) for name, layer in options]
         if options
-        else [(option, residential, commercial, massing)]
+        else [
+            (str(name), residential, commercial, massing, got)
+            for name, got, _said, _dropped in readings
+        ]
+        if scenarios
+        else [(option, residential, commercial, massing, reading)]
     )
-    everything = not (residential or commercial or massing or options)
+    everything = shown_only
     status_words = {"new": "new", "existing-and-new": "existing or new"}
-    typer.echo(
-        f"read {_slabs(len(reading.slabs))}"
-        + (", only those the renovation filter shows" if renovation_filter else "")
-        + (
-            f", only the {status_words[renovation_status]} ones"
-            if renovation_status in status_words
-            else ""
+    for name, got, shown_under, dropped in readings:
+        typer.echo(
+            ("" if name is None else f"{name}: ")
+            + f"read {_slabs(len(got.slabs))}"
+            + shown_under
+            + (
+                f", only the {status_words[renovation_status]} ones"
+                if renovation_status in status_words
+                else ""
+            )
+            + (", on the layers showing" if everything else "")
         )
-        + (", on the layers showing" if everything else "")
-    )
-    for status, count in sorted(reading.by_status.items()):
-        typer.echo(f"  {_slabs(count)} left out as {status}")
-    for said, count in sorted(reading.unknown_status.items()):
-        typer.secho(
-            f"  {_slabs(count)} with a renovation status of {said!r}, which is none of "
-            "Existing, New or To Be Demolished, left out",
-            fg=typer.colors.YELLOW,
-        )
-    if reading.own:
-        typer.echo(f"  {reading.own} of Loriini's own context slabs left out")
-    if reading.unreadable:
-        typer.secho(
-            f"  {len(reading.unreadable)} slabs Archicad would not describe were left out",
-            fg=typer.colors.YELLOW,
-        )
+        for status, count in sorted(got.by_status.items()):
+            typer.echo(f"  {_slabs(count)} left out as {status}")
+        if dropped:
+            typer.echo(f"  {_slabs(dropped)} left out, in design options the combination has off")
+        for said, count in sorted(got.unknown_status.items()):
+            typer.secho(
+                f"  {_slabs(count)} with a renovation status of {said!r}, which is none of "
+                "Existing, New or To Be Demolished, left out",
+                fg=typer.colors.YELLOW,
+            )
+        if got.own:
+            typer.echo(f"  {got.own} of Loriini's own context slabs left out")
+        if got.unreadable:
+            typer.secho(
+                f"  {len(got.unreadable)} slabs Archicad would not describe were left out",
+                fg=typer.colors.YELLOW,
+            )
     if everything:
         typer.secho(
             "  No layer named: every slab showing is counted as massing, residential unless "
@@ -9874,22 +10801,34 @@ def area_yield(
 
     # Every option stands in one grid of levels: a tower option with no ground
     # floor of its own still starts above the podium option's ground.
-    option_layers = {" ".join(layer.split()).casefold() for _name, layer in options}
-    grid = [
-        slab.bottom_m
-        for slab in reading.slabs
-        if " ".join(slab.layer.split()).casefold() in option_layers
-    ]
+    def tidy(layer: str) -> str:
+        return " ".join(layer.split()).casefold()
+
+    gridded = (
+        {tidy(layer) for _name, layer in options}
+        if options
+        else {tidy(layer) for layer in (*residential, *commercial, *massing)}
+        if len(runs) > 1
+        else set()
+    )
+    grid = sorted(
+        {
+            slab.bottom_m
+            for *_layers, got in runs
+            for slab in got.slabs
+            if tidy(slab.layer) in gridded or (len(runs) > 1 and not gridded)
+        }
+    )
     results: list[tuple[Feasibility, list[str]]] = []
-    for name, res_layers, com_layers, mass_layers in runs:
+    for name, res_layers, com_layers, mass_layers, run_reading in runs:
         try:
             assignment = floors_from(
-                reading.slabs,
+                run_reading.slabs,
                 res_layers,
                 com_layers,
                 mass_layers,
                 commercial_levels=commercial_levels,
-                ground_m=reading.ground_m,
+                ground_m=run_reading.ground_m,
                 others_m=grid,
             )
         except ValueError as error:
@@ -9919,7 +10858,12 @@ def area_yield(
         counted = sum(count for _use, count, _area in assignment.by_layer.values())
         source = [
             f"BEA : {_slabs(counted)}, measured to their edges"
-            + (", as the renovation filter shows them" if renovation_filter else "")
+            + (
+                f", as {'the renovation filter' if renovation_filter_name else 'the combination'}"
+                f" {name!r} shows them"
+                if scenarios
+                else (", as the renovation filter shows them" if renovation_filter else "")
+            )
             + (
                 f", the {status_words[renovation_status]} ones only"
                 if renovation_status in status_words
@@ -9938,7 +10882,7 @@ def area_yield(
                 affordable=affordable,
                 affordable_share=affordable_share / 100.0,
                 parking=rates,
-                ground_m=reading.ground_m,
+                ground_m=run_reading.ground_m,
                 source=source,
                 others_m=grid,
             )
@@ -10001,6 +10945,533 @@ def area_yield(
                 typer.secho(str(error), fg=typer.colors.RED, err=True)
                 raise typer.Exit(code=2) from error
             typer.echo(report.describe())
+
+
+@app.command("ifc-export")
+def ifc_export(
+    port: Annotated[int, typer.Option("--port", help="Which Archicad to talk to.")] = DEFAULT_PORT,
+    timeout: Annotated[
+        float, typer.Option("--timeout", help="Seconds to wait for one Archicad command.")
+    ] = DEFAULT_TIMEOUT_SECONDS,
+    prefix: Annotated[
+        str,
+        typer.Option(
+            "--prefix",
+            help="What the three property groups are named from: QA_ makes QA_UNIT, "
+            "QA_AREA and QA_PARKING.",
+        ),
+    ] = "QA_",
+    apartment_layer: Annotated[
+        list[str] | None,
+        typer.Option("--apartment-layer", help="A layer whose zones are apartments. Repeat."),
+    ] = None,
+    balcony_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--balcony-layer",
+            help="A layer whose zones are balconies and terraces: each is the private open "
+            "space of the apartment it touches. Repeat.",
+        ),
+    ] = None,
+    area_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--area-layer",
+            help="LAYER=AREA TYPE: the zones on a layer are communal open space, deep soil, "
+            "GFA, non-GFA, retail, plant or circulation. Repeat.",
+        ),
+    ] = None,
+    parking_layer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--parking-layer",
+            help="LAYER=SPACE TYPE: each zone on a layer is one parking space of that type "
+            "(resident, visitor, accessible, ...). Repeat.",
+        ),
+    ] = None,
+    from_storey: Annotated[
+        str | None,
+        typer.Option("--from-storey", help="The lowest storey counted, by name: GROUND."),
+    ] = None,
+    to_storey: Annotated[
+        str | None,
+        typer.Option(
+            "--to-storey",
+            help="The highest storey counted, by name. Zones on storeys outside the two -- "
+            "unit-type plans kept above the roof -- are left out.",
+        ),
+    ] = None,
+    copy: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--copy",
+            help="FIELD=GROUP/PROPERTY: fill a unit field from a property the project "
+            "already has, as 'Bedrooms=Apartments/Beds'. Y and N are read as Yes and No, "
+            "'2 BED' as 2B. Repeat.",
+        ),
+    ] = None,
+    unit_no: Annotated[
+        str,
+        typer.Option("--unit-no", help="Where Unit No comes from when not copied: name or number."),
+    ] = "name",
+    solar: Annotated[
+        bool,
+        typer.Option(
+            "--solar/--no-solar",
+            help="Take Solar 2h and No sun from Loriini's own solar study written on the "
+            "zones, over any copy.",
+        ),
+    ] = True,
+    setup: Annotated[
+        bool, typer.Option("--setup/--no-setup", help="Make the three groups where missing.")
+    ] = True,
+    fill: Annotated[bool, typer.Option("--fill/--no-fill", help="Write the values.")] = True,
+    xlsx: Annotated[
+        bool, typer.Option("--xlsx/--no-xlsx", help="Write QA_Units, QA_Areas, QA_Parking.")
+    ] = True,
+    own_ifc: Annotated[
+        bool,
+        typer.Option(
+            "--own-ifc/--no-own-ifc",
+            help="Write Loriini's own IFC of the zones as spaces with the QA property sets.",
+        ),
+    ] = True,
+    translator: Annotated[
+        str | None,
+        typer.Option(
+            "--translator",
+            help="Also export the whole model through Archicad's IFC export translator of "
+            "this name, set up once by hand.",
+        ),
+    ] = None,
+    out: Annotated[
+        Path | None, typer.Option("--out", help="The folder the files are written to.")
+    ] = None,
+    name: Annotated[
+        str | None,
+        typer.Option("--name", help="What the IFC is named from: 1234 gives 1234_QA_<yymmdd>.ifc."),
+    ] = None,
+) -> None:
+    """The IFC export (D184): the per-apartment data a QA council schedules from.
+
+    Makes the three property groups, fills them from the zones, the project's
+    own properties and Loriini's solar study, writes the QA spreadsheets, and
+    exports the IFC two ways -- Loriini's own, of the zones as spaces, and
+    Archicad's through a named translator -- checking each.
+    """
+    from sun_study.archicad import qa_export as qa
+    from sun_study.archicad import qa_workbook
+    from sun_study.archicad.connection import project_name
+    from sun_study.archicad.qa_ifc import check_ifc, write_qa_ifc
+    from sun_study.archicad.read import classification_items_of
+    from sun_study.archicad.read import zones as read_zones
+    from sun_study.archicad.write import existing_properties
+
+    try:
+        groups = qa.group_names(prefix)
+        areas_by_layer = dict(
+            _layer_kind(text, qa.AREA_TYPES, "--area-layer") for text in area_layer or []
+        )
+        parking_by_layer = dict(
+            _layer_kind(text, qa.SPACE_TYPES, "--parking-layer") for text in parking_layer or []
+        )
+        copies = dict(_copy_of(text) for text in copy or [])
+    except ValueError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    if not apartment_layer:
+        typer.secho(
+            "Name the apartments' layer with --apartment-layer.", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=2)
+    if unit_no not in ("name", "number"):
+        typer.secho("--unit-no is name or number.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2)
+
+    connection = _connect(port, timeout)
+    try:
+        ensure_model_database(connection)
+        project = project_name(connection.run_tapir("GetProjectInfo", {}) or {}) or "Project"
+        stem = (name or project.replace(" ", "_").split("_")[0] or "Project").strip()
+        folder = (out or Path.cwd() / "QA").expanduser().resolve()
+        storeys = qa.read_storeys(connection)
+        within = storeys.between(from_storey, to_storey)
+        every = read_zones(connection)
+
+        def on(layers: list[str]) -> list[qa.QaZone]:
+            return qa.zones_on(connection, layers, storeys=storeys, within=within, every=every)
+
+        apartments, doubled = qa.drop_doubles(on(apartment_layer))
+        balconies, twice = qa.drop_doubles(on(balcony_layer or []))
+        doubled += twice
+        area_zones = []
+        for layer, kind in areas_by_layer.items():
+            kept_zones, twice = qa.drop_doubles(on([layer]))
+            doubled += twice
+            area_zones += [(zone, kind) for zone in kept_zones]
+        spaces = []
+        for layer, kind in parking_by_layer.items():
+            kept_zones, twice = qa.drop_doubles(on([layer]))
+            doubled += twice
+            spaces += [(zone, kind) for zone in kept_zones]
+        typer.echo(
+            f"{project}: {len(apartments)} apartments, {len(balconies)} balconies, "
+            f"{len(area_zones)} area zones, {len(spaces)} parking spaces"
+            + (f", storeys {from_storey or 'lowest'} to {to_storey or 'highest'}" if within else "")
+        )
+        if doubled:
+            typer.secho(
+                f"  {len(doubled)} zones lie over another on their layer and storey and are "
+                "counted once: "
+                + ", ".join(f"{zone.name or zone.number} ({zone.storey})" for zone in doubled[:6]),
+                fg=typer.colors.YELLOW,
+            )
+        if not apartments:
+            typer.secho(
+                "  No zone on the apartment layers"
+                + (" on those storeys" if within else "")
+                + ". Check the layer's name.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+        paths = qa.property_paths(connection)
+        unknown = [
+            path for path in copies.values() if path not in paths and path not in qa.ZONE_SOURCES
+        ]
+        if unknown:
+            typer.secho(
+                "  The project has no property "
+                + ", ".join(repr(path) for path in unknown)
+                + ". Name it as Group/Property, as Property Manager shows it.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        guids = [zone.guid for zone in apartments]
+        copied = qa.read_values(
+            connection, guids, [paths[path] for path in copies.values() if path in paths]
+        )
+        measured: dict[str, dict[str, str | None]] = {}
+        if solar:
+            own = existing_properties(connection)
+            wanted = [
+                own[key]
+                for key in ("Meets Minimum", "No Direct Sunlight", "Solar Analysis Run")
+                if key in own
+            ]
+            if wanted:
+                read = qa.read_values(connection, guids, wanted)
+                names_of = {ident: key for key, ident in own.items()}
+                measured = {
+                    guid: {names_of[ident]: text for ident, text in row.items()}
+                    for guid, row in read.items()
+                    if any(text for text in row.values())
+                }
+            # What the zones could not hold -- a hotlinked apartment's -- from
+            # the verdicts the solar study kept inside the project (D185).
+            from sun_study.archicad.write import stored_assessment
+
+            kept_run, kept = stored_assessment(connection)
+            lacking = [zone for zone in apartments if zone.guid not in measured]
+            if kept and lacking:
+                recovered = qa.from_store(lacking, kept)
+                for guid, verdict in recovered.items():
+                    measured[guid] = {**verdict, "Solar Analysis Run": kept_run or "kept"}
+                typer.echo(
+                    f"  solar study kept in the project ({kept_run}): "
+                    f"{len(recovered)} more apartments from it"
+                )
+            runs = collections.Counter(
+                str(row.get("Solar Analysis Run") or "undated") for row in measured.values()
+            )
+            if measured:
+                typer.echo(
+                    "  solar study written "
+                    + ", ".join(f"{when} ({count})" for when, count in runs.most_common(3))
+                    + f"; {len(apartments) - len(measured)} apartments have none and are copied"
+                )
+            typer.echo(
+                f"  solar study: {len(measured)} apartments measured"
+                if measured
+                else "  solar study: none written on these zones; Solar 2h and No sun are copied"
+            )
+        open_space, alone = qa.pair_balconies(apartments, balconies)
+        if balconies:
+            typer.echo(
+                f"  private open space: {len(balconies) - alone} balconies given to "
+                f"{len(open_space)} apartments" + (f", {alone} touching none" if alone else "")
+            )
+        rows = qa.unit_rows(
+            apartments,
+            copied=copied,
+            copies=copies,
+            paths=paths,
+            open_space=open_space,
+            solar=measured,
+            unit_no=unit_no,
+        )
+        filled = collections.Counter(key for row in rows for key in row.values)
+        for spec in qa.UNIT_FIELDS:
+            count = filled.get(spec.name, 0)
+            typer.echo(f"    {spec.name:<22} {count} of {len(rows)}")
+        unread = [line for row in rows for line in row.unread]
+        if unread:
+            typer.secho(
+                f"  {len(unread)} values could not be read as the field's, left blank, e.g. "
+                + "; ".join(unread[:4]),
+                fg=typer.colors.YELLOW,
+            )
+
+        identifiers: dict[tuple[str, str], str] = {}
+        if setup:
+            items = classification_items_of(
+                connection,
+                [
+                    zone.guid
+                    for zone in (
+                        *apartments,
+                        *(z for z, _k in area_zones),
+                        *(z for z, _k in spaces),
+                    )
+                ],
+            )
+
+            def classes(members: list[qa.QaZone]) -> list[str]:
+                return sorted({item for zone in members for item in items.get(zone.guid, set())})
+
+            identifiers, said = qa.ensure_groups(
+                connection,
+                prefix,
+                {
+                    "UNIT": classes(apartments),
+                    "AREA": classes([zone for zone, _kind in area_zones]),
+                    "PARKING": classes([zone for zone, _kind in spaces]),
+                },
+            )
+            for line in said:
+                typer.echo(f"  {line}")
+        else:
+            identifiers = {
+                (suffix, spec.name): ident
+                for suffix, fields in qa.GROUPS.items()
+                for spec in fields
+                if (ident := qa.find_field(paths, groups[suffix], spec.name)) is not None
+            }
+        if fill:
+            values: dict[str, dict[str, object]] = {}
+            for row in rows:
+                for key, value in row.values.items():
+                    ident = identifiers.get(("UNIT", key))
+                    if ident is not None:
+                        values.setdefault(row.zone.guid, {})[ident] = value
+            for zone, kind in area_zones:
+                ident = identifiers.get(("AREA", "Area Type"))
+                if ident is not None:
+                    values.setdefault(zone.guid, {})[ident] = kind
+            for zone, kind in spaces:
+                ident = identifiers.get(("PARKING", "Space Type"))
+                if ident is not None:
+                    values.setdefault(zone.guid, {})[ident] = kind
+            # An option set the office made itself may say Y and N, not Yes
+            # and No: each value is written as one of its own options.
+            from sun_study.archicad.write import enum_values
+
+            enums = {
+                ident: options
+                for ident, options in enum_values(
+                    connection,
+                    sorted({ident for cells in values.values() for ident in cells}),
+                ).items()
+                if options
+            }
+            unfitted = 0
+            for cells in values.values():
+                for ident in list(cells):
+                    if ident in enums:
+                        fitted = qa.fit_option(cells[ident], enums[ident])
+                        if fitted is None:
+                            unfitted += 1
+                            del cells[ident]
+                        else:
+                            cells[ident] = fitted
+            if unfitted:
+                typer.secho(
+                    f"  {unfitted} values fit none of their option set's options; left out",
+                    fg=typer.colors.YELLOW,
+                )
+            landed, refused = qa.write_values(connection, values)
+            typer.echo(f"  wrote {landed} values on {len(values)} zones")
+            if refused:
+                _say_refusals(connection, refused)
+
+        # ADG 4B's first nine storeys are the building's, whether or not each
+        # holds an apartment: nine storeys up from the lowest counted, which
+        # is --from-storey when one is given.
+        ladder = sorted(storeys.levels, key=lambda index: storeys.levels[index])
+        if from_storey:
+            foot = min(
+                storeys.between(from_storey, from_storey) or {ladder[0]},
+                key=lambda index: storeys.levels[index],
+            )
+        else:
+            foot = min(
+                (zone.storey_index for zone in apartments if zone.storey_index is not None),
+                key=lambda index: storeys.levels.get(index, 0.0),
+            )
+        order = ladder[ladder.index(foot) :] if foot in ladder else ladder
+        typer.echo(
+            "  first nine storeys, for cross ventilation: "
+            f"{storeys.names.get(order[0]) or order[0]} to "
+            f"{storeys.names.get(order[:9][-1]) or order[:9][-1]}"
+            + ("" if from_storey else "; name the ground with --from-storey if that is not it")
+        )
+        totals = qa.summary(rows, area_zones, spaces, first_nine=set(order[:9]))
+        today = dt.date.today()
+        source = f"{project}, read from the model on {today:%d %B %Y} by Loriini"
+        folder.mkdir(parents=True, exist_ok=True)
+        if xlsx:
+            for path in (
+                qa_workbook.write_units(folder, rows),
+                qa_workbook.write_areas(
+                    folder, area_zones, _one_field(connection, area_zones, identifiers, "AREA")
+                ),
+                qa_workbook.write_parking(
+                    folder, spaces, _one_field(connection, spaces, identifiers, "PARKING")
+                ),
+                qa_workbook.write_summary(folder, totals, source=source),
+            ):
+                typer.echo(f"  wrote {path}")
+        for what, figure, against in totals.lines:
+            typer.echo(f"    {what:<34} {figure:<22} {against}")
+
+        unit_fields = [spec.name for spec in qa.UNIT_FIELDS]
+        checked = []
+        if own_ifc:
+            ifc_path = folder / f"{stem}_QA_{today:%y%m%d}_spaces.ifc"
+            write_qa_ifc(
+                ifc_path,
+                project=project,
+                storeys=storeys,
+                spaces=[
+                    *((row.zone, groups["UNIT"], row.values) for row in rows),
+                    *((zone, groups["AREA"], {"Area Type": kind}) for zone, kind in area_zones),
+                    *((zone, groups["PARKING"], {"Space Type": kind}) for zone, kind in spaces),
+                ],
+            )
+            typer.echo(f"  wrote {ifc_path}")
+            checked.append(ifc_path)
+        if translator:
+            ifc_path = folder / f"{stem}_QA_{today:%y%m%d}.ifc"
+            try:
+                connection.run_loriini(
+                    "ExportIfc", {"path": str(ifc_path), "translator": translator}
+                )
+            except ArchicadError as error:
+                typer.secho(
+                    f"  the Archicad export through {translator!r} failed: {error}. Import the "
+                    "QA translator (File > Interoperability > IFC > IFC Translators > Import) "
+                    "or check its name.",
+                    fg=typer.colors.YELLOW,
+                )
+            else:
+                typer.echo(f"  wrote {ifc_path} through {translator!r}")
+                checked.append(ifc_path)
+        for path in checked:
+            report = check_ifc(path, list(groups.values()), groups["UNIT"], unit_fields)
+            for line in report.lines():
+                typer.echo(f"  {line}")
+    except ArchicadError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+
+
+def _one_field(
+    connection: ArchicadConnection,
+    members: Sequence[tuple[Any, str]],
+    identifiers: Mapping[tuple[str, str], str],
+    suffix: str,
+) -> dict[str, str | None]:
+    """The second field of the area or parking group -- the one a person
+    fills -- as it stands on each zone, for the spreadsheet."""
+    from sun_study.archicad import qa_export as qa
+
+    ident = identifiers.get((suffix, qa.GROUPS[suffix][1].name))
+    if ident is None or not members:
+        return {}
+    read = qa.read_values(connection, [zone.guid for zone, _kind in members], [ident])
+    return {guid: row.get(ident) for guid, row in read.items()}
+
+
+def _say_refusals(connection: ArchicadConnection, refused: Sequence[str]) -> None:
+    """Why zones refused their values, in a line or two: most often they are
+    in a hotlinked module, whose own file is where they are written."""
+    from urllib.parse import unquote
+
+    from sun_study.archicad.write import diagnose_write_access
+
+    zones_refused = sorted({line.partition(":")[0] for line in refused})
+    typer.secho(
+        f"  {len(refused)} values refused on {len(zones_refused)} zones", fg=typer.colors.YELLOW
+    )
+    try:
+        diagnosis = diagnose_write_access(connection, zones_refused)
+    except ArchicadError:
+        diagnosis = None
+    if diagnosis is None:
+        return
+    if diagnosis.hotlink_sources:
+        modules = sorted(
+            {
+                unquote(unquote(source)).rstrip("/").split("/")[-1]
+                for source in diagnosis.hotlink_sources
+            }
+        )
+        typer.secho(
+            "  they are in hotlinked modules, which the host file cannot change: write "
+            "them in the module's own file -- "
+            + ", ".join(modules[:3])
+            + ". The spreadsheets and Loriini's own IFC include them all the same.",
+            fg=typer.colors.YELLOW,
+        )
+    if diagnosis.locked_layers:
+        typer.secho(
+            "  on locked layers: " + ", ".join(diagnosis.locked_layers), fg=typer.colors.YELLOW
+        )
+
+
+def _layer_kind(text: str, kinds: Sequence[str], flag: str) -> tuple[str, str]:
+    """``LAYER=KIND`` as the layer and the kind as the brief spells it."""
+    layer, sep, kind = text.rpartition("=")
+    match = next((one for one in kinds if one.casefold() == kind.strip().casefold()), None)
+    if not sep or not layer.strip() or match is None:
+        raise ValueError(
+            f"{flag} takes LAYER=KIND, the kind one of {', '.join(kinds)}; not {text!r}."
+        )
+    return layer.strip(), match
+
+
+def _copy_of(text: str) -> tuple[str, str]:
+    """``FIELD=GROUP/PROPERTY`` as the unit field and the property's path."""
+    from sun_study.archicad.qa_export import UNIT_FIELDS
+
+    field_name, sep, path = text.partition("=")
+    match = next(
+        (
+            spec.name
+            for spec in UNIT_FIELDS
+            if spec.name.casefold() == field_name.strip().casefold()
+        ),
+        None,
+    )
+    if not sep or match is None or "/" not in path:
+        raise ValueError(
+            f"--copy takes FIELD=GROUP/PROPERTY, the field one of "
+            f"{', '.join(spec.name for spec in UNIT_FIELDS)}; not {text!r}."
+        )
+    group, _slash, prop = path.partition("/")
+    return match, f"{group.strip()}/{prop.strip()}"
 
 
 def option_from_layer(text: str) -> tuple[str, str]:

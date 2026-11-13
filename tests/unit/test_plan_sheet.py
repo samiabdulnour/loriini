@@ -264,3 +264,22 @@ def test_the_sheets_fills_and_texts_go_to_the_top_level() -> None:
         {"elementId": {"guid": "Hatch-1"}, "details": {"drawIndex": 14}},
         {"elementId": {"guid": "Text-1"}, "details": {"drawIndex": 14}},
     ]
+
+
+def test_drawings_already_on_top_are_not_brought_forward_again() -> None:
+    from sun_study.archicad.connection import ArchicadError
+    from sun_study.archicad.plan_sheet import TOP_LEVEL, all_on_top
+
+    class Reads:
+        def __init__(self, levels: list[int] | None) -> None:
+            self.levels = levels
+
+        def run_tapir(self, command: str, parameters: dict[str, object]) -> dict[str, object]:
+            assert command == "GetDetailsOfElements"
+            if self.levels is None:
+                raise ArchicadError("no answer")
+            return {"detailsOfElements": [{"drawIndex": level} for level in self.levels]}
+
+    assert all_on_top(Reads([TOP_LEVEL, TOP_LEVEL]), ["a", "b"])  # type: ignore[arg-type]
+    assert not all_on_top(Reads([TOP_LEVEL, 6]), ["a", "b"])  # type: ignore[arg-type]
+    assert not all_on_top(Reads(None), ["a"])  # type: ignore[arg-type]

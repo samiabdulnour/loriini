@@ -2,17 +2,31 @@ name: Licence database backup
 
 # A nightly copy of the licence service's database (docs/licence-service.md,
 # "Backups"): the SQLite file itself, fetched through the service's own
-# backup request with the admin token, kept as an artifact for ninety days.
-# Fly's daily volume snapshots are kept for five; this is the longer memory,
-# and the one that survives the volume.
+# backup request with the admin token, encrypted, and kept as an artifact for
+# ninety days. Fly's daily volume snapshots are kept for five; this is the
+# longer memory, and the one that survives the volume.
 #
-# Needs one repository secret, LORIINI_ADMIN_TOKEN: the same token the
-# vendor's scripts/licence.py commands carry. Run workflow on the Actions
-# tab takes a copy now.
+# The repository is public, and so are its artifacts: anyone signed in to
+# GitHub can download one. The database holds every licence holder's email
+# and name, so the copy is encrypted with age (https://age-encryption.org) to
+# the vendor's own public key before it is uploaded, and only the matching
+# private key, which is never on GitHub, opens it. The plain file never leaves
+# the runner. See D179.
+#
+# Needs one repository secret and one repository variable:
+#   - LORIINI_ADMIN_TOKEN (secret): the same token the vendor's
+#     scripts/licence.py commands carry.
+#   - LORIINI_BACKUP_RECIPIENTS (variable): the age public key the copy is
+#     encrypted to, `age1...`, one per line for more than one person. Without
+#     it the job stops before the database is fetched.
+# Run workflow on the Actions tab takes a copy now.
 on:
   schedule:
     - cron: "17 16 * * *"   # 16:17 UTC daily: early morning in Sydney, evening in Prague
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   backup:
@@ -20,32 +34,67 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Before anything is fetched, so a missing key can never mean a plain
+      # copy: no recipients, no database.
+      - name: Check the backup can be encrypted
+        env:
+          LORIINI_BACKUP_RECIPIENTS: ${{ vars.LORIINI_BACKUP_RECIPIENTS }}
+        run: |
+          if [ -z "$LORIINI_BACKUP_RECIPIENTS" ]; then
+            echo "::error::The LORIINI_BACKUP_RECIPIENTS repository variable is not set: no age public key to encrypt the backup to."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
+      - name: Install age
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          age --version
+
       - name: Install runtime dependencies only
         run: uv sync --no-dev
 
-      - name: Fetch the database
+      - name: Fetch and encrypt the database
         env:
           LORIINI_ADMIN_TOKEN: ${{ secrets.LORIINI_ADMIN_TOKEN }}
+          LORIINI_BACKUP_RECIPIENTS: ${{ vars.LORIINI_BACKUP_RECIPIENTS }}
         run: |
-          set -u
+          set -euo pipefail
           if [ -z "$LORIINI_ADMIN_TOKEN" ]; then
             echo "::error::The LORIINI_ADMIN_TOKEN repository secret is not set."
             exit 1
           fi
           day=$(date -u +%Y-%m-%d)
+          recipients="$RUNNER_TEMP/recipients.txt"
+          plain="$RUNNER_TEMP/licences-$day.sqlite3"
+          sealed="backup/licences-$day.sqlite3.age"
+
+          printf '%s\n' "$LORIINI_BACKUP_RECIPIENTS" > "$recipients"
+          # The plain copy is fetched outside backup/, the folder uploaded,
+          # so nothing but the encrypted file is ever in it.
           uv run --no-dev python scripts/licence.py backup \
-            --service https://licence.loriini.app --out "backup/licences-$day.sqlite3"
+            --service https://licence.loriini.app --out "$plain"
+          mkdir -p backup
+          age --encrypt --recipients-file "$recipients" --output "$sealed" "$plain"
+          rm -f "$plain"
+
+          # An age file starts with its own header; anything else is not one.
+          if [ "$(head -c 21 "$sealed")" != "age-encryption.org/v1" ]; then
+            echo "::error::$sealed is not an age file; nothing is uploaded."
+            rm -f "$sealed"
+            exit 1
+          fi
           ls -l backup/
 
       - name: Keep it
         uses: actions/upload-artifact@v4
         with:
-          name: licences-${{ github.run_number }}
-          path: backup/
+          name: licences-encrypted-${{ github.run_number }}
+          path: backup/*.age
           retention-days: 90
           if-no-files-found: error

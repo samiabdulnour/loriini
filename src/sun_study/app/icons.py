@@ -340,7 +340,6 @@ BY_STUDY: dict[str, str] = {
 BY_LABEL: dict[str, str] = {
     # General -- the project's own setup
     "Master layout": "general",
-    "Title block width (mm)": "title_block_width",
     "Sheets": "sheets",
     "Layer prefix — solar analysis": "prefix",
     "Layer prefix — shadow diagram": "prefix",
@@ -365,8 +364,7 @@ BY_LABEL: dict[str, str] = {
     "Balcony zones": "balcony",
     "Living-room glazing": "glazing",
     "Plan times": "plan_times",
-    "Subset — time-of-day sheets": "subset",
-    "Subset — ADG sheets": "subset",
+    "Layout Book subset": "subset",
     "Communal zones": "communal",
     "Communal window": "communal_window",
     "Communal threshold": "threshold",
@@ -379,11 +377,12 @@ BY_LABEL: dict[str, str] = {
     "Proposed": "being_tested",
     "Proposed 2": "being_tested",
     "Proposed 3": "being_tested",
+    "Proposed 4": "being_tested",
+    "Proposed 5": "being_tested",
     "Ground it lands on": "ground_plane",
     "Ignore ground below (m)": "ground_cut",
     "Hours": "plan_times",
     "Draw on storey": "storey_draw",
-    "Subset — shadow sheets": "subset",
     # Sun views
     "Pen set": "pen_set",
     "Graphic override": "override",
@@ -399,11 +398,10 @@ BY_LABEL: dict[str, str] = {
     "North": "site",
     # Solar analysis, the plans the apartments are drawn on
     "Plans": "plans_both",
-    "Shadow pen": "pen_set",
+    "Shadow colour": "pen_set",
     "Set name": "subset",
     # Yield -- the feasibility sheet
     "Option": "yield",
-    "Option layers": "combination",
     "Residential layers": "yield",
     "Commercial layers": "yield",
     "Layers": "model",

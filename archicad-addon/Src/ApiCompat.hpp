@@ -142,6 +142,16 @@ inline GSErrCode GetFullDrawingContentBox (API_Box* content, const API_Guid* dra
 #endif
 }
 
+// An element drawn as primitives, each handed to ``proc``.
+inline GSErrCode ShapePrims (const API_Elem_Head& head, ShapePrimsProc* proc)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_DrawingPrimitive_ShapePrims (head, proc);
+#else
+	return ACAPI_Element_ShapePrims (head, proc);
+#endif
+}
+
 // --- 3D window and documents --------------------------------------------------
 
 inline GSErrCode Get3DProjectionSets (API_3DProjectionInfo* info)
@@ -310,6 +320,57 @@ inline GSErrCode GetOverrideCombination (API_OverrideCombination& combination)
 	return ACAPI_GraphicalOverride_GetOverrideCombination (combination);
 #else
 	return ACAPI_Override_GetOverrideCombination (combination);
+#endif
+}
+
+// --- IFC export -----------------------------------------------------------------
+
+// The project saved as IFC through a translator chosen by the caller. 26 has
+// it behind the Automate dispatcher; 27 on as an overload of its own.
+inline GSErrCode SaveAsIfc (const API_FileSavePars* file, const API_SavePars_Ifc* ifc)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_ProjectOperation_Save (file, ifc);
+#else
+	return ACAPI_Automate (APIDo_SaveID, const_cast<API_FileSavePars*> (file), const_cast<API_SavePars_Ifc*> (ifc));
+#endif
+}
+
+// --- Renovation filters ---------------------------------------------------------
+
+inline GSErrCode GetRenovationFilters (GS::Array<API_Guid>* filters)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_Renovation_GetRenovationFilters (filters);
+#else
+	return ACAPI_Database (APIDb_GetRenovationFiltersID, filters);
+#endif
+}
+
+inline GSErrCode GetRenovationFilterName (const API_Guid* filter, GS::UniString* name)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_Renovation_GetRenovationFilterName (filter, name);
+#else
+	return ACAPI_Goodies (APIAny_GetRenovationFilterNameID, const_cast<API_Guid*> (filter), name);
+#endif
+}
+
+inline GSErrCode GetActualRenovationFilter (API_Guid* filter)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_Renovation_GetActualRenovationFilter (filter);
+#else
+	return ACAPI_Database (APIDb_GetActualRenovationFilterID, filter);
+#endif
+}
+
+inline GSErrCode SetActualRenovationFilter (const API_Guid* filter)
+{
+#ifdef ServerMainVers_2700
+	return ACAPI_Renovation_SetActualRenovationFilter (filter);
+#else
+	return ACAPI_Database (APIDb_SetActualRenovationFilterID, const_cast<API_Guid*> (filter));
 #endif
 }
 

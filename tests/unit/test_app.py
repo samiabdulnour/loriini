@@ -221,11 +221,11 @@ def test_the_plans_sheets_go_at_the_root_until_a_subset_is_picked(
     assert "--adg-subset" not in plans.args
     assert flag(plans.args, "--plan-instant") == ["09:00", "12:00", "15:00"]
 
-    hidden_window.shadow_subset.set("SHADOW DIAGRAMS")
-    hidden_window.adg_subset.set("ADG DIAGRAMS")
+    # One subset for every study now (D186), on General.
+    hidden_window.subset.set("SHADOW DIAGRAMS")
     (plans,) = hidden_window.jobs()
     assert flag(plans.args, "--layout-subset") == ["SHADOW DIAGRAMS"]
-    assert flag(plans.args, "--adg-subset") == ["ADG DIAGRAMS"]
+    assert flag(plans.args, "--adg-subset") == ["SHADOW DIAGRAMS"]
 
 
 def test_the_chosen_archicad_is_the_one_the_study_runs_against(hidden_window: Any) -> None:
@@ -494,11 +494,12 @@ def test_a_step_from_before_the_four_is_kept_rather_than_rounded(hidden_window: 
     assert "0.2" not in hidden_window.communal_grid._on & set(hidden_window.communal_grid._buttons)
 
 
-def test_see_through_glass_goes_to_all_three_solar_studies_and_no_other(
+def test_see_through_glass_goes_to_every_study_loriini_casts_the_sun_for(
     hidden_window: Any,
 ) -> None:
     """One choice, in the card the three share. Solid sends nothing, which is
-    the command's own default; the shadow diagram is not a solar study."""
+    the command's own default. The shadow plans' shadows are Archicad's own,
+    cast by its 3D Documents, and are not Loriini's to change."""
     assert set(hidden_window.see_glass._buttons) == {"off", "30", "80"}
     assert hidden_window.see_glass.get() == "off"
     hidden_window.apartments.set("06 | Zone.Units")
@@ -515,9 +516,9 @@ def test_see_through_glass_goes_to_all_three_solar_studies_and_no_other(
     assert sent["massing"] == ["30"]
     assert sent["archicad-run"] == ["30"]
     assert sent["shadow-plans"] == []
-    assert sent["shadows"] == []
+    assert sent["shadows"] == ["30"], "the ray-cast shadow drawing sees the same building"
     assert (
-        sum(flag(job.args, "--see-through-glass") == ["30"] for job in hidden_window.jobs()) == 3
+        sum(flag(job.args, "--see-through-glass") == ["30"] for job in hidden_window.jobs()) == 4
     ), "the facade and the communal space are both massing runs"
 
     hidden_window.apply({"see_through_glass": "80"})
@@ -1038,10 +1039,34 @@ def test_a_long_chip_row_wraps_inside_the_pane_and_lines_up_by_row(hidden_window
         for w in chips._made
     ]
     assert all(x + wide <= 300 for x, _y, wide in placed), "nothing past the edge"
-    rows = sorted({y for _x, y, _w in placed})
+    rows = chips._rows
     assert len(rows) >= 3, "three rows or more at that width"
-    assert all(min(x for x, y, _w in placed if y == row) == 0 for row in rows), "each from the left"
+    assert all(int(row[0].place_info()["x"]) == 0 for row in rows), "each from the left"
     assert int(chips.cget("height")) > 0 and int(chips.cget("width")) == 300
+    # The Add button is the tallest thing in its row and the words beside it
+    # sit on its middle line, as the text in every other field does.
+    for row in rows:
+        middles = [2 * int(w.place_info()["y"]) + w.winfo_reqheight() for w in row]
+        assert max(middles) - min(middles) <= 1, "one middle line a row"
+
+
+def test_a_chip_rows_label_sits_on_the_middle_line_of_the_first_row(hidden_window: Any) -> None:
+    """'no layers chosen' and the row's label hung from the top of the row
+    while Add, the taller, set its height: the words were above the line."""
+    hidden_window.do_yield.set(True)
+    hidden_window._sync()
+    chips = hidden_window.yield_options
+    chips.delete(0, "end")
+    hidden_window.root.update_idletasks()
+    chips._reflow(room=400)
+
+    words, add = chips._made
+    assert int(words.place_info()["y"]) == (add.winfo_reqheight() - words.winfo_reqheight()) // 2
+    name, top = chips._beside
+    assert name.grid_info()["pady"] == (
+        top + max(add.winfo_reqheight() - name.winfo_reqheight(), 0) // 2,
+        0,
+    )
 
 
 def test_the_three_site_sheets_are_three_different_pictures(hidden_window: Any) -> None:
@@ -1375,13 +1400,12 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     only_yield(hidden_window)
     hidden_window.yield_option.delete(0, "end")
     hidden_window.yield_option.insert(0, "Option 02")
-    hidden_window.yield_slabs.set("Slabs on chosen layers")
+    hidden_window.yield_slabs.set("By level")
     hidden_window.yield_massing.insert(0, "01 | Massing - Main Building.3D OPT2")
     hidden_window.yield_commercial_levels.insert(0, "Ground, Level 01")
     # Filled, but in rows this answer does not show: they must not count.
     hidden_window.yield_residential.insert(0, "01 | Wall.External")
     hidden_window.yield_commercial.insert(0, "01 | Floor.Structural")
-    hidden_window.yield_renovation_status.set("As the floor plan's filter")
     hidden_window.yield_site_area.insert(0, "1386.78")
     hidden_window.yield_fsr_residential.insert(0, "2.8")
     hidden_window.yield_fsr_commercial.insert(0, "0.4")
@@ -1402,7 +1426,7 @@ def test_the_yield_page_is_the_command_line_the_office_would_type(
     assert flag(args, "--massing-layer") == ["01 | Massing - Main Building.3D OPT2"]
     assert flag(args, "--commercial-level") == ["Ground", "Level 01"]
     assert not any("retail" in arg for arg in args), "shops are commercial (D159)"
-    assert "--renovation-filter" in args
+    assert not any(arg.startswith(("--renovation", "--design-option")) for arg in args)
     assert flag(args, "--gfa-residential") == ["0.725"]
     assert flag(args, "--gfa-commercial") == ["0.85"]
     assert flag(args, "--nla-commercial") == ["0.9"]
@@ -1458,16 +1482,19 @@ def test_the_workbook_is_chosen_with_a_save_dialog(
     assert hidden_window.yield_workbook.get() == str(tmp_path / "Yield.xlsx")
 
 
-def test_option_layers_and_a_workbook_of_their_own(hidden_window: Any, tmp_path: Path) -> None:
+def test_options_by_filter_and_a_workbook_of_their_own(hidden_window: Any, tmp_path: Path) -> None:
     only_yield(hidden_window)
-    hidden_window.yield_slabs.set("A layer per option")
-    hidden_window.yield_option_layers.insert(0, "01 | Massing.3D OPT1, 01 | Massing.3D OPT2")
+    hidden_window.yield_massing.insert(0, "01 | Floor.Structural")
+    hidden_window.yield_options.insert(0, "OPTION 03, OPTION 10")
     hidden_window.yield_workbook.insert(0, r"P:³3\Yield.xlsx")
     hidden_window.tables.delete(0, "end")
     hidden_window.tables.insert(0, str(tmp_path))
     (job,) = hidden_window.jobs()
-    assert flag(job.args, "--option-layer") == ["01 | Massing.3D OPT1", "01 | Massing.3D OPT2"]
-    assert "--option" not in job.args, "each option is named after its layer"
+    assert flag(job.args, "--renovation-filter-name") == ["OPTION 03", "OPTION 10"]
+    assert "--option" not in job.args, "each option is named after its filter"
+    assert "--option-layer" not in job.args
+    yields = [sheet for sheet in hidden_window.planned() if sheet.study == "Yield"]
+    assert [sheet.day for sheet in yields] == ["OPTION 03", "OPTION 10"], "a sheet an option"
     assert flag(job.args, "--xlsx") == [r"P:³3\Yield.xlsx"], "the typed path over the folder"
     hidden_window.yield_xlsx.set(False)
     (job,) = hidden_window.jobs()
@@ -1517,9 +1544,11 @@ def test_the_yield_page_is_saved_and_restored(hidden_window: Any) -> None:
     assert saved["yield_commercial_layers"] == "01 | Floor.Structural"
     assert saved["yield_mix_2-bed_share"] == "70"
     assert saved["yield_option"] == "Option 01"
-    hidden_window.apply({**saved, "yield_gfa_residential": "0.7", "yield_renovation": True})
+    hidden_window.apply(
+        {**saved, "yield_gfa_residential": "0.7", "yield_options": "OPTION 03, OPTION 10"}
+    )
     assert hidden_window.yield_gfa_residential.get() == "0.7"
-    assert hidden_window.yield_renovation.get() is True
+    assert hidden_window._listed(hidden_window.yield_options) == ["OPTION 03", "OPTION 10"]
 
 
 def test_a_typed_hour_is_spelled_the_way_the_sheet_is_named() -> None:
@@ -1848,6 +1877,7 @@ def test_a_project_never_saved_is_read_not_refused(monkeypatch: pytest.MonkeyPat
 
     class NewFile:
         tapir_version = "1.5.8"
+        archicad_version: int | None = None
         database = None
 
         def __init__(self, *_args: object, **_kwargs: object) -> None:
@@ -3006,7 +3036,8 @@ def test_a_chosen_band_becomes_the_two_storey_flags(hidden_window: Any) -> None:
 def test_the_shadow_study_sends_one_flag_per_legend_row_by_layer(hidden_window: Any) -> None:
     """Layers out of the open project, one legend row each, and the native
     model rather than an IFC or a folder of published views (D113). The
-    every-hour drawing, which Loriini casts, takes the ground as well."""
+    every-hour drawing of a named design is read out of 3D Documents, so it
+    is the documents' command that takes the rows."""
     rows = {short: box for short, _role, box in hidden_window.shadow_rows}
     hidden_window.do_facade.set(False)
     hidden_window.do_shadow_hours.set(True)
@@ -3016,13 +3047,12 @@ def test_the_shadow_study_sends_one_flag_per_legend_row_by_layer(hidden_window: 
 
     (job,) = hidden_window.jobs()
 
-    assert job.args[0] == "shadows"
+    assert job.args[0] == "shadow-plans"
+    assert "--every-hour-only" in job.args
     assert flag(job.args, "--shadow-source") == [
         "EXISTING=01 | Wall.External,01 | Floor.Structural"
     ]
     assert flag(job.args, "--shadow-scenario") == ["PROPOSED=06 | Zone.Units"]
-    assert flag(job.args, "--shadow-terrain") == ["05 | Dims/Notes.DA"]
-    assert flag(job.args, "--export") == ["native"]
     assert "--shadow-from-views" not in job.args
     assert "--shadow-favourite" not in job.args
 
@@ -3085,6 +3115,8 @@ def test_the_legend_rows_are_the_legends_own(hidden_window: Any) -> None:
         "PROPOSED",
         "PROPOSED 2",
         "PROPOSED 3",
+        "PROPOSED 4",
+        "PROPOSED 5",
     ]
     assert sorted(rows) == sorted((short, role) for short, _words, role, _rgb in LEGEND)
 
@@ -3944,7 +3976,7 @@ def test_every_page_is_a_named_row_in_the_sidebar(hidden_window: Any) -> None:
         assert tab.cget("text") == title, f"{title} is not named"
         assert not tab.cget("image"), f"{title} still wears a drawing"
     assert [kind for kind, _group in window.Window.GROUPS] == ["SET UP", "STUDIES", "TOOLS"]
-    assert dict(window.Window.GROUPS)["TOOLS"] == (window.Window.REFERENCE,)
+    assert dict(window.Window.GROUPS)["TOOLS"] == (window.Window.REFERENCE, window.Window.QA)
 
 
 def test_the_strip_always_has_exactly_one_tab_open(hidden_window: Any) -> None:
@@ -4622,7 +4654,7 @@ def test_run_asks_for_the_shadow_diagrams_combination_rather_than_guessing_one(
     hidden_window._start()
 
     assert started == [], "nothing was run"
-    assert "The shadow diagram needs a layer combination" in hidden_window.lines[-1]
+    assert "The shadow documents need a layer combination" in hidden_window.lines[-1]
 
     hidden_window.shadow_plan_combination.set("01 | Plans - DA")
     hidden_window._start()
@@ -4660,10 +4692,9 @@ def test_the_shadow_diagram_stacks_its_legend_rows(
 def test_the_every_hour_drawing_is_one_sheet_a_day_from_the_same_legend(
     hidden_window: Any,
 ) -> None:
-    """Loriini's fills, kept for the design's every hour on one drawing
-    (D144): the legend's rows say what the design is and what it lands on,
-    the ground and the storey are its own, and a day is one sheet fitted to
-    its shadows, not a sheet per hour."""
+    """The design's every hour on one drawing (D144), read out of 3D
+    Documents of the design alone: the legend's rows say what the design is,
+    and a day is one sheet fitted to its shadows, not a sheet per hour."""
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
     hidden_window.do_shadow_hours.set(True)
@@ -4677,13 +4708,11 @@ def test_the_every_hour_drawing_is_one_sheet_a_day_from_the_same_legend(
     (job,) = hidden_window.jobs()
 
     assert job.label == window.SHADOW_HOURS_JOB
-    assert job.args[0] == "shadows"
-    assert "--shadow-all-hours-only" in job.args
+    assert job.args[0] == "shadow-plans"
+    assert "--every-hour-only" in job.args
     assert flag(job.args, "--shadow-source") == ["EXISTING=03 | Site Context.Buildings"]
     assert flag(job.args, "--shadow-scenario") == ["PROPOSED=20 | Massing.Envelope"]
-    assert flag(job.args, "--shadow-terrain") == ["03 | Site Context.Terrain"]
     assert flag(job.args, "--shadow-date") == ["06-21,12-21"]
-    assert "--layer-combination" not in job.args, "the documents' combination is theirs"
 
     sheets = hidden_window.planned()
     assert [(sheet.study, sheet.day, sheet.scale) for sheet in sheets] == [
@@ -4719,6 +4748,11 @@ def test_run_asks_for_the_design_before_the_every_hour_drawing(
     assert hidden_window._designed_row() == "PROPOSED 2"
     rows["PROPOSED"].insert(0, "20 | Massing.Envelope")
     assert hidden_window._designed_row() == "PROPOSED"
+    # Its documents are pinned to a layer combination, asked for like the diagram's.
+    hidden_window._start()
+    assert started == []
+    assert "need a layer combination" in hidden_window.lines[-1]
+    hidden_window.shadow_plan_combination.set("Shadow Diagrams")
     hidden_window._start()
     assert started == ["run"]
 
@@ -4955,6 +4989,82 @@ def test_the_sheets_panel_is_not_redrawn_when_nothing_on_it_changed(
     assert not any(a is b for a, b in zip(made.dock._drawn, drawn, strict=False))
 
 
+def test_switching_one_study_on_keeps_the_miniatures_of_the_others(hidden_window: Any) -> None:
+    """Every miniature was destroyed and drawn again whenever any of them
+    changed, with the panel blank in between: the flash down the right of the
+    window on every click. What is still wanted is kept, in its place."""
+    made = hidden_window
+    made.do_shadows.set(True)
+    made._sync()
+    shadows = [one for one in made.dock._drawn if isinstance(one, tk.Canvas)]
+    assert shadows
+    made.do_sun_eyes.set(True)
+    made._sync()
+    now = [one for one in made.dock._drawn if isinstance(one, tk.Canvas)]
+    assert len(now) > len(shadows), "the sun views' sheets joined them"
+    assert all(any(one is kept for one in now) for kept in shadows), "drawn again"
+    assert all(one.winfo_exists() for one in made.dock._drawn)
+    # In the order the sheets are planned in, whatever was kept or made.
+    made.root.update_idletasks()
+    packed = made.dock.pane.content.pack_slaves()
+    assert packed == made.dock._drawn
+    made.do_shadows.set(False)
+    made._sync()
+    assert not any(one.winfo_exists() for one in shadows), "and gone when not wanted"
+    assert made.dock.pane.content.pack_slaves() == made.dock._drawn
+
+
+def test_a_page_is_raised_over_the_others_and_tab_keeps_to_the_one_on_top(
+    hidden_window: Any,
+) -> None:
+    """The pages lie one over another and the open one is raised, since taking
+    one off the screen and putting the next on was a blink on every click. A
+    page underneath is still on the screen as far as Tk's Tab knows, so the
+    window says which controls can be seen."""
+    made = hidden_window
+    made._show_section(made.SHADOWS)
+    made._show_section(made.YIELD)
+    made.root.update_idletasks()
+    shadows, yields = made.pane_of[made.SHADOWS], made.pane_of[made.YIELD]
+    assert shadows.winfo_manager() == "place" and yields.winfo_manager() == "place"
+    stacked = [
+        str(one)
+        for one in made.stack.tk.splitlist(made.stack.tk.call("winfo", "children", made.stack))
+    ]
+    assert made.showing == made.YIELD
+    assert made._on_this_page(made.study_bars[window.YIELD_JOB])
+    assert not made._on_this_page(made.study_bars[window.SHADOW_JOB])
+    assert made._on_this_page(made.go), "the run bar is on no page"
+    assert str(yields) in stacked
+    # Every page is made ready under the open one, one at a time.
+    for _ in made.panes:
+        made._warm_pages()
+    assert all(pane.winfo_manager() == "place" for pane in made.panes)
+    assert made.showing == made.YIELD
+
+
+def test_a_widget_is_told_only_what_it_does_not_already_have(hidden_window: Any) -> None:
+    """Tk lays a widget out and paints it again when told the style it
+    already wears, so a sync that changed nothing repainted the page."""
+    made = hidden_window
+    told: list[dict[str, object]] = []
+    button = made.go
+    real = button.configure
+
+    def telling(**options: object) -> object:
+        told.append(options)
+        return real(**options)
+
+    button.configure = telling
+    try:
+        window.put(button, text=str(button.cget("text")), state=str(button.cget("state")))
+        assert told == []
+        window.put(button, text="Run 99 sheets", state=str(button.cget("state")))
+        assert told == [{"text": "Run 99 sheets"}]
+    finally:
+        del button.configure
+
+
 def test_the_project_picker_is_as_wide_as_the_longest_project(
     hidden_window: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -5041,25 +5151,27 @@ def test_the_drawn_table_is_offered_first_and_no_schedule_is_picked_by_its_name(
     assert "--zone-hourly" in communal.args and "--zone-schedule" not in communal.args
 
 
-def test_the_yield_page_shows_only_the_rows_its_slabs_answer_needs(hidden_window: Any) -> None:
-    """One question, four answers, and the rows each one reads (D140)."""
+def test_the_yield_page_shows_only_the_rows_its_use_answer_needs(hidden_window: Any) -> None:
+    """Two answers, and the rows each one reads (D140, D183)."""
     made = hidden_window
     only_yield(made)
 
     def showing(widget: Any) -> bool:
         return bool(widget.winfo_manager())
 
-    made.yield_slabs.set("Every slab showing")
+    assert made.yield_slabs.get() == "By level", "by level unless asked"
     made._sync()
-    assert showing(made.yield_commercial_levels) and not showing(made.yield_massing)
-    assert not showing(made.yield_residential) and not showing(made.yield_option_layers)
-    made.yield_slabs.set("A layer per use")
+    assert showing(made.yield_massing) and showing(made.yield_commercial_levels)
+    assert not showing(made.yield_residential) and showing(made.yield_option)
+    made.yield_slabs.set("By layer")
     made._sync()
     assert showing(made.yield_residential) and showing(made.yield_commercial)
     assert not showing(made.yield_commercial_levels), "a layer per use tells the use itself"
-    made.yield_slabs.set("A layer per option")
+    assert not showing(made.yield_massing)
+    made.yield_options.insert(0, "OPTION 03")
     made._sync()
-    assert showing(made.yield_option_layers) and not showing(made.yield_option)
+    assert not showing(made.yield_option), "each option is named after its filter"
+    assert showing(made.yield_options)
     assert made._label_wide < 400, "no hint line dropped into the label column"
 
 
@@ -5091,25 +5203,443 @@ def test_an_older_presets_retail_joins_the_commercial_rows(hidden_window: Any) -
     assert made._listed(made.yield_commercial_levels) == ["Level 01", "Ground"]
 
 
-def test_renovation_is_read_off_each_slab_or_the_floor_plans_filter(hidden_window: Any) -> None:
+def test_the_yield_counts_the_option_chosen_as_this_archicad_keeps_it(hidden_window: Any) -> None:
     made = hidden_window
     only_yield(made)
     (job,) = made.jobs()
-    assert "--renovation-status" not in job.args and "--renovation-filter" not in job.args
-    made.yield_renovation_status.set("New only")
+    assert not any(arg.startswith(("--renovation", "--design-option")) for arg in job.args)
+    made.yield_options.insert(0, "OPTION 03, OPTION 12A")
     (job,) = made.jobs()
-    assert flag(job.args, "--renovation-status") == ["new"]
-    made.yield_renovation_status.set("Existing and new")
+    assert flag(job.args, "--renovation-filter-name") == ["OPTION 03", "OPTION 12A"]
+    made.archicad_version = 27
     (job,) = made.jobs()
-    assert flag(job.args, "--renovation-status") == ["existing-and-new"]
+    assert flag(job.args, "--design-option") == ["OPTION 03", "OPTION 12A"]
+    assert "--renovation-filter-name" not in job.args
 
 
 def test_a_preset_saved_before_the_slabs_row_opens_as_what_it_meant(hidden_window: Any) -> None:
     made = hidden_window
     made.apply({"yield_massing_layers": "01 | Massing.3D", "yield_renovation": True})
-    assert made.yield_slabs.get() == "Slabs on chosen layers"
-    assert made.yield_renovation_status.get() == "As the floor plan's filter"
+    assert made.yield_slabs.get() == "By level"
+    assert made.yield_options.get() == "", "the old checkbox names no option"
     made.apply({"yield_residential_layers": "05 | Mass.Residential"})
-    assert made.yield_slabs.get() == "A layer per use"
-    made.apply({"yield_slabs": "Every slab showing", "yield_massing_layers": "x"})
-    assert made.yield_slabs.get() == "Every slab showing", "a saved answer is kept as it is"
+    assert made.yield_slabs.get() == "By layer"
+    # D140's four answers, saved, read as the two now (D183).
+    for older, now in (
+        ("Every slab showing", "By level"),
+        ("Slabs on chosen layers", "By level"),
+        ("A layer per use", "By layer"),
+        ("A layer per option", "By level"),
+    ):
+        made.apply({"yield_slabs": older})
+        assert made.yield_slabs.get() == now, older
+    made.yield_options.delete(0, "end")
+    made.apply({"yield_slabs": "By level", "yield_scenario": "OPTION 03"})
+    assert made._listed(made.yield_options) == ["OPTION 03"], "the one option chosen before"
+
+
+def test_the_shadow_diagram_is_drawn_as_worksheet_fills_unless_live_documents_is_picked(
+    hidden_window: Any,
+) -> None:
+    hidden_window.do_facade.set(False)
+    hidden_window.do_shadows.set(True)
+    # No legend rows: the plain set, which has one route.
+    if not hidden_window._legend_args():
+        (job,) = hidden_window.jobs()
+        assert "--flat" not in job.args
+    hidden_window._legend_args = lambda: ["--shadow-scenario", "PROPOSED=Massing"]
+    assert hidden_window.shadow_plan_route.get() == "Worksheet fills"
+    (job,) = hidden_window.jobs()
+    assert "--flat" in job.args
+    hidden_window.shadow_plan_route.set("Live 3D Documents")
+    (job,) = hidden_window.jobs()
+    assert "--flat" not in job.args
+
+
+def test_every_hour_is_read_out_of_the_documents_when_the_legend_names_a_design(
+    hidden_window: Any,
+) -> None:
+    hidden_window.do_facade.set(False)
+    hidden_window._legend_args = lambda: ["--shadow-scenario", "PROPOSED=Massing"]
+    hidden_window.do_shadows.set(False)
+    hidden_window.do_shadow_hours.set(True)
+    (job,) = hidden_window.jobs()
+    assert job.label == window.SHADOW_HOURS_JOB
+    assert job.args[0] == "shadow-plans"
+    assert "--every-hour-only" in job.args
+    # With the diagram ticked it rides on the diagram's run.
+    hidden_window.do_shadows.set(True)
+    (job,) = hidden_window.jobs()
+    assert job.label == window.SHADOW_JOB
+    assert "--every-hour" in job.args and "--every-hour-only" not in job.args
+
+
+def test_a_compared_row_is_named_filtered_and_hatched_from_the_window(hidden_window: Any) -> None:
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+    hidden_window.do_facade.set(False)
+    hidden_window.do_shadows.set(True)
+    hidden_window.shadow_plan_combination.set("Shadow Diagrams")
+    rows["PROPOSED"].insert(0, "01 | Wall.External")
+    rows["PROPOSED 2"].insert(0, "01 | Floor.Structural")
+    hidden_window.shadow_row_names["PROPOSED 2"].insert(0, "LEP + 30%")
+    hidden_window.shadow_row_filters["PROPOSED 2"].set("LEP + 30% Bonus")
+    hidden_window.shadow_row_hatches["PROPOSED 2"].set("zz Brick Common")
+    # A row with no layers sends nothing, whatever is typed beside it.
+    hidden_window.shadow_row_hatches["PROPOSED 3"].set("Dashed")
+
+    (job,) = hidden_window.jobs()
+
+    assert flag(job.args, "--shadow-scenario") == [
+        "LEP + 30%=01 | Floor.Structural",
+        "PROPOSED=01 | Wall.External",
+    ]
+    assert flag(job.args, "--scenario-filter") == ["LEP + 30%=LEP + 30% Bonus"]
+    assert flag(job.args, "--scenario-fill") == ["LEP + 30%=zz Brick Common"]
+
+
+def test_a_compared_rows_fields_show_only_once_it_has_layers(hidden_window: Any) -> None:
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+    fields = hidden_window.shadow_row_groups
+    assert set(fields) == {"PROPOSED 2", "PROPOSED 3", "PROPOSED 4", "PROPOSED 5"}
+    assert all(len(widgets) == 6 for widgets in fields.values()), "a label and a box, three times"
+
+    def shown(short: str) -> bool:
+        return all(widget.winfo_manager() == "grid" for widget in fields[short])
+
+    def hidden(short: str) -> bool:
+        return all(widget.winfo_manager() == "" for widget in fields[short])
+
+    hidden_window.do_shadows.set(True)
+    hidden_window._sync()
+    assert hidden("PROPOSED 2") and hidden("PROPOSED 3")
+    rows["PROPOSED 2"].insert(0, "01 | Floor.Structural")
+    hidden_window._sync()
+    assert shown("PROPOSED 2") and hidden("PROPOSED 3")
+    rows["PROPOSED 2"].drop("01 | Floor.Structural")
+    assert hidden("PROPOSED 2"), "dropping the last layer hides them again"
+
+    # Folded, the panel keeps the rows it will put back, and only those.
+    panel = hidden_window.shadow_documents_panel
+    hidden_window._fold(panel, True)
+    rows["PROPOSED 3"].insert(0, "01 | Floor.Structural")
+    hidden_window._sync()
+    assert hidden("PROPOSED 3"), "nothing appears inside a folded panel"
+    kept = hidden_window._kept_rows[str(panel)]
+    assert all(widget in kept for widget in fields["PROPOSED 3"])
+    assert not any(widget in kept for widget in fields["PROPOSED 2"])
+    hidden_window._fold(panel, False)
+    assert shown("PROPOSED 3") and hidden("PROPOSED 2")
+
+
+def test_archicad_27_offers_design_options_where_26_offers_renovation_filters(
+    hidden_window: Any,
+) -> None:
+    rows = {short: box for short, _role, box in hidden_window.shadow_rows}
+
+    def words() -> list[str]:
+        return sorted(str(one.cget("text")) for one in hidden_window.scenario_labels)
+
+    hidden_window.options = replace(
+        hidden_window.options,
+        archicad_version=26,
+        renovation_filters=("OPTION 02", "LEP + 30% Bonus"),
+        design_options=(),
+    )
+    hidden_window._offer()
+    assert words() == [
+        "Proposed 2 filter",
+        "Proposed 3 filter",
+        "Proposed 4 filter",
+        "Proposed 5 filter",
+        "Renovation filters",
+    ]
+    assert hidden_window._scenarios() == ["OPTION 02", "LEP + 30% Bonus"]
+
+    hidden_window.options = replace(
+        hidden_window.options,
+        archicad_version=27,
+        design_options=("Main + LEP", "Main + 12 storeys"),
+    )
+    hidden_window._offer()
+    assert words() == [
+        "Design options",
+        "Proposed 2 design option",
+        "Proposed 3 design option",
+        "Proposed 4 design option",
+        "Proposed 5 design option",
+    ]
+    assert hidden_window._scenarios() == ["Main + LEP", "Main + 12 storeys"]
+    box = hidden_window.shadow_row_filters["PROPOSED 2"]
+    assert tuple(box.cget("values")) == ("", "Main + LEP", "Main + 12 storeys")
+
+    hidden_window.do_facade.set(False)
+    hidden_window.do_shadows.set(True)
+    hidden_window.shadow_plan_combination.set("Shadow Diagrams")
+    rows["PROPOSED"].insert(0, "01 | Wall.External")
+    rows["PROPOSED 2"].insert(0, "01 | Floor.Structural")
+    hidden_window.shadow_row_names["PROPOSED 2"].insert(0, "LEP + 30%")
+    box.set("Main + LEP")
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--scenario-option") == ["LEP + 30%=Main + LEP"]
+    assert "--scenario-filter" not in job.args
+
+
+def test_the_shadow_colour_is_picked_not_typed_as_a_pen(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tkinter import colorchooser
+
+    field = hidden_window.shadow_plan_pen
+    assert isinstance(field, window.ColourField)
+    assert field.get() == "" and "default" in str(field.words.cget("text"))
+    monkeypatch.setattr(colorchooser, "askcolor", lambda **_kw: ((51, 102, 204), "#3366CC"))
+    field.choose()
+    assert field.get() == "#3366cc"
+    assert str(field.swatch.cget("background")) == "#3366cc"
+    assert "51, 102, 204" in str(field.words.cget("text"))
+
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_shadows.set(True)
+    hidden_window.shadow_plan_combination.set("01 | Plans - DA")
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--shadow-colour") == ["#3366cc"]
+    assert "--shadow-pen" not in job.args
+
+    # Kept by Save as default, and a pen number an older file saved still
+    # goes as a pen.
+    saved = hidden_window.settings()
+    assert saved["shadow_plan_pen"] == "#3366cc"
+    hidden_window.apply({**saved, "shadow_plan_pen": "45"})
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--shadow-pen") == ["45"] and "--shadow-colour" not in job.args
+    assert field.words.cget("text") == "pen 45"
+    field.clear()
+    (job,) = hidden_window.jobs()
+    assert "--shadow-pen" not in job.args and "--shadow-colour" not in job.args
+
+
+def test_a_colour_is_read_in_the_three_ways_it_is_written() -> None:
+    assert window.colour_hex("#3366CC") == "#3366cc"
+    assert window.colour_hex("#36c") == "#3366cc"
+    assert window.colour_hex("51, 102, 204") == "#3366cc"
+    assert window.colour_hex("45") is None, "a pen number is not a colour"
+    assert window.colour_hex("") is None and window.colour_hex("#12345g") is None
+
+
+def test_the_sheets_panel_slides_in_and_opens_once_it_has_arrived(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sun_study.app import motion
+
+    dock = hidden_window.dock
+    dock.fold(True)
+    assert dock.shut_view.winfo_manager() == "pack"
+    # As on screen: the withdrawn test window would open at once.
+    monkeypatch.setattr(dock, "winfo_ismapped", lambda: True)
+    monkeypatch.setattr(motion, "reduced", lambda: False)
+
+    dock.fold(False)
+    assert not dock.folded, "open as far as anyone asking is concerned"
+    assert dock._ghost is not None and dock._glide is not None, "a stand-in slides in"
+    assert dock.shut_view.winfo_manager() == "pack", "the page is not laid out yet"
+    dock._glide.cancel()
+    assert dock._ghost is None and dock._glide is None
+    assert dock.open_view.winfo_manager() == "pack" and dock.shut_view.winfo_manager() == ""
+
+    # Folded again before it has arrived: the stand-in goes and nothing else
+    # changes, since nothing had.
+    dock.fold(True)
+    dock.fold(False)
+    ghost: Any = hidden_window.dock._ghost
+    assert ghost is not None
+    dock.fold(True)
+    assert dock.folded
+    assert hidden_window.dock._ghost is None and not ghost.winfo_exists()
+    assert dock.shut_view.winfo_manager() == "pack"
+
+
+def test_the_sheets_panel_does_not_slide_when_the_window_folds_it(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sun_study.app import motion
+
+    dock = hidden_window.dock
+    dock.fold(True)
+    monkeypatch.setattr(dock, "winfo_ismapped", lambda: True)
+    monkeypatch.setattr(motion, "reduced", lambda: False)
+    dock.fold(False, by_hand=False, glide=False)
+    assert dock._ghost is None and dock.open_view.winfo_manager() == "pack"
+    dock.fold(True)
+    monkeypatch.setattr(motion, "reduced", lambda: True)
+    dock.fold(False)
+    assert dock._ghost is None, "none where the system has been asked for no movement"
+
+
+def test_the_ifc_export_page_is_the_command_line_the_office_would_type(
+    hidden_window: Any, tmp_path: Path
+) -> None:
+    """D184: the export's groups, zones, storeys, copies and translator."""
+    made = hidden_window
+    for _name, tick, _where in made._studies():
+        tick.set(False)
+    made.do_qa.set(True)
+    made.qa_prefix.delete(0, "end")
+    made.qa_prefix.insert(0, "ACME_")
+    made.qa_apartments.insert(0, "06 | Zone.Units")
+    made.qa_balconies.insert(0, "06 | Zone.Balcony")
+    made.qa_areas["Communal open space"].insert(0, "10 | Calc.COS")
+    made.qa_from_storey.set("LOWER GROUND")
+    made.qa_copies["Bedrooms"].set("Apartments/Beds")
+    made.qa_translator.insert(0, "QA export")
+    made.qa_fill.set(False)
+    made.tables.delete(0, "end")
+    made.tables.insert(0, str(tmp_path))
+    (job,) = made.jobs()
+    assert job.label == "IFC export" and job.args[0] == "ifc-export"
+    assert flag(job.args, "--prefix") == ["ACME_"]
+    assert flag(job.args, "--apartment-layer") == ["06 | Zone.Units"]
+    assert flag(job.args, "--balcony-layer") == ["06 | Zone.Balcony"]
+    assert flag(job.args, "--area-layer") == ["10 | Calc.COS=Communal open space"]
+    assert flag(job.args, "--from-storey") == ["LOWER GROUND"] and "--to-storey" not in job.args
+    assert flag(job.args, "--copy") == ["Bedrooms=Apartments/Beds"]
+    assert flag(job.args, "--translator") == ["QA export"]
+    assert "--no-fill" in job.args and "--no-setup" not in job.args
+    assert flag(job.args, "--out") == [str(tmp_path / "QA")]
+    saved = made.settings()
+    assert saved["qa_prefix"] == "ACME_" and saved["qa_copy_bedrooms"] == "Apartments/Beds"
+
+
+def test_the_ifc_export_is_a_tool_and_not_a_study(hidden_window: Any) -> None:
+    tools = dict(window.Window.GROUPS)[window.Window.TOOLS]
+    studies = dict(window.Window.GROUPS)[window.Window.DRAWS]
+    assert "IFC export" in tools and "IFC export" not in studies
+    _row, _pill, switch, _lit = hidden_window.side_rows["IFC export"]
+    assert switch is None, "a tool's row opens its page; the page's own switch queues it"
+
+
+def test_the_ifc_export_reads_the_stored_sun_and_may_run_the_study_again_first(
+    hidden_window: Any,
+) -> None:
+    made = hidden_window
+    for _name, tick, _where in made._studies():
+        tick.set(False)
+    made.do_qa.set(True)
+    made.qa_apartments.insert(0, "06 | Zone.Units")
+    (job,) = made.jobs()
+    assert "--solar" in job.args, "the sun a run left on the zones, by default"
+    assert not made.do_plans.get(), "and not the study run again"
+    made.qa_solar.set(False)
+    (job,) = made.jobs()
+    assert "--no-solar" in job.args
+    made.qa_solar_again.set(True)
+    made._qa_with_solar()
+    assert made.do_plans.get() and made.qa_solar.get(), "run again, and read"
+    jobs = made.jobs()
+    assert jobs[0].args[0] == "archicad-run" and jobs[-1].label == window.QA_JOB
+    assert "--solar" in jobs[-1].args
+
+
+def test_shadows_and_sun_views_may_be_drawn_every_15_or_30_minutes(hidden_window: Any) -> None:
+    """D186: an Every row under each Hours row, between two lit hours."""
+    assert window._stepped("9,10,11", 30) == "09:00,09:30,10:00,10:30,11:00"
+    assert window._stepped("9,10,12", 15) == "09:00,09:15,09:30,09:45,10:00,12:00"
+    assert window._stepped("9,10", 60) == "9,10", "every hour: as typed"
+    made = hidden_window
+    for _name, tick, _where in made._studies():
+        tick.set(False)
+    made.do_shadows.set(True)
+    made.shadow_plan_combination.set("01 | Plans - DA")
+    made.shadow_hours.delete(0, "end")
+    made.shadow_hours.insert(0, "9,10")
+    made.shadow_step.set("15 minutes")
+    (job,) = made.jobs()
+    assert flag(job.args, "--shadow-hour") == ["09:00,09:15,09:30,09:45,10:00"]
+    made.do_shadows.set(False)
+    made.do_sun_eyes.set(True)
+    made.eye_step.set("30 minutes")
+    (job,) = made.jobs()
+    assert flag(job.args, "--hour")[0].startswith("09:00,09:30,10:00")
+    saved = made.settings()
+    assert saved["shadow_step"] == "15 minutes" and saved["eye_step"] == "30 minutes"
+
+
+def test_one_layout_book_subset_files_every_study(hidden_window: Any) -> None:
+    """D186: the three subsets of before are one, on General; an older
+    settings file's own is read into it."""
+    made = hidden_window
+    assert made.adg_subset is made.subset and made.shadow_study_subset is made.subset
+    made.apply({"shadow_study_subset": "SHADOW DIAGRAMS"})
+    assert made.subset.get() == "SHADOW DIAGRAMS"
+    assert "layout_subset" in made.settings() and "adg_subset" not in made.settings()
+
+
+def test_a_time_of_day_is_read_as_an_hour_and_a_minute() -> None:
+    import sun_study.cli as cli
+
+    assert cli._hour_and_minute("9") == (9, 0)
+    assert cli._hour_and_minute("09:45") == (9, 45)
+    with pytest.raises(ValueError):
+        cli._hour_and_minute("25:00")
+    moments, labels = cli._shadow_moments("06-21", "9,9:30,15:15", 2026, "Australia/Sydney")
+    assert [moment.minute for moment in moments] == [0, 30, 15]
+    assert labels == ["9AM", "9:30AM", "3:15PM"]
+
+
+def test_the_every_hour_shadow_drawing_takes_the_glass_option_too(hidden_window: Any) -> None:
+    """A glass balustrade was drawn as solid on the ray-cast shadow drawing,
+    which was never told what the other studies are."""
+    made = hidden_window
+    for _name, tick, _where in made._studies():
+        tick.set(False)
+    made.do_shadow_hours.set(True)
+    made.see_glass.set("30")
+    jobs = [job for job in made.jobs() if job.args[0] == "shadows"]
+    assert jobs and flag(jobs[0].args, "--see-through-glass") == ["30"]
+
+
+def test_a_folded_panels_chip_label_stays_off_the_page(hidden_window: Any) -> None:
+    """Moving the label to the middle line gridded it, and a label its folded
+    panel had taken off the page came back on, alone."""
+    chips = hidden_window.yield_options
+    assert chips._beside is not None
+    name, _top = chips._beside
+    assert not hidden_window.do_yield.get()
+    assert not name.grid_info(), "folded with its panel"
+    chips._reflow(room=400)
+    assert not name.grid_info()
+
+
+def test_style_is_the_last_row_of_the_context_and_site_panels(hidden_window: Any) -> None:
+    hidden_window.do_site_context.set(True)
+    hidden_window.do_site_site.set(True)
+    hidden_window._sync()
+    for style, scale in (
+        (hidden_window.site_theme, hidden_window.site_scale),
+        (hidden_window.site_site_theme, hidden_window.site_sheet_scale),
+    ):
+        assert int(style.grid_info()["row"]) > int(scale.grid_info()["row"])
+
+
+def test_the_3d_context_panels_fields_are_one_width(hidden_window: Any) -> None:
+    """A lone button and a number's short box between three lists."""
+    hidden_window.do_site_model.set(True)
+    hidden_window._sync()
+    wide = hidden_window.site_model_origin.winfo_reqwidth()
+    radius = hidden_window.site_radius
+    assert abs(radius.winfo_reqwidth() + 2 * int(radius.grid_info()["ipadx"]) - wide) <= 1
+    future = hidden_window.site_buttons["Future Context (what the controls allow next door)"]
+    assert future.grid_info()["sticky"] == "ew"
+    assert int(future.master.columnconfigure(0)["minsize"]) >= wide
+
+
+def test_the_title_blocks_width_is_not_asked_and_is_115_mm(hidden_window: Any) -> None:
+    """D187: one figure for every project, the commands' own default."""
+    from sun_study.archicad import sheets, sun_eyes
+
+    assert sheets.TITLE_BLOCK_MM == sun_eyes.TITLE_BLOCK_MM == 115.0
+    assert "eye_title_block" not in hidden_window._fields()
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(True)
+    assert not any("--title-block-mm" in job.args for job in hidden_window.jobs())
+    hidden_window.apply({"eye_title_block": "100"})

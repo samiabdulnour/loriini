@@ -1,9 +1,15 @@
 #include "LayoutCommands.hpp"
 #include "ApiCompat.hpp"
 
+#include "HashSet.hpp"
+
 namespace Loriini {
 
 namespace {
+
+// The highest display level an element has; one there cannot be brought
+// forward, and Archicad says so in a dialog.
+const char TopDrawIndex = 14;
 
 // Moves to a layout's database and remembers where we were.
 //
@@ -471,6 +477,16 @@ GS::ObjectState ArrangeDrawingsCommand::Execute (const GS::ObjectState& paramete
 		// existing set's document over the proposal's in every cell.
 		if (stack) {
 			for (const API_Guid& guid : inOrder) {
+				// One at the top already is left there. Brought forward
+				// again, Archicad puts up "Cannot bring some element(s) any
+				// closer. Top stack level reached." and waits for its OK,
+				// a drawing at a time, with the run standing behind it: a
+				// second run onto a sheet the first had stacked.
+				API_Elem_Head head = {};
+				head.guid = guid;
+				if (ACAPI_Element_GetHeader (&head) == NoError && head.drwIndex >= TopDrawIndex) {
+					continue;
+				}
 				GS::Array<API_Guid> one;
 				one.Push (guid);
 				const GSErrCode ordered = Api::ElementTool (one, APITool_BringToFront, nullptr);
@@ -492,6 +508,260 @@ GS::ObjectState ArrangeDrawingsCommand::Execute (const GS::ObjectState& paramete
 	GS::ObjectState result = Succeeded ();
 	result.Add ("arranged", arranged);
 	result.Add ("failures", failures);
+	return result;
+}
+
+
+// -- GetDrawingPrimitives ----------------------------------------------------
+
+namespace {
+
+// How many kinds of primitive the kit names, with room for a later kit's.
+constexpr Int32 PrimitiveKinds = 40;
+
+// What one decomposition gathers. Archicad's callback carries no pointer of
+// the caller's, so the one being filled is reached through `harvest` below;
+// commands run one at a time on the main thread, and the decomposition
+// cannot be nested.
+struct Harvest {
+	GS::HashSet<Int32>			pens;				// empty: every pen
+	Int32						limit = 0;
+	Int32						counts[PrimitiveKinds] = {};
+	Int32						polygons = 0;		// seen, kept or not
+	Int32						withArcs = 0;
+	bool						truncated = false;
+	bool						inHatch = false;	// between a hatch border's begin and end
+	Int32						hatchPen = 0;
+	Int32						hatchBackgroundPen = 0;
+	Int32						hatchFill = 0;
+	bool						boxed = false;
+	API_Box						box = {};
+	GS::Array<GS::ObjectState>	kept;
+};
+
+Harvest* harvest = nullptr;
+
+
+// Plain, with no calling convention named: the kits before 27 declare the
+// callback `__cdecl`, which is what a plain function is, and the later ones
+// declare none and no longer define the word.
+GSErrCode HarvestPrimitive (const API_PrimElement* prim, const void* par1, const void* par2, const void* /*par3*/)
+{
+	if (harvest == nullptr || prim == nullptr) {
+		return NoError;
+	}
+	Harvest& into = *harvest;
+	const Int32 kind = static_cast<Int32> (prim->header.typeID);
+	if (kind >= 0 && kind < PrimitiveKinds) {
+		++into.counts[kind];
+	}
+
+	switch (prim->header.typeID) {
+		case API_PrimCtrl_HatchBorderBegID: {
+			into.inHatch = true;
+			into.hatchPen = 0;
+			into.hatchBackgroundPen = 0;
+			into.hatchFill = 0;
+			const API_PrimHatchBorder* border = reinterpret_cast<const API_PrimHatchBorder*> (par1);
+			if (border != nullptr) {
+				into.hatchPen = border->fillPen.penIndex;
+				into.hatchBackgroundPen = border->fillbkgPen;
+				into.hatchFill = Api::AttributeIndexToInt (border->fillInd);
+			}
+			break;
+		}
+		case API_PrimCtrl_HatchBorderEndID:
+			into.inHatch = false;
+			break;
+
+		case API_PrimPolyID: {
+			const API_PrimPoly& poly = prim->poly;
+			++into.polygons;
+			if (poly.nArcs > 0) {
+				++into.withArcs;
+			}
+			const Int32 pen = poly.head.pen.penIndex;
+			const Int32 fillPen = poly.fillPen.penIndex;
+			if (!into.pens.IsEmpty () && !into.pens.Contains (pen) && !into.pens.Contains (fillPen) &&
+				!(into.inHatch && into.pens.Contains (into.hatchPen))) {
+				break;
+			}
+			if (into.limit > 0 && static_cast<Int32> (into.kept.GetSize ()) >= into.limit) {
+				into.truncated = true;
+				break;
+			}
+			// As an API_Polygon's memo is laid out: the vertices from index 1,
+			// each ring closed on its first, and the index of each ring's last
+			// vertex from index 1 of the ends.
+			const API_Coord* coords = reinterpret_cast<const API_Coord*> (par1);
+			const Int32* ends = reinterpret_cast<const Int32*> (par2);
+			if (coords == nullptr || poly.nCoords < 3) {
+				break;
+			}
+			GS::Array<double> xy;
+			for (Int32 index = 1; index <= poly.nCoords; ++index) {
+				const API_Coord& c = coords[index];
+				xy.Push (c.x);
+				xy.Push (c.y);
+				if (!into.boxed) {
+					into.box = { c.x, c.y, c.x, c.y };
+					into.boxed = true;
+				} else {
+					into.box.xMin = GS::Min (into.box.xMin, c.x);
+					into.box.yMin = GS::Min (into.box.yMin, c.y);
+					into.box.xMax = GS::Max (into.box.xMax, c.x);
+					into.box.yMax = GS::Max (into.box.yMax, c.y);
+				}
+			}
+			GS::Array<Int32> ringEnds;
+			if (ends != nullptr) {
+				for (Int32 ring = 1; ring <= poly.nSubPolys; ++ring) {
+					ringEnds.Push (ends[ring]);
+				}
+			}
+			GS::ObjectState one;
+			one.Add ("pen", pen);
+			one.Add ("fillPen", fillPen);
+			one.Add ("solid", poly.solid);
+			one.Add ("drawIndex", static_cast<Int32> (poly.head.drwIndex));
+			one.Add ("layer", Api::AttributeIndexToInt (poly.head.layer));
+			if (into.inHatch) {
+				one.Add ("hatchPen", into.hatchPen);
+				one.Add ("hatchBackgroundPen", into.hatchBackgroundPen);
+				one.Add ("hatchFill", into.hatchFill);
+			}
+			if (poly.nArcs > 0) {
+				one.Add ("arcs", poly.nArcs);
+			}
+			one.Add ("xy", xy);
+			one.Add ("ends", ringEnds);
+			into.kept.Push (one);
+			break;
+		}
+		default:
+			break;
+	}
+	return NoError;
+}
+
+}		// namespace
+
+
+GS::String GetDrawingPrimitivesCommand::GetName () const		{ return "GetDrawingPrimitives"; }
+
+GS::Optional<GS::UniString> GetDrawingPrimitivesCommand::GetInputParametersSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"layoutDatabaseId": {
+				"type": "object",
+				"description": "The layout the drawing is on. Made current for the call and restored after; left out, the drawing is looked for in the current database.",
+				"properties": { "guid": { "type": "string" } },
+				"required": [ "guid" ]
+			},
+			"drawing": { "type": "string", "description": "The Drawing element's guid." },
+			"pens": {
+				"type": "array",
+				"description": "Keep only the polygons drawn or filled in one of these pens. Left out or empty, every polygon is kept.",
+				"items": { "type": "integer" }
+			},
+			"limit": { "type": "integer", "description": "The most polygons to hand back; 0, the default, is all of them. The counts are of everything either way." }
+		},
+		"required": [ "drawing" ],
+		"additionalProperties": false
+	})");
+}
+
+GS::Optional<GS::UniString> GetDrawingPrimitivesCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"code": { "type": "integer", "description": "What the decomposition answered: 0, or Archicad's error with whatever had been gathered before it." },
+			"counts": { "type": "array", "description": "How many primitives of each kind were drawn, by the kit's API_PrimTypeID.", "items": { "type": "integer" } },
+			"polygonsSeen": { "type": "integer" },
+			"polygonsWithArcs": { "type": "integer" },
+			"truncated": { "type": "boolean" },
+			"box": { "type": "object", "description": "The extent of the polygons handed back, in the coordinates they are given in." },
+			"polygons": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"properties": {
+						"pen": { "type": "integer" },
+						"fillPen": { "type": "integer" },
+						"solid": { "type": "boolean" },
+						"drawIndex": { "type": "integer" },
+						"layer": { "type": "integer" },
+						"hatchPen": { "type": "integer" },
+						"hatchBackgroundPen": { "type": "integer" },
+						"hatchFill": { "type": "integer" },
+						"arcs": { "type": "integer" },
+						"xy": { "type": "array", "description": "The vertices, x then y, every ring in turn and each closed on its first.", "items": { "type": "number" } },
+						"ends": { "type": "array", "description": "The number of vertices up to and including each ring's last.", "items": { "type": "integer" } }
+					}
+				}
+			},
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState GetDrawingPrimitivesCommand::Execute (const GS::ObjectState& parameters,
+													  GS::ProcessControl& /*processControl*/) const
+{
+	GS::UniString guid;
+	if (!parameters.Get ("drawing", guid) || guid.IsEmpty ()) {
+		return Failed ("drawing must be the Drawing element's guid.", APIERR_BADPARS);
+	}
+
+	GS::Optional<VisitDatabase> visit;
+	GS::ObjectState failure;
+	if (!VisitNamedLayout (parameters, visit, failure)) {
+		return failure;
+	}
+
+	API_Element element = {};
+	element.header.guid = APIGuidFromString (guid.ToCStr ().Get ());
+	GSErrCode err = ACAPI_Element_Get (&element);
+	if (err != NoError) {
+		return Failed ("That Drawing is not in the database asked.", err);
+	}
+	if (element.header.type != API_DrawingID) {
+		return Failed ("That element is not a Drawing.", APIERR_BADELEMENTTYPE);
+	}
+
+	Harvest gathered;
+	GS::Array<Int32> pens;
+	if (parameters.Get ("pens", pens)) {
+		for (Int32 pen : pens) {
+			gathered.pens.Add (pen);
+		}
+	}
+	parameters.Get ("limit", gathered.limit);
+
+	API_Elem_Head head = {};
+	head.guid = element.header.guid;
+	harvest = &gathered;
+	err = Api::ShapePrims (head, HarvestPrimitive);
+	harvest = nullptr;
+
+	GS::Array<Int32> counts;
+	for (Int32 kind = 0; kind < PrimitiveKinds; ++kind) {
+		counts.Push (gathered.counts[kind]);
+	}
+	GS::ObjectState result = Succeeded ();
+	result.Add ("code", static_cast<Int32> (err));
+	result.Add ("counts", counts);
+	result.Add ("polygonsSeen", gathered.polygons);
+	result.Add ("polygonsWithArcs", gathered.withArcs);
+	result.Add ("truncated", gathered.truncated);
+	if (gathered.boxed) {
+		result.Add ("box", BoxState (gathered.box));
+	}
+	result.Add ("polygons", gathered.kept);
 	return result;
 }
 

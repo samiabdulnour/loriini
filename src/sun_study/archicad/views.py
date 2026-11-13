@@ -40,6 +40,7 @@ __all__ = [
     "ModelSource",
     "StoreyView",
     "ensure_layer_combination",
+    "layer_names",
     "three_d_sources",
     "views_for_sources",
     "views_for_storeys",
@@ -89,6 +90,11 @@ def _all_layers(connection: ArchicadConnection) -> list[dict[str, Any]]:
         }
         for state in found
     ]
+
+
+def layer_names(connection: ArchicadConnection) -> list[str]:
+    """Every layer of the project, by name."""
+    return [str(layer["name"]) for layer in _all_layers(connection)]
 
 
 def tool_layers(connection: ArchicadConnection, prefix: str) -> list[str]:
@@ -166,6 +172,17 @@ def ensure_layer_combination(
                 "intersectionGroupNr": layer["intersectionGroupNr"],
             }
         )
+
+    # Already there and already showing what is wanted: left as it is. In a
+    # Teamwork project a combination is written over only by whoever holds
+    # the layer settings, and a second run was refused the combination its
+    # own first run had made ("Failed to modify", Darlinghurst, 11 November
+    # 2026) though nothing in it was to change.
+    standing = combination_states(connection, name)
+    if standing is not None and all(
+        standing.get(one["attributeId"]["guid"]) == one["isHidden"] for one in layers
+    ):
+        return name
 
     response = connection.run_tapir(
         "CreateLayerCombinations",
@@ -478,6 +495,25 @@ def views_for_storeys(
         ),
         "SetViewSettings",
     )
+    if zoom is None:
+        # Archicad turns a view to its saved rotation only when the view
+        # saves a zoom as well. Without one the zero above is kept and
+        # never used: the drawing shows the plan as the plan window is
+        # turned at that moment, and on a project worked in a rotated
+        # orientation every plan arrived on its sheet tilted, its labels
+        # with it (Penrith, 11 November 2026). SetViewRotation saves the
+        # whole plan as the zoom and the rotation with it. Best effort: an
+        # add-on without the command leaves the views as they were.
+        with suppress(ArchicadError):
+            connection.run_tapir(
+                "SetViewRotation",
+                {
+                    "navigatorItemIdsWithRotation": [
+                        {"navigatorItemId": {"guid": identifier}, "rotation": 0.0}
+                        for identifier in identifiers
+                    ]
+                },
+            )
 
     return [
         StoreyView(

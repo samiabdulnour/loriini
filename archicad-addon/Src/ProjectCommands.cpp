@@ -2,6 +2,15 @@
 #include "ApiCompat.hpp"
 #include "Support.hpp"
 
+// Design Options, Archicad 27 on. The same four headers, in the same order,
+// as Tapir's DesignOptionCommands.cpp, which builds against every kit here.
+#ifdef ServerMainVers_2700
+#include "ACAPI/Result.hpp"
+#include "ACAPI_Navigator.h"
+#include "ACAPI/View.hpp"
+#include "ACAPI/DesignOptionManager.hpp"
+#endif
+
 namespace Loriini {
 
 namespace {
@@ -640,6 +649,446 @@ GS::ObjectState GetGraphicOverrideCombinationsCommand::Execute (const GS::Object
 
 	GS::ObjectState result = Succeeded ();
 	result.Add ("combinations", combinations);
+	return result;
+}
+
+// -- GetRenovationFilters ---------------------------------------------------
+
+GS::String GetRenovationFiltersCommand::GetName () const		{ return "GetRenovationFilters"; }
+
+GS::Optional<GS::UniString> GetRenovationFiltersCommand::GetInputParametersSchema () const
+{
+	return GS::NoValue;
+}
+
+GS::Optional<GS::UniString> GetRenovationFiltersCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"renovationFilters": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"properties": { "guid": { "type": "string" }, "name": { "type": "string" } }
+				}
+			},
+			"actual": { "type": "string", "description": "The filter the floor plan shows now." },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState GetRenovationFiltersCommand::Execute (const GS::ObjectState& /*parameters*/,
+													  GS::ProcessControl& /*processControl*/) const
+{
+	GS::Array<API_Guid> guids;
+	const GSErrCode err = Api::GetRenovationFilters (&guids);
+	if (err != NoError) {
+		return Failed ("Failed to list the renovation filters.", err);
+	}
+
+	// In the project's own order, which is the Renovation palette's: an
+	// office that keeps its scenarios as filters numbers them there.
+	GS::Array<GS::ObjectState> filters;
+	for (const API_Guid& guid : guids) {
+		GS::UniString name;
+		if (Api::GetRenovationFilterName (&guid, &name) != NoError) {
+			continue;
+		}
+		GS::ObjectState one;
+		one.Add ("guid", APIGuidToString (guid));
+		one.Add ("name", name);
+		filters.Push (one);
+	}
+
+	GS::ObjectState result = Succeeded ();
+	result.Add ("renovationFilters", filters);
+	// So a caller that changes the filter can put it back.
+	API_Guid actual = APINULLGuid;
+	if (Api::GetActualRenovationFilter (&actual) == NoError) {
+		result.Add ("actual", APIGuidToString (actual));
+	}
+	return result;
+}
+
+// -- SetRenovationFilter ----------------------------------------------------
+
+GS::String SetRenovationFilterCommand::GetName () const		{ return "SetRenovationFilter"; }
+
+GS::Optional<GS::UniString> SetRenovationFilterCommand::GetInputParametersSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"guid": { "type": "string", "description": "The filter, as GetRenovationFilters lists it." }
+		},
+		"additionalProperties": false,
+		"required": ["guid"]
+	})");
+}
+
+GS::Optional<GS::UniString> SetRenovationFilterCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"name": { "type": "string", "description": "What the palette calls the filter now shown." },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState SetRenovationFilterCommand::Execute (const GS::ObjectState& parameters,
+													 GS::ProcessControl& /*processControl*/) const
+{
+	GS::UniString text;
+	if (!parameters.Get ("guid", text) || text.IsEmpty ()) {
+		return Failed ("A renovation filter needs its guid.", APIERR_BADPARS);
+	}
+	const API_Guid wanted = APIGuidFromString (text.ToCStr ().Get ());
+
+	// Checked against the project's own list first: Archicad's answer to a
+	// guid it does not know is a bare error code, and the name is what a
+	// person reads back.
+	GS::Array<API_Guid> guids;
+	if (Api::GetRenovationFilters (&guids) != NoError) {
+		return Failed ("Failed to list the renovation filters.", APIERR_GENERAL);
+	}
+	bool known = false;
+	for (const API_Guid& guid : guids) {
+		if (guid == wanted) {
+			known = true;
+			break;
+		}
+	}
+	if (!known) {
+		return Failed ("No renovation filter with the guid '" + text + "' in this project.", APIERR_BADPARS);
+	}
+	GS::UniString name;
+	if (Api::GetRenovationFilterName (&wanted, &name) != NoError) {
+		name = text;
+	}
+
+	const GSErrCode err = Api::SetActualRenovationFilter (&wanted);
+	if (err != NoError) {
+		return Failed ("Found '" + name + "' but Archicad would not show it.", err);
+	}
+
+	GS::ObjectState result = Succeeded ();
+	result.Add ("name", name);
+	return result;
+}
+
+// -- SetViewDesignOptions ---------------------------------------------------
+//
+// Pins saved views to a Design Option Combination, or to the Main Model
+// alone: what a renovation filter is to a view in Archicad 26, a combination
+// is in 27 and later, where an office keeps its massing options as Design
+// Options. Tapir's SetViewSettings has no field for it.
+//
+// The kit's API moved twice. 27 has it in ACAPI's inline v1 and changes a
+// view through a Modifier; 28 moved it to ACAPI::DesignOptions and kept the
+// Modifier; 29 dropped the Modifier for plain setters called inside an undo
+// scope. Each branch below is the kit example's own (DesignOptions_Test).
+
+GS::String SetViewDesignOptionsCommand::GetName () const		{ return "SetViewDesignOptions"; }
+
+GS::Optional<GS::UniString> SetViewDesignOptionsCommand::GetInputParametersSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"navigatorItemIds": {
+				"type": "array",
+				"description": "The views, by their View Map navigator item guids.",
+				"items": {
+					"type": "object",
+					"properties": { "guid": { "type": "string" } },
+					"required": ["guid"]
+				}
+			},
+			"combination": {
+				"type": "string",
+				"description": "The Design Option Combination, by guid or name. Blank: Main Model Only."
+			}
+		},
+		"additionalProperties": false,
+		"required": ["navigatorItemIds"]
+	})");
+}
+
+GS::Optional<GS::UniString> SetViewDesignOptionsCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"name": { "type": "string", "description": "The combination the views now show; blank for Main Model Only." },
+			"views": { "type": "integer" },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState SetViewDesignOptionsCommand::Execute (const GS::ObjectState& parameters,
+													  GS::ProcessControl& /*processControl*/) const
+{
+#ifdef ServerMainVers_2700
+	GS::Array<GS::ObjectState> items;
+	if (!parameters.Get ("navigatorItemIds", items) || items.IsEmpty ()) {
+		return Failed ("Name at least one view by its navigator item guid.", APIERR_BADPARS);
+	}
+	GS::UniString wanted;
+	parameters.Get ("combination", wanted);
+	wanted.Trim ();
+
+#if defined (ServerMainVers_2900)
+	auto manager = ACAPI::DesignOptions::CreateDesignOptionManager ();
+#elif defined (ServerMainVers_2800)
+	auto manager = ACAPI::DesignOptions::v2::CreateDesignOptionManager ();
+#else
+	auto manager = ACAPI::v2::CreateDesignOptionManager ();
+#endif
+	if (manager.IsErr ()) {
+		return Failed ("Archicad would not hand over its Design Options.", manager.UnwrapErr ().kind);
+	}
+
+#if defined (ServerMainVers_2900)
+	const auto combinations = manager->GetDesignOptionCombinations ();
+#else
+	const auto combinations = manager->GetAvailableDesignOptionCombinations ();
+#endif
+	if (combinations.IsErr ()) {
+		return Failed ("Failed to list the Design Option Combinations.", combinations.UnwrapErr ().kind);
+	}
+	const auto& all = combinations.Unwrap ();
+
+	// By guid, or by name: the window offers names, and a guid is what a
+	// name resolves to.
+	size_t chosen = all.size ();
+	GS::UniString chosenName;
+	if (!wanted.IsEmpty ()) {
+		const API_Guid wantedGuid = APIGuidFromString (wanted.ToCStr ().Get ());
+		for (size_t i = 0; i < all.size (); ++i) {
+			if (GSGuid2APIGuid (all[i].GetGuid ()) == wantedGuid || all[i].GetName () == wanted) {
+				chosen = i;
+				chosenName = all[i].GetName ();
+				break;
+			}
+		}
+		if (chosen == all.size ()) {
+			return Failed ("No Design Option Combination '" + wanted + "' in this project.", APIERR_BADPARS);
+		}
+	}
+	const bool mainModelOnly = chosen == all.size ();
+
+	Int32 views = 0;
+	for (const GS::ObjectState& item : items) {
+		GS::UniString text;
+		if (!item.Get ("guid", text) || text.IsEmpty ()) {
+			return Failed ("Every view needs its navigator item guid.", APIERR_BADPARS);
+		}
+		const API_Guid itemGuid = APIGuidFromString (text.ToCStr ().Get ());
+#if defined (ServerMainVers_2800)
+		auto view = ACAPI::ModelViews::FindViewByGuid (itemGuid);
+#else
+		auto view = ACAPI::FindViewByGuid (itemGuid);
+#endif
+		if (view.IsErr ()) {
+			return Failed ("No saved view with the navigator item guid '" + text + "'.", view.UnwrapErr ().kind);
+		}
+		auto settings = manager->GetDesignOptionCombinationSettingsOf (view.Unwrap ());
+		if (settings.IsErr ()) {
+			return Failed ("Archicad would not hand over the Design Options of the view '" + text + "'.",
+						   settings.UnwrapErr ().kind);
+		}
+
+#if defined (ServerMainVers_2900)
+		GSErrCode pinned = ACAPI_CallUndoableCommand ("Set the Design Options of a view", [&] () -> GSErrCode {
+			const ACAPI::Result<void> done = mainModelOnly
+				? settings->SetMainModelOnly ()
+				: settings->SetStandardCombination (all[chosen]);
+			return done.IsErr () ? done.UnwrapErr ().kind : NoError;
+		});
+#else
+#if defined (ServerMainVers_2800)
+		using Modifier = ACAPI::DesignOptions::DesignOptionCombinationViewSettings::Modifier;
+#else
+		using Modifier = ACAPI::DesignOptionCombinationViewSettings::Modifier;
+#endif
+		const ACAPI::Result<void> done = settings->Modify ([&] (Modifier& modifier) {
+			if (mainModelOnly) {
+				modifier.SetMainModelOnly ();
+			} else {
+				modifier.SetStandardCombination (all[chosen]);
+			}
+		});
+		GSErrCode pinned = done.IsErr () ? done.UnwrapErr ().kind : NoError;
+#endif
+		if (pinned != NoError) {
+			return Failed ("Archicad would not set the Design Options of the view '" + text + "'.", pinned);
+		}
+		++views;
+	}
+
+	GS::ObjectState result = Succeeded ();
+	result.Add ("name", chosenName);
+	result.Add ("views", views);
+	return result;
+#else
+	UNUSED_PARAMETER (parameters);
+	return Failed ("Design Options are Archicad 27's; this is an earlier Archicad.", APIERR_NOTSUPPORTED);
+#endif
+}
+
+
+
+// -- SetProjectData / GetProjectData ----------------------------------------
+//
+// A text kept inside the project file, out of sight: an AddOnObject named
+// "Loriini/<name>", saved with the .pln and sent to the server in Teamwork.
+// The solar study keeps its verdicts here, every apartment's, so that an IFC
+// export run long after reads them -- the hotlinked apartments' as well,
+// whose zones the host cannot write a property onto (D185).
+
+namespace {
+
+GS::UniString StoredName (const GS::UniString& name)
+{
+	return "Loriini/" + name;
+}
+
+}
+
+GS::String SetProjectDataCommand::GetName () const		{ return "SetProjectData"; }
+
+GS::Optional<GS::UniString> SetProjectDataCommand::GetInputParametersSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"name": { "type": "string", "description": "What the text is kept under." },
+			"content": { "type": "string", "description": "The text, JSON as a rule." }
+		},
+		"additionalProperties": false,
+		"required": ["name", "content"]
+	})");
+}
+
+GS::Optional<GS::UniString> SetProjectDataCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"created": { "type": "boolean" },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState SetProjectDataCommand::Execute (const GS::ObjectState& parameters,
+												GS::ProcessControl& /*processControl*/) const
+{
+	GS::UniString name;
+	GS::UniString content;
+	if (!parameters.Get ("name", name) || name.IsEmpty ()) {
+		return Failed ("Project data needs a name.", APIERR_BADPARS);
+	}
+	parameters.Get ("content", content);
+
+	const GS::UniString stored = StoredName (name);
+	const auto utf8 = content.ToCStr (CC_UTF8);
+	const char* bytes = utf8.Get ();
+	GSHandle handle = nullptr;
+	if (BMPtrToHandle (bytes, &handle, static_cast<GSSize> (strlen (bytes))) != NoError) {
+		return Failed ("Out of memory for the project data.", APIERR_MEMFULL);
+	}
+
+	API_Guid guid = APINULLGuid;
+	const bool known = ACAPI_AddOnObject_GetObjectGuidFromName (stored, &guid) == NoError && guid != APINULLGuid;
+	const GSErrCode err = ACAPI_CallUndoableCommand ("Keep Loriini's data in the project", [&] () -> GSErrCode {
+		if (known) {
+			// Teamwork: the object is reserved first. Alone, the reservation
+			// answers as it may, and the change is made either way.
+			GS::Array<API_Guid> reserve;
+			reserve.Push (guid);
+			ACAPI_AddOnObject_ReserveObjects (reserve, nullptr);
+			return ACAPI_AddOnObject_ModifyObject (guid, nullptr, &handle);
+		}
+		return ACAPI_AddOnObject_CreateObject (stored, handle, &guid);
+	});
+	BMKillHandle (&handle);
+	if (err != NoError) {
+		return Failed ("Archicad would not keep '" + name + "' in the project.", err);
+	}
+	GS::ObjectState result = Succeeded ();
+	result.Add ("created", !known);
+	return result;
+}
+
+GS::String GetProjectDataCommand::GetName () const		{ return "GetProjectData"; }
+
+GS::Optional<GS::UniString> GetProjectDataCommand::GetInputParametersSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"name": { "type": "string", "description": "What the text was kept under." }
+		},
+		"additionalProperties": false,
+		"required": ["name"]
+	})");
+}
+
+GS::Optional<GS::UniString> GetProjectDataCommand::GetResponseSchema () const
+{
+	return GS::UniString (R"({
+		"type": "object",
+		"properties": {
+			"success": { "type": "boolean" },
+			"found": { "type": "boolean" },
+			"content": { "type": "string" },
+			"error": { "type": "object" }
+		}
+	})");
+}
+
+GS::ObjectState GetProjectDataCommand::Execute (const GS::ObjectState& parameters,
+												GS::ProcessControl& /*processControl*/) const
+{
+	GS::UniString name;
+	if (!parameters.Get ("name", name) || name.IsEmpty ()) {
+		return Failed ("Project data needs a name.", APIERR_BADPARS);
+	}
+	API_Guid guid = APINULLGuid;
+	if (ACAPI_AddOnObject_GetObjectGuidFromName (StoredName (name), &guid) != NoError || guid == APINULLGuid) {
+		GS::ObjectState result = Succeeded ();
+		result.Add ("found", false);
+		return result;
+	}
+	GS::UniString objectName;
+	GSHandle content = nullptr;
+	const GSErrCode err = ACAPI_AddOnObject_GetObjectContent (guid, &objectName, &content);
+	if (err != NoError || content == nullptr) {
+		BMKillHandle (&content);
+		return Failed ("Archicad would not hand over '" + name + "'.", err != NoError ? err : APIERR_GENERAL);
+	}
+	const GSSize size = BMGetHandleSize (content);
+	GS::Array<char> bytes;
+	bytes.SetSize (static_cast<USize> (size) + 1);
+	if (size > 0) {
+		memcpy (bytes.GetContent (), *content, static_cast<size_t> (size));
+	}
+	bytes[static_cast<UIndex> (size)] = '\0';
+	BMKillHandle (&content);
+
+	GS::ObjectState result = Succeeded ();
+	result.Add ("found", true);
+	result.Add ("content", GS::UniString (bytes.GetContent (), CC_UTF8));
 	return result;
 }
 

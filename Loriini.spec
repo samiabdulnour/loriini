@@ -84,6 +84,13 @@ datas += [d for d in tmp_ret[0] if not any(u in PurePath(d[0]).as_posix() for u 
 binaries += tmp_ret[1]
 hiddenimports += [m for m in tmp_ret[2] if not m.startswith(('ifcopenshell.express', 'ifcopenshell.mvd', 'ifcopenshell.validate'))]
 
+# shapely: the flat shadow plans merge Archicad's shadow pieces with it, and its
+# GEOS libraries are loaded by name at import, which a static scan may not see.
+tmp_ret = collect_all('shapely')
+datas += tmp_ret[0]
+binaries += tmp_ret[1]
+hiddenimports += tmp_ret[2]
+
 
 a = Analysis(
     [str(ROOT / 'src' / 'sun_study' / 'app' / '__main__.py')],
@@ -94,7 +101,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['rhino3dm', 'shapely', 'mypy', 'pydantic.v1.mypy', 'pydantic.mypy'],
+    excludes=['rhino3dm', 'mypy', 'pydantic.v1.mypy', 'pydantic.mypy'],
     noarchive=False,
     optimize=0,
 )

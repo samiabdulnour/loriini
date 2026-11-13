@@ -19,11 +19,14 @@ from sun_study.archicad.connection import (
     project_name,
 )
 from sun_study.archicad.cos_schedule import schedule_names
+from sun_study.archicad.design_options import combinations as option_combinations
+from sun_study.archicad.design_options import uses_design_options
 from sun_study.archicad.layers import read_layers
 from sun_study.archicad.layout import _walk, master_layouts
 from sun_study.archicad.read import read_geo_location
 from sun_study.archicad.series import ensure_model_database
 from sun_study.archicad.sun_eyes import overrides_in_views
+from sun_study.archicad.write import all_properties
 
 #: Floor area, in square metres, at or above which a zone is a dwelling
 #: rather than something a dwelling contains. The ADG's smallest apartment is
@@ -105,6 +108,28 @@ class ProjectOptions:
 
     pen_sets: tuple[str, ...] = ()
     """The project's pen tables, for the sun views to print in the office's."""
+
+    fills: tuple[str, ...] = ()
+    """The project's fill types, for a compared shadow row's hatch."""
+
+    renovation_filters: tuple[str, ...] = ()
+    """The project's renovation filters, in the Renovation palette's order,
+    for a compared row kept as a filter. Empty on an add-on that cannot list
+    them, and the field then takes a typed name."""
+
+    design_options: tuple[str, ...] = ()
+    """The project's Design Option Combinations, Archicad 27 on, in Archicad's
+    order: what a compared row or the Yield is seen under there, as a
+    renovation filter is in 26."""
+
+    archicad_version: int | None = None
+
+    properties: tuple[str, ...] = ()
+    """The project's own properties as ``Group/Name``, for the QA export's
+    copies (D184): what a unit field is filled from."""
+    """Archicad's major version, 26 or 27 and on, which decides whether the
+    window offers renovation filters or Design Options. ``None`` when it
+    would not say."""
 
     overrides: tuple[str, ...] = ()
     """Graphic override combinations, for the sun views' glazing override.
@@ -317,6 +342,34 @@ def options(port: int) -> ProjectOptions:
         "pen sets",
         lambda: connection.run_tapir("GetAttributesByType", {"attributeType": "PenTable"}),
     )
+    fill_types = attempt(
+        "fill types",
+        lambda: connection.run_tapir("GetAttributesByType", {"attributeType": "Fill"}),
+    )
+    # Not through `attempt`, as the overrides below are not: an add-on older
+    # than the command is not a problem with the project.
+    try:
+        renovation = connection.run_loriini("GetRenovationFilters", {})
+    except ArchicadError:
+        renovation = {}
+    # Softly, as the filters are: an Archicad that will not say its version
+    # is offered 26's renovation filters, which every version has.
+    archicad = connection.archicad_version
+    design_options = (
+        tuple(one.name for one in option_combinations(connection))
+        if uses_design_options(archicad)
+        else ()
+    )
+    own_properties = attempt(
+        "properties",
+        lambda: tuple(
+            sorted(
+                f"{detail.group}/{detail.name}"
+                for detail in all_properties(connection)
+                if detail.kind == "Custom"
+            )
+        ),
+    )
     # Not through `attempt`: an add-on older than this command is not a
     # problem with the project, and the field simply stays typed.
     try:
@@ -343,6 +396,9 @@ def options(port: int) -> ProjectOptions:
     return ProjectOptions(
         project=project,
         tapir=version,
+        archicad_version=archicad,
+        properties=own_properties or (),
+        design_options=design_options,
         latitude=None if where is None else where.latitude_deg,
         longitude=None if where is None else where.longitude_deg,
         north_radians=0.0 if where is None else where.north_radians,
@@ -364,6 +420,18 @@ def options(port: int) -> ProjectOptions:
                 for entry in ((pens or {}).get("attributes") or [])
                 if str(entry.get("name", "")).strip()
             )
+        ),
+        fills=tuple(
+            sorted(
+                str(entry.get("name", "")).strip()
+                for entry in ((fill_types or {}).get("attributes") or [])
+                if str(entry.get("name", "")).strip()
+            )
+        ),
+        renovation_filters=tuple(
+            str(entry.get("name", ""))
+            for entry in ((renovation or {}).get("renovationFilters") or [])
+            if isinstance(entry, dict) and str(entry.get("name", "")).strip()
         ),
         overrides=tuple(
             sorted(

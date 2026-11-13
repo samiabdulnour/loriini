@@ -46,6 +46,17 @@ namespace Loriini {
 LORIINI_LAYOUT_COMMAND (GetDrawingsCommand)
 LORIINI_LAYOUT_COMMAND (ArrangeDrawingsCommand)
 
+//   GetDrawingPrimitives   What a placed Drawing draws, as polygons: Archicad
+//                     decomposes the drawing into the primitives of its content
+//                     (`ACAPI_Element_ShapePrims`), and the filled ones are
+//                     handed back with their pens. It is how the shadows a 3D
+//                     Document casts are read out of it -- Archicad draws them
+//                     as fills on the surfaces they fall on, in the shadow's
+//                     pen -- so a shadow diagram can be drawn once as plain
+//                     fills instead of being a stack of live documents on a
+//                     sheet.
+LORIINI_LAYOUT_COMMAND (GetDrawingPrimitivesCommand)
+
 #undef LORIINI_LAYOUT_COMMAND
 
 }		// namespace Loriini

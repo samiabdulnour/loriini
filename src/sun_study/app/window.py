@@ -96,6 +96,7 @@ from sun_study.app import (
 )
 from sun_study.app.runner import Run
 from sun_study.archicad import naming
+from sun_study.archicad.design_options import uses_design_options
 from sun_study.archicad.shadows import LEGEND as SHADOW_LEGEND
 from sun_study.archicad.sheeting import cells_for, parse_sheet_mode, sheet_chunks, sheet_title
 from sun_study.cli import DEFAULT_SHADOW_HOURS
@@ -184,18 +185,9 @@ def _style_id(label: str, *, site: bool) -> str:
 #: (D140): the option's name unless each layer is an option, the layers the
 #: answer reads, and the levels wherever the use is told by level.
 YIELD_ROWS: dict[str, frozenset[str]] = {
-    "Every slab showing": frozenset({"option", "levels"}),
-    "Slabs on chosen layers": frozenset({"option", "layers", "levels"}),
-    "A layer per use": frozenset({"option", "per_use"}),
-    "A layer per option": frozenset({"option_layers", "levels"}),
+    "By level": frozenset({"option", "layers", "levels"}),
+    "By layer": frozenset({"option", "per_use"}),
 }
-
-#: The Renovation answers read off each slab, and what the run is told.
-RENOVATION_STATUS_FLAGS: dict[str, str] = {
-    "New only": "new",
-    "Existing and new": "existing-and-new",
-}
-
 
 #: What RL project zero stands for when the 3D context is placed, and the
 #: ``--datum`` each sends; the first is the default. Anything else typed in
@@ -275,6 +267,7 @@ SITE_JOBS = (SITE_MODEL_JOB, SITE_CONTEXT_JOB, SITE_SHEET_JOB, SITE_CONTROLS_JOB
 #: The yield analysis (roadmap R3): the office's feasibility sheet from the
 #: massing slabs, an option a sheet of its own.
 YIELD_JOB = "area and yield"
+QA_JOB = "IFC export"
 #: That sheet, as the panel draws it: a table beside the massing.
 AREA_SHEET = "Yield Analysis"
 
@@ -294,6 +287,7 @@ CHIPS: dict[str, tuple[str, str]] = {
     SITE_CONTROLS_JOB: ("Controls", "subset"),
     SITE_MODEL_JOB: ("3D context", "model"),
     YIELD_JOB: ("Yield", "yield"),
+    QA_JOB: ("IFC export", "subset"),
 }
 
 
@@ -376,6 +370,23 @@ class Tooltip:
         self.visible = False
         if Tooltip.band is not None:
             Tooltip.band.rest()
+
+
+def put(widget: Any, **options: object) -> None:
+    """Configure a widget with only what it does not already have.
+
+    Tk does not look: told the style, the text or the state it already
+    wears, a widget asks to be laid out and painted again all the same. The
+    window says what it will do after every click, to some two hundred
+    widgets of which a click changes a handful, and measured on Windows that
+    was 45 ms of laying out and repainting a page nothing had changed on --
+    the flicker under every click. So each is asked what it has first.
+    """
+    changed = {
+        name: value for name, value in options.items() if str(widget.cget(name)) != str(value)
+    }
+    if changed:
+        widget.configure(**changed)
 
 
 class Scroller(ttk.Frame):
@@ -941,6 +952,24 @@ SHADOW_LEGEND_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
         "under a grey row instead tests it against itself and reads as a much "
         "smaller shadow. Left empty, the row is left off the sheet.",
     ),
+    (
+        "PROPOSED 4",
+        "scenario",
+        "Proposed 4",
+        "A fourth envelope to compare, if there is one.",
+        "The lightest blue. Compared as Proposed 2 and 3 are: against every grey "
+        "row and no other blue one. With worksheet fills it is told from the "
+        "others by its hatch and its dashed outline, not its blue. Left empty, "
+        "the row is left off the sheet.",
+    ),
+    (
+        "PROPOSED 5",
+        "scenario",
+        "Proposed 5",
+        "A fifth envelope to compare, if there is one.",
+        "A pale blue. Compared as the others are, and told from them by its "
+        "hatch and its dashed outline. Left empty, the row is left off the sheet.",
+    ),
 )
 
 #: A preset's rows from before the names were universal, and the rows they
@@ -1066,7 +1095,7 @@ class Tiles(ttk.Frame):
 
     def _paint(self) -> None:
         for value, button in self._buttons.items():
-            button.configure(style="TileOn.TButton" if value in self._on else "Tile.TButton")
+            put(button, style="TileOn.TButton" if value in self._on else "Tile.TButton")
 
     def get(self) -> str:
         """The chosen value, spelled exactly as the caller listed it."""
@@ -1085,10 +1114,13 @@ class Tiles(ttk.Frame):
         In a ``multi`` row the value is a comma list, each part a tile or an
         alias for some; a value that names none of them is held the same way.
         """
-        self._chosen = value
         if not self._multi:
+            # An older spelling is the tile it now means (D183's Use row).
+            value = self._aliases.get(value, (value,))[0]
+            self._chosen = value
             self._on = {value}
         else:
+            self._chosen = value
             wanted: set[str] = set()
             for part in (piece.strip() for piece in value.split(",")):
                 wanted.update(self._aliases.get(part, (part,)))
@@ -1191,7 +1223,7 @@ class Ticks(ttk.Frame):
     def _paint(self) -> None:
         lit = self._lit()
         for value, button in self._buttons.items():
-            button.configure(style="TileOn.TButton" if value in lit else "Tile.TButton")
+            put(button, style="TileOn.TButton" if value in lit else "Tile.TButton")
 
     def get(self) -> str:
         """The field's text, exactly as it would be sent."""
@@ -1253,6 +1285,12 @@ class Toggles(ttk.Frame):
         self.paint()
         return button
 
+    def widen(self, width: int) -> None:
+        """A row of one button, made as wide as the fields it stands among."""
+        _variable, button = self._items[0]
+        button.grid_configure(sticky="ew")
+        self.columnconfigure(0, minsize=width + 2)
+
     def _flip(self, variable: tk.BooleanVar) -> None:
         variable.set(not variable.get())
         self.paint()
@@ -1261,7 +1299,124 @@ class Toggles(ttk.Frame):
 
     def paint(self) -> None:
         for variable, button in self._items:
-            button.configure(style="TileOn.TButton" if variable.get() else "Tile.TButton")
+            put(button, style="TileOn.TButton" if variable.get() else "Tile.TButton")
+
+
+def colour_hex(value: str) -> str | None:
+    """``#rrggbb`` for a colour given as ``#rrggbb``, ``#rgb`` or ``R,G,B``;
+    ``None`` for anything else -- a blank, or a pen number an older settings
+    file saved."""
+    given = value.strip()
+    if given.startswith("#"):
+        digits = given[1:]
+        if len(digits) == 3:
+            digits = "".join(c * 2 for c in digits)
+        if len(digits) == 6 and all(c in "0123456789abcdefABCDEF" for c in digits):
+            return f"#{digits.lower()}"
+        return None
+    parts = [part.strip() for part in given.split(",")]
+    if len(parts) == 3 and all(part.isdigit() and int(part) <= 255 for part in parts):
+        return "#{:02x}{:02x}{:02x}".format(*(int(part) for part in parts))
+    return None
+
+
+class ColourField(ttk.Frame):
+    """A colour, chosen in the system's colour picker and shown as a swatch.
+
+    In place of a box a pen number was typed into: what a person knows is
+    the colour they want, not which of 255 pens has it. Keeps the Entry
+    interface the settings file round-trips through -- ``get``, ``delete``,
+    ``insert`` -- as ``Chips`` does. Holds ``#rrggbb`` or nothing; a pen
+    number an older settings file saved is kept, shown as that pen and still
+    sent as one.
+    """
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        *,
+        label: str,
+        empty: str = "none chosen",
+        on_change: Callable[[], None] | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._value = ""
+        self._label = label
+        self._empty = empty
+        self._changed = on_change
+        self.swatch = tk.Label(
+            self, width=4, relief="solid", borderwidth=1, cursor="hand2", background="#ffffff"
+        )
+        self.swatch.pack(side="left", padx=(0, 8), ipady=2)
+        self.swatch.bind("<Button-1>", lambda _event: self.choose())
+        self.words = ttk.Label(self, style="Hint.TLabel")
+        self.words.pack(side="left", padx=(0, 8))
+        self.picker = ttk.Button(
+            self, text="Choose…", style="Add.TButton", width=0, command=self.choose
+        )
+        self.picker.pack(side="left")
+        self.clearer = ttk.Button(
+            self,
+            text="×",  # noqa: RUF001 - the close cross, not a letter x
+            style="ChipDrop.TButton",
+            width=2,
+            command=self.clear,
+        )
+        Tooltip(
+            self.clearer,
+            f"Clears {label}, so nothing is sent and the project's own default holds.",
+            title=f"Clear {label}",
+        )
+        self._paint()
+
+    # -- what makes it a drop-in for an Entry ------------------------------
+    def get(self) -> str:
+        return self._value
+
+    def delete(self, first: object = 0, last: object = None) -> None:
+        self._value = ""
+        self._paint()
+
+    def insert(self, index: object, value: str) -> None:
+        given = str(value).strip()
+        self._value = colour_hex(given) or given
+        self._paint()
+
+    # -- and what makes it a colour ----------------------------------------
+    def choose(self) -> None:
+        """Open the system's colour picker on the colour held, if any."""
+        from tkinter import colorchooser
+
+        _rgb, picked = colorchooser.askcolor(
+            color=colour_hex(self._value), parent=self, title=self._label
+        )
+        if picked:
+            self._value = colour_hex(str(picked)) or ""
+            self._paint()
+            if self._changed is not None:
+                self._changed()
+
+    def clear(self) -> None:
+        self.delete()
+        if self._changed is not None:
+            self._changed()
+
+    def _paint(self) -> None:
+        hexed = colour_hex(self._value)
+        if hexed:
+            red, green, blue = (int(hexed[i : i + 2], 16) for i in (1, 3, 5))
+            self.swatch.configure(background=hexed, text="")
+            self.words.configure(text=f"{hexed}  ·  rgb {red}, {green}, {blue}")
+        elif self._value:
+            self.swatch.configure(background="#ffffff", text="?")
+            self.words.configure(text=f"pen {self._value}")
+        else:
+            self.swatch.configure(background="#ffffff", text="")
+            self.words.configure(text=self._empty)
+        if self._value:
+            self.clearer.pack(side="left", padx=(4, 0))
+        else:
+            self.clearer.pack_forget()
 
 
 class Chips(ttk.Frame):
@@ -1299,6 +1454,10 @@ class Chips(ttk.Frame):
         self._changed = on_change
         self._empty = empty
         self._made: list[tk.Widget] = []
+        #: The same widgets as they were last laid out, a list for each row.
+        self._rows: list[list[tk.Widget]] = []
+        #: The label this row answers to and its gap from the row above.
+        self._beside: tuple[tk.Widget, int] | None = None
         #: The pane the row has to fit inside. Its own width is no guide: a
         #: frame is given whatever it asks for, and a row that asked for one
         #: long line was given one long line, off the edge of the page.
@@ -1400,17 +1559,50 @@ class Chips(ttk.Frame):
         pane changes width when the dock is folded away.
         """
         room = self.room() if room is None else room
-        x = y = tall = 0
+        rows: list[list[tk.Widget]] = [[]]
+        x = 0
         for made in self._made:
-            need, high = made.winfo_reqwidth(), made.winfo_reqheight()
+            need = made.winfo_reqwidth()
             if x and x + need > room:
-                x, y, tall = 0, y + tall + 3, 0
-            made.place(x=x, y=y)
+                rows.append([])
+                x = 0
+            rows[-1].append(made)
             x += need + 4
-            tall = max(tall, high)
+        # Each on the middle line of its row, not hung from the top of it:
+        # the Add button is taller than the words beside it, and words placed
+        # at its top edge sat above the line every other field's text is on.
+        y = 0
+        heights: list[int] = []
+        for across in rows:
+            tall = max((made.winfo_reqheight() for made in across), default=0)
+            x = 0
+            for made in across:
+                made.place(x=x, y=y + (tall - made.winfo_reqheight()) // 2)
+                x += made.winfo_reqwidth() + 4
+            heights.append(tall)
+            y += tall + 3
+        self._rows = rows
         # Placed children do not size their parent, so the row says its own
         # size: as wide as the pane allows, as tall as the rows came to.
-        self.configure(width=room, height=y + tall + 2)
+        self.configure(width=room, height=y - 3 + 2)
+        if self._beside is not None:
+            name, top = self._beside
+            down = top + max(heights[0] - name.winfo_reqheight(), 0) // 2
+            # Not while its panel is folded: gridding a label the fold took
+            # off the page would put it back on, alone.
+            placed = dict(name.grid_info())
+            if len(placed) and placed.get("pady") != (down, 0):
+                name.grid_configure(pady=(down, 0))
+
+    def beside(self, name: tk.Widget, top: int = 0) -> None:
+        """The row's own label, kept on the middle line of the first row.
+
+        It is gridded to the top of its cell, which is right when the chips
+        wrap to three rows and wrong by half the Add button's height when
+        they do not, so the chips say where their first row's middle is.
+        """
+        self._beside = (name, top)
+        self._reflow()
 
 
 class InfoBand(ttk.Frame):
@@ -1663,10 +1855,17 @@ class Dock(ttk.Frame):
         self._on_pick = on_pick
         self._on_fold = on_fold
         self._drawn: list[tk.Misc] = []
+        #: The same widgets by what each one is, so the next refill keeps
+        #: the ones it still wants: see ``refill``.
+        self._kept: dict[object, tk.Widget] = {}
         #: The sheets and filing line last drawn, so a refill that would draw
         #: the same panel again does nothing.
         self._shown: tuple[tuple[Sheet, ...], str] | None = None
         self.folded = False
+        #: The panel sliding in over the page as it opens, and its movement:
+        #: see ``_glide_open``.
+        self._ghost: tk.Widget | None = None
+        self._glide: motion.Tween | None = None
 
         # -- open -----------------------------------------------------------
         self.open_view = ttk.Frame(self, style="Dock.TFrame")
@@ -1761,20 +1960,87 @@ class Dock(ttk.Frame):
         """Tint the spine's words under the pointer, as a link is."""
         self.spine.itemconfigure(self._spine_text, fill=theme.ON_ACCENT if on else theme.BODY)
 
-    def fold(self, shut: bool, *, by_hand: bool = True) -> None:
-        """Put the panel away, or bring it back."""
+    #: How long the panel takes to slide in: the page's own settle.
+    GLIDE_MS = motion.DURATION_MS
+
+    def fold(self, shut: bool, *, by_hand: bool = True, glide: bool = True) -> None:
+        """Put the panel away, or bring it back.
+
+        Either way the page beside it is laid out again at its new width, and
+        that is a third of a second of Tk moving a few hundred widgets. It is
+        done with the window's painting held (``motion.painting_held``), so
+        the page is seen before and after and never half-way. Opening, the
+        panel first slides in over the page (``_glide_open``) so that the
+        click is answered at once; ``glide`` is False for a fold the window
+        makes as it is being resized, which has its own movement.
+        """
         if shut == self.folded:
             return
         self.folded = shut
-        if shut:
-            self.open_view.pack_forget()
-            self.shut_view.pack(fill="both", expand=True)
-        else:
-            self.shut_view.pack_forget()
-            self.open_view.pack(fill="both", expand=True)
-        self.configure(width=self.FOLDED if shut else self.WIDTH)
         if by_hand and self._on_fold is not None:
             self._on_fold(shut)
+        if self._glide is not None:
+            # Folded again before it had opened: the views never changed.
+            self._glide.stop()
+            self._settle_ghost()
+            if shut:
+                return
+        if not shut and glide and self.winfo_ismapped() and not motion.reduced():
+            self._glide_open()
+            return
+        self._show(shut)
+
+    def _show(self, shut: bool) -> None:
+        """Swap the views and the width, and lay the page out once."""
+        with motion.painting_held(self):
+            if shut:
+                self.open_view.pack_forget()
+                self.shut_view.pack(fill="both", expand=True)
+            else:
+                self.shut_view.pack_forget()
+                self.open_view.pack(fill="both", expand=True)
+            self.configure(width=self.FOLDED if shut else self.WIDTH)
+            self._settle_ghost()
+
+    def _glide_open(self) -> None:
+        """Slide an empty panel in over the page, then open the real one under it.
+
+        The real one cannot slide: its width is the page's, and every frame
+        of a widening panel would lay the page out again. So a stand-in -- the
+        panel's ground and its title -- is placed over the page and moved,
+        which costs Tk one window moved a frame, and the page is laid out once
+        when it has arrived, with the painting held.
+        """
+        parent = self.master
+        right = self.winfo_x() + self.winfo_width()
+        tall = self.winfo_height()
+        ghost = ttk.Frame(parent, style="Dock.TFrame", width=self.WIDTH, height=tall)
+        ghost.pack_propagate(False)
+        head = ttk.Frame(ghost, style="Dock.TFrame", padding=(16, 12, 8, 4))
+        head.pack(side="top", fill="x")
+        ttk.Label(head, text="Sheets", style="DockTitle.TLabel").pack(side="left")
+        ttk.Label(head, text=self.tally.cget("text"), style="Badge.TLabel").pack(
+            side="left", padx=(8, 0)
+        )
+        ghost.place(x=right, y=self.winfo_y(), width=self.WIDTH, height=tall)
+        ghost.lift()
+        self._ghost = ghost
+
+        def step(along: float) -> None:
+            ghost.place_configure(x=round(right - self.WIDTH * along))
+
+        def done() -> None:
+            self._glide = None
+            self._show(False)
+
+        self._glide = motion.Tween(self, step, done=done, duration_ms=self.GLIDE_MS)
+
+    def _settle_ghost(self) -> None:
+        """Take the stand-in away, if one is there."""
+        self._glide = None
+        if self._ghost is not None:
+            self._ghost.destroy()
+            self._ghost = None
 
     def refill(self, sheets: Sequence[Sheet], *, filed: str) -> None:
         """Redraw the panel. Cheap enough to do on every tick and keystroke:
@@ -1789,9 +2055,6 @@ class Dock(ttk.Frame):
         if shown == self._shown:
             return
         self._shown = shown
-        for old in self._drawn:
-            old.destroy()
-        self._drawn = []
         # The count is of sheets. A model in the panel is drawn there because
         # the run makes it, and not counted here because it is not one.
         papers = sum(1 for sheet in sheets if sheet.paper)
@@ -1803,47 +2066,87 @@ class Dock(ttk.Frame):
         else:
             self.filed.pack_forget()
 
-        if not sheets:
-            empty = ttk.Label(
-                self.pane.content,
-                text=(
-                    "Nothing ticked.\n\nThe sheets a run would make appear here as "
-                    "you switch studies on."
-                ),
-                style="DockHint.TLabel",
-                justify="center",
-                wraplength=self.SHEET_W - 20,
-            )
-            empty.pack(pady=24, padx=10)
-            self._drawn.append(empty)
-            return
+        # What the panel holds now, top to bottom, each thing under a key
+        # that says what it is. Whatever was drawn last time under the same
+        # key is kept where it is and whatever was not is made: switching one
+        # study on used to destroy and draw again every miniature of every
+        # other, 110 ms on Windows with the whole panel blank in between,
+        # which was the flash down the right of the window on every click.
+        wanted: list[tuple[object, Callable[[], tk.Widget]]] = []
+        seen: dict[object, int] = {}
 
+        def want(key: object, make: Callable[[], tk.Widget]) -> None:
+            # Counted, so two things that would share a key stay two.
+            seen[key] = seen.get(key, 0) + 1
+            wanted.append(((key, seen[key]), make))
+
+        if not sheets:
+            want("nothing ticked", self._nothing_ticked)
         study = ""
         day = ""
         for sheet in sheets:
             if sheet.study != study:
                 study = sheet.study
                 day = ""
-                # A hairline over each study, then its name and its count:
-                # the groups of the panel, the way the sidebar groups pages.
-                rule = ttk.Frame(self.pane.content, style="Rule.TFrame", height=1)
-                rule.pack(side="top", fill="x", padx=16, pady=(10, 0))
-                self._drawn.append(rule)
-                head = ttk.Frame(self.pane.content, style="Dock.TFrame")
-                head.pack(side="top", fill="x", padx=16, pady=(8, 2))
-                ttk.Label(head, text=sheet.study, style="DockStudy.TLabel").pack(side="left")
-                ttk.Label(
-                    head,
-                    text=str(sum(1 for other in sheets if other.study == sheet.study)),
-                    style="DockCount.TLabel",
-                ).pack(side="right")
-                self._drawn.append(head)
+                count = sum(1 for other in sheets if other.study == study)
+                want(("rule", study), self._rule)
+                want(("head", study, count), partial(self._study_head, study, count))
             if sheet.day and sheet.day != day:
                 day = sheet.day
-                line = ttk.Label(self.pane.content, text=day, style="DockDay.TLabel")
-                line.pack(side="top", anchor="w", padx=16, pady=(0, 6))
-                self._drawn.append(line)
-            self._drawn.append(self._draw(sheet))
+                want(("day", study, day), partial(self._day_line, day))
+            want(sheet, partial(self._draw, sheet))
+
+        kept = self._kept
+        self._kept = {}
+        self._drawn = []
+        above: tk.Widget | None = None
+        for key, make in wanted:
+            widget = kept.pop(key, None)
+            if widget is None:
+                widget = make()
+            # In its place under the one before it. A widget already packed
+            # is moved, not taken off the screen and put back; and what is
+            # left above the first of them is what is destroyed below.
+            if above is not None:
+                widget.pack_configure(after=above)
+            above = widget
+            self._kept[key] = widget
+            self._drawn.append(widget)
+        for old in kept.values():
+            old.destroy()
+
+    def _nothing_ticked(self) -> tk.Widget:
+        empty = ttk.Label(
+            self.pane.content,
+            text=(
+                "Nothing ticked.\n\nThe sheets a run would make appear here as "
+                "you switch studies on."
+            ),
+            style="DockHint.TLabel",
+            justify="center",
+            wraplength=self.SHEET_W - 20,
+        )
+        empty.pack(pady=24, padx=10)
+        return empty
+
+    def _rule(self) -> tk.Widget:
+        """A hairline over each study, then its name and its count: the
+        groups of the panel, the way the sidebar groups pages."""
+        rule = ttk.Frame(self.pane.content, style="Rule.TFrame", height=1)
+        rule.pack(side="top", fill="x", padx=16, pady=(10, 0))
+        return rule
+
+    def _study_head(self, study: str, count: int) -> tk.Widget:
+        head = ttk.Frame(self.pane.content, style="Dock.TFrame")
+        head.pack(side="top", fill="x", padx=16, pady=(8, 2))
+        ttk.Label(head, text=study, style="DockStudy.TLabel").pack(side="left")
+        ttk.Label(head, text=str(count), style="DockCount.TLabel").pack(side="right")
+        return head
+
+    def _day_line(self, day: str) -> tk.Widget:
+        line = ttk.Label(self.pane.content, text=day, style="DockDay.TLabel")
+        line.pack(side="top", anchor="w", padx=16, pady=(0, 6))
+        return line
 
     #: How far the paper sits in from the canvas edge: room for the pixel of
     #: lift under it and the rim's antialiasing round it.
@@ -1975,6 +2278,31 @@ def _clock_text(text: str) -> str:
         return text.strip()
     hours = int(hour) + (12 if afternoon and int(hour) < 12 else 0)
     return f"{hours:02d}:{int(minute or 0):02d}"
+
+
+#: The Every row's answers, in minutes (D186).
+STEP_MINUTES = {"1 hour": 60, "30 minutes": 30, "15 minutes": 15}
+
+
+def _stepped(text: str, step: int) -> str:
+    """The hours lit, as times every ``step`` minutes between two lit hours:
+    9,10,11 at 30 is 09:00, 09:30, 10:00, 10:30, 11:00. An hour with none lit
+    after it is the last of its run and stands alone."""
+    if step >= 60:
+        return text
+    hours = sorted(
+        {
+            int(clock[:2])
+            for part in text.split(",")
+            if (clock := _clock_text(part))[:2].isdigit() and part.strip()
+        }
+    )
+    out: list[str] = []
+    for hour in hours:
+        out.append(f"{hour:02d}:00")
+        if hour + 1 in hours:
+            out += [f"{hour:02d}:{minute:02d}" for minute in range(step, 60, step)]
+    return ",".join(out)
 
 
 def _hour_choices(clock: bool) -> list[tuple[str, str, str]]:
@@ -3679,6 +4007,9 @@ class Window:
         self.folded: dict[str, bool] = {}
         self._kept_rows: dict[str, list[tk.Widget]] = {}
         self._spacers: dict[str, ttk.Frame] = {}
+        #: The labels of the fields that name an option, and what comes before
+        #: the word: renovation filter or design option (``_scenario_words``).
+        self.scenario_labels: dict[ttk.Label, tuple[str, str]] = {}
         #: Each study's name on its panel's header, restyled as it is
         #: switched on and off.
         self.study_titles: dict[str, ttk.Label] = {}
@@ -3716,6 +4047,9 @@ class Window:
                 self._fold(self.study_boxes[name][0], True)
         self.refresh()
         self.root.after(80, self._drain)
+        self.root.after(self.WARM_AFTER_MS, self._warm_pages)
+        self.root.bind_all("<Tab>", self._tab_on)
+        self.root.bind_all("<<PrevWindow>>", partial(self._tab_on, back=True))
 
     def _on_the_screen(self, want_wide: int, want_tall: int) -> str:
         """A size that fits the display this window opened on.
@@ -3759,6 +4093,7 @@ class Window:
     SHADOWS = "Shadow diagram"
     EYE = "Sun views"
     YIELD = "Yield"
+    QA = "IFC export"
     #: Not an output and not set-up: a tool used on the open project, which
     #: is why it is a third group of its own.
     REFERENCE = "Reference image"
@@ -3772,7 +4107,7 @@ class Window:
     GROUPS: ClassVar[tuple[tuple[str, tuple[str, ...]], ...]] = (
         (SET_UP, (GENERAL, MODEL)),
         (DRAWS, (SITE, DIAGRAMS, SHADOWS, EYE, YIELD)),
-        (TOOLS, (REFERENCE,)),
+        (TOOLS, (REFERENCE, QA)),
     )
     #: The study a page's switch in the sidebar turns on, on a page that has
     #: more than one. The apartments are what Solar analysis is opened for,
@@ -3830,6 +4165,10 @@ class Window:
             "The office's feasibility sheet from the massing slabs: BEA, GFA, NLA and "
             "FSR by use, the units, the parking -- a sheet an option, and a live workbook."
         ),
+        QA: (
+            "The QA council's per-apartment data: the property groups filled from the "
+            "model, the QA spreadsheets, and the IFC two ways, each checked."
+        ),
         REFERENCE: (
             "A photograph or a rendering laid over Archicad's 3D window, as "
             "see-through as you like, so the model can be orbited under it "
@@ -3846,6 +4185,7 @@ class Window:
         SHADOWS: "Archicad's own shadows of each massing, hour by hour, stacked.",
         EYE: "3D documents aimed down the sun, dealt onto sheets.",
         YIELD: "The feasibility sheet from the massing slabs, and a live workbook.",
+        QA: "The QA council's per-apartment data in the model, out as IFC and spreadsheets.",
         REFERENCE: "A picture laid over Archicad, to trace or check against.",
     }
     #: The facade study lives in the Solar analysis section now; the name
@@ -3922,7 +4262,7 @@ class Window:
         # ticked, so the panel of sheets hears about keystrokes too.
         for typed in (self.communal_hours, self.year, self.custom_day, self.eye_custom_day):
             typed.bind("<KeyRelease>", lambda _event: self._sync(), add="+")
-        for chosen in (self.adg_subset, self.shadow_subset):
+        for chosen in (self.subset,):
             chosen.bind("<<ComboboxSelected>>", lambda _event: self._sync(), add="+")
         self._sync()
 
@@ -4195,6 +4535,7 @@ class Window:
             self.SHADOWS: self._shadows,
             self.EYE: self._sun_eyes,
             self.YIELD: self._yield,
+            self.QA: self._qa_export,
             self.REFERENCE: self._reference_page,
         }
         for title in self.titles:
@@ -4289,17 +4630,16 @@ class Window:
                 made[page] = made.get(page, 0) + 1
         for title, (row, pill, switch, lit) in self.side_rows.items():
             open_here = title == self.showing
-            row.configure(style="SideRowOpen.TFrame" if open_here else "SideRow.TFrame")
-            self.tabs[title].configure(style="SideOpen.TButton" if open_here else "Side.TButton")
+            put(row, style="SideRowOpen.TFrame" if open_here else "SideRow.TFrame")
+            put(self.tabs[title], style="SideOpen.TButton" if open_here else "Side.TButton")
             if switch is not None:
-                lit.set(title in running)
-                switch.configure(
-                    style="SwitchOpen.TCheckbutton" if open_here else "Switch.TCheckbutton"
-                )
+                if lit.get() != (title in running):
+                    lit.set(title in running)
+                put(switch, style="SwitchOpen.TCheckbutton" if open_here else "Switch.TCheckbutton")
             words = str(made[title]) if made.get(title) else ""
             if title == self.REFERENCE and self._picture_open():
                 words = "open"
-            pill.configure(text=words, style="BadgeOpen.TLabel" if open_here else "Badge.TLabel")
+            put(pill, text=words, style="BadgeOpen.TLabel" if open_here else "Badge.TLabel")
             if words and not pill.winfo_manager():
                 pill.pack(side="right", padx=(4, 8))
             elif not words and pill.winfo_manager():
@@ -4342,10 +4682,9 @@ class Window:
         The master, the title block, the numbering the results file
         themselves under, the year and how long Archicad is waited on are
         the same for a site sheet as for a shadow sheet. The title-block
-        width lived in the sun views' tab and the export settings lived
-        here; both are now where every tool that reads them can find them
-        -- the export settings under Solar tools, because only the solar
-        tools export a model.
+        width is not asked (D187): every tool keeps the same 115 mm clear,
+        the commands' own default. The export settings lived here and are
+        under Solar tools, because only the solar tools export a model.
         """
         outer = frame
         frame, row = self._panel(outer, 0, title="Layouts and title block"), 0
@@ -4360,18 +4699,19 @@ class Window:
             "master it was made on — nothing in the add-on can change it — so "
             "delete old study sheets before changing this.",
         )
-        self.eye_title_block, row = self._entry(
+        self.subset, row = self._combo(
             frame,
             row,
-            "Title block width (mm)",
-            "100",
-            "Millimetres kept clear down the right of every sheet the tools make.",
-            "Archicad reports a layout's margins and nothing about its "
-            "master, so drawings would otherwise tile under the title block. "
-            "About 100 mm on the DA masters. Every tool that places a sheet "
-            "keeps this strip clear: the site sheets, the sun views, the "
-            "shadow and solar diagrams.",
+            "Layout Book subset",
+            "Where every study's sheets are filed. Blank: the root of the Layout Book.",
+            "One subset for all the sheets; one that belongs elsewhere is moved in "
+            "Archicad. The subset has to exist already -- the run does not make one, "
+            "the Layout Book being the office's to organise -- and a missing one is "
+            "reported, with the sheets left at the root.",
         )
+        #: The three subsets of before -- ADG, time of day, shadow -- are one
+        #: now (D186), under the names the run's code reads them by.
+        self.adg_subset = self.shadow_subset = self.shadow_study_subset = self.subset
         self.sheets, row = self._tiles(
             frame,
             row,
@@ -4737,18 +5077,7 @@ class Window:
         )
         assert year is not None
         self.year = year
-        frame, row = self._panel(outer, 1, title="Layout Book filing, and what the plans show"), 0
-        self.adg_subset, row = self._combo(
-            frame,
-            row,
-            "Subset — ADG sheets",
-            "Layout Book subset the banded sheets go into.",
-            "So the sheets sit with the practice's own drawings of that kind "
-            "instead of at the root of the book. The subset has to exist "
-            "already — the run will not create one, because the Layout Book is "
-            "the office's structure to organise — and a missing one is "
-            "reported rather than invented, with the sheets left at the root.",
-        )
+        frame, row = self._panel(outer, 1, title="What the plans show"), 0
 
         self.plan_combination, row = self._combo(
             frame,
@@ -4889,18 +5218,6 @@ class Window:
             "casts more rays: 0.1 m is over six times the rays of 0.25 m.",
         )
         self.floor_grid.set("0.25")
-        self.shadow_subset, row = self._combo(
-            frame,
-            row,
-            "Subset — time-of-day sheets",
-            "Layout Book subset the clock-time sheets go into.",
-            "A sheet that is a time of day belongs with the practice's own, "
-            "which is usually a different subset from the banded plans. Same "
-            "rule as those: it has to exist already. This files the sun-patch "
-            "sheets this study draws; the Shadow diagram study files its own "
-            "under its own setting, because the two are different drawings "
-            "and a practice does not always keep them together.",
-        )
 
         # Out of the apartments' box, and on down the page. The boxes part
         # the studies by themselves, so the rules that used to do it are gone.
@@ -5083,15 +5400,14 @@ class Window:
             key=_clock_text,
             initial=DEFAULT_SHADOW_HOURS,
         )
-        self.shadow_study_subset, row = self._combo(
+        self.shadow_step, row = self._tiles(
             frame,
             row,
-            "Subset — shadow sheets",
-            "Layout Book subset both drawings' sheets go into.",
-            "Same rule as the other two: the subset has to exist already, "
-            "because the Layout Book is the office's structure to organise. A "
-            "missing one is reported rather than invented, with the sheets "
-            "left at the root of the book.",
+            "Every",
+            "How often between the hours lit: every hour, or every 30 or 15 minutes.",
+            "Between two hours that are both lit, a document every 30 or 15 minutes as "
+            "well: 9 to 3 every 15 minutes is 25 a day where it was 7. Finer is slower "
+            "and makes more sheets.",
         )
         # The days, the same three buttons the other two sun studies press,
         # in a box of their own above everything: the day is the first thing
@@ -5141,6 +5457,84 @@ class Window:
             "drawing, each in its colour, with Archicad's own shadows.",
         )
         row += 1
+        #: The two routes from the documents to the sheet. Either way the
+        #: 3D Documents cast the shadows; what differs is what the sheet holds.
+        self.shadow_plan_route, row = self._tiles(
+            frame,
+            row,
+            "Drawn as",
+            "Worksheet fills: fast, redrawn by running again. Live documents: slow, "
+            "but they update themselves.",
+            "Both routes make a 3D Document per legend row and hour, and Archicad casts "
+            "every shadow. Worksheet fills reads the shadows out of the documents and "
+            "draws them as plain fills in one worksheet per day, which the sheet shows: "
+            "it opens at once, a row that might be built gets a dashed outline of its "
+            "whole shadow, and it changes only when the study is run again. Live "
+            "documents stacks the documents themselves in every cell of the sheet: they "
+            "follow the model on their own, and seven hours of four rows is twenty-eight "
+            "live drawings on one layout, which a large project may not open. Worksheet "
+            "fills needs legend rows; without them the plain set is drawn either way.",
+        )
+        #: What a compared row is called, seen under and hatched in, by the
+        #: row's short name: an envelope an office keeps as a renovation
+        #: filter (Archicad 26) or a design option (27 on), and wants told
+        #: apart from the proposal on paper. Shown only for a row with layers
+        #: chosen (``_shadow_row_fields``): a row without them is not drawn,
+        #: and three fields about it are three questions about nothing.
+        self.shadow_row_names: dict[str, ttk.Entry] = {}
+        self.shadow_row_filters: dict[str, ttk.Combobox] = {}
+        self.shadow_row_hatches: dict[str, ttk.Combobox] = {}
+        self.shadow_row_groups: dict[str, list[tk.Widget]] = {}
+        self.shadow_documents_panel = frame
+        for short, role, title, _hint, _detail in SHADOW_LEGEND_ROWS:
+            if role == "baseline" or short == "PROPOSED":
+                continue
+            before = {str(child) for child in frame.winfo_children()}
+            self.shadow_row_names[short], row = self._entry(
+                frame,
+                row,
+                f"{title} name",
+                "",
+                f"What the legend calls {title}: LEP + 30%, 12 storeys. Blank keeps {title}.",
+                "The row's name in the legend, in the documents' names and in the run's "
+                "log. A row is still chosen by its layers, in Layers and hours above.",
+            )
+            at = row
+            self.shadow_row_filters[short], row = self._combo(
+                frame,
+                row,
+                f"{title} filter",
+                f"The option {title} is: its renovation filter in Archicad 26, its "
+                "design option in 27 on. Blank: the project's own.",
+                "For an envelope kept as an option of its own. In Archicad 26 that is a "
+                "renovation filter: modelled on a layer the proposal also uses and shown "
+                "only under its filter. From 27 it is a Design Option, and this lists the "
+                "project's Design Option Combinations. Loriini asks Archicad which it is. "
+                "The row's documents are pinned to the one chosen.",
+            )
+            self.scenario_labels[self._label_at(frame, at)] = (
+                f"{title} filter",
+                f"{title} design option",
+            )
+            self.shadow_row_hatches[short], row = self._combo(
+                frame,
+                row,
+                f"{title} hatch",
+                f"The fill type {title} is drawn in, with worksheet fills. Blank: Dashed.",
+                "A hatch tells an envelope from the proposal where two pale blues would "
+                "not. Its lines are the colour of the row's dashed outline, over the "
+                "row's blue. Blank is the project's Dashed fill, or solid where it has "
+                "none; choose Solid Fill for a row with no hatch. Pick a "
+                "scale-independent fill with lines well apart: one that is fine on a "
+                "plan prints solid at 1:1500.",
+            )
+            self.shadow_row_groups[short] = [
+                child
+                for child in frame.winfo_children()
+                if isinstance(child, tk.Widget)
+                and str(child) not in before
+                and child.winfo_manager() == "grid"
+            ]
         self.shadow_plan_combination, row = self._combo(
             frame,
             row,
@@ -5172,15 +5566,16 @@ class Window:
             "Proposed. With legend rows each set is named for its row, and "
             "this is not used. Blank names neither.",
         )
-        self.shadow_plan_pen, row = self._entry(
+        self.shadow_plan_pen, row = self._colour_row(
             frame,
             row,
-            "Shadow pen",
-            "",
-            "The pen the shadows are filled in, for a set without the legend.",
-            "A pen number from the project's pen set. With legend rows each row "
-            "takes the pen nearest its legend colour and this is not used. "
-            "Blank keeps the project's defaults for new 3D Documents.",
+            "Shadow colour",
+            "The colour the shadows are filled in, for a set without the legend.",
+            "Choose it in the colour picker. A 3D Document fills its shadows with a "
+            "pen, so the run takes the pen of the pen set above -- or the project's "
+            "own -- nearest the colour, and says which in the log. With legend rows "
+            "each row takes the pen nearest its legend colour and this is not used. "
+            "None keeps the project's defaults for new 3D Documents.",
         )
 
     def _shadow_every_hour(self, outer: ttk.Frame, at: int) -> None:
@@ -5212,14 +5607,17 @@ class Window:
             box,
             "The design's massing -- the Proposed row above -- at every hour "
             "ticked above, on one plan: each hour a fill labelled by its hour, "
-            "with its own view and a sheet per day. Cast by Loriini and imported "
-            "as fills, because a 3D Document is one hour.",
+            "with its own view and a sheet per day. Archicad casts each hour in a "
+            "3D Document of the design alone, and Loriini copies the shadow onto "
+            "the plan as a fill. With no layers chosen for the legend rows, "
+            "Loriini casts it itself.",
         )
         row += 1
         self._caption(
             frame,
             row,
-            "The design's massing at every hour above, imported as fills into one drawing.",
+            "The design's massing at every hour above: Archicad's shadows, copied as "
+            "fills into one drawing.",
         )
         row += 1
         name = ttk.Label(frame, text="Massing", anchor="e")
@@ -5417,6 +5815,15 @@ class Window:
             key=_clock_text,
             initial=DEFAULT_SHADOW_HOURS,
         )
+        self.eye_step, row = self._tiles(
+            frame,
+            row,
+            "Every",
+            "How often between the hours lit: every hour, or every 30 or 15 minutes.",
+            "Between two hours that are both lit, a view every 30 or 15 minutes as "
+            "well: 9 to 3 every 15 minutes is 25 a day where it was 7. Finer is slower "
+            "and makes more sheets.",
+        )
         # The views' own days, on this page and not on another tab. They
         # used to run on whatever the solar analysis was ticked for. Above
         # the study, where the other two sun pages have theirs.
@@ -5540,8 +5947,19 @@ class Window:
         self.site_context_origin, self.site_context_north, row = self._site_placement(
             frame, row, "the context sheet"
         )
+        self.site_scale, row = self._combo(
+            frame,
+            row,
+            "Scale",
+            "The context sheet's scale. 1:3000 by default.",
+            "Sets how much neighbourhood is fetched: the A1 map field at this "
+            "scale, centred on the site. 1:2000 for a tight urban site, 1:4000 "
+            "where the station is a long way off.",
+        )
+        self.site_scale.configure(values=list(CONTEXT_SCALES), state="readonly")
+        self.site_scale.set("1:3000")
         # The house style each sheet is drawn in: site-analyst.com's four, and
-        # only those (D152), a row in each sheet's panel -- a context sheet on
+        # only those (D152), the last row in each sheet's panel -- a context sheet on
         # paper beside a site sheet on the photograph is how the office's
         # packages have it.
         self.site_theme, row = self._combo(
@@ -5561,17 +5979,6 @@ class Window:
         self.site_theme.configure(values=list(CONTEXT_STYLES), state="readonly")
         self.site_theme.set(site_theme.theme(site_theme.DEFAULT_THEME).label)
         row = self._styles_link(frame, row)
-        self.site_scale, row = self._combo(
-            frame,
-            row,
-            "Scale",
-            "The context sheet's scale. 1:3000 by default.",
-            "Sets how much neighbourhood is fetched: the A1 map field at this "
-            "scale, centred on the site. 1:2000 for a tight urban site, 1:4000 "
-            "where the station is a long way off.",
-        )
-        self.site_scale.configure(values=list(CONTEXT_SCALES), state="readonly")
-        self.site_scale.set("1:3000")
 
         # -- the Site Analysis sheet --------------------------------------------
         frame, row = self._site_panel(
@@ -5594,6 +6001,17 @@ class Window:
         self.site_sheet_origin, self.site_sheet_north, row = self._site_placement(
             frame, row, "the site sheet"
         )
+        self.site_sheet_scale, row = self._combo(
+            frame,
+            row,
+            "Scale",
+            "The site sheet's scale. 'Fit the site' by default.",
+            "'Fit the site' picks whichever of 1:200 to 1:750 the boundary fits "
+            "the A1 map field at. A scale holds the sheet at it whatever the "
+            "site's size: 1:500 for a set of sheets that should all read alike.",
+        )
+        self.site_sheet_scale.configure(values=list(SITE_SHEET_SCALES), state="readonly")
+        self.site_sheet_scale.set(FIT_THE_SITE)
         self.site_site_theme, row = self._combo(
             frame,
             row,
@@ -5611,17 +6029,6 @@ class Window:
         self.site_site_theme.configure(values=list(SITE_STYLES), state="readonly")
         self.site_site_theme.set(site_theme.site_theme(site_theme.DEFAULT_SITE_THEME).label)
         row = self._styles_link(frame, row)
-        self.site_sheet_scale, row = self._combo(
-            frame,
-            row,
-            "Scale",
-            "The site sheet's scale. 'Fit the site' by default.",
-            "'Fit the site' picks whichever of 1:200 to 1:750 the boundary fits "
-            "the A1 map field at. A scale holds the sheet at it whatever the "
-            "site's size: 1:500 for a set of sheets that should all read alike.",
-        )
-        self.site_sheet_scale.configure(values=list(SITE_SHEET_SCALES), state="readonly")
-        self.site_sheet_scale.set(FIT_THE_SITE)
 
         # -- the 3D context -----------------------------------------------------
         frame, row = self._site_panel(
@@ -5663,6 +6070,7 @@ class Window:
                 ),
             ),
         )
+        future = self.toggle_rows[-1]
         self.site_model_origin, self.site_model_north, row = self._site_placement(
             frame, row, "the model"
         )
@@ -5692,6 +6100,12 @@ class Window:
         )
         self.site_levels.configure(values=list(LEVEL_WORDS))
         self.site_levels.set(next(iter(LEVEL_WORDS)))
+        # One width down the panel: a lone button and a number's short box
+        # between three lists read as a ragged edge, not as a column.
+        wide = self.site_model_origin.winfo_reqwidth()
+        future.widen(wide)
+        spare = max(wide - self.site_radius.winfo_reqwidth(), 0)
+        self.site_radius.grid_configure(ipadx=spare // 2)
 
     def _site_panel(
         self,
@@ -5814,9 +6228,6 @@ class Window:
         """
         row = 0
         self.do_yield = tk.BooleanVar(value=False)
-        # Kept as a value, not drawn: a preset saved when the renovation filter
-        # was a checkbox still opens on "Floor plan's filter" (``apply``).
-        self.yield_renovation = tk.BooleanVar(value=False)
         outer = frame
         frame, row = self._panel(outer, row), 0
         box = ttk.Checkbutton(
@@ -5840,31 +6251,17 @@ class Window:
         )
         row += 1
         self.yield_panel = frame
-        # Which slabs are the massing, and how each one's use is told, is one
-        # question with four answers, and the page shows only the rows the
-        # answer needs (D140): a page of seven layer and level rows asked
-        # every question at once, most of them for a way of modelling the
-        # person was not using.
+        # How each slab's use is told, and the page shows only the rows the
+        # answer needs (D140, D183): by the level it stands on, on the layers
+        # chosen as massing, or by a layer of its own per use.
         self.yield_slabs, row = self._tiles(
             frame,
             row,
-            "Slabs",
-            "Which slabs are the massing. Everything showing is the usual answer.",
-            "Everything showing: every slab on a layer that is showing, its use told by "
-            "the level it stands on. Chosen layers: the slabs on the layers you choose, "
-            "the use told the same way. Layer per use: a layer of residential slabs and "
-            "one of commercial. Layer per option: each layer one whole option, "
-            "a sheet and a workbook page each.",
-        )
-        self.yield_renovation_status, row = self._tiles(
-            frame,
-            row,
-            "Renovation",
-            "Which slabs count by their renovation status. Any, unless the massing is New.",
-            "Read off each slab's own Renovation Status, so nothing has to be set on the "
-            "floor plan first. New only: the proposal over a building that stays. Existing "
-            "and new: everything but what is to be demolished. Floor plan's filter: what "
-            "the floor plan's renovation filter shows, set there before Run.",
+            "Use told by",
+            "How a slab's use is told: by the level it stands on, or by its layer.",
+            "By level: the slabs on the massing layers you choose, each one commercial "
+            "on the commercial levels and residential on every other. By layer: a layer "
+            "of residential slabs and one of commercial, wherever they stand.",
         )
         self.yield_groups: dict[str, list[tk.Misc]] = {}
 
@@ -5878,28 +6275,6 @@ class Window:
                 if str(child) not in made_from and child.winfo_manager() == "grid"
             ]
 
-        before = {str(child) for child in frame.winfo_children()}
-        self.yield_option, row = self._entry(
-            frame,
-            row,
-            "Option",
-            "Option 01",
-            "What this massing is called: its sheet in the workbook and its layout.",
-            "A run with the same name replaces that option's sheet in the workbook and "
-            "its layout; another name adds an option beside the ones already there.",
-        )
-        rows_of("option", before)
-        before = {str(child) for child in frame.winfo_children()}
-        self.yield_option_layers, row = self._picker(
-            frame,
-            row,
-            "Option layers",
-            "Each layer chosen is one whole option, named after its OPT number.",
-            "One option a layer, a sheet in the workbook and a layout each, named after "
-            "the layer's OPT number -- '...3D OPT1' is Option 01 -- with the use of each "
-            "slab told by its level. The levels, the site and the efficiencies are shared.",
-        )
-        rows_of("option_layers", before)
         before = {str(child) for child in frame.winfo_children()}
         self.yield_massing, row = self._picker(
             frame,
@@ -5940,6 +6315,39 @@ class Window:
             "ground storey -- as the run names them in its log: Ground, Level 01, B 01.",
         )
         rows_of("levels", before)
+        #: The massing options: renovation filters in Archicad 26, Design
+        #: Option Combinations from 27, as Archicad says it is (D183).
+        at = row
+        self.yield_options, row = self._picker(
+            frame,
+            row,
+            "Renovation filters",
+            "The massing options, each its own sheet. None: one option, every slab.",
+            "An office keeps its massing options as renovation filters in Archicad 26 and "
+            "as Design Options from 27; Loriini asks Archicad which it is and lists those. "
+            "Each one chosen is an option of its own, named after it, with a sheet and a "
+            "workbook page, all from one run: under a renovation filter the slabs it shows "
+            "(the floor plan's own filter is put back after); under a Design Option "
+            "Combination the main model and the options it has on, which needs Archicad "
+            "29. The layers and levels above are the same for every option.",
+            available=self._scenarios,
+            empty="none chosen: one option",
+        )
+        self.scenario_labels[self._label_at(frame, at)] = (
+            "Renovation filters",
+            "Design options",
+        )
+        before = {str(child) for child in frame.winfo_children()}
+        self.yield_option, row = self._entry(
+            frame,
+            row,
+            "Option",
+            "Option 01",
+            "What this massing is called: its sheet in the workbook and its layout.",
+            "A run with the same name replaces that option's sheet in the workbook and "
+            "its layout; another name adds an option beside the ones already there.",
+        )
+        rows_of("option", before)
         self.yield_view, row = self._entry(
             frame,
             row,
@@ -5952,13 +6360,16 @@ class Window:
         )
 
         self.yield_xlsx = tk.BooleanVar(value=True)
+        ttk.Label(frame, text="Excel workbook", anchor="e").grid(
+            row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0)
+        )
         workbook = ttk.Checkbutton(
             frame,
-            text="Excel workbook: Preliminary Yield Analysis",
+            text="Preliminary Yield Analysis",
             variable=self.yield_xlsx,
             command=self._sync,
         )
-        workbook.grid(row=row, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        workbook.grid(row=row, column=1, sticky="w", pady=(6, 0))
         Tooltip(
             workbook,
             "Writes the office's feasibility template, filled: one sheet per option, the "
@@ -5977,6 +6388,7 @@ class Window:
             "write is left alone, and the run says so.",
             kinds=(("Excel workbook", "*.xlsx"),),
             default=AREA_TABLE,
+            width=self.NAME_WIDTH,
         )
 
         frame, row = self._panel(outer, 1, title="Site and controls"), 0
@@ -6098,6 +6510,7 @@ class Window:
             label=label,
         )
         box.grid(row=row, column=1, sticky="ew", pady=(6, 0))
+        box.beside(name, top=6)
         line = self._hint(parent, row + 1, hint)
         for target in (name, box):
             Tooltip(
@@ -6118,13 +6531,13 @@ class Window:
         cells = ttk.Frame(parent)
         cells.flows = True  # type: ignore[attr-defined]
         cells.grid(row=row, column=1, sticky="w", pady=(6, 0))
-        share_box = ttk.Entry(cells, width=6)
+        share_box = ttk.Entry(cells, width=self.NUMBER_WIDTH)
         share_box.insert(0, share)
         share_box.grid(row=0, column=0)
         ttk.Label(cells, text="% of the units, at", foreground=HINT).grid(
             row=0, column=1, padx=(6, 8)
         )
-        size_box = ttk.Entry(cells, width=6)
+        size_box = ttk.Entry(cells, width=self.NUMBER_WIDTH)
         size_box.insert(0, size)
         size_box.grid(row=0, column=2)
         ttk.Label(cells, text="m² NLA each", foreground=HINT).grid(row=0, column=3, padx=(6, 0))
@@ -6179,6 +6592,7 @@ class Window:
         *,
         kinds: Sequence[tuple[str, str]],
         default: str,
+        width: int | None = None,
     ) -> tuple[ttk.Entry, int]:
         """A file to write, chosen with a Save dialog, with a Choose beside it.
 
@@ -6190,9 +6604,9 @@ class Window:
         name = ttk.Label(parent, text=label, anchor="e")
         name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(3, 0))
         holder = ttk.Frame(parent)
-        holder.grid(row=row, column=1, sticky="ew", pady=(3, 0))
+        holder.grid(row=row, column=1, sticky="w" if width else "ew", pady=(3, 0))
         holder.columnconfigure(0, weight=1)
-        box = ttk.Entry(holder)
+        box = ttk.Entry(holder, width=width) if width else ttk.Entry(holder)
         box.grid(row=0, column=0, sticky="ew")
         button = ttk.Button(
             holder,
@@ -6723,11 +7137,12 @@ class Window:
         {
             "Address",
             "Custom day",
-            "Option",
             "Set name",
-            "View beside the table",
         }
     )
+    #: Typed fields that hold a name, as wide as a list of the project's
+    #: names beside them: an option, a view.
+    NAME_FIELDS = frozenset({"Option", "View beside the table"})
     #: How many characters wide a number's field is: room for ``1:3000`` or
     #: ``0.725`` with a margin, and the same on every page.
     NUMBER_WIDTH = 12
@@ -6749,7 +7164,8 @@ class Window:
         name = ttk.Label(parent, text=label, anchor="e")
         name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
         wide = label in self.TEXT_FIELDS
-        box = ttk.Entry(parent) if wide else ttk.Entry(parent, width=self.NUMBER_WIDTH)
+        width = self.NAME_WIDTH if label in self.NAME_FIELDS else self.NUMBER_WIDTH
+        box = ttk.Entry(parent) if wide else ttk.Entry(parent, width=width)
         box.insert(0, initial)
         box.grid(row=row, column=1, sticky="ew" if wide else "w", pady=(6, 0))
         line = self._hint(parent, row + 1, hint)
@@ -6849,8 +7265,31 @@ class Window:
         Tooltip(name, detail, title=label, short=self._saying(line))
         return made, row + 1
 
-    def _picker(
+    def _colour_row(
         self, parent: ttk.Frame, row: int, label: str, hint: str, detail: str
+    ) -> tuple[ColourField, int]:
+        """A colour: the label, then a swatch and the picker that sets it."""
+        name = ttk.Label(parent, text=label, anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
+        field = ColourField(
+            parent, label=label, empty="none: the project's default", on_change=self._sync
+        )
+        field.grid(row=row, column=1, sticky="w", pady=(6, 0))
+        line = self._hint(parent, row + 1, hint)
+        for target in (name, field.swatch, field.picker):
+            Tooltip(target, detail, title=label, short=self._saying(line))
+        return field, row + 1
+
+    def _picker(
+        self,
+        parent: ttk.Frame,
+        row: int,
+        label: str,
+        hint: str,
+        detail: str,
+        *,
+        available: Callable[[], Sequence[str]] | None = None,
+        empty: str = "no layers chosen",
     ) -> tuple[Chips, int]:
         """A layer list: ticked out of the project, shown as chips.
 
@@ -6864,12 +7303,15 @@ class Window:
         name.grid(row=row, column=0, sticky="ne", padx=(0, 12), pady=(6, 0))
         box = Chips(
             parent,
-            add=lambda: self._choose(box, label, hint),
+            add=lambda: self._choose(
+                box, label, hint, available() if available is not None else None
+            ),
             on_change=self._sync,
-            empty="no layers chosen",
+            empty=empty,
             label=label,
         )
         box.grid(row=row, column=1, sticky="ew", pady=(6, 0))
+        box.beside(name, top=6)
         line = self._hint(parent, row + 1, hint)
         for target in (name, box):
             Tooltip(
@@ -7028,6 +7470,7 @@ class Window:
             (SITE_MODEL_JOB, self.do_site_model, self.SITE),
             (SITE_CONTROLS_JOB, self.do_site_summary, self.SITE),
             (YIELD_JOB, self.do_yield, self.YIELD),
+            (QA_JOB, self.do_qa, self.QA),
         ]
 
     def _open_section(self) -> str:
@@ -7068,8 +7511,16 @@ class Window:
         leaving = self.showing
         for pane in self.panes:
             pane.settle()
-            pane.pack_forget()
-        self.pane_of[title].pack(side="top", fill="both", expand=True)
+        # The pages lie one over another, each the size of the room there is,
+        # and the open one is raised. They used to be taken off the screen and
+        # put back: every click on the sidebar unmapped a hundred widgets and
+        # mapped a hundred more, with the bare page showing between the two
+        # -- 80 to 100 ms on Windows where raising one takes 45, and the blink
+        # that made a change of page look like the window being redrawn.
+        opening = self.pane_of[title]
+        if not opening.winfo_manager():
+            opening.place(x=0, y=0, relwidth=1, relheight=1)
+        opening.lift()
         self.showing = title
         # The page settles in from the side you came from (D134): a few
         # pixels, under a fifth of a second, and only on a screen -- a window
@@ -7096,6 +7547,55 @@ class Window:
             self.SECTION_BLURB[title],
             "Point at anything, or tab to it, for what it is and what happens when it is wrong.",
         )
+
+    #: How long after the window opens the pages not yet seen start being put
+    #: under the open one, and how long between one and the next.
+    WARM_AFTER_MS = 600
+    WARM_EVERY_MS = 150
+
+    def _warm_pages(self) -> None:
+        """Put the next page nobody has opened yet under the open one.
+
+        A page costs twice as much the first time it is shown as every time
+        after, since that is when the system makes its widgets -- 190 ms for
+        Yield on Windows. So the pages are made ready one at a time once the
+        window is up, where nobody is waiting for them, and the first click
+        on the sidebar is as quick as the tenth.
+        """
+        for pane in self.panes:
+            if not pane.winfo_manager():
+                pane.place(x=0, y=0, relwidth=1, relheight=1)
+                pane.lower()
+                self.root.after(self.WARM_EVERY_MS, self._warm_pages)
+                return
+
+    def _on_this_page(self, widget: tk.Misc) -> bool:
+        """Whether a widget can be seen: not on a page under the open one."""
+        hidden = {str(pane) for title, pane in self.pane_of.items() if title != self.showing}
+        at: tk.Misc | None = widget
+        while at is not None:
+            if str(at) in hidden:
+                return False
+            at = at.master
+        return True
+
+    def _tab_on(self, event: tk.Event[tk.Misc], back: bool = False) -> str:
+        """Tab, and Shift-Tab: to the next control that can be seen.
+
+        Tk's own traversal goes to the next widget on the screen, and a page
+        lying under the open one is on the screen as far as Tk knows. Left to
+        it, Tab walked from the last field of a page into the first field of
+        a page nobody could see.
+        """
+        at: tk.Misc | None = event.widget
+        for _ in range(4000):
+            if at is None:
+                break
+            at = at.tk_focusPrev() if back else at.tk_focusNext()
+            if at is not None and self._on_this_page(at):
+                at.focus_set()
+                break
+        return "break"
 
     def ask_for(self, study: str) -> bool:
         """Tick one study and open the section it lives in. True if it took.
@@ -7163,7 +7663,7 @@ class Window:
         this" -- the one question a run of several minutes had better not get
         wrong. A picture of the sheets answers it better than a list of names.
         """
-        self.floors_box.config(state="normal" if self.do_facade.get() else "disabled")
+        put(self.floors_box, state="normal" if self.do_facade.get() else "disabled")
 
         # A page whose study will run says so, without anybody opening it.
         sheets = self.planned()
@@ -7174,17 +7674,16 @@ class Window:
             on = tick.get()
             bar = self.study_bars.get(name)
             if bar is not None:
-                bar.configure(
-                    style="SwitchHead.TCheckbutton" if on else "SwitchHeadOff.TCheckbutton"
-                )
+                put(bar, style="SwitchHead.TCheckbutton" if on else "SwitchHeadOff.TCheckbutton")
             title = self.study_titles.get(name)
             if title is not None:
-                title.configure(style="StudyTitle.TLabel" if on else "StudyTitleOff.TLabel")
+                put(title, style="StudyTitle.TLabel" if on else "StudyTitleOff.TLabel")
             if name in self.study_boxes:
                 box, says = self.study_boxes[name]
-                box.configure(style="Box.TFrame" if on else "BoxOff.TFrame")
-                self.folders[str(box)].configure(
-                    style="DiscloseOn.TButton" if on else "Disclose.TButton"
+                put(box, style="Box.TFrame" if on else "BoxOff.TFrame")
+                put(
+                    self.folders[str(box)],
+                    style="DiscloseOn.TButton" if on else "Disclose.TButton",
                 )
                 # A study switched on opens to show what it will be run with;
                 # one switched off is left as it was, open or folded.
@@ -7201,11 +7700,13 @@ class Window:
                 if models:
                     parts.append(f"{models} model" + ("" if models == 1 else "s"))
                 worth = ", ".join(parts)
-                says.configure(
+                put(
+                    says,
                     text=worth if on else "off",
                     style="PanelSays.TLabel" if on else "PanelSaysOff.TLabel",
                 )
         self._yield_rows()
+        self._shadow_row_fields()
         self._paint_design()
         self._refill_dock(sheets)
         self._paint_run(sheets)
@@ -7237,7 +7738,7 @@ class Window:
         else:
             text = f"Run {len(queued)} studies"
         off = self._running or self._tapir_missing or not queued
-        self.go.config(text=text, state="disabled" if off else "normal")
+        put(self.go, text=text, state="disabled" if off else "normal")
 
         said = []
         for name in queued:
@@ -7252,7 +7753,7 @@ class Window:
             # Past this it runs into the build's line; the sidebar and the
             # panel say which, so the bar says how many.
             line = f"Queued: {len(said)} studies, {paper} sheets"
-        self.queue_line.config(text=line)
+        put(self.queue_line, text=line)
 
     #: The longest the run bar's line of queued studies is let run.
     QUEUE_LONGEST = 64
@@ -7282,7 +7783,11 @@ class Window:
         if narrow == self._narrow:
             return
         self._narrow = narrow
-        self.dock.fold(narrow or (self._dock_empty and not self._dock_opened_empty), by_hand=False)
+        self.dock.fold(
+            narrow or (self._dock_empty and not self._dock_opened_empty),
+            by_hand=False,
+            glide=False,
+        )
 
     def _refill_dock(self, sheets: Sequence[Sheet]) -> None:
         """Redraw the sheets panel from what is ticked and typed now.
@@ -7326,7 +7831,7 @@ class Window:
         self._dock_opened_empty = not shut and self._dock_empty
 
     # -- settings that outlive the window ------------------------------------
-    def _fields(self) -> dict[str, ttk.Entry | Tiles | Ticks | Chips]:
+    def _fields(self) -> dict[str, ttk.Entry | Tiles | Ticks | Chips | ColourField]:
         """Every typed or chosen setting, under a name that survives a rename.
 
         Written out here rather than gathered off the widget tree, because the
@@ -7370,7 +7875,7 @@ class Window:
             "plan_kinds": self.plan_kinds,
             "floor_grid": self.floor_grid,
             "see_through_glass": self.see_glass,
-            "shadow_subset": self.shadow_subset,
+            "layout_subset": self.subset,
             **{f"shadow_layers_{short.lower()}": box for short, _role, box in self.shadow_rows},
             "shadow_terrain_layers": self.terrain_layers,
             "shadow_terrain_floor": self.terrain_floor,
@@ -7378,9 +7883,22 @@ class Window:
             # restores into the custom-day field, which reads a comma list.
             "shadow_dates": self.shadow_custom_day,
             "shadow_hours": self.shadow_hours,
+            "shadow_step": self.shadow_step,
             "shadow_storey": self.shadow_storey,
-            "shadow_study_subset": self.shadow_study_subset,
             "shadow_plan_combination": self.shadow_plan_combination,
+            "shadow_plan_route": self.shadow_plan_route,
+            **{
+                f"shadow_row_name_{short.lower().replace(' ', '_')}": box
+                for short, box in self.shadow_row_names.items()
+            },
+            **{
+                f"shadow_row_filter_{short.lower().replace(' ', '_')}": box
+                for short, box in self.shadow_row_filters.items()
+            },
+            **{
+                f"shadow_row_hatch_{short.lower().replace(' ', '_')}": box
+                for short, box in self.shadow_row_hatches.items()
+            },
             "shadow_plan_label": self.shadow_plan_label,
             "shadow_plan_pen_set": self.shadow_plan_pen_set,
             "shadow_plan_pen": self.shadow_plan_pen,
@@ -7391,8 +7909,8 @@ class Window:
             "eye_base_combination": self.eye_base_combination,
             "eye_scale": self.eye_scale,
             "sheets": self.sheets,
-            "eye_title_block": self.eye_title_block,
             "eye_hours": self.eye_hours,
+            "eye_step": self.eye_step,
             "site_address": self.site_address,
             "site_scale": self.site_scale,
             "site_theme": self.site_theme,
@@ -7406,7 +7924,6 @@ class Window:
             "site_model_north": self.site_model_north,
             "site_levels": self.site_levels,
             "site_radius": self.site_radius,
-            "adg_subset": self.adg_subset,
             "layer_prefix": self.prefix_solar,
             "shadow_layer_prefix": self.prefix_shadow,
             "sun_view_layer_prefix": self.prefix_sun,
@@ -7415,8 +7932,22 @@ class Window:
             "skin_grid": self.grid_m,
             "yield_option": self.yield_option,
             "yield_slabs": self.yield_slabs,
-            "yield_renovation_status": self.yield_renovation_status,
-            "yield_option_layers": self.yield_option_layers,
+            "yield_options": self.yield_options,
+            "qa_prefix": self.qa_prefix,
+            "qa_apartment_layers": self.qa_apartments,
+            "qa_balcony_layers": self.qa_balconies,
+            "qa_from_storey": self.qa_from_storey,
+            "qa_to_storey": self.qa_to_storey,
+            "qa_translator": self.qa_translator,
+            "qa_parking_layers": self.qa_parking,
+            **{
+                f"qa_area_{kind.lower().replace(' ', '_').replace('-', '_')}": box
+                for kind, box in self.qa_areas.items()
+            },
+            **{
+                f"qa_copy_{name.lower().replace(' ', '_').replace('.', '')}": box
+                for name, box in self.qa_copies.items()
+            },
             "yield_workbook": self.yield_workbook,
             "yield_residential_layers": self.yield_residential,
             "yield_commercial_layers": self.yield_commercial,
@@ -7457,7 +7988,12 @@ class Window:
             "site_future": self.do_site_future,
             "site_location": self.do_site_location,
             "study_yield": self.do_yield,
-            "yield_renovation": self.yield_renovation,
+            "study_qa": self.do_qa,
+            "qa_setup": self.qa_setup,
+            "qa_fill": self.qa_fill,
+            "qa_own_ifc": self.qa_own_ifc,
+            "qa_solar": self.qa_solar,
+            "qa_solar_again": self.qa_solar_again,
             "yield_xlsx": self.yield_xlsx,
             # The three boxes of days, one key per button, so a preset that
             # studies the equinox beside midwinter opens the same way.
@@ -7510,6 +8046,13 @@ class Window:
             if isinstance(ticked, bool):
                 state.set(ticked)
         self._yield_from_older(saved)
+        # The three subsets of a settings file saved before D186, as the one.
+        if "layout_subset" not in saved:
+            for older in ("adg_subset", "shadow_subset", "shadow_study_subset"):
+                value = saved.get(older)
+                if isinstance(value, str) and value.strip():
+                    self.subset.set(value.strip())
+                    break
         self._shadows_from_older(saved)
         self._proposals_from_older(saved)
         opened = saved.get(self.OPEN_SECTION)
@@ -7568,18 +8111,17 @@ class Window:
             )
 
     def _yield_from_older(self, saved: Mapping[str, str | bool]) -> None:
-        """A preset saved before the Slabs and Renovation rows, read as what
-        it meant: the way of choosing slabs its filled layer rows imply, and
-        the renovation checkbox as the floor plan's filter."""
+        """A preset saved before the Use row, read as what it meant: by layer
+        if it filled the layer-per-use rows, by level otherwise. Its renovation
+        checkbox or status is not carried over: the options are chosen by name
+        now, and a single option chosen before is the first of them."""
         if "yield_slabs" not in saved:
 
             def filled(key: str) -> bool:
                 value = saved.get(key)
                 return isinstance(value, str) and bool(value.strip())
 
-            if filled("yield_option_layers"):
-                self.yield_slabs.set("A layer per option")
-            elif any(
+            if any(
                 filled(key)
                 for key in (
                     "yield_residential_layers",
@@ -7587,9 +8129,30 @@ class Window:
                     "yield_retail_layers",
                 )
             ):
-                self.yield_slabs.set("A layer per use")
-            elif filled("yield_massing_layers"):
-                self.yield_slabs.set("Slabs on chosen layers")
+                self.yield_slabs.set("By layer")
+            else:
+                self.yield_slabs.set("By level")
+        gone = [
+            words
+            for key, words in (
+                ("yield_option_layers", "its option layers"),
+                ("yield_renovation_status", "its renovation status"),
+            )
+            if isinstance(saved.get(key), str)
+            and str(saved.get(key)).strip() not in ("", "Any status")
+        ]
+        if gone:
+            self._write(
+                "These settings were saved for an earlier Yield page: "
+                + " and ".join(gone)
+                + " are no longer asked for and were not carried over. Choose the layers and "
+                "the options again before running the Yield."
+            )
+        # One option chosen before there could be several.
+        single = saved.get("yield_scenario")
+        if "yield_options" not in saved and isinstance(single, str) and single.strip():
+            self.yield_options.delete(0, "end")
+            self.yield_options.insert(0, single.strip())
         # Retail is commercial now (D159): an older file's retail layers and
         # levels join the commercial ones rather than being dropped.
         for retail, box in (
@@ -7601,8 +8164,60 @@ class Window:
                 joined = [*self._listed(box), *(v.strip() for v in value.split(",") if v.strip())]
                 box.delete(0, "end")
                 box.insert(0, ", ".join(dict.fromkeys(joined)))
-        if "yield_renovation_status" not in saved and saved.get("yield_renovation") is True:
-            self.yield_renovation_status.set("As the floor plan's filter")
+
+    #: Archicad's major version, as the open project's reading said; ``None``
+    #: until one is read, which is taken as 26's renovation filters.
+    archicad_version: int | None = None
+
+    def _design_options(self) -> bool:
+        """Whether this Archicad keeps a project's options as Design Options."""
+        return uses_design_options(self.archicad_version)
+
+    @staticmethod
+    def _label_at(frame: ttk.Frame, row: int) -> ttk.Label:
+        """The label a row helper put in column 0 of ``row``."""
+        for child in frame.grid_slaves(row=row, column=0):
+            if isinstance(child, ttk.Label):
+                return child
+        raise LookupError(f"no label on row {row}")
+
+    def _scenario_words(self) -> None:
+        """Call the option fields what this Archicad calls an option: a
+        renovation filter in 26, a design option from 27."""
+        options = self._design_options()
+        for label, (filtered, optioned) in self.scenario_labels.items():
+            label.configure(text=optioned if options else filtered)
+
+    def _scenarios(self) -> list[str]:
+        """The project's options as this Archicad keeps them."""
+        found = self.options
+        return list(found.design_options if self._design_options() else found.renovation_filters)
+
+    def _show_rows(self, panel: ttk.Frame, widgets: Sequence[tk.Widget], shown: bool) -> None:
+        """Put rows on the grid or take them off it. A folded panel keeps the
+        rows it will put back when it opens; while folded, that list is what
+        changes, so nothing appears inside it."""
+        kept = self._kept_rows.get(str(panel)) if self.folded.get(str(panel), False) else None
+        for widget in widgets:
+            if kept is not None:
+                if shown and widget not in kept:
+                    kept.append(widget)
+                elif not shown and widget in kept:
+                    kept.remove(widget)
+            elif shown:
+                widget.grid()
+            else:
+                widget.grid_remove()
+
+    def _shadow_row_fields(self) -> None:
+        """Show a compared row's name, option and hatch only once the row has
+        layers chosen: without them it is not drawn."""
+        groups = getattr(self, "shadow_row_groups", None)
+        if not groups:
+            return
+        chosen = {short for short, _role, picker in self.shadow_rows if self._listed(picker)}
+        for short, widgets in groups.items():
+            self._show_rows(self.shadow_documents_panel, widgets, short in chosen)
 
     def _yield_rows(self) -> None:
         """Show the Yield page's rows the Slabs answer needs, and no others.
@@ -7613,7 +8228,10 @@ class Window:
         groups = getattr(self, "yield_groups", None)
         if not groups:
             return
-        shown = YIELD_ROWS.get(self.yield_slabs.get(), YIELD_ROWS["Every slab showing"])
+        shown = YIELD_ROWS.get(self.yield_slabs.get(), YIELD_ROWS["By level"])
+        if self._listed(self.yield_options):
+            # Each option is named after its filter or combination.
+            shown = shown - {"option"}
         panel = str(self.yield_panel)
         kept = self._kept_rows.get(panel) if self.folded.get(panel, False) else None
         for key, widgets in groups.items():
@@ -7810,7 +8428,8 @@ class Window:
         self.status.config(
             foreground=HINT,
             text=(
-                f"Tapir {found.tapir} · {len(found.layers)} layers · "
+                (f"Archicad {found.archicad_version} · " if found.archicad_version else "")
+                + f"Tapir {found.tapir} · {len(found.layers)} layers · "
                 f"{len(found.zone_layers)} zone layers · {len(found.masters)} masters · "
                 f"{len(found.subsets)} subsets"
             ),
@@ -7872,7 +8491,20 @@ class Window:
         self._fill(self.eye_base_combination, ("", *found.combinations), ())
         self._fill(self.shadow_plan_combination, found.combinations, ())
         self._fill(self.shadow_plan_pen_set, ("", *found.pen_sets), ())
+        # The options as this Archicad keeps them: renovation filters in 26,
+        # Design Option Combinations from 27, and the fields called so.
+        self.archicad_version = found.archicad_version
+        scenarios = found.design_options if self._design_options() else found.renovation_filters
+        for box in self.shadow_row_filters.values():
+            self._fill(box, ("", *scenarios), ())
+        self._scenario_words()
+        for box in self.shadow_row_hatches.values():
+            self._fill(box, ("", *found.fills), ())
         self._fill(self.shadow_study_subset, found.subsets, ())
+        for box in (self.qa_from_storey, self.qa_to_storey):
+            self._fill(box, ("", *found.storey_names), ())
+        for box in self.qa_copies.values():
+            self._fill(box, ("", "Zone/Name", "Zone/Number", *found.properties), ())
         self._offer_height_cut()
 
     def _offer_height_cut(self) -> None:
@@ -8112,6 +8744,13 @@ class Window:
     #: "Bands and times" was a tile of its own, and "Bands by hour" was the
     #: heat map and the apartment total together before they were two.
     TILE_ALIASES: ClassVar[dict[str, dict[str, tuple[str, ...]]]] = {
+        # The four answers of D140, saved before D183, as the two now.
+        "Use told by": {
+            "Every slab showing": ("By level",),
+            "Slabs on chosen layers": ("By level",),
+            "A layer per use": ("By layer",),
+            "A layer per option": ("By level",),
+        },
         "Plans": {
             "Bands and times": ("Sun at each time", "Floor heat map", "Apartment total"),
             "Bands by hour": ("Floor heat map", "Apartment total"),
@@ -8130,17 +8769,14 @@ class Window:
     #: that a row of three still fits beside its label, and the same words
     #: the tooltip opens with so the two never disagree.
     TILE_WORDS: ClassVar[dict[str, dict[str, str]]] = {
-        "Slabs": {
-            "Every slab showing": "Everything showing",
-            "Slabs on chosen layers": "Chosen layers",
-            "A layer per use": "Layer per use",
-            "A layer per option": "Layer per option",
+        "Use told by": {
+            "By level": "By level",
+            "By layer": "By layer",
         },
-        "Renovation": {
-            "Any status": "Any",
-            "New only": "New only",
-            "Existing and new": "Existing + new",
-            "As the floor plan's filter": "Floor plan's filter",
+        "Every": {"1 hour": "1 hour", "30 minutes": "30 min", "15 minutes": "15 min"},
+        "Drawn as": {
+            "Worksheet fills": "Worksheet fills",
+            "Live 3D Documents": "Live documents",
         },
         "Plans": {
             "Sun at each time": "Sun at each time",
@@ -8308,42 +8944,36 @@ class Window:
                 "tinted and frosted glass still cast shade.",
             ),
         ),
-        "Slabs": (
+        "Use told by": (
             (
-                "Every slab showing",
+                "By level",
                 "site",
-                "Everything showing: every slab on a layer that is showing, its use "
-                "told by its level.",
+                "By level: the slabs on the massing layers you choose, commercial on the "
+                "commercial levels and residential on the rest.",
             ),
             (
-                "Slabs on chosen layers",
+                "By layer",
                 "site",
-                "Chosen layers: the slabs on the layers you choose, the use told by level.",
-            ),
-            (
-                "A layer per use",
-                "site",
-                "Layer per use: a layer of residential slabs and one of commercial.",
-            ),
-            (
-                "A layer per option",
-                "site",
-                "Layer per option: each layer one whole option, a sheet and a workbook page each.",
+                "By layer: a layer of residential slabs and one of commercial.",
             ),
         ),
-        "Renovation": (
-            ("Any status", "site", "Any: every slab, whatever its renovation status."),
-            ("New only", "site", "New only: the slabs whose renovation status is New."),
+        "Every": (
+            ("1 hour", "site", "Every hour: the hours lit above."),
+            ("30 minutes", "site", "Every 30 minutes between the hours lit above."),
+            ("15 minutes", "site", "Every 15 minutes between the hours lit above."),
+        ),
+        "Drawn as": (
             (
-                "Existing and new",
+                "Worksheet fills",
                 "site",
-                "Existing and new: every slab but those To Be Demolished.",
+                "Worksheet fills: the documents' shadows read out and drawn as fills in a "
+                "worksheet. Fast; run again to update.",
             ),
             (
-                "As the floor plan's filter",
+                "Live 3D Documents",
                 "site",
-                "Floor plan's filter: what the floor plan's renovation filter shows; set it "
-                "there before Run.",
+                "Live documents: the documents themselves stacked on the sheet. They "
+                "update themselves, and are slow.",
             ),
         ),
         "Site lands at": (
@@ -8645,8 +9275,10 @@ class Window:
                     )
 
         if YIELD_JOB in queued:
-            # One sheet, at no hour: the table, and the massing beside it.
-            deal(YIELD_JOB, "Yield", "yield", "AC", AREA_SHEET, "", [""])
+            # A sheet an option, at no hour: the table, and the massing beside
+            # it. One when no option is chosen by name.
+            for named in self._listed(self.yield_options) or [""]:
+                deal(YIELD_JOB, "Yield", "yield", "AC", AREA_SHEET, named, [""])
 
         if FACADE_JOB in queued:
             for day in days:
@@ -8748,7 +9380,11 @@ class Window:
         if SHADOW_JOB in queued:
             # The documents, dealt by day. A stack of legend rows is fitted
             # to the whole site (D143); a plain set is at the plans' 1:1000.
-            hours = self._clocks(self.shadow_hours, DEFAULT_SHADOW_HOURS.split(","))
+            hours = self._clocks(
+                self.shadow_hours,
+                DEFAULT_SHADOW_HOURS.split(","),
+                STEP_MINUTES.get(self.shadow_step.get(), 60),
+            )
             stacked = "to fit" if self._legend_args() else shadow_scale
             for day in self._shadow_days():
                 deal(
@@ -8779,7 +9415,11 @@ class Window:
                 )
 
         if SUN_EYE_JOB in queued:
-            hours = self._clocks(self.eye_hours, [f"{hour:02d}:00" for hour in range(9, 16)])
+            hours = self._clocks(
+                self.eye_hours,
+                [f"{hour:02d}:00" for hour in range(9, 16)],
+                STEP_MINUTES.get(self.eye_step.get(), 60),
+            )
             for day in self.chosen_view_days():
                 deal(
                     SUN_EYE_JOB,
@@ -8866,11 +9506,19 @@ class Window:
         return [f"{hour:02d}:00" for hour in range(first, last + 1)]
 
     @staticmethod
-    def _clocks(box: ttk.Entry | Ticks, fallback: Sequence[str]) -> list[str]:
+    def _clocks(box: ttk.Entry | Ticks, fallback: Sequence[str], step: int = 60) -> list[str]:
         """The times in a field, or the ones the study runs without them,
-        each spelled the way a sheet is named for it."""
+        every ``step`` minutes between two lit hours, each spelled the way a
+        sheet is named for it."""
         times = [part.strip() for part in box.get().split(",") if part.strip()]
-        return [_clock_text(part) for part in (times or list(fallback))]
+        text = _stepped(",".join(times or list(fallback)), step)
+        return [_clock_text(part) for part in text.split(",") if part.strip()]
+
+    def _shadow_times(self) -> str:
+        """The shadow hours as the run takes them, every 15 or 30 minutes
+        when the Every row says so."""
+        hours = self.shadow_hours.get().strip()
+        return _stepped(hours, STEP_MINUTES.get(self.shadow_step.get(), 60)) if hours else ""
 
     def _day_name(self, day: str) -> str:
         """How a day reads on a sheet: the date, not the season's name.
@@ -9017,7 +9665,32 @@ class Window:
             layers = self._listed(box)
             if layers:
                 flag = "--shadow-source" if role == "baseline" else "--shadow-scenario"
-                args += [flag, f"{short}={','.join(layers)}"]
+                args += [flag, f"{self._row_name(short)}={','.join(layers)}"]
+        return args
+
+    def _row_name(self, short: str) -> str:
+        """What a legend row is called in the run: the name typed for a
+        compared row, or the row's own. Never one with an ``=`` in it, which
+        is what parts the name from its layers."""
+        box = getattr(self, "shadow_row_names", {}).get(short)
+        typed = " ".join(box.get().replace("=", " ").split()) if box is not None else ""
+        return typed or short
+
+    def _row_extras(self, legend: Sequence[str]) -> list[str]:
+        """The compared rows' renovation filters or design options, and their
+        hatches, as the documents' command takes them, for the rows that are
+        in ``legend``."""
+        named = {entry.partition("=")[0] for entry in legend if "=" in entry}
+        args: list[str] = []
+        flag = "--scenario-option" if self._design_options() else "--scenario-filter"
+        for short, box in self.shadow_row_filters.items():
+            name = self._row_name(short)
+            if name in named and box.get().strip():
+                args += [flag, f"{name}={box.get().strip()}"]
+        for short, box in self.shadow_row_hatches.items():
+            name = self._row_name(short)
+            if name in named and box.get().strip():
+                args += ["--scenario-fill", f"{name}={box.get().strip()}"]
         return args
 
     def _designed_row(self) -> str:
@@ -9256,7 +9929,16 @@ class Window:
                     )
                 )
 
-        if self.do_shadows.get():
+        # The every-hour drawing is read out of the documents too, when the
+        # legend names a design: Archicad's shadow of it, copied onto the
+        # plan as fills. With the diagram ticked it rides on the diagram's
+        # run, whose documents it shares; alone, the same command makes it
+        # and nothing else. Without legend rows there is no document of the
+        # design to read, and Loriini's own cast draws it as it always has.
+        hours_from_documents = (
+            self.do_shadow_hours.get() and "--shadow-scenario" in self._legend_args()
+        )
+        if self.do_shadows.get() or hours_from_documents:
             # The shadow diagram: the documents, on the diagram's own days
             # and hours (D144).
             args = [
@@ -9274,23 +9956,40 @@ class Window:
             # plain set and are not sent with them.
             legend = self._legend_args()
             args += legend
-            plain_only = ("--label", "--shadow-pen")
+            # The worksheet route is the stacked one drawn flat, so it is
+            # asked for only with legend rows; live documents is the
+            # command's own default and sends nothing.
+            if legend and self.shadow_plan_route.get() != "Live 3D Documents":
+                args += ["--flat"]
+            args += self._row_extras(legend)
+            if hours_from_documents:
+                args += ["--every-hour" if self.do_shadows.get() else "--every-hour-only"]
+                if self.shadow_hours_colour.get():
+                    args += ["--every-hour-colour", self.shadow_hours_colour.get()]
+                if self._shadow_storey_index():
+                    args += ["--every-hour-storey", self._shadow_storey_index()]
+            plain_only = ("--label",)
+            # The colour picked, or a pen number an older settings file kept;
+            # either is for a set without the legend.
+            shadow = self.shadow_plan_pen.get().strip()
+            if shadow and not legend:
+                args += ["--shadow-colour" if colour_hex(shadow) else "--shadow-pen", shadow]
             for flag, field in (
-                ("--shadow-hour", self.shadow_hours),
                 ("--layer-combination", self.shadow_plan_combination),
                 ("--label", self.shadow_plan_label),
                 ("--pen-set", self.shadow_plan_pen_set),
-                ("--shadow-pen", self.shadow_plan_pen),
                 ("--subset", self.shadow_study_subset),
                 ("--master-layout", self.master),
             ):
                 if field.get().strip() and not (legend and flag in plain_only):
                     args += [flag, field.get().strip()]
+            if self._shadow_times():
+                args += ["--shadow-hour", self._shadow_times()]
             args += ["--year", self.year.get().strip() or "2024"]
             args += self._sheet_args()
-            made.append(Job(SHADOW_JOB, args))
+            made.append(Job(SHADOW_JOB if self.do_shadows.get() else SHADOW_HOURS_JOB, args))
 
-        if self.do_shadow_hours.get():
+        if self.do_shadow_hours.get() and not hours_from_documents:
             # The design's every hour on one drawing, cast by Loriini and
             # drawn as fills, and nothing else: no fill, view or sheet per
             # hour, which the documents above draw (D144, D160). The same
@@ -9300,6 +9999,7 @@ class Window:
                 "--timezone",
                 TIMEZONE,
                 *common,
+                *self._glass_args(),
                 *self._prefix_flag(self.prefix_shadow),
             ]
             args += self._legend_args()
@@ -9316,8 +10016,8 @@ class Window:
             if self.terrain_floor.get().strip():
                 args += ["--shadow-terrain-floor", self.terrain_floor.get().strip()]
             args += ["--shadow-date", ",".join(self._shadow_days())]
-            if self.shadow_hours.get().strip():
-                args += ["--shadow-hour", self.shadow_hours.get().strip()]
+            if self._shadow_times():
+                args += ["--shadow-hour", self._shadow_times()]
             if self._shadow_storey_index():
                 args += ["--shadow-storey", self._shadow_storey_index()]
             args += self._band_args()
@@ -9346,7 +10046,6 @@ class Window:
                 ("--override", self.eye_override),
                 ("--base-combination", self.eye_base_combination),
                 ("--scale", self.eye_scale),
-                ("--title-block-mm", self.eye_title_block),
             ):
                 if field.get().strip():
                     args += [flag, field.get().strip()]
@@ -9354,7 +10053,10 @@ class Window:
             # what will be drawn. Lit exactly so, nothing is sent: the
             # ruleset's own window stands, and follows it if it ever moves.
             hours = self.eye_hours.get().strip()
-            if hours and _hours_in(hours) != _hours_in(DEFAULT_SHADOW_HOURS):
+            step = STEP_MINUTES.get(self.eye_step.get(), 60)
+            if step < 60:
+                args += ["--hour", _stepped(hours or DEFAULT_SHADOW_HOURS, step)]
+            elif hours and _hours_in(hours) != _hours_in(DEFAULT_SHADOW_HOURS):
                 args += ["--hour", hours]
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
@@ -9376,6 +10078,9 @@ class Window:
 
         if self.do_yield.get():
             made.append(Job(YIELD_JOB, self._yield_args(common)))
+
+        if self.do_qa.get():
+            made.append(Job(QA_JOB, self._qa_args(common)))
 
         return made
 
@@ -9480,29 +10185,246 @@ class Window:
             made.append(Job(job, [*shared, *args, *([] if sets else ["--keep-location"])]))
         return made
 
+    def _qa_export(self, frame: ttk.Frame) -> None:
+        """The QA export (D184): the per-apartment data a QA council builds its
+        schedules from, written into the model and out as spreadsheets and IFC.
+
+        Three boxes: the export itself -- the groups' prefix, the apartments and
+        balconies, the storeys counted, the translator; the area and parking
+        zones by layer; and which of the project's own properties each unit
+        field is copied from, since most offices hold the values already under
+        names of their own.
+        """
+        outer = frame
+        self.do_qa = tk.BooleanVar(value=False)
+        self.qa_setup = tk.BooleanVar(value=True)
+        self.qa_fill = tk.BooleanVar(value=True)
+        self.qa_own_ifc = tk.BooleanVar(value=True)
+        #: Solar 2h and No sun as Loriini's solar study left them on the zones,
+        #: which may have been run long before (D184); and, optionally, the
+        #: study run again first.
+        self.qa_solar = tk.BooleanVar(value=True)
+        self.qa_solar_again = tk.BooleanVar(value=False)
+        frame, row = self._panel(outer, 0), 0
+        box = ttk.Checkbutton(
+            frame,
+            text="IFC export",
+            variable=self.do_qa,
+            command=self._sync,
+            style="Study.TCheckbutton",
+            **icons.study_options("IFC export"),
+        )
+        self._head(frame, box, QA_JOB)
+        Tooltip(
+            box,
+            "Makes the QA property groups, fills them from the zones, the project's "
+            "own properties and Loriini's solar study, writes QA_Units, QA_Areas, "
+            "QA_Parking and QA_Summary to the tables folder, and exports the IFC two "
+            "ways: Loriini's own, of the zones as spaces, and Archicad's through the "
+            "named translator. Each IFC is opened again and checked.",
+        )
+        row += 1
+        self.qa_prefix, row = self._entry(
+            frame,
+            row,
+            "Group prefix",
+            "QA_",
+            "What the three groups are named from: QA_ makes QA_UNIT, QA_AREA, QA_PARKING.",
+            "Typed once and kept with Save as default. The fields and their options "
+            "are the brief's; a group already in the project is kept as it is.",
+        )
+        self.qa_apartments, row = self._picker(
+            frame,
+            row,
+            "Apartment layers",
+            "The layers whose zones are apartments.",
+            "One zone per apartment, drawn to the inside face of the walls: its "
+            "area is the internal area, its name the unit number.",
+        )
+        self.qa_balconies, row = self._picker(
+            frame,
+            row,
+            "Balcony layers",
+            "The layers whose zones are balconies and terraces.",
+            "Each balcony is the private open space of the apartment it touches on "
+            "its storey, unless POS is copied from a property below.",
+        )
+        self.qa_from_storey, row = self._combo(
+            frame,
+            row,
+            "From storey",
+            "The lowest storey counted. Blank: the lowest.",
+            "Zones outside the two storeys -- unit-type plans kept above the roof -- "
+            "are left out of every count.",
+        )
+        self.qa_to_storey, row = self._combo(
+            frame,
+            row,
+            "To storey",
+            "The highest storey counted. Blank: the highest.",
+            "Zones outside the two storeys are left out of every count.",
+        )
+        self.qa_translator, row = self._entry(
+            frame,
+            row,
+            "IFC translator",
+            "",
+            "Archicad's export translator for the whole model, by name. Blank: Loriini's IFC only.",
+            "Archicad's API can choose a translator but not make one: set it up once "
+            "(or import the .xml) under File > Interoperability > IFC > IFC Translators. "
+            "The export is checked for spaces and for proxies either way.",
+        )
+        for text, variable, tip in (
+            ("Make the property groups", self.qa_setup, "Where they are missing."),
+            ("Write the values into the model", self.qa_fill, "Hotlinked units are named."),
+            ("Loriini's own IFC of the zones", self.qa_own_ifc, "Works with no translator."),
+        ):
+            check = ttk.Checkbutton(frame, text=text, variable=variable, command=self._sync)
+            check.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
+            Tooltip(check, tip, title=text)
+            row += 1
+        solar = ttk.Checkbutton(
+            frame,
+            text="Solar 2h and No sun from Loriini's solar study",
+            variable=self.qa_solar,
+            command=self._sync,
+        )
+        solar.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        Tooltip(
+            solar,
+            "A solar analysis run leaves each apartment's measured sun on its zone, "
+            "saved with the project, with the date of the run. The export reads it, "
+            "however long ago it was run, and says the date; an apartment with none is "
+            "copied as the fields below say. Off: the two are always copied.",
+            title="Solar from the solar study",
+        )
+        row += 1
+        again = ttk.Checkbutton(
+            frame,
+            text="Run the solar study again first",
+            variable=self.qa_solar_again,
+            command=self._qa_with_solar,
+        )
+        again.grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        Tooltip(
+            again,
+            "Queues the Solar analysis too, with its own page's settings: it runs first "
+            "and writes fresh results for the export to read. For a massing that has "
+            "changed since the last run.",
+            title="Run the solar study again",
+        )
+        row += 1
+
+        frame, row = self._panel(outer, 1, title="Areas and parking"), 0
+        self._caption(frame, row, "The area zones by what they count as, and the parking spaces.")
+        row += 1
+        #: Layers of area zones by the brief's area type.
+        self.qa_areas: dict[str, Chips] = {}
+        from sun_study.archicad.qa_export import AREA_TYPES
+
+        for kind in AREA_TYPES:
+            self.qa_areas[kind], row = self._picker(
+                frame,
+                row,
+                kind,
+                f"The layers whose zones are {kind.lower()}.",
+                "Each zone on these layers is written with this Area Type, and its area "
+                "goes to the totals.",
+            )
+        self.qa_parking, row = self._picker(
+            frame,
+            row,
+            "Parking layers",
+            "The layers whose zones are resident car spaces, one zone a space.",
+            "Each zone is one space, written as Resident and counted by type.",
+        )
+
+        frame, row = self._panel(outer, 2, title="Copied from the project"), 0
+        self._caption(
+            frame,
+            row,
+            "Which of the project's own properties each unit field is read from. Blank: "
+            "worked out from the zone where it can be, else left for a person.",
+        )
+        row += 1
+        #: Unit field -> the property it is copied from, as Group/Name.
+        self.qa_copies: dict[str, ttk.Combobox] = {}
+        from sun_study.archicad.qa_export import UNIT_FIELDS
+
+        for spec in UNIT_FIELDS:
+            if spec.name == "Internal area m²":
+                continue
+            self.qa_copies[spec.name], row = self._combo(
+                frame,
+                row,
+                spec.name,
+                spec.description,
+                "Y and N are read as Yes and No, '2 BED' as 2B, '21 m3' as 21. A value "
+                "that cannot be read as the field's is left blank and listed in the log.",
+            )
+
+    def _qa_with_solar(self) -> None:
+        """Ticked, the solar study is queued too: it runs first and writes the
+        sun the export reads (D184)."""
+        if self.qa_solar_again.get():
+            self.do_plans.set(True)
+            self.qa_solar.set(True)
+        self._sync()
+
+    def _qa_args(self, common: list[str]) -> list[str]:
+        """The QA export's command line, from its page."""
+        args = ["ifc-export", *common]
+        args += ["--prefix", self.qa_prefix.get().strip() or "QA_"]
+        for flag, box in (
+            ("--apartment-layer", self.qa_apartments),
+            ("--balcony-layer", self.qa_balconies),
+        ):
+            for name in self._listed(box):
+                args += [flag, name]
+        for kind, box in self.qa_areas.items():
+            for name in self._listed(box):
+                args += ["--area-layer", f"{name}={kind}"]
+        for name in self._listed(self.qa_parking):
+            args += ["--parking-layer", f"{name}=Resident"]
+        args += self._flag("--from-storey", self.qa_from_storey)
+        args += self._flag("--to-storey", self.qa_to_storey)
+        for field_name, copied in self.qa_copies.items():
+            if copied.get().strip():
+                args += ["--copy", f"{field_name}={copied.get().strip()}"]
+        args += self._flag("--translator", self.qa_translator)
+        if not self.qa_setup.get():
+            args.append("--no-setup")
+        if not self.qa_fill.get():
+            args.append("--no-fill")
+        if not self.qa_own_ifc.get():
+            args.append("--no-own-ifc")
+        args.append("--solar" if self.qa_solar.get() else "--no-solar")
+        tables = self.tables.get().strip()
+        if tables:
+            args += ["--out", str(Path(tables) / "QA")]
+        return args
+
     def _yield_args(self, common: list[str]) -> list[str]:
         """The yield analysis's command line, from the Yield page."""
         args = ["yield", *common]
         # Only the rows the Slabs answer shows: a layer left in a row that is
         # hidden must not quietly change what is counted.
-        shown = YIELD_ROWS.get(self.yield_slabs.get(), YIELD_ROWS["Every slab showing"])
+        shown = YIELD_ROWS.get(self.yield_slabs.get(), YIELD_ROWS["By level"])
+        chosen = self._listed(self.yield_options)
         pickers: list[tuple[str, Any, str]] = [
             ("--residential-layer", self.yield_residential, "per_use"),
             ("--commercial-layer", self.yield_commercial, "per_use"),
             ("--massing-layer", self.yield_massing, "layers"),
-            ("--option-layer", self.yield_option_layers, "option_layers"),
             ("--commercial-level", self.yield_commercial_levels, "levels"),
         ]
         for flag, box, group in pickers:
             if group in shown:
                 for name in self._listed(box):
                     args += [flag, name]
-        status = self.yield_renovation_status.get()
-        if status == "As the floor plan's filter":
-            args.append("--renovation-filter")
-        elif status in RENOVATION_STATUS_FLAGS:
-            args += ["--renovation-status", RENOVATION_STATUS_FLAGS[status]]
-        if "option" in shown:
+        flag = "--design-option" if self._design_options() else "--renovation-filter-name"
+        for name in chosen:
+            args += [flag, name]
+        if "option" in shown and not chosen:
             args += self._flag("--option", self.yield_option)
         for flag, control in (
             ("--gfa-residential", self.yield_gfa_residential),
@@ -9572,12 +10494,18 @@ class Window:
             return
         if any(tick.get() for _name, tick, _section in self._studies()) and not self._have_master():
             return
-        if self.do_shadows.get() and not self.shadow_plan_combination.get().strip():
+        # The every-hour drawing of a named design is read out of documents
+        # too, and they are pinned to the same combination.
+        documents = self.do_shadows.get() or (
+            self.do_shadow_hours.get() and "--shadow-scenario" in self._legend_args()
+        )
+        if documents and not self.shadow_plan_combination.get().strip():
             # No office combination to fall back on (D156): the documents are
             # pinned to this one, so it is asked for rather than guessed.
             self._write(
-                "The shadow diagram needs a layer combination: pick the one with "
-                "the buildings and the ground under them, in its Layers row."
+                "The shadow documents need a layer combination: pick the one with "
+                "the buildings and the ground under them, in the Shadow diagram's "
+                "Layers row."
             )
             return
         if self.do_shadow_hours.get() and not self._designed_row():

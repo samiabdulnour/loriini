@@ -116,8 +116,8 @@ CELL_GAP_MM = 20.0
 #: The strip down the right of the practice's masters that the title block
 #: occupies. Archicad reports a layout's margins and nothing about its master,
 #: so a drawing tiled to the page edge runs under the title block; measured
-#: at about 100 mm on the `DA B1 - VERTICAL` masters.
-TITLE_BLOCK_MM = 100.0
+#: 115 mm clears it on the `DA` masters with a margin (D187).
+TITLE_BLOCK_MM = 115.0
 
 #: The name a run gives its things, after the tool's prefix.
 WORD = "Sun View"
@@ -170,7 +170,7 @@ def sun_eyes(
     geo: GeoLocation,
     *,
     date: dt.date,
-    hours: Sequence[int],
+    hours: Sequence[int | dt.time],
     timezone: str,
     clock_minutes: int | None = None,
 ) -> list[SunEye]:
@@ -182,7 +182,10 @@ def sun_eyes(
     date it hands over (``clock.read_archicad_clock``, D135).
     """
     zone = ZoneInfo(timezone)
-    times = [dt.datetime.combine(date, dt.time(hour), tzinfo=zone) for hour in hours]
+    times = [
+        dt.datetime.combine(date, hour if isinstance(hour, dt.time) else dt.time(hour), tzinfo=zone)
+        for hour in hours
+    ]
     if not times:
         return []
     position = solar_position(times, geo.latitude_deg, geo.longitude_deg)
@@ -737,7 +740,10 @@ def arrange_drawings(
         "frameRelativeToOrigin": False,
         "autoUpdate": True,
     }
-    if stack:
+    # Imported here: plan_sheet lays its cells out with this module's own.
+    from sun_study.archicad.plan_sheet import all_on_top
+
+    if stack and not all_on_top(connection, [str(one["guid"]) for one in drawings]):
         asked["stack"] = True
     response = connection.run_loriini("ArrangeDrawings", asked)
     if not isinstance(response, dict) or not response.get("success"):

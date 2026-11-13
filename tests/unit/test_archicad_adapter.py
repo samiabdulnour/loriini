@@ -2716,6 +2716,7 @@ def _layout_responses(**overrides: Any) -> dict[str, Any]:
         # choose the master, once to look for a layout of this name to reuse.
         "GetNavigatorItemTree": Sequential(_navigator_tree(), _layout_book_tree()),
         "SetViewSettings": {},
+        "SetViewRotation": {},
         "GetViewSettings": {
             "viewSettings": [
                 # 53 x 37 m of building, which at 1:200 is 265 x 185 mm of paper.
@@ -3817,6 +3818,7 @@ def _view_world(**overrides: Any) -> dict[str, Any]:
         "CreateViewMapFolder": {"navigatorItemId": {"guid": "F1"}},
         "CreateViewsInViewMap": {"navigatorItems": [{"navigatorItemId": {"guid": "V1"}}]},
         "SetViewSettings": {},
+        "SetViewRotation": {},
     }
     responses.update(overrides)
     return responses
@@ -3851,6 +3853,10 @@ def test_a_view_carries_the_scale_and_is_pinned_square_to_the_page() -> None:
     assert settings["drawingScale"] == 200
     assert settings["rotation"] == 0
     assert settings["layerCombination"] == f"{SS} Solar Analysis 09:00"
+    # No zoom was given, and Archicad turns a view to its saved rotation only
+    # when it saves a zoom too: the rotation is asked for again, with one.
+    turned = transport.parameters_for("SetViewRotation")["navigatorItemIdsWithRotation"]
+    assert [one["rotation"] for one in turned] == [0.0]
 
 
 def test_a_view_that_refuses_its_settings_is_raised_not_drawn_anyway() -> None:

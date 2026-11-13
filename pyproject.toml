@@ -36,6 +36,10 @@ dependencies = [
     # DuckDB reads them straight from Overture's public bucket. OpenStreetMap
     # alone left whole streets of Campsie unbuilt.
     "duckdb>=1.1",
+    # The flat shadow diagram (archicad.shadow_flat): the pieces of a shadow read
+    # out of a 3D Document are merged and cut against one another. Already here
+    # under ifcopenshell, which needs it; named because this code now does.
+    "shapely>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -133,6 +137,16 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["ifcopenshell.*"]
 ignore_missing_imports = true
+disallow_untyped_calls = false
+
+# shapely ships no type information. It is met in one module, the flat shadow
+# diagram, which hands back plain lists of points.
+[[tool.mypy.overrides]]
+module = ["shapely", "shapely.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["sun_study.archicad.shadow_flat"]
 disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
