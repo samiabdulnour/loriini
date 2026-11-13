@@ -116,8 +116,8 @@ CELL_GAP_MM = 20.0
 #: The strip down the right of the practice's masters that the title block
 #: occupies. Archicad reports a layout's margins and nothing about its master,
 #: so a drawing tiled to the page edge runs under the title block; measured
-#: at about 100 mm on the `DA B1 - VERTICAL` masters.
-TITLE_BLOCK_MM = 100.0
+#: 115 mm clears it on the `DA` masters with a margin (D187).
+TITLE_BLOCK_MM = 115.0
 
 #: The name a run gives its things, after the tool's prefix.
 WORD = "Sun View"

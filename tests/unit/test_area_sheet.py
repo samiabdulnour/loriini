@@ -155,7 +155,7 @@ def test_the_view_goes_right_of_the_table_and_left_of_the_title_block() -> None:
     a1 = LayoutSheet(841.0, 594.0, 10.0, 10.0, 10.0, 10.0)
     x0, y0, x1, y1 = view_frame(a1) or (0, 0, 0, 0)
     assert x0 == pytest.approx((10 + 15 + 200 + 15) / 1000)
-    assert x1 == pytest.approx((841 - 10 - 100 - 15) / 1000)
+    assert x1 == pytest.approx((841 - 10 - 115 - 15) / 1000)
     assert (y0, y1) == pytest.approx((0.025, 0.569))
     assert view_frame(LayoutSheet(297.0, 210.0, 10.0, 10.0, 10.0, 10.0)) is None, "no room on A4"
 
@@ -262,7 +262,7 @@ def test_a_named_view_is_placed_beside_the_table_and_framed() -> None:
     arranged = transport.parameters_for("ArrangeDrawings")
     frame = arranged["drawings"][0]["frame"]
     assert arranged["drawings"][0]["guid"] == "D1"
-    assert frame["xMin"] == pytest.approx(0.24) and frame["xMax"] == pytest.approx(0.716)
+    assert frame["xMin"] == pytest.approx(0.24) and frame["xMax"] == pytest.approx(0.701)
 
 
 def test_a_view_nobody_has_costs_the_picture_and_not_the_sheet() -> None:

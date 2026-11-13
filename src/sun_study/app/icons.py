@@ -340,7 +340,6 @@ BY_STUDY: dict[str, str] = {
 BY_LABEL: dict[str, str] = {
     # General -- the project's own setup
     "Master layout": "general",
-    "Title block width (mm)": "title_block_width",
     "Sheets": "sheets",
     "Layer prefix — solar analysis": "prefix",
     "Layer prefix — shadow diagram": "prefix",

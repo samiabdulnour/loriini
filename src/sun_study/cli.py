@@ -9592,7 +9592,7 @@ def site_analysis(
     title_block_mm: Annotated[
         float,
         typer.Option("--title-block-mm", help="Width of the master's title block, kept clear."),
-    ] = 100.0,
+    ] = TITLE_BLOCK_MM,
     model: Annotated[
         bool,
         typer.Option(

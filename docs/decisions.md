@@ -7203,3 +7203,24 @@ design options), then the name, the view beside the table and the workbook:
 a name field is as wide as a list of names, the workbook is a row with its
 label like the others, and the mix's share and size boxes are as wide as the
 other figures.
+
+### D187 — The title block's width is not asked: 115 mm; a panel's fields are one width; a chip row's words sit on its middle line
+
+Asked with the window open, 13 November 2026.
+
+**115 mm, and no field for it.** *Title block width (mm)* is off General. It
+was one figure for every project, and a field on the first page invited
+changing it. Every tool that places a sheet keeps 115 mm clear down the
+right, where it kept 100; the commands still take `--title-block-mm` for a
+master that differs. A settings file that saved a width opens without it.
+
+**One width down the 3D context panel.** The *Future context* button and the
+*Radius (m)* box are as wide as the lists above and below them.
+
+**Style last.** On the Context Analysis and Site Analysis panels the Style
+row, with its link, comes after Scale.
+
+**Words on the middle line.** Beside a *+ Add* button, "no layers chosen"
+and the row's own label hung from the top of the row while the button, the
+taller, set its height. Both sit on the button's middle line now, as the
+text in every other field does.
