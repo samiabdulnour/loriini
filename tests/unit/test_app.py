@@ -1039,10 +1039,34 @@ def test_a_long_chip_row_wraps_inside_the_pane_and_lines_up_by_row(hidden_window
         for w in chips._made
     ]
     assert all(x + wide <= 300 for x, _y, wide in placed), "nothing past the edge"
-    rows = sorted({y for _x, y, _w in placed})
+    rows = chips._rows
     assert len(rows) >= 3, "three rows or more at that width"
-    assert all(min(x for x, y, _w in placed if y == row) == 0 for row in rows), "each from the left"
+    assert all(int(row[0].place_info()["x"]) == 0 for row in rows), "each from the left"
     assert int(chips.cget("height")) > 0 and int(chips.cget("width")) == 300
+    # The Add button is the tallest thing in its row and the words beside it
+    # sit on its middle line, as the text in every other field does.
+    for row in rows:
+        middles = [2 * int(w.place_info()["y"]) + w.winfo_reqheight() for w in row]
+        assert max(middles) - min(middles) <= 1, "one middle line a row"
+
+
+def test_a_chip_rows_label_sits_on_the_middle_line_of_the_first_row(hidden_window: Any) -> None:
+    """'no layers chosen' and the row's label hung from the top of the row
+    while Add, the taller, set its height: the words were above the line."""
+    hidden_window.do_yield.set(True)
+    hidden_window._sync()
+    chips = hidden_window.yield_options
+    chips.delete(0, "end")
+    hidden_window.root.update_idletasks()
+    chips._reflow(room=400)
+
+    words, add = chips._made
+    assert int(words.place_info()["y"]) == (add.winfo_reqheight() - words.winfo_reqheight()) // 2
+    name, top = chips._beside
+    assert name.grid_info()["pady"] == (
+        top + max(add.winfo_reqheight() - name.winfo_reqheight(), 0) // 2,
+        0,
+    )
 
 
 def test_the_three_site_sheets_are_three_different_pictures(hidden_window: Any) -> None:
@@ -5558,3 +5582,50 @@ def test_the_every_hour_shadow_drawing_takes_the_glass_option_too(hidden_window:
     made.see_glass.set("30")
     jobs = [job for job in made.jobs() if job.args[0] == "shadows"]
     assert jobs and flag(jobs[0].args, "--see-through-glass") == ["30"]
+
+
+def test_a_folded_panels_chip_label_stays_off_the_page(hidden_window: Any) -> None:
+    """Moving the label to the middle line gridded it, and a label its folded
+    panel had taken off the page came back on, alone."""
+    chips = hidden_window.yield_options
+    assert chips._beside is not None
+    name, _top = chips._beside
+    assert not hidden_window.do_yield.get()
+    assert not name.grid_info(), "folded with its panel"
+    chips._reflow(room=400)
+    assert not name.grid_info()
+
+
+def test_style_is_the_last_row_of_the_context_and_site_panels(hidden_window: Any) -> None:
+    hidden_window.do_site_context.set(True)
+    hidden_window.do_site_site.set(True)
+    hidden_window._sync()
+    for style, scale in (
+        (hidden_window.site_theme, hidden_window.site_scale),
+        (hidden_window.site_site_theme, hidden_window.site_sheet_scale),
+    ):
+        assert int(style.grid_info()["row"]) > int(scale.grid_info()["row"])
+
+
+def test_the_3d_context_panels_fields_are_one_width(hidden_window: Any) -> None:
+    """A lone button and a number's short box between three lists."""
+    hidden_window.do_site_model.set(True)
+    hidden_window._sync()
+    wide = hidden_window.site_model_origin.winfo_reqwidth()
+    radius = hidden_window.site_radius
+    assert abs(radius.winfo_reqwidth() + 2 * int(radius.grid_info()["ipadx"]) - wide) <= 1
+    future = hidden_window.site_buttons["Future Context (what the controls allow next door)"]
+    assert future.grid_info()["sticky"] == "ew"
+    assert int(future.master.columnconfigure(0)["minsize"]) >= wide
+
+
+def test_the_title_blocks_width_is_not_asked_and_is_115_mm(hidden_window: Any) -> None:
+    """D187: one figure for every project, the commands' own default."""
+    from sun_study.archicad import sheets, sun_eyes
+
+    assert sheets.TITLE_BLOCK_MM == sun_eyes.TITLE_BLOCK_MM == 115.0
+    assert "eye_title_block" not in hidden_window._fields()
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(True)
+    assert not any("--title-block-mm" in job.args for job in hidden_window.jobs())
+    hidden_window.apply({"eye_title_block": "100"})

@@ -1267,6 +1267,12 @@ class Toggles(ttk.Frame):
         self.paint()
         return button
 
+    def widen(self, width: int) -> None:
+        """A row of one button, made as wide as the fields it stands among."""
+        _variable, button = self._items[0]
+        button.grid_configure(sticky="ew")
+        self.columnconfigure(0, minsize=width + 2)
+
     def _flip(self, variable: tk.BooleanVar) -> None:
         variable.set(not variable.get())
         self.paint()
@@ -1430,6 +1436,10 @@ class Chips(ttk.Frame):
         self._changed = on_change
         self._empty = empty
         self._made: list[tk.Widget] = []
+        #: The same widgets as they were last laid out, a list for each row.
+        self._rows: list[list[tk.Widget]] = []
+        #: The label this row answers to and its gap from the row above.
+        self._beside: tuple[tk.Widget, int] | None = None
         #: The pane the row has to fit inside. Its own width is no guide: a
         #: frame is given whatever it asks for, and a row that asked for one
         #: long line was given one long line, off the edge of the page.
@@ -1531,17 +1541,50 @@ class Chips(ttk.Frame):
         pane changes width when the dock is folded away.
         """
         room = self.room() if room is None else room
-        x = y = tall = 0
+        rows: list[list[tk.Widget]] = [[]]
+        x = 0
         for made in self._made:
-            need, high = made.winfo_reqwidth(), made.winfo_reqheight()
+            need = made.winfo_reqwidth()
             if x and x + need > room:
-                x, y, tall = 0, y + tall + 3, 0
-            made.place(x=x, y=y)
+                rows.append([])
+                x = 0
+            rows[-1].append(made)
             x += need + 4
-            tall = max(tall, high)
+        # Each on the middle line of its row, not hung from the top of it:
+        # the Add button is taller than the words beside it, and words placed
+        # at its top edge sat above the line every other field's text is on.
+        y = 0
+        heights: list[int] = []
+        for across in rows:
+            tall = max((made.winfo_reqheight() for made in across), default=0)
+            x = 0
+            for made in across:
+                made.place(x=x, y=y + (tall - made.winfo_reqheight()) // 2)
+                x += made.winfo_reqwidth() + 4
+            heights.append(tall)
+            y += tall + 3
+        self._rows = rows
         # Placed children do not size their parent, so the row says its own
         # size: as wide as the pane allows, as tall as the rows came to.
-        self.configure(width=room, height=y + tall + 2)
+        self.configure(width=room, height=y - 3 + 2)
+        if self._beside is not None:
+            name, top = self._beside
+            down = top + max(heights[0] - name.winfo_reqheight(), 0) // 2
+            # Not while its panel is folded: gridding a label the fold took
+            # off the page would put it back on, alone.
+            placed = dict(name.grid_info())
+            if len(placed) and placed.get("pady") != (down, 0):
+                name.grid_configure(pady=(down, 0))
+
+    def beside(self, name: tk.Widget, top: int = 0) -> None:
+        """The row's own label, kept on the middle line of the first row.
+
+        It is gridded to the top of its cell, which is right when the chips
+        wrap to three rows and wrong by half the Add button's height when
+        they do not, so the chips say where their first row's middle is.
+        """
+        self._beside = (name, top)
+        self._reflow()
 
 
 class InfoBand(ttk.Frame):
@@ -4621,10 +4664,9 @@ class Window:
         The master, the title block, the numbering the results file
         themselves under, the year and how long Archicad is waited on are
         the same for a site sheet as for a shadow sheet. The title-block
-        width lived in the sun views' tab and the export settings lived
-        here; both are now where every tool that reads them can find them
-        -- the export settings under Solar tools, because only the solar
-        tools export a model.
+        width is not asked (D187): every tool keeps the same 115 mm clear,
+        the commands' own default. The export settings lived here and are
+        under Solar tools, because only the solar tools export a model.
         """
         outer = frame
         frame, row = self._panel(outer, 0, title="Layouts and title block"), 0
@@ -4652,18 +4694,6 @@ class Window:
         #: The three subsets of before -- ADG, time of day, shadow -- are one
         #: now (D186), under the names the run's code reads them by.
         self.adg_subset = self.shadow_subset = self.shadow_study_subset = self.subset
-        self.eye_title_block, row = self._entry(
-            frame,
-            row,
-            "Title block width (mm)",
-            "100",
-            "Millimetres kept clear down the right of every sheet the tools make.",
-            "Archicad reports a layout's margins and nothing about its "
-            "master, so drawings would otherwise tile under the title block. "
-            "About 100 mm on the DA masters. Every tool that places a sheet "
-            "keeps this strip clear: the site sheets, the sun views, the "
-            "shadow and solar diagrams.",
-        )
         self.sheets, row = self._tiles(
             frame,
             row,
@@ -5897,8 +5927,19 @@ class Window:
         self.site_context_origin, self.site_context_north, row = self._site_placement(
             frame, row, "the context sheet"
         )
+        self.site_scale, row = self._combo(
+            frame,
+            row,
+            "Scale",
+            "The context sheet's scale. 1:3000 by default.",
+            "Sets how much neighbourhood is fetched: the A1 map field at this "
+            "scale, centred on the site. 1:2000 for a tight urban site, 1:4000 "
+            "where the station is a long way off.",
+        )
+        self.site_scale.configure(values=list(CONTEXT_SCALES), state="readonly")
+        self.site_scale.set("1:3000")
         # The house style each sheet is drawn in: site-analyst.com's four, and
-        # only those (D152), a row in each sheet's panel -- a context sheet on
+        # only those (D152), the last row in each sheet's panel -- a context sheet on
         # paper beside a site sheet on the photograph is how the office's
         # packages have it.
         self.site_theme, row = self._combo(
@@ -5918,17 +5959,6 @@ class Window:
         self.site_theme.configure(values=list(CONTEXT_STYLES), state="readonly")
         self.site_theme.set(site_theme.theme(site_theme.DEFAULT_THEME).label)
         row = self._styles_link(frame, row)
-        self.site_scale, row = self._combo(
-            frame,
-            row,
-            "Scale",
-            "The context sheet's scale. 1:3000 by default.",
-            "Sets how much neighbourhood is fetched: the A1 map field at this "
-            "scale, centred on the site. 1:2000 for a tight urban site, 1:4000 "
-            "where the station is a long way off.",
-        )
-        self.site_scale.configure(values=list(CONTEXT_SCALES), state="readonly")
-        self.site_scale.set("1:3000")
 
         # -- the Site Analysis sheet --------------------------------------------
         frame, row = self._site_panel(
@@ -5951,6 +5981,17 @@ class Window:
         self.site_sheet_origin, self.site_sheet_north, row = self._site_placement(
             frame, row, "the site sheet"
         )
+        self.site_sheet_scale, row = self._combo(
+            frame,
+            row,
+            "Scale",
+            "The site sheet's scale. 'Fit the site' by default.",
+            "'Fit the site' picks whichever of 1:200 to 1:750 the boundary fits "
+            "the A1 map field at. A scale holds the sheet at it whatever the "
+            "site's size: 1:500 for a set of sheets that should all read alike.",
+        )
+        self.site_sheet_scale.configure(values=list(SITE_SHEET_SCALES), state="readonly")
+        self.site_sheet_scale.set(FIT_THE_SITE)
         self.site_site_theme, row = self._combo(
             frame,
             row,
@@ -5968,17 +6009,6 @@ class Window:
         self.site_site_theme.configure(values=list(SITE_STYLES), state="readonly")
         self.site_site_theme.set(site_theme.site_theme(site_theme.DEFAULT_SITE_THEME).label)
         row = self._styles_link(frame, row)
-        self.site_sheet_scale, row = self._combo(
-            frame,
-            row,
-            "Scale",
-            "The site sheet's scale. 'Fit the site' by default.",
-            "'Fit the site' picks whichever of 1:200 to 1:750 the boundary fits "
-            "the A1 map field at. A scale holds the sheet at it whatever the "
-            "site's size: 1:500 for a set of sheets that should all read alike.",
-        )
-        self.site_sheet_scale.configure(values=list(SITE_SHEET_SCALES), state="readonly")
-        self.site_sheet_scale.set(FIT_THE_SITE)
 
         # -- the 3D context -----------------------------------------------------
         frame, row = self._site_panel(
@@ -6020,6 +6050,7 @@ class Window:
                 ),
             ),
         )
+        future = self.toggle_rows[-1]
         self.site_model_origin, self.site_model_north, row = self._site_placement(
             frame, row, "the model"
         )
@@ -6049,6 +6080,12 @@ class Window:
         )
         self.site_levels.configure(values=list(LEVEL_WORDS))
         self.site_levels.set(next(iter(LEVEL_WORDS)))
+        # One width down the panel: a lone button and a number's short box
+        # between three lists read as a ragged edge, not as a column.
+        wide = self.site_model_origin.winfo_reqwidth()
+        future.widen(wide)
+        spare = max(wide - self.site_radius.winfo_reqwidth(), 0)
+        self.site_radius.grid_configure(ipadx=spare // 2)
 
     def _site_panel(
         self,
@@ -6453,6 +6490,7 @@ class Window:
             label=label,
         )
         box.grid(row=row, column=1, sticky="ew", pady=(6, 0))
+        box.beside(name, top=6)
         line = self._hint(parent, row + 1, hint)
         for target in (name, box):
             Tooltip(
@@ -7253,6 +7291,7 @@ class Window:
             label=label,
         )
         box.grid(row=row, column=1, sticky="ew", pady=(6, 0))
+        box.beside(name, top=6)
         line = self._hint(parent, row + 1, hint)
         for target in (name, box):
             Tooltip(
@@ -7850,7 +7889,6 @@ class Window:
             "eye_base_combination": self.eye_base_combination,
             "eye_scale": self.eye_scale,
             "sheets": self.sheets,
-            "eye_title_block": self.eye_title_block,
             "eye_hours": self.eye_hours,
             "eye_step": self.eye_step,
             "site_address": self.site_address,
@@ -9988,7 +10026,6 @@ class Window:
                 ("--override", self.eye_override),
                 ("--base-combination", self.eye_base_combination),
                 ("--scale", self.eye_scale),
-                ("--title-block-mm", self.eye_title_block),
             ):
                 if field.get().strip():
                     args += [flag, field.get().strip()]

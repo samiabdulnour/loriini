@@ -614,10 +614,10 @@ def draw_table(
 
 #: The strip down the right of the practice's masters that the title block
 #: occupies. Archicad reports a layout's margins and nothing about its master,
-#: so drawings tiled to the page edge run under the title block -- measured at
-#: about 100 mm on the ``DA B1 - VERTICAL`` masters, and the same figure
+#: so drawings tiled to the page edge run under the title block -- 115 mm
+#: clears it on the ``DA`` masters with a margin (D187), and the same figure
 #: ``sun_eyes`` keeps clear for the same reason.
-TITLE_BLOCK_MM = 100.0
+TITLE_BLOCK_MM = 115.0
 
 #: The column kept for the legend, down the right of the sheet beside the
 #: title block, and how far below the top edge it starts. The plans are tiled
