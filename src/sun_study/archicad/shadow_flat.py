@@ -23,6 +23,11 @@ a set of documents that show it without the buildings around it, dashed,
 over the fills -- so the reader sees how far the proposal's shadow reaches
 where it falls on ground the neighbours already shade.
 
+That outline is the shadow on bare ground, and a neighbour's roof catches
+the shadow short of where the ground would: asked for (``roofs``), the
+outline is the shadow where it falls instead (``fallen_shadow``) -- the
+edge of what the row adds on the roofs, the ground's edge in the streets.
+
 Measured on a tower in Darlinghurst, 10 November 2026, Archicad 26: a
 document's drawing is read in a second and a half, eight thousand pieces
 become twenty to sixty polygons, and seven hours of two rows are some six
@@ -34,11 +39,12 @@ from __future__ import annotations
 import colorsys
 import datetime as dt
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import pairwise
 from typing import Any
 
 from shapely import make_valid, set_precision
+from shapely.errors import GEOSException
 from shapely.geometry import Polygon, box
 from shapely.geometry.base import BaseGeometry
 from shapely.geometry.polygon import orient
@@ -66,37 +72,52 @@ from sun_study.archicad.shadow_plans import (
     OVERHEAD_DEG,
     PLAN_WORD,
     SET_WORD,
+    STACK_SURFACES,
     MadePlan,
+    ShadowPlan,
     ShadowPlanSettings,
     _dealt,
     _sheet_stem,
+    make_shadow_plans,
 )
 from sun_study.archicad.sheeting import DEFAULT_SHEET_MODE
 from sun_study.archicad.sheets import LEGEND_COLUMN_MM, TITLE_BLOCK_MM
 from sun_study.archicad.site_analysis import attribute_index, ensure_worksheet
 from sun_study.archicad.sun_eyes import sheet_cells_for
-from sun_study.archicad.views import StoreyView, three_d_sources, views_for_sources
+from sun_study.archicad.views import (
+    StoreyView,
+    ensure_layer_combination,
+    layer_names,
+    three_d_sources,
+    views_for_sources,
+)
 from sun_study.core.shadow import ShadowInstant, ShadowSeries
 
 __all__ = [
+    "DEFAULT_HATCH",
     "FLAT_LABEL",
+    "SOLID_FILLS",
     "EveryHour",
     "FlatReport",
     "FlatRow",
     "draw_flat_worksheet",
     "drawable",
     "every_hour_series",
+    "fallen_shadow",
     "make_base_document",
     "make_flat_sheets",
+    "make_roofs_document",
     "merged",
     "outline_colour",
     "outline_colours",
     "outline_rings",
     "own_shadow",
+    "read_roofs",
     "read_shadows",
     "seen_of_each",
     "shadow_pieces",
     "smaller_above",
+    "stood_on_every_hour",
     "window_a_cell_shows",
     "without_holes",
 ]
@@ -109,6 +130,8 @@ STAGING_LABEL = "Working"
 BASE_LABEL = "BASE"
 #: What a row's documents without the buildings around it are called.
 ALONE_WORD = "ALONE"
+#: The document of what stands and nothing under it, and its combination.
+ROOFS_LABEL = "ROOFS"
 
 #: Pieces of one shadow meet along the edges of the surfaces they fall on,
 #: and not always to the last decimal: grown by this and shrunk again, two
@@ -136,11 +159,25 @@ JOIN_M = 1.5
 #: How far past its own shadow a row's added shadow is still believed: the
 #: two come from two documents, and do not agree to the millimetre.
 REACH_MARGIN_M = 2.0
+#: A strip of shadow narrower than twice this is no part of an outline: two
+#: documents of one hour leave such strips along the shadows they share.
+SLIVER_M = 0.3
 #: What the rows under the designed one are outlined in, nearest the
 #: designed row first: the office's magenta for the envelope it is compared
 #: with, then a soft orange -- a strong one took the eye from the
-#: proposal's own blue -- and a green.
-OTHER_OUTLINES: tuple[tuple[int, int, int], ...] = ((214, 0, 170), (200, 140, 90), (0, 150, 80))
+#: proposal's own blue -- a green, and a dark red for a fifth proposal.
+OTHER_OUTLINES: tuple[tuple[int, int, int], ...] = (
+    (214, 0, 170),
+    (200, 140, 90),
+    (0, 150, 80),
+    (170, 45, 60),
+)
+#: The fill a compared row is drawn in when none is named for it: dashed
+#: lines in the colour of its outline over its own blue, which is how the
+#: office tells its envelopes apart (13 November 2026).
+DEFAULT_HATCH: tuple[str, ...] = ("Dashed", "Dashed Fill")
+#: The fill named for a row that is to have no hatch.
+SOLID_FILLS: tuple[str, ...] = ("Solid Fill", "Solid", "Foreground")
 #: An outline is a line to be read at 1:500 and smaller, not a survey.
 OUTLINE_SIMPLIFY_M = 0.15
 #: The gap between one hour's plan and the next in the worksheet, as a share
@@ -277,7 +314,7 @@ def every_hour_series(
 
 def shadow_pieces(
     polygons: Sequence[Mapping[str, Any]],
-    pen: int,
+    pen: int | None,
     *,
     origin: tuple[float, float],
     scale: float,
@@ -288,12 +325,17 @@ def shadow_pieces(
     the border of its hatch; the shadow is the solid ones filled in the
     shadow's pen. ``origin`` is where the drawing's own origin sits on the
     layout and ``scale`` the 500 of 1:500, which is all that lies between the
-    paper and the project: a document seen from overhead is the plan.
+    paper and the project: a document seen from overhead is the plan. With
+    no ``pen``, every solid polygon in a pen: all the document draws a
+    surface on, and not the drawing's own ground, which comes first, the
+    size of its frame, in no pen (-1).
     """
     ox, oy = origin
     pieces: list[Polygon] = []
     for one in polygons:
-        if not one.get("solid") or one.get("fillPen") != pen:
+        if not one.get("solid"):
+            continue
+        if one.get("fillPen") != pen if pen is not None else int(one.get("fillPen") or 0) < 0:
             continue
         xy = one.get("xy") or []
         points = [
@@ -321,6 +363,25 @@ def _polygons(shape: BaseGeometry, *, least: float = LEAST_M2) -> list[Polygon]:
     return [one for one in found if isinstance(one, Polygon) and one.area > least]
 
 
+def _overlaid(how: str, one: BaseGeometry, other: BaseGeometry) -> BaseGeometry:
+    """``one.difference(other)``, ``.intersection`` or ``.union``, and again
+    on the grid when the geometry library gives up.
+
+    Two shadows merged from thousands of pieces each share edges a hair
+    apart, and now and then the library cannot say which hole belongs to
+    which shell ("unable to assign free hole to a shell": a whole run of the
+    Darlinghurst sheet stopped on it after a quarter of an hour's reading,
+    13 November 2026). Snapped to the millimetre grid, both are sound and
+    the answer differs by nothing that is drawn.
+    """
+    try:
+        return getattr(one, how)(other)
+    except GEOSException:
+        return getattr(set_precision(make_valid(one), GRID_M), how)(
+            set_precision(make_valid(other), GRID_M)
+        )
+
+
 def merged(pieces: Sequence[Polygon], window: PlanWindow | None = None) -> BaseGeometry:
     """One shadow from its pieces, cut to the window of the plan."""
     if not pieces:
@@ -328,8 +389,10 @@ def merged(pieces: Sequence[Polygon], window: PlanWindow | None = None) -> BaseG
     whole = unary_union([piece.buffer(SEAM_M, join_style="mitre") for piece in pieces])
     whole = whole.buffer(-SEAM_M, join_style="mitre").simplify(SIMPLIFY_M)
     if window is not None:
-        whole = whole.intersection(box(window.x_min, window.y_min, window.x_max, window.y_max))
-    return whole
+        whole = _overlaid(
+            "intersection", whole, box(window.x_min, window.y_min, window.x_max, window.y_max)
+        )
+    return whole if whole.is_valid else make_valid(whole)
 
 
 def seen_of_each(bottom_to_top: Sequence[tuple[str, BaseGeometry]]) -> dict[str, BaseGeometry]:
@@ -343,8 +406,8 @@ def seen_of_each(bottom_to_top: Sequence[tuple[str, BaseGeometry]]) -> dict[str,
     seen: dict[str, BaseGeometry] = {}
     above: BaseGeometry = Polygon()
     for label, shadow in reversed(list(bottom_to_top)):
-        seen[label] = shadow if above.is_empty else shadow.difference(above)
-        above = shadow if above.is_empty else unary_union([above, shadow])
+        seen[label] = shadow if above.is_empty else _overlaid("difference", shadow, above)
+        above = shadow if above.is_empty else _overlaid("union", above, shadow)
     return seen
 
 
@@ -455,6 +518,70 @@ def own_shadow(shape: BaseGeometry) -> BaseGeometry:
     # to a point parts there, and the outline was two rings touching.
     snapped = _polygons(set_precision(whole, GRID_M), least=0.0)
     return max(snapped, key=lambda part: part.area) if snapped else Polygon()
+
+
+def stood_on_every_hour(reaches: Sequence[BaseGeometry]) -> BaseGeometry:
+    """The ground every hour's own shadow covers, which is the building's.
+
+    A row's own shadow runs from the building whatever the hour, so what the
+    hours share is where it stands -- and a little beside it at midday,
+    which an outline is none the worse for.
+    """
+    common: BaseGeometry = Polygon()
+    for reach in reaches:
+        if reach.is_empty:
+            continue
+        common = reach if common.is_empty else common.intersection(reach)
+    return common
+
+
+def fallen_shadow(
+    reach: BaseGeometry,
+    with_row: BaseGeometry,
+    standing: BaseGeometry,
+    roofs: BaseGeometry,
+    building: BaseGeometry | None = None,
+) -> BaseGeometry:
+    """A row's shadow where it falls, for its outline: on the neighbours'
+    roofs as on the ground.
+
+    ``reach`` is the row's own shadow on bare ground (``own_shadow``), and a
+    roof catches the shadow nearer the building than the ground under it
+    would, so over the buildings that outline runs on across roofs the sun
+    is still on. Here the shadow is put together from what the documents
+    drew. What the row adds to the shadow of what stands (``with_row`` less
+    ``standing``) is its shadow wherever the sun was, roof or street, so a
+    lit roof is left out and the outline steps back to the shadow's edge on
+    it. In the shade of what stands no document says where the row's shadow
+    is: on the ground it is the ground's reach, and that is kept; on a roof
+    (``roofs``, where the neighbours stand) it is not known and is left
+    out. ``building`` is where the row itself stands, kept so the outline
+    still starts from it. The parts are closed and their lit courts filled,
+    as an own shadow's are; a scrap two documents left between them is not
+    outlined.
+    """
+    if reach.is_empty:
+        return Polygon()
+    added = _overlaid(
+        "intersection",
+        _overlaid("difference", with_row, standing),
+        reach.buffer(REACH_MARGIN_M),
+    )
+    under = _overlaid("difference", _overlaid("intersection", reach, standing), roofs)
+    whole = _overlaid("union", added, under)
+    if building is not None and not building.is_empty:
+        whole = _overlaid("union", whole, building)
+    whole = whole.buffer(-SLIVER_M, join_style="mitre").buffer(
+        SLIVER_M + JOIN_M, join_style="mitre"
+    )
+    whole = whole.buffer(-JOIN_M, join_style="mitre")
+    kept = [
+        Polygon(part.exterior).simplify(OUTLINE_SIMPLIFY_M)
+        for part in _polygons(whole, least=LEAST_OUTLINED_M2)
+    ]
+    if not kept:
+        return Polygon()
+    return unary_union(_polygons(set_precision(unary_union(kept), GRID_M), least=0.0))
 
 
 def outline_colour(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
@@ -595,7 +722,6 @@ def read_shadows(
     whole: dict[tuple[str, dt.datetime], BaseGeometry] = {}
     alone: dict[tuple[str, dt.datetime], BaseGeometry] = {}
     hours = sorted({one.plan.when for row in rows for one in (*row.documents, *row.alone)})
-    spacing = window.width / scale + 0.05
     for when in hours:
         wanted: list[tuple[FlatRow, MadePlan, bool]] = []
         for row in rows:
@@ -608,31 +734,9 @@ def read_shadows(
             )
             for row, one, apart in wanted
         ]
-        report = layout_from_views(
-            connection, views, layout_name=name, scale=scale, master_layout=master_layout
+        layout, placed, origins = _staged(
+            connection, views, name=name, scale=scale, window=window, master_layout=master_layout
         )
-        layout = report.database_id
-        placed = _drawings(connection, layout)
-        origins: dict[str, tuple[float, float]] = {}
-        arranged: list[dict[str, Any]] = []
-        for index, (_, drawing_name) in enumerate(views):
-            ox = WORKING_ORIGIN_M[0] + index * spacing
-            oy = WORKING_ORIGIN_M[1]
-            origins[drawing_name] = (ox, oy)
-            arranged.append(
-                {
-                    "guid": placed[drawing_name]["guid"],
-                    "x": ox,
-                    "y": oy,
-                    "frame": {
-                        "xMin": ox + window.x_min / scale,
-                        "yMin": oy + window.y_min / scale,
-                        "xMax": ox + window.x_max / scale,
-                        "yMax": oy + window.y_max / scale,
-                    },
-                }
-            )
-        _arrange(connection, layout, arranged)
         for (row, _one, apart), (_, drawing_name) in zip(wanted, views, strict=True):
             answer = connection.run_loriini(
                 "GetDrawingPrimitives",
@@ -655,20 +759,150 @@ def read_shadows(
                     f"    {drawing_name:<34} {len(pieces):>6} pieces, "
                     f"{len(_polygons(shadow)):>3} polygons, {shadow.area:>9,.0f} m2"
                 )
-        # Done with: the working drawings come off the layout again.
-        try:
-            connection.run_loriini(
-                "SetCurrentDatabase", {"databaseId": {"guid": layout}, "windowType": "Layout"}
-            )
-            connection.run_tapir(
-                "DeleteElements",
-                {"elements": [{"elementId": {"guid": placed[n]["guid"]}} for _, n in views]},
-            )
-        except ArchicadError as error:
-            if say:
-                say(f"    the working drawings of {when:%H:%M} are still on {name!r}: {error}")
+        _unstaged(connection, layout, placed, views, name=name, word=f"{when:%H:%M}", say=say)
     ensure_model_database(connection)
     return whole, alone
+
+
+def _staged(
+    connection: ArchicadConnection,
+    views: Sequence[tuple[str, str]],
+    *,
+    name: str,
+    scale: float,
+    window: PlanWindow,
+    master_layout: str | None,
+) -> tuple[str, dict[str, dict[str, Any]], dict[str, tuple[float, float]]]:
+    """These views placed on the working layout, each clipped to the window
+    of the plan: the layout, its drawings by name, and where each one's own
+    origin was put."""
+    report = layout_from_views(
+        connection, list(views), layout_name=name, scale=scale, master_layout=master_layout
+    )
+    layout = report.database_id
+    placed = _drawings(connection, layout)
+    spacing = window.width / scale + 0.05
+    origins: dict[str, tuple[float, float]] = {}
+    arranged: list[dict[str, Any]] = []
+    for index, (_, drawing_name) in enumerate(views):
+        ox = WORKING_ORIGIN_M[0] + index * spacing
+        oy = WORKING_ORIGIN_M[1]
+        origins[drawing_name] = (ox, oy)
+        arranged.append(
+            {
+                "guid": placed[drawing_name]["guid"],
+                "x": ox,
+                "y": oy,
+                "frame": {
+                    "xMin": ox + window.x_min / scale,
+                    "yMin": oy + window.y_min / scale,
+                    "xMax": ox + window.x_max / scale,
+                    "yMax": oy + window.y_max / scale,
+                },
+            }
+        )
+    _arrange(connection, layout, arranged)
+    return layout, placed, origins
+
+
+def _unstaged(
+    connection: ArchicadConnection,
+    layout: str,
+    placed: Mapping[str, Mapping[str, Any]],
+    views: Sequence[tuple[str, str]],
+    *,
+    name: str,
+    word: str,
+    say: Callable[[str], None] | None,
+) -> None:
+    """Done with: the working drawings come off the layout again."""
+    try:
+        connection.run_loriini(
+            "SetCurrentDatabase", {"databaseId": {"guid": layout}, "windowType": "Layout"}
+        )
+        connection.run_tapir(
+            "DeleteElements",
+            {"elements": [{"elementId": {"guid": placed[n]["guid"]}} for _, n in views]},
+        )
+    except ArchicadError as error:
+        if say:
+            say(f"    the working drawings of {word} are still on {name!r}: {error}")
+
+
+def make_roofs_document(
+    connection: ArchicadConnection,
+    plan: ShadowPlan,
+    *,
+    settings: ShadowPlanSettings,
+    standing: Sequence[str],
+    base: str,
+) -> MadePlan:
+    """A document of what stands with nothing under it: no terrain, no
+    street, no row that might be built.
+
+    Whatever it draws a surface on is a neighbour seen from overhead, which
+    is all that tells a roof from the ground in a plan read out of a
+    drawing. Its combination is ``base`` with the ``standing`` layers on and
+    every other layer of the project off. One hour's document is enough: the
+    roofs do not move with the sun.
+    """
+    shown = {layer.casefold() for layer in standing}
+    combination = ensure_layer_combination(
+        connection,
+        naming.named(f"{SET_WORD} {ROOFS_LABEL}"),
+        show=list(standing),
+        hide=[name for name in layer_names(connection) if name.casefold() not in shown],
+        base=base,
+    )
+    made, _said = make_shadow_plans(
+        connection,
+        [plan],
+        settings=replace(
+            settings,
+            layer_combination=combination,
+            fill_uncut_surfaces=None,
+            uncut_surfaces=dict(STACK_SURFACES),
+        ),
+        set_label=ROOFS_LABEL,
+    )
+    return made[0]
+
+
+def read_roofs(
+    connection: ArchicadConnection,
+    roofs: MadePlan | None,
+    *,
+    scale: float,
+    window: PlanWindow,
+    master_layout: str | None = None,
+    say: Callable[[str], None] | None = None,
+) -> BaseGeometry:
+    """Where the neighbours stand, in project metres: every surface the
+    roofs document draws, lit or shaded, as one shape. With no document --
+    nothing stands -- nowhere."""
+    if roofs is None:
+        return Polygon()
+    name = naming.named(f"{SET_WORD} {STAGING_LABEL}")
+    views = [(roofs.view.navigator_id, ROOFS_LABEL)]
+    layout, placed, origins = _staged(
+        connection, views, name=name, scale=scale, window=window, master_layout=master_layout
+    )
+    answer = connection.run_loriini(
+        "GetDrawingPrimitives",
+        {"layoutDatabaseId": {"guid": layout}, "drawing": placed[ROOFS_LABEL]["guid"]},
+    )
+    pieces = shadow_pieces(
+        (answer or {}).get("polygons") or [], None, origin=origins[ROOFS_LABEL], scale=scale
+    )
+    shape = merged(pieces, window)
+    if say:
+        say(
+            f"    {ROOFS_LABEL:<34} {len(pieces):>6} pieces, "
+            f"{len(_polygons(shape)):>3} polygons, {shape.area:>9,.0f} m2"
+        )
+    _unstaged(connection, layout, placed, views, name=name, word="the roofs", say=say)
+    ensure_model_database(connection)
+    return shape
 
 
 # -- drawing them flat --------------------------------------------------------
@@ -747,6 +981,7 @@ def draw_flat_worksheet(
     name: str,
     window: PlanWindow,
     say: Callable[[str], None] | None = None,
+    roofs: BaseGeometry | None = None,
 ) -> tuple[str, int, int, float]:
     """One day's hours as fills in one worksheet, an hour beside the next.
 
@@ -756,14 +991,15 @@ def draw_flat_worksheet(
     at ``(n x hour_pitch, 0)``, which is where the sheets look for it. Each
     row is filled where no row above it casts a shadow, in its legend colour
     and no contour; each row with a shadow of its own is outlined, dashed, in
-    that colour darker. The layer is cleared first, so a second run draws
+    that colour darker -- by its own shadow on bare ground, or, given the
+    ``roofs`` the neighbours stand on, by its shadow where it falls
+    (``fallen_shadow``). The layer is cleared first, so a second run draws
     over nothing. Returns the worksheet's Project Map id, the fills and the
     outlines drawn, and the square metres Archicad would not draw.
     """
     _, navigator_id, _ = ensure_worksheet(connection, name, say=say)
     layer = ensure_layer(connection, naming.named(f"{SET_WORD}.{FLAT_LABEL}"))
-    clear_layer(connection, layer.index)
-    solid = attribute_index(connection, "Fill", ("Solid Fill", "Solid", "Foreground"))
+    solid = attribute_index(connection, "Fill", SOLID_FILLS)
     dashed = attribute_index(connection, "Line", ("Dashed", "Dashed Line", "Dash"))
     try:
         pens = pen_table(connection)
@@ -773,6 +1009,19 @@ def draw_flat_worksheet(
     pitch = hour_pitch(window)
 
     outline_of = outline_colours(rows)
+    buildings: dict[str, BaseGeometry] = {}
+    if roofs is not None:
+        buildings = {
+            row.label: stood_on_every_hour(
+                [
+                    own_shadow(alone[(row.label, when)])
+                    for when in hours
+                    if (row.label, when) in alone
+                ]
+            )
+            for row in rows
+            if row.alone
+        }
 
     parts: list[tuple[Polygon, FlatRow, float, float, str]] = []
     lines: list[dict[str, Any]] = []
@@ -789,6 +1038,11 @@ def draw_flat_worksheet(
         seen = seen_of_each(
             smaller_above(present, {label: reach.area for label, reach in reaches.items()})
         )
+        standing: BaseGeometry = Polygon()
+        if roofs is not None:
+            for one in rows:
+                if not one.alone and (one.label, when) in whole:
+                    standing = _overlaid("union", standing, whole[(one.label, when)])
         for row in rows:
             added = seen.get(row.label, Polygon())
             reach = reaches.get(row.label)
@@ -797,13 +1051,22 @@ def draw_flat_worksheet(
                 # shadow reaches. Two documents of one hour do not draw the
                 # shadows they share piece for piece alike, and the scraps
                 # between them were filled in the row's colour a street away.
-                added = added.intersection(reach.buffer(REACH_MARGIN_M))
+                added = _overlaid("intersection", added, reach.buffer(REACH_MARGIN_M))
             for part in drawable(added):
                 parts.append((part, row, dx, dy, f"{row.label} {when:%H:%M}"))
             if reach is None:
                 continue
             pen = nearest_pen(pens, outline_of[row.label])
-            for ring in outline_rings(reach):
+            edge = reach
+            if roofs is not None:
+                edge = fallen_shadow(
+                    reach,
+                    whole.get((row.label, when), Polygon()),
+                    standing,
+                    roofs,
+                    buildings.get(row.label),
+                )
+            for ring in outline_rings(edge):
                 line: dict[str, Any] = {
                     "coordinates": [{"x": x + dx, "y": y + dy} for x, y in ring],
                     "layerIndex": layer.index,
@@ -834,6 +1097,9 @@ def draw_flat_worksheet(
             for part, row, dx, dy, word in these
         ]
 
+    # Cleared only now, with everything worked out: a run that stops on its
+    # geometry leaves the last run's drawing as it was.
+    clear_layer(connection, layer.index)
     drawn = len(parts)
     refused = [parts[index] for index in _draw_all(connection, as_fills(parts))]
     drawn -= len(refused)

@@ -976,16 +976,16 @@ def test_proposed_3_wears_its_own_colour_and_not_a_fourth_blue() -> None:
 
 
 def test_the_compared_rows_are_named_for_no_one_control() -> None:
-    """Proposed, Proposed 2 and Proposed 3 (D178), each its own colour, and
+    """Proposed and Proposed 2 to 5 (D178), each its own colour, and
     Proposed 2 in the colour a second proposal takes by position, so a stack's
     numbered proposals never share one."""
     from sun_study.archicad.shadows import LEGEND, SCENARIO_RAMP, legend_colour
     from sun_study.core.shadow import SCENARIO
 
     compared = [short for short, _words, role, _rgb in LEGEND if role == SCENARIO]
-    assert compared == ["PROPOSED 2", "PROPOSED 3", "PROPOSED"]
+    assert compared == ["PROPOSED 4", "PROPOSED 5", "PROPOSED 2", "PROPOSED 3", "PROPOSED"]
     colours = [legend_colour(short) for short in compared]
-    assert len(set(colours)) == 3
+    assert len(set(colours)) == 5
     assert legend_colour("PROPOSED 2") == SCENARIO_RAMP[1]
     assert legend_colour("PROPOSED") == SCENARIO_RAMP[2]
     assert legend_colour("Proposed 1") is None

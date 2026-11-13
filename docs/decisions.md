@@ -7224,3 +7224,33 @@ row, with its link, comes after Scale.
 and the row's own label hung from the top of the row while the button, the
 taller, set its height. Both sit on the button's middle line now, as the
 text in every other field does.
+
+### D188 — A proposal's outline can follow its shadow where it falls; five proposals; a compared row is dashed unless told otherwise
+
+**The outline where the shadow falls (`shadow-plans --flat --outline-falls`).**
+The dashed outline of a row that might be built is its whole shadow on bare
+ground, read from documents that show it alone. A neighbour's roof catches
+the shadow short of where the ground would, so that outline ran on across
+roofs the sun was still on (Darlinghurst, 13 November 2026). Asked for, the
+outline is put together from what the documents drew (`fallen_shadow`): what
+the row adds to the shadow of what stands, on roof and street alike, so a lit
+roof drops out; the ground's reach where the street is already in shade; and
+the ground the building stands on. A neighbour's roof already in shade is
+left out: no document says whether the row's shadow lands there too. Roofs
+are told from streets by one more document, *Shadow Plan ROOFS*, of what
+stands with every other layer off. `--outline-ground`, the outline as it was,
+stays the default; the window has no switch yet.
+
+**The geometry library giving up no longer costs the drawing.** A run stopped
+on "unable to assign free hole to a shell" after a quarter of an hour's
+reading, with the worksheet already cleared. Overlays are tried again on the
+millimetre grid (`_overlaid`), and the layer is cleared only once everything
+to be drawn is worked out.
+
+**Proposed 4 and Proposed 5.** The legend and the window carry five rows that
+are compared; the rows under the designed one are outlined in four colours.
+
+**A compared row is dashed.** With worksheet fills, a compared row no fill is
+named for is drawn in the project's *Dashed* fill: lines the colour of its
+outline over its own blue. *Solid Fill* named for a row leaves it unhatched;
+the designed row is solid unless a fill is named.

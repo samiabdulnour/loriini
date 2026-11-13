@@ -377,6 +377,8 @@ BY_LABEL: dict[str, str] = {
     "Proposed": "being_tested",
     "Proposed 2": "being_tested",
     "Proposed 3": "being_tested",
+    "Proposed 4": "being_tested",
+    "Proposed 5": "being_tested",
     "Ground it lands on": "ground_plane",
     "Ignore ground below (m)": "ground_cut",
     "Hours": "plan_times",

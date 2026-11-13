@@ -952,6 +952,24 @@ SHADOW_LEGEND_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
         "under a grey row instead tests it against itself and reads as a much "
         "smaller shadow. Left empty, the row is left off the sheet.",
     ),
+    (
+        "PROPOSED 4",
+        "scenario",
+        "Proposed 4",
+        "A fourth envelope to compare, if there is one.",
+        "The lightest blue. Compared as Proposed 2 and 3 are: against every grey "
+        "row and no other blue one. With worksheet fills it is told from the "
+        "others by its hatch and its dashed outline, not its blue. Left empty, "
+        "the row is left off the sheet.",
+    ),
+    (
+        "PROPOSED 5",
+        "scenario",
+        "Proposed 5",
+        "A fifth envelope to compare, if there is one.",
+        "A pale blue. Compared as the others are, and told from them by its "
+        "hatch and its dashed outline. Left empty, the row is left off the sheet.",
+    ),
 )
 
 #: A preset's rows from before the names were universal, and the rows they
@@ -5502,9 +5520,11 @@ class Window:
                 frame,
                 row,
                 f"{title} hatch",
-                f"The fill type {title} is drawn in, with worksheet fills. Blank: solid.",
+                f"The fill type {title} is drawn in, with worksheet fills. Blank: Dashed.",
                 "A hatch tells an envelope from the proposal where two pale blues would "
-                "not. Its lines are the colour of the row's dashed outline. Pick a "
+                "not. Its lines are the colour of the row's dashed outline, over the "
+                "row's blue. Blank is the project's Dashed fill, or solid where it has "
+                "none; choose Solid Fill for a row with no hatch. Pick a "
                 "scale-independent fill with lines well apart: one that is fine on a "
                 "plan prints solid at 1:1500.",
             )
