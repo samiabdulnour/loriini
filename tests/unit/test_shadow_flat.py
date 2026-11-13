@@ -202,3 +202,88 @@ def test_every_hour_series_carries_one_outline_an_hour_and_the_way_it_runs() -> 
     assert first.label == "9AM" and len(first.outlines["PROPOSED"]) == 1
     assert first.shadow_direction is not None and first.shadow_direction[0] < -0.9
     assert second.shadow_direction is not None and second.shadow_direction[1] > 0.9
+
+
+def test_an_outline_where_the_shadow_falls_steps_back_on_a_lit_roof() -> None:
+    """On bare ground the proposal's shadow runs 100 m; a neighbour's roof
+    catches it short, so the far end of that roof is in the sun, and the
+    outline that ran across it said shadow where there is none."""
+    reach = box(0.0, 0.0, 100.0, 20.0)
+    roofs = box(60.0, -10.0, 110.0, 30.0)
+    lit = box(80.0, -10.0, 110.0, 30.0)  # the roof's far end, past the shadow on it
+    standing = box(-20.0, -40.0, 120.0, -5.0)  # what stands shades a street beside
+    with_row = standing.union(reach.difference(lit))
+    fallen = shadow_flat.fallen_shadow(reach, with_row, standing, roofs)
+    assert fallen.bounds == pytest.approx((0.0, 0.0, 80.0, 20.0), abs=0.2)
+    assert len(shadow_flat.outline_rings(fallen)) == 1
+
+
+def test_in_the_shade_of_what_stands_the_outline_keeps_the_ground_and_not_the_roofs() -> None:
+    """No document says where the proposal's shadow lies inside a shadow
+    that is there already: in a street it is the ground's reach; on a roof
+    it is not known, and is not drawn."""
+    reach = box(0.0, 0.0, 100.0, 20.0)
+    street = box(30.0, -30.0, 50.0, 50.0)  # shaded already, and ground
+    roof = box(70.0, -30.0, 120.0, 50.0)  # shaded already, and a neighbour's
+    standing = street.union(roof)
+    with_row = standing.union(reach)
+    fallen = shadow_flat.fallen_shadow(reach, with_row, standing, roof)
+    assert fallen.bounds == pytest.approx((0.0, 0.0, 70.0, 20.0), abs=0.2)
+    assert fallen.area == pytest.approx(70.0 * 20.0, rel=0.01), "the street is not a gap"
+    assert shadow_flat.fallen_shadow(Polygon(), with_row, standing, roof).is_empty
+
+
+def test_the_outline_where_it_falls_still_starts_from_the_building() -> None:
+    """The building's own roof is in the sun, and so no part of what it
+    adds; the hours' own shadows share the ground it stands on."""
+    nine = box(-60.0, 0.0, 10.0, 10.0)
+    noon = box(0.0, 0.0, 10.0, 40.0)
+    building = shadow_flat.stood_on_every_hour([nine, Polygon(), noon])
+    assert building.bounds == pytest.approx((0.0, 0.0, 10.0, 10.0))
+    with_row = nine.difference(building)  # its roof is lit
+    fallen = shadow_flat.fallen_shadow(nine, with_row, Polygon(), Polygon(), building)
+    assert fallen.area == pytest.approx(700.0, rel=0.01)
+    without = shadow_flat.fallen_shadow(nine, with_row, Polygon(), Polygon())
+    assert without.area == pytest.approx(600.0, rel=0.01)
+
+
+def test_a_scrap_between_two_documents_is_not_outlined() -> None:
+    reach = box(0.0, 0.0, 100.0, 20.0)
+    standing = box(40.0, -20.0, 120.0, 40.0)
+    scrap = box(60.0, 5.0, 90.0, 5.2)  # the two documents' shared shadow, a hair apart
+    with_row = standing.union(reach).union(scrap)
+    fallen = shadow_flat.fallen_shadow(
+        reach, with_row, standing.difference(scrap), standing.buffer(1.0)
+    )
+    assert len(shadow_flat.outline_rings(fallen)) == 1
+    assert fallen.bounds == pytest.approx((0.0, 0.0, 40.0, 20.0), abs=0.2)
+
+
+def test_with_no_pen_every_surface_is_read_and_not_the_drawings_ground() -> None:
+    square = [0.0, 0.0, 0.01, 0.0, 0.01, 0.01, 0.0, 0.01, 0.0, 0.0]
+    frame = [-1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0]
+    drawn = [
+        {"solid": True, "fillPen": -1, "xy": frame, "ends": [5]},
+        {"solid": True, "fillPen": 0, "xy": square, "ends": [5]},
+        {"solid": False, "fillPen": 237, "xy": square, "ends": [5]},
+    ]
+    pieces = shadow_flat.shadow_pieces(drawn, None, origin=(0.0, 0.0), scale=1000.0)
+    assert [piece.area for piece in pieces] == pytest.approx([100.0])
+
+
+def test_five_proposals_are_each_outlined_in_a_colour_of_their_own() -> None:
+    """The designed row in its own blue, and the four under it in four
+    colours: a fifth proposal took the first one's magenta."""
+    rows = [
+        shadow_flat.FlatRow(
+            label=label,
+            rgb=(156, 172, 191),
+            shadow_pen=74,
+            documents=(),
+            alone=(object(),),  # type: ignore[arg-type]
+        )
+        for label in ("PROPOSED 5", "PROPOSED 4", "PROPOSED 3", "PROPOSED 2", "PROPOSED")
+    ]
+    colours = shadow_flat.outline_colours(rows)
+    assert len(set(colours.values())) == 5
+    assert colours["PROPOSED"] == shadow_flat.outline_colour((156, 172, 191))

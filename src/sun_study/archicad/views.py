@@ -40,6 +40,7 @@ __all__ = [
     "ModelSource",
     "StoreyView",
     "ensure_layer_combination",
+    "layer_names",
     "three_d_sources",
     "views_for_sources",
     "views_for_storeys",
@@ -89,6 +90,11 @@ def _all_layers(connection: ArchicadConnection) -> list[dict[str, Any]]:
         }
         for state in found
     ]
+
+
+def layer_names(connection: ArchicadConnection) -> list[str]:
+    """Every layer of the project, by name."""
+    return [str(layer["name"]) for layer in _all_layers(connection)]
 
 
 def tool_layers(connection: ArchicadConnection, prefix: str) -> list[str]:

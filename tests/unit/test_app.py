@@ -3115,6 +3115,8 @@ def test_the_legend_rows_are_the_legends_own(hidden_window: Any) -> None:
         "PROPOSED",
         "PROPOSED 2",
         "PROPOSED 3",
+        "PROPOSED 4",
+        "PROPOSED 5",
     ]
     assert sorted(rows) == sorted((short, role) for short, _words, role, _rgb in LEGEND)
 
@@ -5298,7 +5300,7 @@ def test_a_compared_row_is_named_filtered_and_hatched_from_the_window(hidden_win
 def test_a_compared_rows_fields_show_only_once_it_has_layers(hidden_window: Any) -> None:
     rows = {short: box for short, _role, box in hidden_window.shadow_rows}
     fields = hidden_window.shadow_row_groups
-    assert set(fields) == {"PROPOSED 2", "PROPOSED 3"}
+    assert set(fields) == {"PROPOSED 2", "PROPOSED 3", "PROPOSED 4", "PROPOSED 5"}
     assert all(len(widgets) == 6 for widgets in fields.values()), "a label and a box, three times"
 
     def shown(short: str) -> bool:
@@ -5344,7 +5346,13 @@ def test_archicad_27_offers_design_options_where_26_offers_renovation_filters(
         design_options=(),
     )
     hidden_window._offer()
-    assert words() == ["Proposed 2 filter", "Proposed 3 filter", "Renovation filters"]
+    assert words() == [
+        "Proposed 2 filter",
+        "Proposed 3 filter",
+        "Proposed 4 filter",
+        "Proposed 5 filter",
+        "Renovation filters",
+    ]
     assert hidden_window._scenarios() == ["OPTION 02", "LEP + 30% Bonus"]
 
     hidden_window.options = replace(
@@ -5353,7 +5361,13 @@ def test_archicad_27_offers_design_options_where_26_offers_renovation_filters(
         design_options=("Main + LEP", "Main + 12 storeys"),
     )
     hidden_window._offer()
-    assert words() == ["Design options", "Proposed 2 design option", "Proposed 3 design option"]
+    assert words() == [
+        "Design options",
+        "Proposed 2 design option",
+        "Proposed 3 design option",
+        "Proposed 4 design option",
+        "Proposed 5 design option",
+    ]
     assert hidden_window._scenarios() == ["Main + LEP", "Main + 12 storeys"]
     box = hidden_window.shadow_row_filters["PROPOSED 2"]
     assert tuple(box.cget("values")) == ("", "Main + LEP", "Main + 12 storeys")

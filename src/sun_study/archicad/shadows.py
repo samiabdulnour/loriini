@@ -145,6 +145,10 @@ SCENARIO_RAMP: tuple[tuple[int, int, int], ...] = (
 #: It was the ADG envelope's, the proposal with room to move, before the rows
 #: took universal names (D178).
 PROPOSED_3_RGB: tuple[int, int, int] = (192, 182, 214)
+#: Proposed 5's: a pale blue between the lightest and the middle one. Five
+#: envelopes are not told apart by five pale blues; drawn flat each compared
+#: row is hatched in the colour of its own outline, and that is what is read.
+PROPOSED_5_RGB: tuple[int, int, int] = (190, 204, 216)
 ADG_ENVELOPE_RGB = PROPOSED_3_RGB
 
 #: The office's shadow legend, row by row: the short name a run is given, the
@@ -167,6 +171,8 @@ LEGEND: tuple[tuple[str, str, str, tuple[int, int, int]], ...] = (
     ("EXISTING", "EXISTING NEIGHBOURING BUILDINGS", BASELINE, BASELINE_RAMP[0]),
     ("FUTURE", "FUTURE NEIGHBOURING CONTEXT BUILDINGS", BASELINE, BASELINE_RAMP[1]),
     ("EXISTING ON SITE", "EXISTING STRUCTURES WITHIN THE SITE", BASELINE, BASELINE_RAMP[2]),
+    ("PROPOSED 4", "PROPOSED 4 BUILDING ENVELOPE", SCENARIO, SCENARIO_RAMP[0]),
+    ("PROPOSED 5", "PROPOSED 5 BUILDING ENVELOPE", SCENARIO, PROPOSED_5_RGB),
     ("PROPOSED 2", "PROPOSED 2 BUILDING ENVELOPE", SCENARIO, SCENARIO_RAMP[1]),
     ("PROPOSED 3", "PROPOSED 3 BUILDING ENVELOPE", SCENARIO, PROPOSED_3_RGB),
     ("PROPOSED", "PROPOSED BUILDING ENVELOPE", SCENARIO, SCENARIO_RAMP[2]),

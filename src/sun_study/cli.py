@@ -8125,7 +8125,10 @@ def shadow_plan_documents(
                 "are told apart. Its lines are the colour of the row's dashed outline, "
                 "over the row's legend colour; the legend's swatch is hatched alike. "
                 "A scale-independent fill reads the same on the plans and in the "
-                "legend. Repeat per row."
+                "legend. A compared row none is named for is drawn in the project's "
+                "Dashed fill, where it has one; name Solid Fill for a row with no "
+                "hatch. The designed row, the last, is solid unless one is named. "
+                "Repeat per row."
             ),
         ),
     ] = None,
@@ -8169,6 +8172,20 @@ def shadow_plan_documents(
                 "document with no shadows in each cell, where --stacked lays every row's "
                 "document of an hour over the others. A row that might be built is outlined, "
                 "dashed, by its own whole shadow."
+            ),
+        ),
+    ] = False,
+    outline_falls: Annotated[
+        bool,
+        typer.Option(
+            "--outline-falls/--outline-ground",
+            help=(
+                "With --flat: what a row that might be built is outlined by. --outline-ground "
+                "is its whole shadow as it would lie on bare ground, which runs on across "
+                "roofs the sun is still on; --outline-falls is the shadow where it falls -- "
+                "stepped back to the shadow's edge on a neighbour's roof, the ground's edge "
+                "in the streets. Makes one more document, of what stands with no ground "
+                "under it, to tell a roof from a street."
             ),
         ),
     ] = False,
@@ -8388,6 +8405,7 @@ def shadow_plan_documents(
             scale=scale,
             clock=clock,
             flat=flat,
+            outline_falls=outline_falls,
             filters=_row_filters(scenario_filter or [], legend),
             options=_row_filters(
                 scenario_option or [], legend, flag="--scenario-option", what="COMBINATION"
@@ -8745,6 +8763,7 @@ def _stacked_shadow_plans(
     hatches: Mapping[str, str] | None = None,
     every_hour: shadow_flat.EveryHour | None = None,
     options: Mapping[str, str] | None = None,
+    outline_falls: bool = False,
 ) -> None:
     """The stacked mode of ``shadow-plans``: every legend row in one drawing.
 
@@ -8944,6 +8963,7 @@ def _stacked_shadow_plans(
             hatches=hatches or {},
             every_hour=every_hour,
             options=options,
+            outline_falls=outline_falls,
         )
         typer.echo(f"  timing: the whole run took {duration_text(clock.total)}")
         return
@@ -9159,6 +9179,7 @@ def _flat_shadow_plans(
     hatches: Mapping[str, str],
     every_hour: shadow_flat.EveryHour | None = None,
     options: Mapping[str, str] | None = None,
+    outline_falls: bool = False,
 ) -> None:
     """The flat mode of the stacked shadow plans (``archicad.shadow_flat``).
 
@@ -9303,12 +9324,22 @@ def _flat_shadow_plans(
                 settings, layer_combination=base_combination, shadow_fill={}, uncut_surfaces=None
             ),
         )
+        roofs_document: MadePlan | None = None
+        if outline_falls and scenarios and standing:
+            roofs_document = shadow_flat.make_roofs_document(
+                connection, plans[0], settings=settings, standing=standing, base=base
+            )
+            typer.echo(
+                "  a document of what stands with no ground under it, to tell a roof from a "
+                "street: the outlines follow the shadow where it falls"
+            )
         mended, looked, _note = mend_document_filters(connection)
         if mended:
             typer.echo(f"  took the storey filter off {mended} of {looked} documents")
         typer.echo(clock.said("made the outline documents and the base document"))
 
         hatch_of: dict[str, int] = {}
+        solid_fill = attribute_index(connection, "Fill", shadow_flat.SOLID_FILLS)
         for label, fill_name in hatches.items():
             found = attribute_index(connection, "Fill", (fill_name,))
             if found is None:
@@ -9316,8 +9347,22 @@ def _flat_shadow_plans(
                     f"--scenario-fill names the fill {fill_name!r} for {label}, and the "
                     "project has no fill of that name."
                 )
+            if found == solid_fill:
+                # Named so the row has no hatch: left out, and not defaulted.
+                typer.echo(f"  {label}: drawn solid, as asked")
+                continue
             hatch_of[label] = found
             typer.echo(f"  {label}: drawn in the fill {fill_name!r}")
+        # A compared row no fill is named for is hatched all the same, in
+        # dashed lines the colour of its outline over its own blue: several
+        # envelopes in several pale blues are not told apart on paper. The
+        # designed row, the last, stays solid.
+        dashed_fill = attribute_index(connection, "Fill", shadow_flat.DEFAULT_HATCH)
+        for row in scenarios[:-1]:
+            if row.label in hatches or dashed_fill is None or dashed_fill == solid_fill:
+                continue
+            hatch_of[row.label] = dashed_fill
+            typer.echo(f"  {row.label}: drawn in the project's dashed fill, none being named")
         rows = [
             shadow_flat.FlatRow(
                 label=label,
@@ -9338,6 +9383,18 @@ def _flat_shadow_plans(
             master_layout=master_layout,
             say=typer.echo,
         )
+        roofs = (
+            shadow_flat.read_roofs(
+                connection,
+                roofs_document,
+                scale=scale,
+                window=window,
+                master_layout=master_layout,
+                say=typer.echo,
+            )
+            if outline_falls and scenarios
+            else None
+        )
         typer.echo(clock.said("read the shadows"))
 
         days: dict[str, list[dt.datetime]] = {}
@@ -9349,7 +9406,15 @@ def _flat_shadow_plans(
         for day, hours in days.items():
             name = shadow_flat.worksheet_name(day)
             item, drawn, lines, refused = shadow_flat.draw_flat_worksheet(
-                connection, rows, hours, whole, own, name=name, window=window, say=typer.echo
+                connection,
+                rows,
+                hours,
+                whole,
+                own,
+                name=name,
+                window=window,
+                say=typer.echo,
+                roofs=roofs,
             )
             worksheets[day] = (item, name)
             fills += drawn
