@@ -189,14 +189,16 @@ views `Sun View |`, the site analysis `Site |` -- words rather than one office's
 (D156). `--layer-prefix` overrides whichever tool is being run, and the window has one
 box per tool in General.
 
-Colours are **pen indices**, because that is what `CreateHatches` takes — so the run
-reads the project's own pen table and gives each band the pen closest to the reference
-study's colour for it. Nothing to configure, and the mapping is printed:
+Each fill is drawn in its band's own colour (D189): the add-on's `CreateFills` gives a
+fill a colour of its own, in the project's solid fill. An add-on too old for that draws
+through Tapir's `CreateHatches`, which takes **pen indices** — so the run also reads the
+project's pen table and finds each band the pen closest to its colour. Nothing to
+configure, and the mapping is printed:
 
 ```
-  matched band colours against 255 pens in the project's pen table:
-    0 hrs    rgb(8, 48, 107)   -> pen 91   exact
-    2-3 hrs  rgb(230, 238, 156)-> pen 94   close (off by 21)
+  the fills are drawn in the bands' own colours; the nearest of the project's 255 pens, ...
+    0 hrs    rgb(20, 27, 112)  -> pen 91   exact
+    2-3 hrs  rgb(79, 154, 30)  -> pen 94   close (off by 21)
 ```
 
 **Read the labels.** `POOR MATCH` means the pen table has no pen near that colour, and

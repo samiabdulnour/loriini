@@ -56,8 +56,10 @@ from sun_study.core.edges import signed_area, thickness
 from sun_study.rules.assessment import BuildingAssessment
 
 __all__ = [
+    "COLOUR_KEY",
     "DEFAULT_BANDS",
     "INDISTINGUISHABLE_RGB",
+    "SUN_RGB",
     "BandStyle",
     "DrawReport",
     "LayerState",
@@ -65,6 +67,8 @@ __all__ = [
     "active_pen_table_id",
     "band_for",
     "clear_layer",
+    "coloured",
+    "create_hatches",
     "default_layer_name",
     "draw_assessment",
     "ensure_layer",
@@ -72,6 +76,7 @@ __all__ = [
     "indistinguishable_bands",
     "match_pens",
     "pen_table",
+    "solid_fill_index",
     "write_pen_table",
 ]
 
@@ -129,27 +134,47 @@ class BandStyle:
     rgb: tuple[int, int, int] = (0, 0, 0)
     """The colour this band *should* be, 0-255.
 
-    Taken from the reference study's own legend, decoded during the Ladybug
-    validation by integrating area per colour until the published table
-    reproduced exactly. Kept alongside the pen index because a pen number is
-    meaningless outside one project's pen table, while the colour is the thing
-    everybody actually agreed on -- and it is what lets a pen be *chosen*
-    rather than guessed.
+    The colour is the thing everybody agrees on; a pen number is meaningless
+    outside one project's pen table. It is what the fill is drawn in where the
+    add-on can give a fill a colour of its own (``create_hatches``), and what
+    a pen is *chosen* by, rather than guessed, where it cannot.
     """
 
+    exact: bool = True
+    """Whether the fill carries ``rgb`` itself. Off for a band whose pen a
+    person chose (``--pen``): they asked for that pen, not for this colour."""
 
-#: A starting point, not an answer. Pen indices mean whatever the project's pen
-#: table says they mean, so these are almost certainly wrong for any given
-#: office and are meant to be overridden. The run prints the mapping it used.
+    @property
+    def colour(self) -> tuple[int, int, int] | None:
+        """The colour to draw the fill in, or ``None`` to leave it to the pen.
+        A style given no colour is black here, and black is nobody's band."""
+        return self.rgb if self.exact and self.rgb != (0, 0, 0) else None
+
+
+#: Lorikeet, seven bands (D189): three blues for under two hours, deepening
+#: toward none, then green for the first band that passes, the bird's wing,
+#: so 2-3 hours reads as "just made it", and yellow, orange and red above.
+#: The closest pair is 15 colour-difference units apart, 10 for a reader who
+#: cannot tell red from green. Before 14 November 2026 the bands were the
+#: reference study's own legend, where 2-3 hours was a pale yellow-green a
+#: step from the 3-4 beside it.
+#:
+#: The pens are a starting point, not an answer. Pen indices mean whatever the
+#: project's pen table says they mean, so they are almost certainly wrong for
+#: any given office; the run re-points each at the nearest pen and prints the
+#: mapping. They matter only where a fill cannot carry its own colour.
 DEFAULT_BANDS: tuple[BandStyle, ...] = (
-    BandStyle("0 hrs", 1e-9, fill_pen=91, rgb=(8, 48, 107)),
-    BandStyle("0-1 hrs", 60.0, fill_pen=92, rgb=(43, 122, 191)),
-    BandStyle("1-2 hrs", 120.0, fill_pen=93, rgb=(77, 182, 172)),
-    BandStyle("2-3 hrs", 180.0, fill_pen=94, rgb=(230, 238, 156)),
-    BandStyle("3-4 hrs", 240.0, fill_pen=95, rgb=(255, 213, 79)),
-    BandStyle("4-5 hrs", 300.0, fill_pen=96, rgb=(255, 183, 77)),
-    BandStyle("5+ hrs", float("inf"), fill_pen=97, rgb=(244, 81, 30)),
+    BandStyle("0 hrs", 1e-9, fill_pen=91, rgb=(20, 27, 112)),
+    BandStyle("0-1 hrs", 60.0, fill_pen=92, rgb=(52, 64, 188)),
+    BandStyle("1-2 hrs", 120.0, fill_pen=93, rgb=(133, 144, 238)),
+    BandStyle("2-3 hrs", 180.0, fill_pen=94, rgb=(79, 154, 30)),
+    BandStyle("3-4 hrs", 240.0, fill_pen=95, rgb=(255, 224, 74)),
+    BandStyle("4-5 hrs", 300.0, fill_pen=96, rgb=(255, 160, 30)),
+    BandStyle("5+ hrs", float("inf"), fill_pen=97, rgb=(255, 90, 61)),
 )
+
+#: Sun on a surface at one moment: the palette's yellow, the 3-4 hour band's.
+SUN_RGB = (255, 224, 74)
 
 
 @dataclass(frozen=True)
@@ -740,6 +765,7 @@ def _fill_for(zone: ArchicadZone, band: BandStyle, layer_index: int) -> dict[str
         "fillPenIndex": band.fill_pen,
         "fillBackgroundPenIndex": band.background_pen,
         "contourPenIndex": band.outline_pen,
+        **coloured(band),
         # A Fill inherits the Fill tool's current default, and on a real
         # project that default has "Show Area Text" on -- so every fill
         # arrives with its own square-metre figure printed across it, over
@@ -804,6 +830,7 @@ def _legend(
                 "fillPenIndex": band.fill_pen,
                 "fillBackgroundPenIndex": band.background_pen,
                 "contourPenIndex": band.outline_pen,
+                **coloured(band),
                 # A swatch showing its own area is a legend annotated with
                 # "1.00 m2" seven times. See _fill_for.
                 "showArea": False,
@@ -928,7 +955,7 @@ def draw_assessment(
         # without an ID: a schedule totalling every fill whose ID contains
         # SOLAR must not add seven legend squares to the assessed area. Only
         # what was measured is tagged, so the filter is the answer.
-        made = create_elements(connection, "CreateHatches", "hatchesData", fills + legend_fills)
+        made = create_hatches(connection, fills + legend_fills)
         # The legend swatches are passed as ``None`` so they are created and
         # never tagged: see ``ids.stamp_in_order``.
         stamped = stamp_in_order(connection, made, [*element_ids, *([None] * len(legend_fills))])
@@ -971,6 +998,140 @@ def _legend_origin(zones: Sequence[ArchicadZone]) -> tuple[float, float]:
     right = max(x for x, _ in corners)
     top = max(y for _, y in corners)
     return (right + 5.0, top)
+
+
+#: Where a hatch request carries the colour it should be drawn in. Not a field
+#: of either command: ``create_hatches`` takes it out before anything is sent.
+COLOUR_KEY = "_rgb"
+
+#: Tapir's hatch fields, and what the add-on's ``CreateFills`` calls them.
+_ADDON_FILL_FIELDS = {
+    "layerIndex": "layerIndex",
+    "floorInd": "floorIndex",
+    "fillPenIndex": "fillPen",
+    "fillBackgroundPenIndex": "backgroundPen",
+    "fillIndex": "fillIndex",
+    "showArea": "showArea",
+}
+
+#: The project's solid fill, by the names templates give it. A fill drawn in a
+#: colour of its own is that colour and nothing else; left to the Fill tool's
+#: default it took ``Background`` on the Australian template, which is the
+#: background pen alone, and nothing showed (Campsie, 10 November 2026).
+SOLID_FILL_NAMES = ("Solid Fill", "Foreground", "100 %", "100%")
+
+
+def coloured(style: BandStyle) -> dict[str, Any]:
+    """What a hatch request carries to be drawn in the style's own colour."""
+    return {COLOUR_KEY: style.colour} if style.colour is not None else {}
+
+
+def solid_fill_index(connection: ArchicadConnection) -> int | None:
+    """The index of the project's solid fill, or ``None`` where it has none by
+    a name known here."""
+    try:
+        response = connection.run_tapir("GetAttributesByType", {"attributeType": "Fill"})
+    except ArchicadError:
+        return None
+    attributes = response.get("attributes") if isinstance(response, dict) else None
+    by_name: dict[str, int] = {}
+    for attribute in attributes if isinstance(attributes, list) else []:
+        if isinstance(attribute, dict) and isinstance(attribute.get("index"), int | float):
+            name = " ".join(str(attribute.get("name", "")).split()).casefold()
+            by_name.setdefault(name, int(attribute["index"]))
+    for name in SOLID_FILL_NAMES:
+        if name.casefold() in by_name:
+            return by_name[name.casefold()]
+    return None
+
+
+def _as_addon_fill(hatch: dict[str, Any], outline: bool, solid: int | None) -> dict[str, Any]:
+    """One Tapir hatch re-spelled as an add-on fill.
+
+    ``CreateFills`` reaches two things ``CreateHatches`` does not: a colour of
+    the fill's own, and no contour (pen 0 is the project's "no pen"). A fill
+    in its own colour keeps a contour only where one was asked for in a pen
+    other than the fill's: the fill's pen is the nearest the office has, not
+    the colour, and an edge in it would outline every band in a near miss.
+    """
+    one: dict[str, Any] = {"contours": [{"points": list(hatch.get("coordinates") or ())}]}
+    for theirs, ours in _ADDON_FILL_FIELDS.items():
+        if theirs in hatch:
+            one[ours] = hatch[theirs]
+    contour = hatch.get("contourPenIndex")
+    rgb = hatch.get(COLOUR_KEY)
+    if not outline or contour is None:
+        one["contourPen"] = 0
+    elif rgb is not None and contour == hatch.get("fillPenIndex"):
+        one["contourPen"] = 0
+    else:
+        one["contourPen"] = contour
+    if rgb is not None:
+        red, green, blue = rgb
+        one["foregroundColour"] = {"red": red / 255.0, "green": green / 255.0, "blue": blue / 255.0}
+        if "fillIndex" not in one and solid is not None:
+            one["fillIndex"] = solid
+    return one
+
+
+def create_hatches(
+    connection: ArchicadConnection, hatches: Sequence[dict[str, Any]], *, outline: bool = True
+) -> list[dict[str, Any]]:
+    """Draw the study's fills, each in its own colour where the add-on can.
+
+    Every fill a sun study draws comes through here. A hatch that carries
+    ``COLOUR_KEY`` is drawn by the add-on's ``CreateFills`` in exactly that
+    colour; the pen it also names is only what it falls back to. Until 14
+    November 2026 the pen was all there was, the nearest in the project's
+    table to the band's colour, and on a stock template two bands of a new
+    palette landed on one blue.
+
+    Tapir's ``CreateHatches`` draws the rest, and all of them where the add-on
+    installed has no ``CreateFills``: the same fills in the nearest pens.
+    ``outline`` off asks for no contour at all, which only the add-on can do.
+
+    Returns what was made in Tapir's shape, one per hatch and in order.
+    """
+    data = list(hatches)
+    if not data:
+        return []
+    plain = [{k: v for k, v in hatch.items() if k != COLOUR_KEY} for hatch in data]
+    if outline and not any(COLOUR_KEY in hatch for hatch in data):
+        return create_elements(connection, "CreateHatches", "hatchesData", plain)
+    solid = solid_fill_index(connection) if any(COLOUR_KEY in h for h in data) else None
+    try:
+        made: list[dict[str, Any]] = []
+        for start in range(0, len(data), 500):
+            batch = [_as_addon_fill(one, outline, solid) for one in data[start : start + 500]]
+            answer = connection.run_loriini("CreateFills", {"fills": batch})
+            elements = answer.get("elements") if isinstance(answer, dict) else None
+            if not isinstance(elements, list):
+                raise ArchicadError(f"CreateFills returned no element list: {answer!r}")
+            # Re-shaped to Tapir's, which is what everything downstream reads.
+            # The add-on answers `{"guid": ...}` and Tapir `{"elementId":
+            # {"guid": ...}}`, and `ids.stamp_element_ids` keeps only the
+            # elements that carry an `elementId` -- silently. Handed the
+            # add-on's shape it stamps nothing, and a Schedule totalling on
+            # Element ID finds an empty drawing while the run reports every
+            # fill drawn.
+            made.extend(
+                {"elementId": entry["elementId"]}
+                if "elementId" in entry
+                else {"elementId": {"guid": entry["guid"]}}
+                for entry in elements
+                if isinstance(entry, dict) and ("elementId" in entry or "guid" in entry)
+            )
+        return made
+    except ArchicadError as error:
+        if "not have the registered" not in str(error):
+            raise
+        if not outline:
+            raise ArchicadError(
+                "The installed Loriini add-on has no CreateFills, and Tapir's CreateHatches "
+                "cannot draw a fill without a contour -- it has a contour pen and no switch. "
+                "Install the current add-on build, or run with --zone-outline."
+            ) from error
+    return create_elements(connection, "CreateHatches", "hatchesData", plain)
 
 
 def create_elements(

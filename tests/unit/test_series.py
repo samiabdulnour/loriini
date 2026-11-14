@@ -20,7 +20,12 @@ from sun_study.archicad.series import (
     find_worksheet,
     restore_after,
 )
-from tests.unit.test_archicad_adapter import FakeTransport, Sequential, texts_sent
+from tests.unit.test_archicad_adapter import (
+    NO_CREATE_FILLS,
+    FakeTransport,
+    Sequential,
+    texts_sent,
+)
 
 WORKSHEET_TREE = {
     "navigatorItemTree": {
@@ -64,6 +69,7 @@ def connect(responses: dict[str, Any]) -> tuple[ArchicadConnection, FakeTranspor
     transport = FakeTransport(
         {
             "GetAddOnVersion": {"version": "1.5.7"},
+            "CreateFills": NO_CREATE_FILLS,
             "GetNavigatorItemTree": WORKSHEET_TREE,
             "GetDatabaseIdFromNavigatorItemId": {"databases": [{"databaseId": {"guid": "db-1"}}]},
             "ChangeWindow": {"success": True},

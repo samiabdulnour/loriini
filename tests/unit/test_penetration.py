@@ -311,7 +311,8 @@ def test_a_contourless_patch_goes_through_the_addon_and_a_normal_one_does_not() 
     that way -- and a patch that wants its contour must not, because then an
     older add-on would fail at the drawing stage for no gain.
     """
-    from sun_study.archicad.penetration import _as_addon_fill, _create_fills
+    from sun_study.archicad.draw import _as_addon_fill
+    from sun_study.archicad.penetration import _create_fills
 
     hatch = {
         "coordinates": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 0.0}, {"x": 1.0, "y": 1.0}],
@@ -325,14 +326,14 @@ def test_a_contourless_patch_goes_through_the_addon_and_a_normal_one_does_not() 
     }
 
     # Re-spelled for the add-on: the contour off, everything else carried over.
-    off = _as_addon_fill(hatch, outline=False)
+    off = _as_addon_fill(hatch, False, None)
     assert off["contourPen"] == 0, "pen 0 is the project's no-pen, as backgroundPen 0 already is"
     assert off["fillIndex"] == 484, "the percentage fill has to survive the translation"
     assert off["layerIndex"] == 7 and off["floorIndex"] == 8
     assert off["contours"] == [{"points": hatch["coordinates"]}]
     assert "coordinates" not in off, "the add-on takes contours, not a bare coordinate list"
 
-    on = _as_addon_fill(hatch, outline=True)
+    on = _as_addon_fill(hatch, True, None)
     assert on["contourPen"] == 124, "asked for a contour, it keeps the one it was given"
 
     # With the contour wanted, the add-on is not consulted at all.

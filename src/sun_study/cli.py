@@ -69,6 +69,7 @@ from sun_study.archicad.design_options import (
 )
 from sun_study.archicad.draw import (
     DEFAULT_BANDS,
+    SUN_RGB,
     BandStyle,
     Pen,
     _active_pen_table,
@@ -608,7 +609,10 @@ def resolve_bands(
         return overridden
 
     styles, distances = match_pens(DEFAULT_BANDS, pens)
-    typer.echo(f"  matched band colours against {len(pens)} pens in the project's pen table:")
+    typer.echo(
+        "  the fills are drawn in the bands' own colours; the nearest of the project's "
+        f"{len(pens)} pens, for an add-on that cannot give a fill a colour:"
+    )
     for band in styles:
         gap = distances.get(band.label, 0.0)
         quality = "exact" if gap < 8 else ("close" if gap < 30 else "POOR MATCH")
@@ -618,16 +622,18 @@ def resolve_bands(
         )
     if any(value >= 30 for value in distances.values()):
         typer.secho(
-            "  A poor match means the pen table has no pen near that colour. "
-            "Override it with --pen 'label=index'.",
+            "  A poor match means the pen table has no pen near that colour. It shows only "
+            "where the add-on is too old to colour a fill; --pen 'label=index' chooses a pen.",
             fg=typer.colors.YELLOW,
         )
 
     if not overrides:
         return _warn_if_alike(styles, pens)
-    wanted = {band.label: band.fill_pen for band in overridden}
+    # A band whose pen somebody chose keeps that pen, and is drawn in it.
+    chosen = {band.label: band.fill_pen for band in overridden if not band.exact}
     corrected = tuple(
-        replace(band, fill_pen=wanted.get(band.label, band.fill_pen)) for band in styles
+        replace(band, fill_pen=chosen[band.label], exact=False) if band.label in chosen else band
+        for band in styles
     )
     return _warn_if_alike(corrected, pens)
 
@@ -1458,9 +1464,19 @@ def report_zone_bands(
         if drawn is not None:
             made.append((label, layer))
             tables[label] = [
-                TableRow(f"{hours:g} hrs or more", area, share, fill_pen=styles[-1].fill_pen),
                 TableRow(
-                    f"under {hours:g} hrs", total - area, 1.0 - share, fill_pen=styles[0].fill_pen
+                    f"{hours:g} hrs or more",
+                    area,
+                    share,
+                    fill_pen=styles[-1].fill_pen,
+                    rgb=styles[-1].colour,
+                ),
+                TableRow(
+                    f"under {hours:g} hrs",
+                    total - area,
+                    1.0 - share,
+                    fill_pen=styles[0].fill_pen,
+                    rgb=styles[0].colour,
                 ),
                 TableRow("all communal open space", total, 1.0),
             ]
@@ -1507,14 +1523,18 @@ def report_zone_bands(
         if drawn is not None:
             made.append((label, layer))
             tables[label] = [
-                TableRow(f"in sun at {clock}", area, share, fill_pen=sun.fill_pen),
+                TableRow(f"in sun at {clock}", area, share, fill_pen=sun.fill_pen, rgb=sun.colour),
                 TableRow(
-                    f"in shade at {clock}", total - area, 1.0 - share, fill_pen=styles[0].fill_pen
+                    f"in shade at {clock}",
+                    total - area,
+                    1.0 - share,
+                    fill_pen=styles[0].fill_pen,
+                    rgb=styles[0].colour,
                 ),
                 TableRow("all communal open space", total, 1.0),
             ]
             titles[label] = f"Communal open space in sun at {clock}, {result.assessment_date:%d %B}"
-            by_hour.append(TableRow(clock, area, share, fill_pen=sun.fill_pen))
+            by_hour.append(TableRow(clock, area, share, fill_pen=sun.fill_pen, rgb=sun.colour))
             hour_fills.append(
                 HourFills(clock_words(when_at), share, drawn.fills_of(f"in sun at {clock}"))
             )
@@ -1604,7 +1624,7 @@ def report_zone_bands(
 #: which on a single instant means nothing at all -- a place is in the sun or
 #: it is not. Red also reads as a warning on a drawing that is reporting good
 #: news. Sunlight is yellow.
-SUN_YELLOW = (255, 213, 79)
+SUN_YELLOW = SUN_RGB
 
 
 def _sun_style(styles: Sequence[BandStyle]) -> BandStyle:
@@ -2242,12 +2262,14 @@ def report_area_bands(
                 area,
                 area / total if total else 0.0,
                 fill_pen=styles[-1].fill_pen,
+                rgb=styles[-1].colour,
             ),
             TableRow(
                 f"under {hours:g} hrs",
                 total - area,
                 (total - area) / total if total else 0.0,
                 fill_pen=styles[0].fill_pen,
+                rgb=styles[0].colour,
             ),
             TableRow("all floor", total, 1.0),
         ]
@@ -2294,7 +2316,11 @@ def _table_rows(where: str, table: Any, styles: Sequence[BandStyle]) -> list[Tab
     """One surface's figures as table lines: a heading, the bands, the roll-up."""
     rows = [TableRow(where.upper(), table.total_area_m2, 1.0)]
     for band, style in zip(table.bands, styles, strict=False):
-        rows.append(TableRow(band.label, band.area_m2, band.share, fill_pen=style.fill_pen))
+        rows.append(
+            TableRow(
+                band.label, band.area_m2, band.share, fill_pen=style.fill_pen, rgb=style.colour
+            )
+        )
     hours = table.threshold_minutes / 60.0
     rows.append(
         TableRow(
@@ -2381,7 +2407,13 @@ def instant_key(result: PipelineResult, instant: int, label: str) -> list[TableR
         total = float(samples.areas[mask].sum())
         area = float(samples.areas[mask & lit].sum())
         rows.append(
-            TableRow(where, area, area / total if total else 0.0, fill_pen=PATCH_STYLE.fill_pen)
+            TableRow(
+                where,
+                area,
+                area / total if total else 0.0,
+                fill_pen=PATCH_STYLE.fill_pen,
+                rgb=PATCH_STYLE.colour,
+            )
         )
     whole = float(samples.areas.sum())
     everything = float(samples.areas[lit].sum())
@@ -3200,7 +3232,8 @@ def band_styles(overrides: list[str] | None) -> tuple[BandStyle, ...]:
             raise typer.BadParameter(f"--pen {entry!r} needs a whole-number pen index") from error
 
     return tuple(
-        replace(band, fill_pen=wanted[band.label]) if band.label in wanted else band
+        # A pen somebody chose is the answer: the fill takes it, not the band's colour.
+        replace(band, fill_pen=wanted[band.label], exact=False) if band.label in wanted else band
         for band in DEFAULT_BANDS
     )
 

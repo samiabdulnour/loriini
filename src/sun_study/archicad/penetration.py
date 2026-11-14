@@ -46,9 +46,12 @@ import numpy.typing as npt
 from sun_study.archicad.connection import ArchicadConnection, ArchicadError
 from sun_study.archicad.draw import (
     DRAWING_MINIMUM_TAPIR_VERSION,
+    SUN_RGB,
     BandStyle,
     LayerState,
     clear_layer,
+    coloured,
+    create_hatches,
     ensure_layer,
     place_texts,
 )
@@ -96,7 +99,7 @@ __all__ = [
 MAX_FIT_RESIDUAL_M = 0.5
 
 #: The patch. The same amber the office's own studies use for sun on a surface.
-PATCH_STYLE = BandStyle("in sun", float("inf"), fill_pen=124, rgb=(255, 213, 79))
+PATCH_STYLE = BandStyle("in sun", float("inf"), fill_pen=124, rgb=SUN_RGB)
 
 #: The assessed area's outline. Green, as the reference drawings have it.
 OUTLINE_STYLE = BandStyle("assessed", float("inf"), fill_pen=28, rgb=(0, 200, 0))
@@ -735,6 +738,7 @@ def _band_legend(
                 "fillPenIndex": group.style.fill_pen,
                 "fillBackgroundPenIndex": group.style.background_pen,
                 "contourPenIndex": group.style.fill_pen,
+                **coloured(group.style),
                 "showArea": False,
             }
             label: dict[str, Any] = {
@@ -806,6 +810,7 @@ def _patch_fill(
         "layerIndex": layer.index,
         "fillPenIndex": style.fill_pen,
         "fillBackgroundPenIndex": style.background_pen,
+        **coloured(style),
         # Explicitly off. A Fill inherits the Fill tool's current default, and
         # on a real project that default has "Show Area Text" on -- so every
         # patch cell arrives with its own square-metre figure printed across
@@ -824,36 +829,6 @@ def _patch_fill(
 #: Tapir's key names for a hatch, against the add-on's for the same field.
 #: Only the spelling differs; every one of these means the same thing to
 #: Archicad, which is why one dict can be sent either way.
-_FILL_FIELDS = {
-    "layerIndex": "layerIndex",
-    "floorInd": "floorIndex",
-    "fillPenIndex": "fillPen",
-    "fillBackgroundPenIndex": "backgroundPen",
-    "contourPenIndex": "contourPen",
-    "fillIndex": "fillIndex",
-    "showArea": "showArea",
-}
-
-
-def _as_addon_fill(hatch: dict[str, Any], outline: bool) -> dict[str, Any]:
-    """One Tapir hatch re-spelled as an add-on fill.
-
-    The contour is the reason this exists. ``CreateHatches`` has a contour pen
-    and nothing that turns the contour off, so a patch always carried an edge;
-    ``CreateFills`` sets ``contPen`` from ``contourPen``, and pen 0 is the
-    project's "no pen" -- the same convention ``background_pen=0`` already
-    relies on for a see-through background.
-    """
-    one: dict[str, Any] = {
-        "contours": [{"points": list(hatch.get("coordinates") or ())}],
-        "contourPen": 0 if not outline else hatch.get("contourPenIndex", 1),
-    }
-    for theirs, ours in _FILL_FIELDS.items():
-        if theirs in hatch and theirs != "contourPenIndex":
-            one[ours] = hatch[theirs]
-    return one
-
-
 def _outline(zone: ArchicadZone, style: BandStyle, layer: LayerState) -> dict[str, Any]:
     """The assessed area, drawn as a line rather than a fill.
 
@@ -901,57 +876,10 @@ def _label(
 def _create_fills(
     connection: ArchicadConnection, data: list[dict[str, Any]], *, outline: bool
 ) -> list[dict[str, Any]]:
-    """Create the patch fills, through the add-on where it is installed.
-
-    The add-on's ``CreateFills`` is preferred for one reason here: it can turn
-    the contour off, which Tapir's ``CreateHatches`` cannot. Asked for a patch
-    with no outline and given only Tapir, the honest thing is to say so rather
-    than draw the edge anyway -- a 20% fill with a solid border round every
-    cell is not the drawing that was asked for, and it is not obvious from a
-    thumbnail that it is wrong.
-
-    With the outline wanted, either route draws the same thing, so an older
-    add-on costs nothing and Tapir is used without comment.
-    """
-    if not data:
-        return []
-    if outline:
-        # Nothing here needs the add-on. Both commands draw the same fill with
-        # the same contour, so the route that every project already has is the
-        # one to take -- preferring the add-on regardless would make an older
-        # install fail at the drawing stage for no gain at all.
-        return _create(connection, "CreateHatches", "hatchesData", data)
-    try:
-        made: list[dict[str, Any]] = []
-        for start in range(0, len(data), 500):
-            batch = [_as_addon_fill(one, outline) for one in data[start : start + 500]]
-            answer = connection.run_loriini("CreateFills", {"fills": batch})
-            elements = answer.get("elements") if isinstance(answer, dict) else None
-            if not isinstance(elements, list):
-                raise ArchicadError(f"CreateFills returned no element list: {answer!r}")
-            # Re-shaped to Tapir's, which is what everything downstream reads.
-            # The add-on answers `{"guid": ...}` and Tapir `{"elementId":
-            # {"guid": ...}}`, and `ids.stamp_element_ids` keeps only the
-            # elements that carry an `elementId` -- silently, with no count and
-            # no complaint. Handed the add-on's shape it therefore stamps
-            # nothing at all, and a Schedule totalling on Element ID finds an
-            # empty drawing while the run reports every fill drawn.
-            made.extend(
-                {"elementId": entry["elementId"]}
-                if "elementId" in entry
-                else {"elementId": {"guid": entry["guid"]}}
-                for entry in elements
-                if isinstance(entry, dict) and ("elementId" in entry or "guid" in entry)
-            )
-        return made
-    except ArchicadError as error:
-        if "not have the registered" not in str(error):
-            raise
-        raise ArchicadError(
-            "The installed Loriini add-on has no CreateFills, and Tapir's CreateHatches "
-            "cannot draw a fill without a contour -- it has a contour pen and no switch. "
-            "Install the current add-on build, or run with --zone-outline."
-        ) from error
+    """Create the patch fills: ``draw.create_hatches``, which draws each in
+    its own colour and, with ``outline`` off, without a contour -- both
+    through the add-on, which is the only route to either."""
+    return create_hatches(connection, data, outline=outline)
 
 
 def _create(
