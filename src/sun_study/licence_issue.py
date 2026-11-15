@@ -325,8 +325,8 @@ _ONLINE_AFTER = (
     "Loriini checks the licence online by itself, once a day while it is used,\n"
     "and works for a fortnight without a connection. Nothing more needs doing\n"
     "when the subscription renews: there is no new key. A computer that stops\n"
-    "using Loriini frees its seat after a fortnight, or at once with\n"
-    "Loriini.exe licence --remove.\n"
+    "using Loriini frees its seat after a fortnight, or at once with Log out\n"
+    "in Loriini's About box.\n"
 )
 
 

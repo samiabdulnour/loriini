@@ -33,9 +33,14 @@ from sun_study import PRODUCT, SUPPORT_EMAIL, licence, licence_online
 from sun_study.app import theme
 from sun_study.licence_key import KeyRefusedError, LicenceKey, read
 
-__all__ = ["LicenceBox", "ask"]
+__all__ = ["LICENCE_CHANGED", "LicenceBox", "ask"]
 
 PAD = theme.PAD
+
+#: Said to the window when the licence changes under it -- another key
+#: entered, or logged out of in the info box and a new one entered -- so its
+#: foot says whose licence it runs on now, and not whose it opened with.
+LICENCE_CHANGED = "<<LicenceChanged>>"
 
 #: What the line under the key says before anything is pasted.
 WAITING = "Paste the key from your licence email: all of it, from LORIINI to the last group."
@@ -50,7 +55,7 @@ _POLL_MS = 100
 class LicenceBox(tk.Toplevel):
     """Paste a key, see what it is, keep it."""
 
-    def __init__(self, parent: tk.Misc, *, first: bool) -> None:
+    def __init__(self, parent: tk.Misc, *, first: bool, said: str = "") -> None:
         super().__init__(parent)
         self.title(f"{PRODUCT} licence")
         self.configure(background=theme.SURFACE)
@@ -76,6 +81,10 @@ class LicenceBox(tk.Toplevel):
         )
         if first and found.problem and found.problem != licence.NO_KEY:
             opening = found.problem
+        if said:
+            # What just happened -- a log-out, from the info box -- before what
+            # is wanted now, so the box does not read as a key gone missing.
+            opening = f"{said}\n\n{opening}"
         ttk.Label(outer, text=opening, wraplength=520, justify="left").grid(
             row=1, column=0, sticky="w", pady=(4, 10)
         )
@@ -230,11 +239,11 @@ class LicenceBox(tk.Toplevel):
         self.use.configure(state="normal" if self._ready else "disabled")
 
 
-def ask(parent: tk.Misc, *, first: bool = False) -> LicenceKey | None:
+def ask(parent: tk.Misc, *, first: bool = False, said: str = "") -> LicenceKey | None:
     """Open the box and wait for it. The key kept, or ``None`` if it was closed
-    without one."""
+    without one. ``said`` goes above the usual opening: what just happened."""
     theme.apply(parent)
-    box = LicenceBox(parent, first=first)
+    box = LicenceBox(parent, first=first, said=said)
     box.grab_set()
     parent.wait_window(box)
     return box.result
