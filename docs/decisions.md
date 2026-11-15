@@ -7351,3 +7351,60 @@ approved runtime set (D1 and after) is not touched.
 *What this does not change:* the front (D166); the words on the pages; the
 engine; the workflow that deploys the site, which serves the videos as it
 serves the pages.
+
+### D191 — The window asks no hatch and no shadow colour; trees and the future context are added to the one context model; a label says what its row is
+
+Asked 16 November 2026, in three messages. Of the shadow diagram's panel:
+*"this is still confusing. I need to simplify this. delete the colour picker
+and hatch picker ... first shadow is blue. proposed 2 is dashed hatch with
+green contour etc. use the loriini colour palete there for contours."* Of
+the 3D context: *"add trees to 3d context"*, with the library's *Conceptual
+Tree Model 26* shown, and *"if you generate future context dont create
+separate image in sheets bar. just update the current one so it has future
+lines pictured. make a category and you select by button what you want to
+add - trees and future context"*. Of the labels: *"your naming there is a
+bit poor. and confusing. its about hours but its not clear right away ...
+its about quality of drawing. not about floor"*.
+
+**A row's look is the tool's, not a question.** The window's *Proposed n
+hatch* lists and the *Shadow colour* swatch are gone, with the colour field
+that drew it. The proposal is drawn solid in its blue. Each row compared
+with it is the project's Dashed fill over its own blue, its lines and its
+dashed outline in one colour (D188), and those colours are now Lorikeet's
+(D189): green for the row nearest the proposal, then orange, red and
+violet. `--scenario-fill`, `--shadow-colour` and `--shadow-pen` stay on the
+command line; a settings file that kept a hatch or a colour still opens and
+the two are ignored.
+
+**Trees are objects, on a layer of their own.** `site --model --trees`
+places every tree the bundle carries -- the council's inventory where it
+keeps one, OpenStreetMap's elsewhere -- as the library's *Conceptual Tree
+Model* through Tapir's `CreateObjects`: as wide as its canopy, as tall as
+recorded or 1.3 canopies where nobody measured it, held between 3 and 35 m,
+standing on the terrain, marked `SA TREE`, on `Site Context.Trees`. The
+part is asked for by Archicad's version, `Conceptual Tree Model 26`, then
+without the number, which is how the library names it from 27. A library
+with neither gets its model and a note. The site's own trees are left out,
+as its buildings are; a rerun removes the last run's trees with the rest.
+Off unless asked for: a tree casts a shadow no diagram is asked about.
+
+**One model, one picture.** The 3D context's *Future* row is *Add*, with
+two buttons, *Trees* and *Future context*. The sheets panel drew a second
+model, *Future model*, when the future context was lit; it draws the one
+*Context model*, with the dashed envelopes and the trees in it as each is
+lit, and the panel's header says 1 model whatever is added.
+
+**Labels.** *Plan times* is *Hours on plans*; *Communal window* is *Hours
+assessed*; *Communal threshold* is *Minimum hours*; *Communal height* is
+*Height above ground (m)*. The four rows of Rough, Normal, Detailed and
+Finest were named for what is sampled -- *Floor grid*, *Communal grid*,
+*Shadow grid*, *Skin cell* -- and are named for what the choice changes:
+*Drawing quality*, *Map quality*, *Shadow quality*, *Skin quality*. *Use
+told by* is *Floor use*. The settings' keys are unchanged, so a saved
+preset opens as before.
+
+*What this does not change:* what a run draws for a project that named no
+hatch, which was already dashed (D188); the future context's slabs and
+their layer; the site sheets, which draw trees flat as before; the command
+line's options. Not run against Archicad: the tree objects are covered by
+the suite's scripted replies alone.

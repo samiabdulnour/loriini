@@ -4942,7 +4942,7 @@ class Window:
         self.grid_m, row = self._tiles(
             frame,
             row,
-            "Skin cell",
+            "Skin quality",
             "",
             "Finer looks better and makes many more elements — half the cell "
             "size is roughly four times the count, and this project already "
@@ -5092,7 +5092,7 @@ class Window:
         self.instants, row = self._ticks_row(
             frame,
             row,
-            "Plan times",
+            "Hours on plans",
             "The times of day to draw the sun's patch on the floor for.",
             "One floor-plan drawing per time. Nine, twelve and three are the "
             "conventional set. Each one adds a set of views, so a long row "
@@ -5104,7 +5104,7 @@ class Window:
         self.floor_grid, row = self._tiles(
             frame,
             row,
-            "Floor grid",
+            "Drawing quality",
             "",
             "How finely each apartment's floor is sampled for the sun patches "
             "and the heat map. It changes the drawings, not the ADG figure: the "
@@ -5163,7 +5163,7 @@ class Window:
         self.communal_window, row = self._ticks_row(
             frame,
             row,
-            "Communal window",
+            "Hours assessed",
             "The hours assessed for the communal study: press the first and the last.",
             "The ADG measures 09:00 to 15:00, and that is what the apartment "
             "study uses whatever is typed here. A council DCP may ask for a "
@@ -5179,7 +5179,7 @@ class Window:
         self.communal_hours, row = self._entry(
             frame,
             row,
-            "Communal threshold",
+            "Minimum hours",
             "2",
             "Hours. Draws a second plan: what clears this, and what does not.",
             "Seven bands say how the hours spread across the space. What a "
@@ -5190,7 +5190,7 @@ class Window:
         self.communal_height, row = self._entry(
             frame,
             row,
-            "Communal height",
+            "Height above ground (m)",
             "0",
             "Metres above the ground to assess. 0 is at ground level.",
             "The height a person's sunlight is measured at. 0 means on the "
@@ -5205,7 +5205,7 @@ class Window:
         self.communal_grid, row = self._tiles(
             frame,
             row,
-            "Communal grid",
+            "Map quality",
             "",
             "Half a metre reads a courtyard properly; 0.25 m is for a narrow "
             "terrace, or an area figure that sits close to the threshold, at "
@@ -5529,7 +5529,7 @@ class Window:
         self.shadow_grid, row = self._tiles(
             frame,
             row,
-            "Shadow grid",
+            "Shadow quality",
             "",
             "How closely the ground is sampled: the same four steps as every "
             "solar grid. The edges are traced to the true shadow line at any "
@@ -6155,7 +6155,7 @@ class Window:
         self.yield_slabs, row = self._tiles(
             frame,
             row,
-            "Use told by",
+            "Floor use",
             "How a slab's use is told: by the level it stands on, or by its layer.",
             "By level: the slabs on the massing layers you choose, each one commercial "
             "on the commercial levels and residential on every other. By layer: a layer "
@@ -8630,7 +8630,7 @@ class Window:
     #: heat map and the apartment total together before they were two.
     TILE_ALIASES: ClassVar[dict[str, dict[str, tuple[str, ...]]]] = {
         # The four answers of D140, saved before D183, as the two now.
-        "Use told by": {
+        "Floor use": {
             "Every slab showing": ("By level",),
             "Slabs on chosen layers": ("By level",),
             "A layer per use": ("By layer",),
@@ -8654,7 +8654,7 @@ class Window:
     #: that a row of three still fits beside its label, and the same words
     #: the tooltip opens with so the two never disagree.
     TILE_WORDS: ClassVar[dict[str, dict[str, str]]] = {
-        "Use told by": {
+        "Floor use": {
             "By level": "By level",
             "By layer": "By layer",
         },
@@ -8673,10 +8673,10 @@ class Window:
             "Two layouts, half each": "Two layouts",
             "A layout per drawing": "One per drawing",
         },
-        "Skin cell": GRID_WORDS,
-        "Communal grid": GRID_WORDS,
-        "Shadow grid": GRID_WORDS,
-        "Floor grid": GRID_WORDS,
+        "Skin quality": GRID_WORDS,
+        "Map quality": GRID_WORDS,
+        "Shadow quality": GRID_WORDS,
+        "Drawing quality": GRID_WORDS,
         "Glass": {"off": "Solid", "30": "All glass", "80": "Clear only"},
         "Site lands at": {
             "Project location": "Project location",
@@ -8729,7 +8729,7 @@ class Window:
         # coarseness, and four drawings say which way is finer without a word.
         # The same four steps on every solar grid -- 1, 0.5, 0.25 and 0.1 m --
         # so Detailed means one thing whichever study it is chosen in.
-        "Skin cell": (
+        "Skin quality": (
             ("1.0", "grid_rough", "Rough — 1 m cells. Fast, and it loses anything narrower."),
             (
                 "0.5",
@@ -8751,7 +8751,7 @@ class Window:
                 "building, not a whole site.",
             ),
         ),
-        "Communal grid": (
+        "Map quality": (
             ("1.0", "grid_rough", "Rough — samples every 1 m."),
             (
                 "0.5",
@@ -8773,7 +8773,7 @@ class Window:
         ),
         # The every-hour drawing's ground (D161). The same four again; the
         # command's own is 1 m, and Normal is what the window starts on.
-        "Shadow grid": (
+        "Shadow quality": (
             ("1.0", "grid_rough", "Rough — samples every 1 m. Quick; misses anything narrower."),
             ("0.5", "grid_normal", "Normal — samples every 0.5 m."),
             (
@@ -8791,7 +8791,7 @@ class Window:
         # The apartments' floor: the sun patches and the heat map. The same
         # four as the other rows; the study has always gridded it at 0.25 m,
         # which is Detailed, and Rough draws a flat's sun patch in blocks.
-        "Floor grid": (
+        "Drawing quality": (
             (
                 "1.0",
                 "grid_rough",
@@ -8829,7 +8829,7 @@ class Window:
                 "tinted and frosted glass still cast shade.",
             ),
         ),
-        "Use told by": (
+        "Floor use": (
             (
                 "By level",
                 "site",
