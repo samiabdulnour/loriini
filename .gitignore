@@ -80,3 +80,8 @@ archicad-addon/Build/
 
 # The current build, put in site/download/ at deploy time (docs/website.md).
 site/download/*.zip
+
+# The raw screen recordings the demo videos are cut from (docs/website.md,
+# "The demo videos"): minutes of screen at a time, re-recorded rather than
+# kept. What is cut from them, in site/, is committed.
+assets/demo/captures/

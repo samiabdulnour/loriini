@@ -1,0 +1,40 @@
+# The demo on the How it works page: scripts/demo_cut.py reads this and
+# writes site/demo.mp4 and its poster (docs/website.md). Each cut is a
+# span of a raw clip in assets/demo/captures/ -- the window's from
+# scripts/demo_capture_window.py, Archicad's from
+# scripts/demo_capture_archicad.py on a workstation -- with the caption
+# laid along its foot. `speed` shows a slow stretch faster than life;
+# `crop` is [x, y, width, height] of the clip to fill the frame with.
+# Seconds throughout. The raw clips are not committed; the result is.
+
+out: site/demo.mp4
+poster: site/demo-poster.png
+poster_at: 4.0
+size: [1280, 720]
+fps: 30
+
+cuts:
+  - clip: assets/demo/captures/window.mp4
+    from: 1.0
+    to: 14.5
+    caption: "An address, four ticks, Run."
+  - clip: assets/demo/captures/window.mp4
+    from: 14.5
+    to: 44.0
+    speed: 3.0
+    caption: "Each sheet is a run of its own, and the window says what the run is doing."
+  - clip: assets/demo/captures/archicad-site.mp4
+    from: 0
+    to: 60
+    speed: 4.0
+    caption: "The context analysis and the site analysis, drawn as native fills and texts into worksheets of the open project."
+  - clip: assets/demo/captures/archicad-solar.mp4
+    from: 0
+    to: 90
+    speed: 6.0
+    caption: "Solar access by apartment, written onto the Zones: the ADG table is an Archicad schedule."
+  - clip: assets/demo/captures/archicad-shadows.mp4
+    from: 0
+    to: 60
+    speed: 4.0
+    caption: "Shadow diagrams as 3D Documents, one an hour, on sheets by day."
