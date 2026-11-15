@@ -162,15 +162,16 @@ REACH_MARGIN_M = 2.0
 #: A strip of shadow narrower than twice this is no part of an outline: two
 #: documents of one hour leave such strips along the shadows they share.
 SLIVER_M = 0.3
-#: What the rows under the designed one are outlined in, nearest the
-#: designed row first: the office's magenta for the envelope it is compared
-#: with, then a soft orange -- a strong one took the eye from the
-#: proposal's own blue -- a green, and a dark red for a fifth proposal.
+#: What the rows under the designed one are outlined and hatched in, nearest
+#: the designed row first: Lorikeet's green, orange, red and violet (D189),
+#: the palette the hours of sun are drawn in, so a sheet of the tool's is one
+#: set of colours. The designed row keeps its own blue. Asked 16 November
+#: 2026; before it they were a magenta, a soft orange, a green and a dark red.
 OTHER_OUTLINES: tuple[tuple[int, int, int], ...] = (
-    (214, 0, 170),
-    (200, 140, 90),
-    (0, 150, 80),
-    (170, 45, 60),
+    (79, 154, 30),
+    (255, 160, 30),
+    (255, 90, 61),
+    (133, 144, 238),
 )
 #: The fill a compared row is drawn in when none is named for it: dashed
 #: lines in the colour of its outline over its own blue, which is how the

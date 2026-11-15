@@ -1302,123 +1302,6 @@ class Toggles(ttk.Frame):
             put(button, style="TileOn.TButton" if variable.get() else "Tile.TButton")
 
 
-def colour_hex(value: str) -> str | None:
-    """``#rrggbb`` for a colour given as ``#rrggbb``, ``#rgb`` or ``R,G,B``;
-    ``None`` for anything else -- a blank, or a pen number an older settings
-    file saved."""
-    given = value.strip()
-    if given.startswith("#"):
-        digits = given[1:]
-        if len(digits) == 3:
-            digits = "".join(c * 2 for c in digits)
-        if len(digits) == 6 and all(c in "0123456789abcdefABCDEF" for c in digits):
-            return f"#{digits.lower()}"
-        return None
-    parts = [part.strip() for part in given.split(",")]
-    if len(parts) == 3 and all(part.isdigit() and int(part) <= 255 for part in parts):
-        return "#{:02x}{:02x}{:02x}".format(*(int(part) for part in parts))
-    return None
-
-
-class ColourField(ttk.Frame):
-    """A colour, chosen in the system's colour picker and shown as a swatch.
-
-    In place of a box a pen number was typed into: what a person knows is
-    the colour they want, not which of 255 pens has it. Keeps the Entry
-    interface the settings file round-trips through -- ``get``, ``delete``,
-    ``insert`` -- as ``Chips`` does. Holds ``#rrggbb`` or nothing; a pen
-    number an older settings file saved is kept, shown as that pen and still
-    sent as one.
-    """
-
-    def __init__(
-        self,
-        parent: tk.Misc,
-        *,
-        label: str,
-        empty: str = "none chosen",
-        on_change: Callable[[], None] | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self._value = ""
-        self._label = label
-        self._empty = empty
-        self._changed = on_change
-        self.swatch = tk.Label(
-            self, width=4, relief="solid", borderwidth=1, cursor="hand2", background="#ffffff"
-        )
-        self.swatch.pack(side="left", padx=(0, 8), ipady=2)
-        self.swatch.bind("<Button-1>", lambda _event: self.choose())
-        self.words = ttk.Label(self, style="Hint.TLabel")
-        self.words.pack(side="left", padx=(0, 8))
-        self.picker = ttk.Button(
-            self, text="Choose…", style="Add.TButton", width=0, command=self.choose
-        )
-        self.picker.pack(side="left")
-        self.clearer = ttk.Button(
-            self,
-            text="×",  # noqa: RUF001 - the close cross, not a letter x
-            style="ChipDrop.TButton",
-            width=2,
-            command=self.clear,
-        )
-        Tooltip(
-            self.clearer,
-            f"Clears {label}, so nothing is sent and the project's own default holds.",
-            title=f"Clear {label}",
-        )
-        self._paint()
-
-    # -- what makes it a drop-in for an Entry ------------------------------
-    def get(self) -> str:
-        return self._value
-
-    def delete(self, first: object = 0, last: object = None) -> None:
-        self._value = ""
-        self._paint()
-
-    def insert(self, index: object, value: str) -> None:
-        given = str(value).strip()
-        self._value = colour_hex(given) or given
-        self._paint()
-
-    # -- and what makes it a colour ----------------------------------------
-    def choose(self) -> None:
-        """Open the system's colour picker on the colour held, if any."""
-        from tkinter import colorchooser
-
-        _rgb, picked = colorchooser.askcolor(
-            color=colour_hex(self._value), parent=self, title=self._label
-        )
-        if picked:
-            self._value = colour_hex(str(picked)) or ""
-            self._paint()
-            if self._changed is not None:
-                self._changed()
-
-    def clear(self) -> None:
-        self.delete()
-        if self._changed is not None:
-            self._changed()
-
-    def _paint(self) -> None:
-        hexed = colour_hex(self._value)
-        if hexed:
-            red, green, blue = (int(hexed[i : i + 2], 16) for i in (1, 3, 5))
-            self.swatch.configure(background=hexed, text="")
-            self.words.configure(text=f"{hexed}  ·  rgb {red}, {green}, {blue}")
-        elif self._value:
-            self.swatch.configure(background="#ffffff", text="?")
-            self.words.configure(text=f"pen {self._value}")
-        else:
-            self.swatch.configure(background="#ffffff", text="")
-            self.words.configure(text=self._empty)
-        if self._value:
-            self.clearer.pack(side="left", padx=(4, 0))
-        else:
-            self.clearer.pack_forget()
-
-
 class Chips(ttk.Frame):
     """The names chosen for a setting, each with the button that drops it.
 
@@ -5476,15 +5359,14 @@ class Window:
             "live drawings on one layout, which a large project may not open. Worksheet "
             "fills needs legend rows; without them the plain set is drawn either way.",
         )
-        #: What a compared row is called, seen under and hatched in, by the
+        #: What a compared row is called and seen under, by the
         #: row's short name: an envelope an office keeps as a renovation
         #: filter (Archicad 26) or a design option (27 on), and wants told
         #: apart from the proposal on paper. Shown only for a row with layers
         #: chosen (``_shadow_row_fields``): a row without them is not drawn,
-        #: and three fields about it are three questions about nothing.
+        #: and two fields about it are two questions about nothing.
         self.shadow_row_names: dict[str, ttk.Entry] = {}
         self.shadow_row_filters: dict[str, ttk.Combobox] = {}
-        self.shadow_row_hatches: dict[str, ttk.Combobox] = {}
         self.shadow_row_groups: dict[str, list[tk.Widget]] = {}
         self.shadow_documents_panel = frame
         for short, role, title, _hint, _detail in SHADOW_LEGEND_ROWS:
@@ -5516,18 +5398,6 @@ class Window:
             self.scenario_labels[self._label_at(frame, at)] = (
                 f"{title} filter",
                 f"{title} design option",
-            )
-            self.shadow_row_hatches[short], row = self._combo(
-                frame,
-                row,
-                f"{title} hatch",
-                f"The fill type {title} is drawn in, with worksheet fills. Blank: Dashed.",
-                "A hatch tells an envelope from the proposal where two pale blues would "
-                "not. Its lines are the colour of the row's dashed outline, over the "
-                "row's blue. Blank is the project's Dashed fill, or solid where it has "
-                "none; choose Solid Fill for a row with no hatch. Pick a "
-                "scale-independent fill with lines well apart: one that is fine on a "
-                "plan prints solid at 1:1500.",
             )
             self.shadow_row_groups[short] = [
                 child
@@ -5566,17 +5436,6 @@ class Window:
             "combination, and a name tells two such sets apart: Existing, "
             "Proposed. With legend rows each set is named for its row, and "
             "this is not used. Blank names neither.",
-        )
-        self.shadow_plan_pen, row = self._colour_row(
-            frame,
-            row,
-            "Shadow colour",
-            "The colour the shadows are filled in, for a set without the legend.",
-            "Choose it in the colour picker. A 3D Document fills its shadows with a "
-            "pen, so the run takes the pen of the pen set above -- or the project's "
-            "own -- nearest the colour, and says which in the log. With legend rows "
-            "each row takes the pen nearest its legend colour and this is not used. "
-            "None keeps the project's defaults for new 3D Documents.",
         )
 
     def _shadow_every_hour(self, outer: ttk.Frame, at: int) -> None:
@@ -7286,21 +7145,6 @@ class Window:
         Tooltip(name, detail, title=label, short=self._saying(line))
         return made, row + 1
 
-    def _colour_row(
-        self, parent: ttk.Frame, row: int, label: str, hint: str, detail: str
-    ) -> tuple[ColourField, int]:
-        """A colour: the label, then a swatch and the picker that sets it."""
-        name = ttk.Label(parent, text=label, anchor="e")
-        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
-        field = ColourField(
-            parent, label=label, empty="none: the project's default", on_change=self._sync
-        )
-        field.grid(row=row, column=1, sticky="w", pady=(6, 0))
-        line = self._hint(parent, row + 1, hint)
-        for target in (name, field.swatch, field.picker):
-            Tooltip(target, detail, title=label, short=self._saying(line))
-        return field, row + 1
-
     def _picker(
         self,
         parent: ttk.Frame,
@@ -7852,7 +7696,7 @@ class Window:
         self._dock_opened_empty = not shut and self._dock_empty
 
     # -- settings that outlive the window ------------------------------------
-    def _fields(self) -> dict[str, ttk.Entry | Tiles | Ticks | Chips | ColourField]:
+    def _fields(self) -> dict[str, ttk.Entry | Tiles | Ticks | Chips]:
         """Every typed or chosen setting, under a name that survives a rename.
 
         Written out here rather than gathered off the widget tree, because the
@@ -7916,13 +7760,8 @@ class Window:
                 f"shadow_row_filter_{short.lower().replace(' ', '_')}": box
                 for short, box in self.shadow_row_filters.items()
             },
-            **{
-                f"shadow_row_hatch_{short.lower().replace(' ', '_')}": box
-                for short, box in self.shadow_row_hatches.items()
-            },
             "shadow_plan_label": self.shadow_plan_label,
             "shadow_plan_pen_set": self.shadow_plan_pen_set,
-            "shadow_plan_pen": self.shadow_plan_pen,
             "shadow_hours_colour": self.shadow_hours_colour,
             "shadow_grid": self.shadow_grid,
             "eye_pen_set": self.eye_pen_set,
@@ -8232,7 +8071,7 @@ class Window:
                 widget.grid_remove()
 
     def _shadow_row_fields(self) -> None:
-        """Show a compared row's name, option and hatch only once the row has
+        """Show a compared row's name and option only once the row has
         layers chosen: without them it is not drawn."""
         groups = getattr(self, "shadow_row_groups", None)
         if not groups:
@@ -8520,8 +8359,6 @@ class Window:
         for box in self.shadow_row_filters.values():
             self._fill(box, ("", *scenarios), ())
         self._scenario_words()
-        for box in self.shadow_row_hatches.values():
-            self._fill(box, ("", *found.fills), ())
         self._fill(self.shadow_study_subset, found.subsets, ())
         for box in (self.qa_from_storey, self.qa_to_storey):
             self._fill(box, ("", *found.storey_names), ())
@@ -9699,9 +9536,10 @@ class Window:
         return typed or short
 
     def _row_extras(self, legend: Sequence[str]) -> list[str]:
-        """The compared rows' renovation filters or design options, and their
-        hatches, as the documents' command takes them, for the rows that are
-        in ``legend``."""
+        """The compared rows' renovation filters or design options, as the
+        documents' command takes them, for the rows that are in ``legend``.
+        A row's hatch and outline are not asked: the proposal is solid, and
+        each row compared with it is dashed in a colour of its own."""
         named = {entry.partition("=")[0] for entry in legend if "=" in entry}
         args: list[str] = []
         flag = "--scenario-option" if self._design_options() else "--scenario-filter"
@@ -9709,10 +9547,6 @@ class Window:
             name = self._row_name(short)
             if name in named and box.get().strip():
                 args += [flag, f"{name}={box.get().strip()}"]
-        for short, box in self.shadow_row_hatches.items():
-            name = self._row_name(short)
-            if name in named and box.get().strip():
-                args += ["--scenario-fill", f"{name}={box.get().strip()}"]
         return args
 
     def _designed_row(self) -> str:
@@ -9991,11 +9825,6 @@ class Window:
                 if self._shadow_storey_index():
                     args += ["--every-hour-storey", self._shadow_storey_index()]
             plain_only = ("--label",)
-            # The colour picked, or a pen number an older settings file kept;
-            # either is for a set without the legend.
-            shadow = self.shadow_plan_pen.get().strip()
-            if shadow and not legend:
-                args += ["--shadow-colour" if colour_hex(shadow) else "--shadow-pen", shadow]
             for flag, field in (
                 ("--layer-combination", self.shadow_plan_combination),
                 ("--label", self.shadow_plan_label),

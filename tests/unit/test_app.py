@@ -4640,7 +4640,6 @@ def test_the_shadow_diagram_draws_its_days_and_hours_as_documents(
     for name, lit in hidden_window.shadow_day_ticks.items():
         lit.set(name in ("winter", "summer"))
     hidden_window.shadow_plan_label.insert(0, "Proposed")
-    hidden_window.shadow_plan_pen.insert(0, "3")
     # The project's own list, and none of it picked by a name (D156): the
     # person says which combination shows the ground under the buildings.
     assert hidden_window.shadow_plan_combination.get() == ""
@@ -4658,7 +4657,7 @@ def test_the_shadow_diagram_draws_its_days_and_hours_as_documents(
     assert flag(job.args, "--shadow-hour") == [hidden_window.shadow_hours.get().strip()]
     assert flag(job.args, "--layer-combination") == ["01 | Plans - DA"]
     assert flag(job.args, "--label") == ["Proposed"]
-    assert flag(job.args, "--shadow-pen") == ["3"]
+    assert "--shadow-pen" not in job.args and "--shadow-colour" not in job.args
     assert "--pen-set" not in job.args, "a blank keeps each view's own"
 
     sheets = hidden_window.planned()
@@ -4707,7 +4706,6 @@ def test_the_shadow_diagram_stacks_its_legend_rows(
         tick.set(False)
     hidden_window.do_shadows.set(True)
     hidden_window.shadow_plan_label.insert(0, "Proposed")
-    hidden_window.shadow_plan_pen.insert(0, "3")
     rows = {short: (role, box) for short, role, box in hidden_window.shadow_rows}
     baseline = next(short for short, (role, _) in rows.items() if role == "baseline")
     scenario = next(short for short, (role, _) in rows.items() if role == "scenario")
@@ -5309,7 +5307,7 @@ def test_every_hour_is_read_out_of_the_documents_when_the_legend_names_a_design(
     assert "--every-hour" in job.args and "--every-hour-only" not in job.args
 
 
-def test_a_compared_row_is_named_filtered_and_hatched_from_the_window(hidden_window: Any) -> None:
+def test_a_compared_row_is_named_and_filtered_from_the_window(hidden_window: Any) -> None:
     rows = {short: box for short, _role, box in hidden_window.shadow_rows}
     hidden_window.do_facade.set(False)
     hidden_window.do_shadows.set(True)
@@ -5318,9 +5316,8 @@ def test_a_compared_row_is_named_filtered_and_hatched_from_the_window(hidden_win
     rows["PROPOSED 2"].insert(0, "01 | Floor.Structural")
     hidden_window.shadow_row_names["PROPOSED 2"].insert(0, "LEP + 30%")
     hidden_window.shadow_row_filters["PROPOSED 2"].set("LEP + 30% Bonus")
-    hidden_window.shadow_row_hatches["PROPOSED 2"].set("zz Brick Common")
-    # A row with no layers sends nothing, whatever is typed beside it.
-    hidden_window.shadow_row_hatches["PROPOSED 3"].set("Dashed")
+    # A row with no layers sends nothing, whatever is chosen beside it.
+    hidden_window.shadow_row_filters["PROPOSED 3"].set("LEP + 30% Bonus")
 
     (job,) = hidden_window.jobs()
 
@@ -5329,14 +5326,14 @@ def test_a_compared_row_is_named_filtered_and_hatched_from_the_window(hidden_win
         "PROPOSED=01 | Wall.External",
     ]
     assert flag(job.args, "--scenario-filter") == ["LEP + 30%=LEP + 30% Bonus"]
-    assert flag(job.args, "--scenario-fill") == ["LEP + 30%=zz Brick Common"]
+    assert "--scenario-fill" not in job.args, "the hatch is the tool's, not a question"
 
 
 def test_a_compared_rows_fields_show_only_once_it_has_layers(hidden_window: Any) -> None:
     rows = {short: box for short, _role, box in hidden_window.shadow_rows}
     fields = hidden_window.shadow_row_groups
     assert set(fields) == {"PROPOSED 2", "PROPOSED 3", "PROPOSED 4", "PROPOSED 5"}
-    assert all(len(widgets) == 6 for widgets in fields.values()), "a label and a box, three times"
+    assert all(len(widgets) == 4 for widgets in fields.values()), "a label and a box, twice"
 
     def shown(short: str) -> bool:
         return all(widget.winfo_manager() == "grid" for widget in fields[short])
@@ -5419,47 +5416,17 @@ def test_archicad_27_offers_design_options_where_26_offers_renovation_filters(
     assert "--scenario-filter" not in job.args
 
 
-def test_the_shadow_colour_is_picked_not_typed_as_a_pen(
-    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from tkinter import colorchooser
-
-    field = hidden_window.shadow_plan_pen
-    assert isinstance(field, window.ColourField)
-    assert field.get() == "" and "default" in str(field.words.cget("text"))
-    monkeypatch.setattr(colorchooser, "askcolor", lambda **_kw: ((51, 102, 204), "#3366CC"))
-    field.choose()
-    assert field.get() == "#3366cc"
-    assert str(field.swatch.cget("background")) == "#3366cc"
-    assert "51, 102, 204" in str(field.words.cget("text"))
-
-    for _name, tick, _where in hidden_window._studies():
-        tick.set(False)
-    hidden_window.do_shadows.set(True)
-    hidden_window.shadow_plan_combination.set("01 | Plans - DA")
-    (job,) = hidden_window.jobs()
-    assert flag(job.args, "--shadow-colour") == ["#3366cc"]
-    assert "--shadow-pen" not in job.args
-
-    # Kept by Save as default, and a pen number an older file saved still
-    # goes as a pen.
+def test_the_window_asks_no_hatch_and_no_shadow_colour(hidden_window: Any) -> None:
+    """The proposal is solid and each row compared with it is dashed in a
+    colour of its own, so neither is a question; a settings file from before
+    still opens."""
+    assert not hasattr(hidden_window, "shadow_row_hatches")
+    assert not hasattr(hidden_window, "shadow_plan_pen")
     saved = hidden_window.settings()
-    assert saved["shadow_plan_pen"] == "#3366cc"
-    hidden_window.apply({**saved, "shadow_plan_pen": "45"})
-    (job,) = hidden_window.jobs()
-    assert flag(job.args, "--shadow-pen") == ["45"] and "--shadow-colour" not in job.args
-    assert field.words.cget("text") == "pen 45"
-    field.clear()
-    (job,) = hidden_window.jobs()
-    assert "--shadow-pen" not in job.args and "--shadow-colour" not in job.args
-
-
-def test_a_colour_is_read_in_the_three_ways_it_is_written() -> None:
-    assert window.colour_hex("#3366CC") == "#3366cc"
-    assert window.colour_hex("#36c") == "#3366cc"
-    assert window.colour_hex("51, 102, 204") == "#3366cc"
-    assert window.colour_hex("45") is None, "a pen number is not a colour"
-    assert window.colour_hex("") is None and window.colour_hex("#12345g") is None
+    assert not [key for key in saved if "hatch" in key or key == "shadow_plan_pen"]
+    hidden_window.apply(
+        {**saved, "shadow_plan_pen": "#3366cc", "shadow_row_hatch_proposed_2": "Dashed"}
+    )
 
 
 def test_the_sheets_panel_slides_in_and_opens_once_it_has_arrived(
