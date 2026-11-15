@@ -5898,6 +5898,19 @@ class Window:
             "another suburb is refused rather than drawn. A unit number is "
             "taken as its building; a ranged number as every lot in the range.",
         )
+        self.site_lot, row = self._entry(
+            frame,
+            row,
+            "Site lot",
+            "",
+            "Only when the address is on more than one lot: the lot, e.g. 34//DP1206876.",
+            "The register sometimes holds one address on two lots at once -- "
+            "22A O'Connell Street, Parramatta is on two, 150 m apart -- and the "
+            "run then stops and lists them. Type the right one here, as on the "
+            "title; several, separated by commas. The address then only titles "
+            "the sheets, and the Yield study reads its area and FSR on these lots.",
+        )
+
         row = self._site_toggles(
             frame,
             row,
@@ -7143,6 +7156,7 @@ class Window:
     TEXT_FIELDS = frozenset(
         {
             "Address",
+            "Site lot",
             "Custom day",
             "Set name",
         }
@@ -7919,6 +7933,7 @@ class Window:
             "eye_hours": self.eye_hours,
             "eye_step": self.eye_step,
             "site_address": self.site_address,
+            "site_lot": self.site_lot,
             "site_scale": self.site_scale,
             "site_theme": self.site_theme,
             "site_site_theme": self.site_site_theme,
@@ -10114,6 +10129,7 @@ class Window:
             *common,
             *self._prefix_flag(self.prefix_site),
             *self._flag("--context-prefix", self.prefix_context),
+            *self._flag("--lot", self.site_lot),
         ]
         # Placed by each panel's Origin and North and by nothing else
         # (D158): the fit to a boundary drawn in the file overrode both
@@ -10457,7 +10473,7 @@ class Window:
             )
         )
         if address and not (self.yield_site_area.get().strip() and permissible):
-            args += ["--address", address]
+            args += ["--address", address, *self._flag("--lot", self.site_lot)]
         # Every type goes, a share of nothing included: the sheet shows the
         # type on its own row either way.
         defaults = {name: size for name, _share, size in MIX_ROWS}
