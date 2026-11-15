@@ -94,8 +94,21 @@ KERB_M = 0.15
 #: hatch on the context analysis finds the same colour in the model.
 HERITAGE_SURFACE = "LORIINI HERITAGE"
 HERITAGE_RGB = (0.663, 0.482, 0.247)
+#: What the terrain mesh and the street blocks stand in. The terrain is what
+#: shows between the blocks, which is the roads; the blocks are the ground the
+#: buildings stand on. Both were in the Mesh tool's own surface until 11
+#: November 2026, which on the Australian template is grass: a model that was
+#: one green, where a road could not be told from a lot.
+ROAD_SURFACE = "LORIINI ROAD"
+ROAD_RGB = (0.45, 0.46, 0.48)
+GROUND_SURFACE = "LORIINI GROUND"
+GROUND_RGB = (0.55, 0.65, 0.42)
 #: Every surface the model names, with its colour, by name.
-SURFACES: dict[str, tuple[float, float, float]] = {HERITAGE_SURFACE: HERITAGE_RGB}
+SURFACES: dict[str, tuple[float, float, float]] = {
+    HERITAGE_SURFACE: HERITAGE_RGB,
+    ROAD_SURFACE: ROAD_RGB,
+    GROUND_SURFACE: GROUND_RGB,
+}
 
 #: How far the terrain's skirt drops below its lowest point.
 SKIRT_M = 2.0
@@ -560,6 +573,7 @@ def _block_meshes(
     floor_level: float,
     datum_m: float = 0.0,
     terrain_lines: Sequence[tuple[float, Sequence[Point]]] = (),
+    notes: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """One kerbed mesh per block, draped over the ground the terrain mesh is:
     its outline sampled every few metres, and the terrain's own level lines
@@ -570,6 +584,9 @@ def _block_meshes(
     made: list[dict[str, Any]] = []
     problems: list[str] = []
     lift = KERB_M - floor_level - datum_m
+    # Asked for until one is refused: an add-on that takes no surface on a
+    # mesh takes none on the next, and each refusal is a request wasted.
+    surfaced = True
     for i, ring in enumerate(blocks):
         outline = [{"x": x, "y": y, "z": ground.at((x, y)) + lift} for x, y in _densified(ring)]
         inside = [
@@ -578,8 +595,8 @@ def _block_meshes(
         ]
         lowest = min([p["z"] for p in outline] + [line[0]["z"] for line in inside])
         try:
-            answer = connection.run_loriini(
-                "CreateMesh",
+            answer, took = _create_mesh(
+                connection,
                 {
                     "outline": outline,
                     "levelLines": inside,
@@ -589,7 +606,9 @@ def _block_meshes(
                     "floorIndex": floor_index,
                     "elementId": f"SA BLOCK {i + 1}",
                 },
+                GROUND_SURFACE if surfaced else None,
             )
+            surfaced = surfaced and took
         except ArchicadError as error:
             problems.append(str(error))
             continue
@@ -597,7 +616,37 @@ def _block_meshes(
             made.append({"elementId": {"guid": str(answer["guid"])}})
         else:
             problems.append(str(answer))
+    if made and not surfaced and notes is not None and _NO_MESH_SURFACE not in notes:
+        notes.append(_NO_MESH_SURFACE)
     return made, problems
+
+
+#: Said once a run when the add-on installed is older than the surfaces.
+_NO_MESH_SURFACE = (
+    "this add-on takes no surface on a mesh, so the roads and the blocks are both in the "
+    "Mesh tool's own; a newer add-on colours them apart."
+)
+
+
+def _create_mesh(
+    connection: ArchicadConnection, request: dict[str, Any], surface: str | None
+) -> tuple[Any, bool]:
+    """Loriini's ``CreateMesh``, in a surface where the add-on takes one.
+
+    The command's schema refuses a field it does not know, so an add-on built
+    before meshes took a surface answers the whole request with an error. It
+    is asked again without, and the caller told the surface was not taken:
+    a model in one colour is better than no model. A refusal that was about
+    something else comes back from the second request as it did the first.
+    """
+    if surface is not None:
+        try:
+            with_surface = {**request, "surface": _surface_request(surface)}
+            return connection.run_loriini("CreateMesh", with_surface), True
+        except ArchicadError as error:
+            if "not have the registered" in str(error):
+                raise
+    return connection.run_loriini("CreateMesh", request), False
 
 
 #: What ``--datum`` takes, and what each means as a level to subtract.
@@ -724,6 +773,7 @@ def _terrain(
     layer_index: int,
     datum_m: float = 0.0,
     ground: _Ground | None = None,
+    notes: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], MeshLines]:
     """One Mesh: the model's square at ground level, with the contours as its
     level lines. Returns what was made and how the lines were chosen."""
@@ -746,8 +796,8 @@ def _terrain(
     # for every mesh on Archicad 26 (measured), so it is only the fallback
     # for an add-on built before the command existed.
     try:
-        answer = connection.run_loriini(
-            "CreateMesh",
+        answer, took = _create_mesh(
+            connection,
             {
                 "outline": outline,
                 "levelLines": [s["coordinates"] for s in sublines],
@@ -757,9 +807,12 @@ def _terrain(
                 "floorIndex": floor_index,
                 "elementId": "SA TERRAIN",
             },
+            ROAD_SURFACE,
         )
         guid = str(answer.get("guid", "")) if isinstance(answer, dict) else ""
         if guid:
+            if not took and notes is not None and _NO_MESH_SURFACE not in notes:
+                notes.append(_NO_MESH_SURFACE)
             return [{"elementId": {"guid": guid}}], lines
         raise ArchicadError(f"CreateMesh answered {answer!r}")
     except ArchicadError as error:
@@ -858,7 +911,14 @@ def model_context(
             try:
                 assert ground_layer is not None
                 _, lines = _terrain(
-                    connection, bundle, frame, contours, ground_layer.index, datum, ground=ground
+                    connection,
+                    bundle,
+                    frame,
+                    contours,
+                    ground_layer.index,
+                    datum,
+                    ground=ground,
+                    notes=notes,
                 )
                 made_terrain = True
             except ArchicadError as error:
@@ -887,6 +947,7 @@ def model_context(
                     if contours
                     else ()
                 ),
+                notes=notes,
             )
             made_blocks = len(block_meshes)
             if refused:

@@ -1173,6 +1173,14 @@ bool ReadOutline (const GS::ObjectState& mesh, GS::Array<API_Coord3D>& into, GS:
 }		// namespace
 
 
+namespace {
+
+// Defined with CreateSlabs below, which was its first caller.
+bool FindOrMakeSurface (const GS::UniString& name, const API_RGBColor* colour, API_AttributeIndex& into, GS::UniString& why);
+
+}		// namespace
+
+
 GS::String CreateMeshCommand::GetName () const			{ return "CreateMesh"; }
 
 GS::Optional<GS::UniString> CreateMeshCommand::GetInputParametersSchema () const
@@ -1220,7 +1228,20 @@ GS::Optional<GS::UniString> CreateMeshCommand::GetInputParametersSchema () const
 			"skirtLevel": { "type": "number" },
 			"layerIndex": { "type": "integer" },
 			"floorIndex": { "type": "integer" },
-			"elementId": { "type": "string" }
+			"elementId": { "type": "string" },
+			"surface": {
+				"type": "object",
+				"description": "A Surface for every face of the mesh, by name; made in the given colour when the project has none by that name. Without it the mesh is in the Mesh tool's own surface, which made the roads and the blocks between them one green.",
+				"properties": {
+					"name": { "type": "string" },
+					"colour": {
+						"type": "object",
+						"properties": { "red": { "type": "number" }, "green": { "type": "number" }, "blue": { "type": "number" } },
+						"required": [ "red", "green", "blue" ]
+					}
+				},
+				"required": [ "name" ]
+			}
 		},
 		"required": [ "outline" ],
 		"additionalProperties": false
@@ -1367,6 +1388,44 @@ GS::ObjectState CreateMeshCommand::Execute (const GS::ObjectState& parameters,
 	GSErrCode failure = NoError;
 	GS::UniString failureText;
 	err = ACAPI_CallUndoableCommand ("Create terrain mesh", [&] () -> GSErrCode {
+		// The surface first, and in here: making an attribute needs the same
+		// undo scope the element does.
+		GS::ObjectState surface;
+		if (parameters.Get ("surface", surface)) {
+			GS::UniString name;
+			if (!surface.Get ("name", name) || name.IsEmpty ()) {
+				failure = APIERR_BADPARS;
+				failureText = "A mesh's surface needs a name.";
+				return APIERR_BADPARS;
+			}
+			API_RGBColor colour = {};
+			GS::UniString whyNot;
+			const bool coloured = ReadColour (surface, "colour", colour, whyNot);
+			if (!coloured && !whyNot.IsEmpty ()) {
+				failure = APIERR_BADPARS;
+				failureText = whyNot;
+				return APIERR_BADPARS;
+			}
+			API_AttributeIndex surfaceIndex = {};
+			if (!FindOrMakeSurface (name, coloured ? &colour : nullptr, surfaceIndex, whyNot)) {
+				failure = APIERR_GENERAL;
+				failureText = whyNot;
+				return APIERR_GENERAL;
+			}
+#ifdef ServerMainVers_2700
+			// An APIOptional from 27: assigning a value is what marks it set.
+			element.mesh.topMat = surfaceIndex;
+			element.mesh.sideMat = surfaceIndex;
+			element.mesh.botMat = surfaceIndex;
+#else
+			element.mesh.topMat.overridden = true;
+			element.mesh.topMat.attributeIndex = surfaceIndex;
+			element.mesh.sideMat.overridden = true;
+			element.mesh.sideMat.attributeIndex = surfaceIndex;
+			element.mesh.botMat.overridden = true;
+			element.mesh.botMat.attributeIndex = surfaceIndex;
+#endif
+		}
 		GSErrCode step = ACAPI_Element_Create (&element, &memo);
 		if (step != NoError) {
 			failure = step;

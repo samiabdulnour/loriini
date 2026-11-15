@@ -1079,6 +1079,106 @@ def test_the_blocks_are_the_lots_dissolved_without_the_site_and_clipped_to_the_e
     assert len(blocks[0]) == 4, "the shared side is gone"
 
 
+def test_the_roads_and_the_blocks_stand_in_surfaces_of_their_own() -> None:
+    """The terrain is what shows between the blocks, which is the roads. In
+    the Mesh tool's default both were one green, and a road could not be told
+    from a lot (asked on the Campsie sample, 11 November 2026)."""
+    from sun_study.archicad.context_model import model_context
+
+    bundle = site_bundle()
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    d = 0.0004
+    lot = [(LON + d, LAT), (LON + 2 * d, LAT), (LON + 2 * d, LAT + d), (LON + d, LAT + d)]
+    with_lots = replace(bundle, all_lots=collection(polygon([*lot, lot[0]], lotidstring="2//DP1")))
+    connection, transport_ = connect(
+        {
+            "GetAttributesByType": {"attributes": _layer_attributes()},
+            "GetCurrentDatabase": {"databaseId": {"guid": "PLAN"}, "windowType": "FloorPlan"},
+            "GetLayers": {"layers": _layer_states()},
+            "CreateLayers": {"success": True},
+            "CreateMesh": {"success": True, "guid": "MESH"},
+            "CreateSlabs": {"elements": [{"elementId": {"guid": "SLAB"}}]},
+            "GetDetailsOfElements": {"detailsOfElements": [{"layerIndex": 9}]},
+            "GetElementsByType": {"elements": []},
+            "GetStories": {"stories": [{"index": 0, "level": 0.0}]},
+            "GetGeoLocation": {
+                "projectLocation": {
+                    "latitude": LAT,
+                    "longitude": LON,
+                    "altitude": 0.0,
+                    "north": 0.0,
+                }
+            },
+            "SetPropertyValuesOfElements": {"executionResults": [{"success": True}]},
+            "GetAllProperties": {"properties": []},
+            "GetPropertyValuesOfElements": {"propertyValuesForElements": []},
+        }
+    )
+    report = model_context(connection, with_lots, frame)
+
+    assert report.blocks == 1
+    meshes = {m["elementId"]: m["surface"] for m in transport_.all_parameters_for("CreateMesh")}
+    assert meshes["SA TERRAIN"]["name"] == "LORIINI ROAD"
+    assert meshes["SA BLOCK 1"]["name"] == "LORIINI GROUND"
+    road, ground = meshes["SA TERRAIN"]["colour"], meshes["SA BLOCK 1"]["colour"]
+    assert abs(road["red"] - road["green"]) < 0.05, "a grey"
+    assert ground["green"] > ground["red"] and ground["green"] > ground["blue"], "a green"
+
+
+def test_an_add_on_that_takes_no_mesh_surface_still_gets_its_terrain() -> None:
+    """The command's schema refuses a field it does not know, so an add-on
+    built before meshes took a surface answers the whole request with an
+    error. A terrain in one colour is better than none: it is asked again
+    without, and the report says why the roads are not grey."""
+    from sun_study.archicad.context_model import model_context
+    from tests.unit.test_archicad_adapter import FakeTransport
+
+    class OlderAddOn(FakeTransport):
+        def send(self, payload: dict[str, Any]) -> dict[str, Any]:
+            asked = payload.get("parameters", {})
+            inner = asked.get("addOnCommandId", {}).get("commandName")
+            if inner == "CreateMesh" and "surface" in asked.get("addOnCommandParameters", {}):
+                self.sent.append(payload)
+                refusal = {"error": {"code": 4002, "message": "surface is not expected"}}
+                return {"succeeded": True, "result": {"addOnCommandResponse": refusal}}
+            return super().send(payload)
+
+    bundle = site_bundle()
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    connection, transport_ = connect(
+        {
+            "GetAttributesByType": {"attributes": _layer_attributes()},
+            "GetCurrentDatabase": {"databaseId": {"guid": "PLAN"}, "windowType": "FloorPlan"},
+            "GetLayers": {"layers": _layer_states()},
+            "CreateMesh": {"success": True, "guid": "MESH"},
+            "CreateSlabs": {"elements": [{"elementId": {"guid": "SLAB"}}]},
+            "GetDetailsOfElements": {"detailsOfElements": [{"layerIndex": 9}]},
+            "GetElementsByType": {"elements": []},
+            "GetStories": {"stories": [{"index": 0, "level": 0.0}]},
+            "GetGeoLocation": {
+                "projectLocation": {
+                    "latitude": LAT,
+                    "longitude": LON,
+                    "altitude": 0.0,
+                    "north": 0.0,
+                }
+            },
+            "SetPropertyValuesOfElements": {"executionResults": [{"success": True}]},
+            "GetAllProperties": {"properties": []},
+            "GetPropertyValuesOfElements": {"propertyValuesForElements": []},
+        }
+    )
+    older = OlderAddOn(transport_.responses)
+    connection._transport = older
+    report = model_context(connection, bundle, frame)
+
+    asked = older.all_parameters_for("CreateMesh")
+    assert ["surface" in one for one in asked] == [True, False], "once with, then without"
+    assert report.terrain
+    said = [note for note in report.notes if "takes no surface on a mesh" in note]
+    assert len(said) == 1, report.notes
+
+
 def test_the_neighbours_stand_on_the_ground_and_the_sites_own_are_left_out() -> None:
     from sun_study.archicad.context_model import model_context
 
@@ -1117,6 +1217,11 @@ def test_the_neighbours_stand_on_the_ground_and_the_sites_own_are_left_out() -> 
     # The ground on the terrain layer (7), the buildings on theirs (9): a view
     # can show the neighbours without the mesh, or the mesh without them.
     assert mesh["layerIndex"] == 7 and mesh["elementId"] == "SA TERRAIN"
+    # In a surface of its own: what shows between the blocks is the roads, and
+    # in the Mesh tool's default they were the same green as the lots.
+    assert mesh["surface"]["name"] == "LORIINI ROAD"
+    assert set(mesh["surface"]["colour"]) == {"red", "green", "blue"}
+    assert not any("takes no surface" in note for note in report.notes)
     assert len(mesh["levelLines"]) == 2, "both contours lie inside the extent"
     assert mesh["floorIndex"] == 0, "homed on the storey at level zero"
     slabs = transport_.parameters_for("CreateSlabs")["slabs"]
