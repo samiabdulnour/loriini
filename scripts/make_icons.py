@@ -837,6 +837,17 @@ def controls() -> list[Icon]:
     """
     return [
         Icon(
+            "trees",
+            "two trees on the ground: a canopy on a trunk, and a smaller one beside it",
+            [
+                Line(((4, 27), (28, 27)), fill=GREY_D, width=1.3),
+                Line(((12.5, 27), (12.5, 17)), fill=INK, width=1.8),
+                Disc(12.5, 12.5, 7.5, fill="#9CC08C", outline=INK),
+                Line(((23.5, 27), (23.5, 21)), fill=INK, width=1.5, detail=True),
+                Disc(23.5, 18.5, 4.2, fill="#B5CFAA", outline=INK, detail=True),
+            ],
+        ),
+        Icon(
             "run",
             "a plain play button -- a verb, not a thing",
             [

@@ -236,7 +236,10 @@ COMMUNAL_AREAS = "Communal areas"
 #: The two outputs of the site study that are not sheets: geometry on its
 #: own layers, drawn in the panel as geometry.
 CONTEXT_MODEL = "Context model"
-FUTURE_MODEL = "Future model"
+#: What the 3D context's Add row can put in the model beside the terrain and
+#: the neighbours, by the word on its button.
+ADD_TREES = "Trees"
+ADD_FUTURE = "Future context"
 #: And the facade study's output, which is the model coloured in bands of
 #: sun hours -- a skin of 3D elements, not a sheet.
 FACADE_MODEL = "Facade model"
@@ -1286,10 +1289,12 @@ class Toggles(ttk.Frame):
         return button
 
     def widen(self, width: int) -> None:
-        """A row of one button, made as wide as the fields it stands among."""
-        _variable, button = self._items[0]
-        button.grid_configure(sticky="ew")
-        self.columnconfigure(0, minsize=width + 2)
+        """The row made as wide as the fields it stands among, its buttons
+        sharing the width equally."""
+        share = (width + 2) // max(1, len(self._items))
+        for column, (_variable, button) in enumerate(self._items):
+            button.grid_configure(sticky="ew")
+            self.columnconfigure(column, minsize=share, uniform="toggles")
 
     def _flip(self, variable: tk.BooleanVar) -> None:
         variable.set(not variable.get())
@@ -1300,123 +1305,6 @@ class Toggles(ttk.Frame):
     def paint(self) -> None:
         for variable, button in self._items:
             put(button, style="TileOn.TButton" if variable.get() else "Tile.TButton")
-
-
-def colour_hex(value: str) -> str | None:
-    """``#rrggbb`` for a colour given as ``#rrggbb``, ``#rgb`` or ``R,G,B``;
-    ``None`` for anything else -- a blank, or a pen number an older settings
-    file saved."""
-    given = value.strip()
-    if given.startswith("#"):
-        digits = given[1:]
-        if len(digits) == 3:
-            digits = "".join(c * 2 for c in digits)
-        if len(digits) == 6 and all(c in "0123456789abcdefABCDEF" for c in digits):
-            return f"#{digits.lower()}"
-        return None
-    parts = [part.strip() for part in given.split(",")]
-    if len(parts) == 3 and all(part.isdigit() and int(part) <= 255 for part in parts):
-        return "#{:02x}{:02x}{:02x}".format(*(int(part) for part in parts))
-    return None
-
-
-class ColourField(ttk.Frame):
-    """A colour, chosen in the system's colour picker and shown as a swatch.
-
-    In place of a box a pen number was typed into: what a person knows is
-    the colour they want, not which of 255 pens has it. Keeps the Entry
-    interface the settings file round-trips through -- ``get``, ``delete``,
-    ``insert`` -- as ``Chips`` does. Holds ``#rrggbb`` or nothing; a pen
-    number an older settings file saved is kept, shown as that pen and still
-    sent as one.
-    """
-
-    def __init__(
-        self,
-        parent: tk.Misc,
-        *,
-        label: str,
-        empty: str = "none chosen",
-        on_change: Callable[[], None] | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self._value = ""
-        self._label = label
-        self._empty = empty
-        self._changed = on_change
-        self.swatch = tk.Label(
-            self, width=4, relief="solid", borderwidth=1, cursor="hand2", background="#ffffff"
-        )
-        self.swatch.pack(side="left", padx=(0, 8), ipady=2)
-        self.swatch.bind("<Button-1>", lambda _event: self.choose())
-        self.words = ttk.Label(self, style="Hint.TLabel")
-        self.words.pack(side="left", padx=(0, 8))
-        self.picker = ttk.Button(
-            self, text="Choose…", style="Add.TButton", width=0, command=self.choose
-        )
-        self.picker.pack(side="left")
-        self.clearer = ttk.Button(
-            self,
-            text="×",  # noqa: RUF001 - the close cross, not a letter x
-            style="ChipDrop.TButton",
-            width=2,
-            command=self.clear,
-        )
-        Tooltip(
-            self.clearer,
-            f"Clears {label}, so nothing is sent and the project's own default holds.",
-            title=f"Clear {label}",
-        )
-        self._paint()
-
-    # -- what makes it a drop-in for an Entry ------------------------------
-    def get(self) -> str:
-        return self._value
-
-    def delete(self, first: object = 0, last: object = None) -> None:
-        self._value = ""
-        self._paint()
-
-    def insert(self, index: object, value: str) -> None:
-        given = str(value).strip()
-        self._value = colour_hex(given) or given
-        self._paint()
-
-    # -- and what makes it a colour ----------------------------------------
-    def choose(self) -> None:
-        """Open the system's colour picker on the colour held, if any."""
-        from tkinter import colorchooser
-
-        _rgb, picked = colorchooser.askcolor(
-            color=colour_hex(self._value), parent=self, title=self._label
-        )
-        if picked:
-            self._value = colour_hex(str(picked)) or ""
-            self._paint()
-            if self._changed is not None:
-                self._changed()
-
-    def clear(self) -> None:
-        self.delete()
-        if self._changed is not None:
-            self._changed()
-
-    def _paint(self) -> None:
-        hexed = colour_hex(self._value)
-        if hexed:
-            red, green, blue = (int(hexed[i : i + 2], 16) for i in (1, 3, 5))
-            self.swatch.configure(background=hexed, text="")
-            self.words.configure(text=f"{hexed}  ·  rgb {red}, {green}, {blue}")
-        elif self._value:
-            self.swatch.configure(background="#ffffff", text="?")
-            self.words.configure(text=f"pen {self._value}")
-        else:
-            self.swatch.configure(background="#ffffff", text="")
-            self.words.configure(text=self._empty)
-        if self._value:
-            self.clearer.pack(side="left", padx=(4, 0))
-        else:
-            self.clearer.pack_forget()
 
 
 class Chips(ttk.Frame):
@@ -1787,6 +1675,9 @@ class Sheet:
     #: and the future model, which are geometry on their own layers. The
     #: panel draws those as the geometry, with no paper under it.
     paper: bool = True
+    #: What a model carries beyond its own: ``ADD_TREES``, ``ADD_FUTURE``.
+    #: One model and one picture of it, whatever is added (16 November 2026).
+    adds: tuple[str, ...] = ()
 
     @property
     def time(self) -> str:
@@ -2634,7 +2525,7 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     facade model's skin is banded by storey on the heat maps' own ramp, the
     top floors in the most sun and the foot in the neighbours' shade.
     """
-    future = sheet.kind == FUTURE_MODEL
+    future = ADD_FUTURE in sheet.adds
     facade = sheet.kind == FACADE_MODEL
     mid_x, mid_y, k = width * 0.5, height * 0.40, width / 34.0
 
@@ -2767,9 +2658,9 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
                 theme.BLUE,
                 dash=(3, 2),
             )
-    if not facade:
+    if ADD_TREES in sheet.adds:
         # Street trees on the verges, as the model carries them from the
-        # register.
+        # register when Trees is lit.
         for tree_x, tree_y in (
             (-6.5, -5.2),
             (1.5, -5.4),
@@ -2800,8 +2691,11 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     # grow up into the name over it.
     if facade:
         what = "skin banded by hours of sun"
-    elif future:
-        what = "envelopes the controls allow"
+    elif sheet.adds:
+        parts = ["terrain", "neighbours"]
+        parts += ["trees"] if ADD_TREES in sheet.adds else []
+        parts += ["future"] if future else []
+        what = ", ".join(parts)
     else:
         what = "terrain and neighbours in 3D"
     line = f"{sheet.day} · {what}" if sheet.day else what
@@ -5048,7 +4942,7 @@ class Window:
         self.grid_m, row = self._tiles(
             frame,
             row,
-            "Skin cell",
+            "Skin quality",
             "",
             "Finer looks better and makes many more elements — half the cell "
             "size is roughly four times the count, and this project already "
@@ -5198,7 +5092,7 @@ class Window:
         self.instants, row = self._ticks_row(
             frame,
             row,
-            "Plan times",
+            "Hours on plans",
             "The times of day to draw the sun's patch on the floor for.",
             "One floor-plan drawing per time. Nine, twelve and three are the "
             "conventional set. Each one adds a set of views, so a long row "
@@ -5210,7 +5104,7 @@ class Window:
         self.floor_grid, row = self._tiles(
             frame,
             row,
-            "Floor grid",
+            "Drawing quality",
             "",
             "How finely each apartment's floor is sampled for the sun patches "
             "and the heat map. It changes the drawings, not the ADG figure: the "
@@ -5269,7 +5163,7 @@ class Window:
         self.communal_window, row = self._ticks_row(
             frame,
             row,
-            "Communal window",
+            "Hours assessed",
             "The hours assessed for the communal study: press the first and the last.",
             "The ADG measures 09:00 to 15:00, and that is what the apartment "
             "study uses whatever is typed here. A council DCP may ask for a "
@@ -5285,7 +5179,7 @@ class Window:
         self.communal_hours, row = self._entry(
             frame,
             row,
-            "Communal threshold",
+            "Minimum hours",
             "2",
             "Hours. Draws a second plan: what clears this, and what does not.",
             "Seven bands say how the hours spread across the space. What a "
@@ -5296,7 +5190,7 @@ class Window:
         self.communal_height, row = self._entry(
             frame,
             row,
-            "Communal height",
+            "Height above ground (m)",
             "0",
             "Metres above the ground to assess. 0 is at ground level.",
             "The height a person's sunlight is measured at. 0 means on the "
@@ -5311,7 +5205,7 @@ class Window:
         self.communal_grid, row = self._tiles(
             frame,
             row,
-            "Communal grid",
+            "Map quality",
             "",
             "Half a metre reads a courtyard properly; 0.25 m is for a narrow "
             "terrace, or an area figure that sits close to the threshold, at "
@@ -5476,15 +5370,14 @@ class Window:
             "live drawings on one layout, which a large project may not open. Worksheet "
             "fills needs legend rows; without them the plain set is drawn either way.",
         )
-        #: What a compared row is called, seen under and hatched in, by the
+        #: What a compared row is called and seen under, by the
         #: row's short name: an envelope an office keeps as a renovation
         #: filter (Archicad 26) or a design option (27 on), and wants told
         #: apart from the proposal on paper. Shown only for a row with layers
         #: chosen (``_shadow_row_fields``): a row without them is not drawn,
-        #: and three fields about it are three questions about nothing.
+        #: and two fields about it are two questions about nothing.
         self.shadow_row_names: dict[str, ttk.Entry] = {}
         self.shadow_row_filters: dict[str, ttk.Combobox] = {}
-        self.shadow_row_hatches: dict[str, ttk.Combobox] = {}
         self.shadow_row_groups: dict[str, list[tk.Widget]] = {}
         self.shadow_documents_panel = frame
         for short, role, title, _hint, _detail in SHADOW_LEGEND_ROWS:
@@ -5516,18 +5409,6 @@ class Window:
             self.scenario_labels[self._label_at(frame, at)] = (
                 f"{title} filter",
                 f"{title} design option",
-            )
-            self.shadow_row_hatches[short], row = self._combo(
-                frame,
-                row,
-                f"{title} hatch",
-                f"The fill type {title} is drawn in, with worksheet fills. Blank: Dashed.",
-                "A hatch tells an envelope from the proposal where two pale blues would "
-                "not. Its lines are the colour of the row's dashed outline, over the "
-                "row's blue. Blank is the project's Dashed fill, or solid where it has "
-                "none; choose Solid Fill for a row with no hatch. Pick a "
-                "scale-independent fill with lines well apart: one that is fine on a "
-                "plan prints solid at 1:1500.",
             )
             self.shadow_row_groups[short] = [
                 child
@@ -5566,17 +5447,6 @@ class Window:
             "combination, and a name tells two such sets apart: Existing, "
             "Proposed. With legend rows each set is named for its row, and "
             "this is not used. Blank names neither.",
-        )
-        self.shadow_plan_pen, row = self._colour_row(
-            frame,
-            row,
-            "Shadow colour",
-            "The colour the shadows are filled in, for a set without the legend.",
-            "Choose it in the colour picker. A 3D Document fills its shadows with a "
-            "pen, so the run takes the pen of the pen set above -- or the project's "
-            "own -- nearest the colour, and says which in the log. With legend rows "
-            "each row takes the pen nearest its legend colour and this is not used. "
-            "None keeps the project's defaults for new 3D Documents.",
         )
 
     def _shadow_every_hour(self, outer: ttk.Frame, at: int) -> None:
@@ -5659,7 +5529,7 @@ class Window:
         self.shadow_grid, row = self._tiles(
             frame,
             row,
-            "Shadow grid",
+            "Shadow quality",
             "",
             "How closely the ground is sampled: the same four steps as every "
             "solar grid. The edges are traced to the true shadow line at any "
@@ -5852,6 +5722,7 @@ class Window:
         self.do_site_summary = tk.BooleanVar(value=False)
         self.do_site_model = tk.BooleanVar(value=False)
         self.do_site_future = tk.BooleanVar(value=False)
+        self.do_site_trees = tk.BooleanVar(value=False)
         self.do_site_location = tk.BooleanVar(value=True)
         self.site_buttons: dict[str, ttk.Button] = {}
 
@@ -5898,6 +5769,19 @@ class Window:
             "another suburb is refused rather than drawn. A unit number is "
             "taken as its building; a ranged number as every lot in the range.",
         )
+        self.site_lot, row = self._entry(
+            frame,
+            row,
+            "Site lot",
+            "",
+            "Only when the address is on more than one lot: the lot, e.g. 34//DP1206876.",
+            "The register sometimes holds one address on two lots at once -- "
+            "22A O'Connell Street, Parramatta is on two, 150 m apart -- and the "
+            "run then stops and lists them. Type the right one here, as on the "
+            "title; several, separated by commas. The address then only titles "
+            "the sheets, and the Yield study reads its area and FSR on these lots.",
+        )
+
         row = self._site_toggles(
             frame,
             row,
@@ -6052,9 +5936,22 @@ class Window:
         row = self._site_toggles(
             frame,
             row,
-            "Future",
-            "What the controls allow next door, stood in the model beside it.",
+            "Add",
+            "What else goes in the model: the trees, and what the controls allow next door.",
             (
+                (
+                    self.do_site_trees,
+                    ADD_TREES,
+                    "Trees (an object each, as wide as its canopy)",
+                    "Every tree the registers record within the radius below -- the "
+                    "council's inventory where it keeps one, OpenStreetMap's elsewhere "
+                    "-- placed as the library's Conceptual Tree Model object, as wide "
+                    "as its canopy and as tall as recorded, standing on the terrain, "
+                    "on 'Site Context.Trees': a layer of its own, so a shadow diagram "
+                    "can leave them out. The site's own trees are not placed. A "
+                    "project whose library has no such object gets the model without "
+                    "them, and the run says so.",
+                ),
                 (
                     self.do_site_future,
                     "Future context",
@@ -6258,7 +6155,7 @@ class Window:
         self.yield_slabs, row = self._tiles(
             frame,
             row,
-            "Use told by",
+            "Floor use",
             "How a slab's use is told: by the level it stands on, or by its layer.",
             "By level: the slabs on the massing layers you choose, each one commercial "
             "on the commercial levels and residential on every other. By layer: a layer "
@@ -6706,8 +6603,14 @@ class Window:
         self.queue_line.grid(row=0, column=1, sticky="w", padx=(PAD * 2, 0))
         # Whose build this is, and until when. The prototype disclaimer is
         # still on every sheet and in every export, where the numbers are.
-        ttk.Label(bar, text=credential(), style="ChromeHint.TLabel").grid(
-            row=0, column=2, sticky="e", padx=(PAD, PAD * 2)
+        self.credential_line = ttk.Label(bar, text=credential(), style="ChromeHint.TLabel")
+        self.credential_line.grid(row=0, column=2, sticky="e", padx=(PAD, PAD * 2))
+        # Said again when the info box changes the licence -- another key, or
+        # a log-out and a new key -- rather than at the next start.
+        self.root.bind(
+            licence_box.LICENCE_CHANGED,
+            lambda _event: self.credential_line.configure(text=credential()),
+            add="+",
         )
         self.cancel = ttk.Button(
             bar,
@@ -7137,6 +7040,7 @@ class Window:
     TEXT_FIELDS = frozenset(
         {
             "Address",
+            "Site lot",
             "Custom day",
             "Set name",
         }
@@ -7265,21 +7169,6 @@ class Window:
         line = self._hint(parent, row + 1, hint)
         Tooltip(name, detail, title=label, short=self._saying(line))
         return made, row + 1
-
-    def _colour_row(
-        self, parent: ttk.Frame, row: int, label: str, hint: str, detail: str
-    ) -> tuple[ColourField, int]:
-        """A colour: the label, then a swatch and the picker that sets it."""
-        name = ttk.Label(parent, text=label, anchor="e")
-        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
-        field = ColourField(
-            parent, label=label, empty="none: the project's default", on_change=self._sync
-        )
-        field.grid(row=row, column=1, sticky="w", pady=(6, 0))
-        line = self._hint(parent, row + 1, hint)
-        for target in (name, field.swatch, field.picker):
-            Tooltip(target, detail, title=label, short=self._saying(line))
-        return field, row + 1
 
     def _picker(
         self,
@@ -7832,7 +7721,7 @@ class Window:
         self._dock_opened_empty = not shut and self._dock_empty
 
     # -- settings that outlive the window ------------------------------------
-    def _fields(self) -> dict[str, ttk.Entry | Tiles | Ticks | Chips | ColourField]:
+    def _fields(self) -> dict[str, ttk.Entry | Tiles | Ticks | Chips]:
         """Every typed or chosen setting, under a name that survives a rename.
 
         Written out here rather than gathered off the widget tree, because the
@@ -7896,13 +7785,8 @@ class Window:
                 f"shadow_row_filter_{short.lower().replace(' ', '_')}": box
                 for short, box in self.shadow_row_filters.items()
             },
-            **{
-                f"shadow_row_hatch_{short.lower().replace(' ', '_')}": box
-                for short, box in self.shadow_row_hatches.items()
-            },
             "shadow_plan_label": self.shadow_plan_label,
             "shadow_plan_pen_set": self.shadow_plan_pen_set,
-            "shadow_plan_pen": self.shadow_plan_pen,
             "shadow_hours_colour": self.shadow_hours_colour,
             "shadow_grid": self.shadow_grid,
             "eye_pen_set": self.eye_pen_set,
@@ -7913,6 +7797,7 @@ class Window:
             "eye_hours": self.eye_hours,
             "eye_step": self.eye_step,
             "site_address": self.site_address,
+            "site_lot": self.site_lot,
             "site_scale": self.site_scale,
             "site_theme": self.site_theme,
             "site_site_theme": self.site_site_theme,
@@ -7987,6 +7872,7 @@ class Window:
             "site_summary": self.do_site_summary,
             "site_model": self.do_site_model,
             "site_future": self.do_site_future,
+            "site_trees": self.do_site_trees,
             "site_location": self.do_site_location,
             "study_yield": self.do_yield,
             "study_qa": self.do_qa,
@@ -8211,7 +8097,7 @@ class Window:
                 widget.grid_remove()
 
     def _shadow_row_fields(self) -> None:
-        """Show a compared row's name, option and hatch only once the row has
+        """Show a compared row's name and option only once the row has
         layers chosen: without them it is not drawn."""
         groups = getattr(self, "shadow_row_groups", None)
         if not groups:
@@ -8499,8 +8385,6 @@ class Window:
         for box in self.shadow_row_filters.values():
             self._fill(box, ("", *scenarios), ())
         self._scenario_words()
-        for box in self.shadow_row_hatches.values():
-            self._fill(box, ("", *found.fills), ())
         self._fill(self.shadow_study_subset, found.subsets, ())
         for box in (self.qa_from_storey, self.qa_to_storey):
             self._fill(box, ("", *found.storey_names), ())
@@ -8746,7 +8630,7 @@ class Window:
     #: heat map and the apartment total together before they were two.
     TILE_ALIASES: ClassVar[dict[str, dict[str, tuple[str, ...]]]] = {
         # The four answers of D140, saved before D183, as the two now.
-        "Use told by": {
+        "Floor use": {
             "Every slab showing": ("By level",),
             "Slabs on chosen layers": ("By level",),
             "A layer per use": ("By layer",),
@@ -8770,7 +8654,7 @@ class Window:
     #: that a row of three still fits beside its label, and the same words
     #: the tooltip opens with so the two never disagree.
     TILE_WORDS: ClassVar[dict[str, dict[str, str]]] = {
-        "Use told by": {
+        "Floor use": {
             "By level": "By level",
             "By layer": "By layer",
         },
@@ -8789,10 +8673,10 @@ class Window:
             "Two layouts, half each": "Two layouts",
             "A layout per drawing": "One per drawing",
         },
-        "Skin cell": GRID_WORDS,
-        "Communal grid": GRID_WORDS,
-        "Shadow grid": GRID_WORDS,
-        "Floor grid": GRID_WORDS,
+        "Skin quality": GRID_WORDS,
+        "Map quality": GRID_WORDS,
+        "Shadow quality": GRID_WORDS,
+        "Drawing quality": GRID_WORDS,
         "Glass": {"off": "Solid", "30": "All glass", "80": "Clear only"},
         "Site lands at": {
             "Project location": "Project location",
@@ -8845,7 +8729,7 @@ class Window:
         # coarseness, and four drawings say which way is finer without a word.
         # The same four steps on every solar grid -- 1, 0.5, 0.25 and 0.1 m --
         # so Detailed means one thing whichever study it is chosen in.
-        "Skin cell": (
+        "Skin quality": (
             ("1.0", "grid_rough", "Rough — 1 m cells. Fast, and it loses anything narrower."),
             (
                 "0.5",
@@ -8867,7 +8751,7 @@ class Window:
                 "building, not a whole site.",
             ),
         ),
-        "Communal grid": (
+        "Map quality": (
             ("1.0", "grid_rough", "Rough — samples every 1 m."),
             (
                 "0.5",
@@ -8889,7 +8773,7 @@ class Window:
         ),
         # The every-hour drawing's ground (D161). The same four again; the
         # command's own is 1 m, and Normal is what the window starts on.
-        "Shadow grid": (
+        "Shadow quality": (
             ("1.0", "grid_rough", "Rough — samples every 1 m. Quick; misses anything narrower."),
             ("0.5", "grid_normal", "Normal — samples every 0.5 m."),
             (
@@ -8907,7 +8791,7 @@ class Window:
         # The apartments' floor: the sun patches and the heat map. The same
         # four as the other rows; the study has always gridded it at 0.25 m,
         # which is Detailed, and Rough draws a flat's sun patch in blocks.
-        "Floor grid": (
+        "Drawing quality": (
             (
                 "1.0",
                 "grid_rough",
@@ -8945,7 +8829,7 @@ class Window:
                 "tinted and frosted glass still cast shade.",
             ),
         ),
-        "Use told by": (
+        "Floor use": (
             (
                 "By level",
                 "site",
@@ -9257,23 +9141,27 @@ class Window:
             # are geometry on their own layers, and the panel draws them as
             # that. One radius, which the future context reaches too.
             radius = self.site_radius.get().strip() or "500"
-            for kind, on, extent in (
-                (CONTEXT_MODEL, True, f"{radius} m"),
-                (FUTURE_MODEL, self.do_site_future.get(), f"{radius} m reach"),
-            ):
-                if on:
-                    made.append(
-                        Sheet(
-                            study="Site analysis",
-                            glyph="site",
-                            number="",
-                            kind=kind,
-                            day=extent,
-                            drawings=(Drawing(kind=kind, day="", time=""),),
-                            job=SITE_MODEL_JOB,
-                            paper=False,
-                        )
-                    )
+            adds = tuple(
+                word
+                for word, lit in (
+                    (ADD_TREES, self.do_site_trees.get()),
+                    (ADD_FUTURE, self.do_site_future.get()),
+                )
+                if lit
+            )
+            made.append(
+                Sheet(
+                    study="Site analysis",
+                    glyph="site",
+                    number="",
+                    kind=CONTEXT_MODEL,
+                    day=f"{radius} m",
+                    drawings=(Drawing(kind=CONTEXT_MODEL, day="", time=""),),
+                    job=SITE_MODEL_JOB,
+                    paper=False,
+                    adds=adds,
+                )
+            )
 
         if YIELD_JOB in queued:
             # A sheet an option, at no hour: the table, and the massing beside
@@ -9589,19 +9477,19 @@ class Window:
                     "the building, one colour per band of sun hours, on its own "
                     "layers -- the massing-stage answer, read in the 3D window."
                 )
-            elif sheet.kind == FUTURE_MODEL:
-                detail = (
-                    f"The envelopes the controls allow on the lots within "
-                    f"{sheet.day} of the site, at the street setback, as 3D geometry on "
-                    "its own layers -- what could stand next door, for the shadow "
-                    "diagrams to cast."
-                )
             else:
                 detail = (
                     f"The terrain and the buildings within {sheet.day} of the "
                     "site, as 3D geometry on its own layers from NSW open data -- the "
                     "context every other study casts against."
                 )
+                if ADD_TREES in sheet.adds:
+                    detail += " With the trees the registers record, an object each."
+                if ADD_FUTURE in sheet.adds:
+                    detail += (
+                        " With the envelopes the controls allow next door, dashed, on "
+                        "a layer of their own for the shadow diagrams to cast."
+                    )
             self.info.show(
                 sheet.glyph,
                 sheet.kind,
@@ -9678,9 +9566,10 @@ class Window:
         return typed or short
 
     def _row_extras(self, legend: Sequence[str]) -> list[str]:
-        """The compared rows' renovation filters or design options, and their
-        hatches, as the documents' command takes them, for the rows that are
-        in ``legend``."""
+        """The compared rows' renovation filters or design options, as the
+        documents' command takes them, for the rows that are in ``legend``.
+        A row's hatch and outline are not asked: the proposal is solid, and
+        each row compared with it is dashed in a colour of its own."""
         named = {entry.partition("=")[0] for entry in legend if "=" in entry}
         args: list[str] = []
         flag = "--scenario-option" if self._design_options() else "--scenario-filter"
@@ -9688,10 +9577,6 @@ class Window:
             name = self._row_name(short)
             if name in named and box.get().strip():
                 args += [flag, f"{name}={box.get().strip()}"]
-        for short, box in self.shadow_row_hatches.items():
-            name = self._row_name(short)
-            if name in named and box.get().strip():
-                args += ["--scenario-fill", f"{name}={box.get().strip()}"]
         return args
 
     def _designed_row(self) -> str:
@@ -9970,11 +9855,6 @@ class Window:
                 if self._shadow_storey_index():
                     args += ["--every-hour-storey", self._shadow_storey_index()]
             plain_only = ("--label",)
-            # The colour picked, or a pen number an older settings file kept;
-            # either is for a set without the legend.
-            shadow = self.shadow_plan_pen.get().strip()
-            if shadow and not legend:
-                args += ["--shadow-colour" if colour_hex(shadow) else "--shadow-pen", shadow]
             for flag, field in (
                 ("--layer-combination", self.shadow_plan_combination),
                 ("--label", self.shadow_plan_label),
@@ -10108,6 +9988,7 @@ class Window:
             *common,
             *self._prefix_flag(self.prefix_site),
             *self._flag("--context-prefix", self.prefix_context),
+            *self._flag("--lot", self.site_lot),
         ]
         # Placed by each panel's Origin and North and by nothing else
         # (D158): the fit to a boundary drawn in the file overrode both
@@ -10146,6 +10027,8 @@ class Window:
         runs: list[tuple[str, list[str]]] = []
         if self.do_site_model.get():
             args = [*only(""), "--model", "--model-radius", radius]
+            if self.do_site_trees.get():
+                args += ["--trees"]
             if future:
                 args += ["--future", "--future-reach", radius]
             levels = self.site_levels.get().strip()
@@ -10451,7 +10334,7 @@ class Window:
             )
         )
         if address and not (self.yield_site_area.get().strip() and permissible):
-            args += ["--address", address]
+            args += ["--address", address, *self._flag("--lot", self.site_lot)]
         # Every type goes, a share of nothing included: the sheet shows the
         # type on its own row either way.
         defaults = {name: size for name, _share, size in MIX_ROWS}

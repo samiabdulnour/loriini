@@ -108,6 +108,9 @@ ROADS_PART = "Site Context.Roads"
 showing between them, which is how the office's own files draw them."""
 BUILDINGS_PART = "Site Context.Buildings"
 FUTURE_PART = "Site Context.Future buildings"
+TREES_PART = "Site Context.Trees"
+"""The trees, an object each. A layer of their own: a tree casts a shadow no
+shadow diagram is asked about, and a model for looking at wants them."""
 
 #: The single layer every part went on before they were split. Still named so
 #: a message can tell somebody where an older run's model is.
@@ -242,6 +245,11 @@ def roads_layer() -> str:
 def buildings_layer() -> str:
     """Where the neighbouring buildings go."""
     return _in_context_group(BUILDINGS_PART)
+
+
+def trees_layer() -> str:
+    """Where the trees go."""
+    return _in_context_group(TREES_PART)
 
 
 def context_layer() -> str:

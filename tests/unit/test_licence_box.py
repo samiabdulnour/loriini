@@ -265,3 +265,99 @@ def test_the_info_box_says_whose_licence_in_a_keyed_build(keyed: Path, root: Any
         assert box._holder.cget("text").startswith("Licensed: licence 0042, Fuse Architects")
     finally:
         box._close()
+
+
+# -- logging out --------------------------------------------------------------------------
+
+
+def _log_out(root: Any, window: Any, monkeypatch: pytest.MonkeyPatch, answer: Any) -> list[str]:
+    """Press Log out in the info box over ``window``, say yes, and let it run
+    until the box has gone. What the licence box was told, each time it was
+    asked; ``answer`` is what it gives back."""
+    import time
+    from tkinter import messagebox
+
+    from sun_study.app import about, theme
+
+    told: list[str] = []
+
+    def ask(parent: Any, *, first: bool = False, said: str = "") -> Any:
+        assert first, "asked as a first start is"
+        told.append(said)
+        return answer() if callable(answer) else answer
+
+    monkeypatch.setattr(messagebox, "askokcancel", lambda *a, **k: True)
+    monkeypatch.setattr(licence_box, "ask", ask)
+    theme.apply(root)
+    box = about.show(window)
+    try:
+        assert box._log_out.grid_info(), "Log out is there for a key held"
+        box._log_out_asked()
+        deadline = time.monotonic() + 15
+        while box.winfo_exists() and time.monotonic() < deadline:
+            root.update()
+            time.sleep(0.02)
+    finally:
+        if box.winfo_exists():
+            box._close()
+    return told
+
+
+def test_logging_out_frees_the_seat_and_asks_for_a_key_again(
+    root: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from tests.unit.licence_service_helpers import online
+
+    with online(monkeypatch, tmp_path) as service:
+        issued = service.issue(seats=4)
+        licence.install(issued.key)
+        licence.renew()
+        window = tk.Toplevel(root)
+        told = _log_out(root, window, monkeypatch, None)
+
+        [computer] = service.store.computers(issued.serial)
+        assert computer.freed is not None, "the seat was freed with the service"
+    assert not licence.key_path().exists()
+    assert len(told) == 1 and told[0].startswith("Logged out. Removed the licence key")
+    assert told[0].endswith("Its seat is free for another computer.")
+    assert not window.winfo_exists(), "closed without a key, the window goes with the box"
+
+
+def test_a_key_given_after_logging_out_brings_the_window_back_and_says_so(
+    keyed: Path, root: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    licence.install(_key())
+    window = tk.Toplevel(root)
+    changed: list[bool] = []
+    window.bind(licence_box.LICENCE_CHANGED, lambda _event: changed.append(True))
+    another = _key(expires=dt.date(2099, 1, 1))
+
+    try:
+        told = _log_out(root, window, monkeypatch, lambda: licence.install(another))
+
+        assert len(told) == 1 and told[0].startswith("Logged out.")
+        assert window.winfo_exists() and window.state() == "normal"
+        assert changed, "the window was told, so its foot says whose licence now"
+        assert keyed.read_text(encoding="utf-8").strip() == another
+    finally:
+        window.destroy()
+
+
+def test_a_log_out_called_off_keeps_the_key(
+    keyed: Path, root: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tkinter import messagebox
+
+    from sun_study.app import about, theme
+
+    licence.install(_key())
+    monkeypatch.setattr(messagebox, "askokcancel", lambda *a, **k: False)
+    theme.apply(root)
+    box = about.show(root)
+    try:
+        box._log_out_asked()
+        assert box._waiting is None, "nothing started"
+        assert keyed.exists()
+        assert licence.standing().usable
+    finally:
+        box._close()

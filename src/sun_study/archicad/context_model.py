@@ -94,8 +94,21 @@ KERB_M = 0.15
 #: hatch on the context analysis finds the same colour in the model.
 HERITAGE_SURFACE = "LORIINI HERITAGE"
 HERITAGE_RGB = (0.663, 0.482, 0.247)
+#: What the terrain mesh and the street blocks stand in. The terrain is what
+#: shows between the blocks, which is the roads; the blocks are the ground the
+#: buildings stand on. Both were in the Mesh tool's own surface until 11
+#: November 2026, which on the Australian template is grass: a model that was
+#: one green, where a road could not be told from a lot.
+ROAD_SURFACE = "LORIINI ROAD"
+ROAD_RGB = (0.45, 0.46, 0.48)
+GROUND_SURFACE = "LORIINI GROUND"
+GROUND_RGB = (0.55, 0.65, 0.42)
 #: Every surface the model names, with its colour, by name.
-SURFACES: dict[str, tuple[float, float, float]] = {HERITAGE_SURFACE: HERITAGE_RGB}
+SURFACES: dict[str, tuple[float, float, float]] = {
+    HERITAGE_SURFACE: HERITAGE_RGB,
+    ROAD_SURFACE: ROAD_RGB,
+    GROUND_SURFACE: GROUND_RGB,
+}
 
 #: How far the terrain's skirt drops below its lowest point.
 SKIRT_M = 2.0
@@ -123,6 +136,9 @@ class ContextModelReport:
     roads_layer: str = ""
     heritage: int = 0
     """Neighbours on a heritage item, stood in ``HERITAGE_SURFACE``."""
+    trees: int = 0
+    """Trees placed as objects, each as wide as its canopy."""
+    trees_layer: str = ""
 
     def describe(self) -> str:
         made = f"one mesh from {self.contours} contours"
@@ -145,6 +161,8 @@ class ContextModelReport:
                 else ""
             ),
         ]
+        if self.trees:
+            lines.append(f"  trees: {self.trees} objects on {self.trees_layer!r}")
         lines.extend(f"    {note}" for note in self.notes)
         return "\n".join(lines)
 
@@ -302,7 +320,20 @@ class _Heights:
 
 
 #: What the context model's own elements are marked with.
-OWN_IDS: tuple[str, ...] = ("SA NEIGHBOUR", "SA TERRAIN", "SA BLOCK")
+OWN_IDS: tuple[str, ...] = ("SA NEIGHBOUR", "SA TERRAIN", "SA BLOCK", "SA TREE")
+
+#: What a tree in the model is marked with.
+TREE_ID = "SA TREE"
+#: The library part a tree is placed as, by Archicad's version: the library
+#: carried the version in each part's name until 27 dropped it. A light
+#: object -- a trunk and a canopy -- so a thousand of them still turn.
+TREE_PARTS: tuple[str, ...] = ("Conceptual Tree Model {version}", "Conceptual Tree Model")
+#: Trees in one ``CreateObjects``.
+TREE_BATCH = 200
+#: A tree nobody measured is this much taller than its canopy is wide, and
+#: no tree is drawn shorter or taller than these.
+TREE_HEIGHT_PER_CANOPY = 1.3
+TREE_HEIGHTS_M = (3.0, 35.0)
 
 
 def _clear_previous(connection: ArchicadConnection, prefixes: Sequence[str] = OWN_IDS) -> int:
@@ -317,7 +348,9 @@ def _clear_previous(connection: ArchicadConnection, prefixes: Sequence[str] = OW
     """
     wanted = tuple(prefixes)
     doomed: list[dict[str, Any]] = []
-    for kind in ("Slab", "Mesh"):
+    # Objects are looked through only for a run that owns some: the trees.
+    kinds = ("Slab", "Mesh", "Object") if TREE_ID in wanted else ("Slab", "Mesh")
+    for kind in kinds:
         found = connection.run_tapir("GetElementsByType", {"elementType": kind})
         # Blocks carry "SA BLOCK n"; they go with the rest.
         elements = found.get("elements") if isinstance(found, dict) else None
@@ -560,6 +593,7 @@ def _block_meshes(
     floor_level: float,
     datum_m: float = 0.0,
     terrain_lines: Sequence[tuple[float, Sequence[Point]]] = (),
+    notes: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """One kerbed mesh per block, draped over the ground the terrain mesh is:
     its outline sampled every few metres, and the terrain's own level lines
@@ -570,6 +604,9 @@ def _block_meshes(
     made: list[dict[str, Any]] = []
     problems: list[str] = []
     lift = KERB_M - floor_level - datum_m
+    # Asked for until one is refused: an add-on that takes no surface on a
+    # mesh takes none on the next, and each refusal is a request wasted.
+    surfaced = True
     for i, ring in enumerate(blocks):
         outline = [{"x": x, "y": y, "z": ground.at((x, y)) + lift} for x, y in _densified(ring)]
         inside = [
@@ -578,8 +615,8 @@ def _block_meshes(
         ]
         lowest = min([p["z"] for p in outline] + [line[0]["z"] for line in inside])
         try:
-            answer = connection.run_loriini(
-                "CreateMesh",
+            answer, took = _create_mesh(
+                connection,
                 {
                     "outline": outline,
                     "levelLines": inside,
@@ -589,7 +626,9 @@ def _block_meshes(
                     "floorIndex": floor_index,
                     "elementId": f"SA BLOCK {i + 1}",
                 },
+                GROUND_SURFACE if surfaced else None,
             )
+            surfaced = surfaced and took
         except ArchicadError as error:
             problems.append(str(error))
             continue
@@ -597,7 +636,37 @@ def _block_meshes(
             made.append({"elementId": {"guid": str(answer["guid"])}})
         else:
             problems.append(str(answer))
+    if made and not surfaced and notes is not None and _NO_MESH_SURFACE not in notes:
+        notes.append(_NO_MESH_SURFACE)
     return made, problems
+
+
+#: Said once a run when the add-on installed is older than the surfaces.
+_NO_MESH_SURFACE = (
+    "this add-on takes no surface on a mesh, so the roads and the blocks are both in the "
+    "Mesh tool's own; a newer add-on colours them apart."
+)
+
+
+def _create_mesh(
+    connection: ArchicadConnection, request: dict[str, Any], surface: str | None
+) -> tuple[Any, bool]:
+    """Loriini's ``CreateMesh``, in a surface where the add-on takes one.
+
+    The command's schema refuses a field it does not know, so an add-on built
+    before meshes took a surface answers the whole request with an error. It
+    is asked again without, and the caller told the surface was not taken:
+    a model in one colour is better than no model. A refusal that was about
+    something else comes back from the second request as it did the first.
+    """
+    if surface is not None:
+        try:
+            with_surface = {**request, "surface": _surface_request(surface)}
+            return connection.run_loriini("CreateMesh", with_surface), True
+        except ArchicadError as error:
+            if "not have the registered" in str(error):
+                raise
+    return connection.run_loriini("CreateMesh", request), False
 
 
 #: What ``--datum`` takes, and what each means as a level to subtract.
@@ -724,6 +793,7 @@ def _terrain(
     layer_index: int,
     datum_m: float = 0.0,
     ground: _Ground | None = None,
+    notes: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], MeshLines]:
     """One Mesh: the model's square at ground level, with the contours as its
     level lines. Returns what was made and how the lines were chosen."""
@@ -746,8 +816,8 @@ def _terrain(
     # for every mesh on Archicad 26 (measured), so it is only the fallback
     # for an add-on built before the command existed.
     try:
-        answer = connection.run_loriini(
-            "CreateMesh",
+        answer, took = _create_mesh(
+            connection,
             {
                 "outline": outline,
                 "levelLines": [s["coordinates"] for s in sublines],
@@ -757,9 +827,12 @@ def _terrain(
                 "floorIndex": floor_index,
                 "elementId": "SA TERRAIN",
             },
+            ROAD_SURFACE,
         )
         guid = str(answer.get("guid", "")) if isinstance(answer, dict) else ""
         if guid:
+            if not took and notes is not None and _NO_MESH_SURFACE not in notes:
+                notes.append(_NO_MESH_SURFACE)
             return [{"elementId": {"guid": guid}}], lines
         raise ArchicadError(f"CreateMesh answered {answer!r}")
     except ArchicadError as error:
@@ -826,6 +899,7 @@ def model_context(
     terrain: bool = True,
     buildings: bool = True,
     blocks: bool = True,
+    trees: bool = False,
     storey_m: float = STOREY_M,
     datum_m: float | None = None,
     say: Callable[[str], None] | None = None,
@@ -858,7 +932,14 @@ def model_context(
             try:
                 assert ground_layer is not None
                 _, lines = _terrain(
-                    connection, bundle, frame, contours, ground_layer.index, datum, ground=ground
+                    connection,
+                    bundle,
+                    frame,
+                    contours,
+                    ground_layer.index,
+                    datum,
+                    ground=ground,
+                    notes=notes,
                 )
                 made_terrain = True
             except ArchicadError as error:
@@ -887,6 +968,7 @@ def model_context(
                     if contours
                     else ()
                 ),
+                notes=notes,
             )
             made_blocks = len(block_meshes)
             if refused:
@@ -966,8 +1048,30 @@ def model_context(
     made = [] if outcome is None else [element for element, _ in outcome.made]
     if outcome is not None:
         notes.extend(outcome.describe())
+    planted: list[dict[str, Any]] = []
+    trees_layer = ""
+    if trees:
+        if not bundle.furniture.trees:
+            notes.append("no trees are recorded here; none are placed.")
+        else:
+            tree_layer = ensure_layer(connection, naming.trees_layer())
+            trees_layer = tree_layer.name
+            planted = _trees(
+                connection,
+                bundle,
+                frame,
+                ground,
+                datum,
+                tree_layer.index,
+                floor_index,
+                site_rings,
+                notes,
+            )
     notes.extend(
-        _grouped(connection, [(block_meshes, "street blocks"), (made, "neighbouring buildings")])
+        _grouped(
+            connection,
+            [(block_meshes, "street blocks"), (made, "neighbouring buildings"), (planted, "trees")],
+        )
     )
     if say:
         say(
@@ -989,7 +1093,97 @@ def model_context(
         terrain_layer=ground_layer.name if ground_layer is not None else "",
         roads_layer=roads_layer.name if roads_layer is not None else "",
         heritage=listed,
+        trees=len(planted),
+        trees_layer=trees_layer,
     )
+
+
+def tree_height_m(canopy_m: float, height_m: float | None) -> float:
+    """How tall a tree is drawn: as recorded, or by its canopy where nobody
+    measured it, and never outside what a tree is."""
+    low, high = TREE_HEIGHTS_M
+    tall = height_m if height_m and height_m > 0 else canopy_m * TREE_HEIGHT_PER_CANOPY
+    return min(high, max(low, tall))
+
+
+def _trees(
+    connection: ArchicadConnection,
+    bundle: SiteBundle,
+    frame: Frame,
+    ground: _Ground,
+    datum: float,
+    layer_index: int,
+    floor_index: int,
+    site_rings: Sequence[Sequence[Point]],
+    notes: list[str],
+) -> list[dict[str, Any]]:
+    """The trees as objects, each as wide as its canopy and standing on the
+    ground under it: the created elements.
+
+    The site's own trees are left out, as its buildings are: what stands
+    there is what the proposal replaces. The library part is found by
+    placing the first tree, under each name the library may know it by; a
+    project whose library has none gets a note and no trees, never a failed
+    model.
+    """
+    wanted: list[dict[str, Any]] = []
+    for tree in bundle.furniture.trees:
+        x, y = frame.project(tree.lon, tree.lat)
+        if any(point_in_ring(x, y, site) for site in site_rings):
+            continue
+        wanted.append(
+            {
+                "coordinates": {"x": x, "y": y, "z": ground.at((x, y)) - datum},
+                "dimensions": {
+                    "x": tree.canopy_m,
+                    "y": tree.canopy_m,
+                    "z": tree_height_m(tree.canopy_m, tree.height_m),
+                },
+                "floorIndex": floor_index,
+            }
+        )
+    if not wanted:
+        notes.append("the only trees recorded are on the site; none are placed.")
+        return []
+
+    def place(part: str, some: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+        response = connection.run_tapir(
+            "CreateObjects",
+            {"objectsData": [{"libraryPartName": part, **one} for one in some]},
+        )
+        return _elements(response, "CreateObjects")
+
+    version = connection.archicad_version
+    names = list(dict.fromkeys(name.format(version=version or "").strip() for name in TREE_PARTS))
+    part = None
+    made: list[dict[str, Any]] = []
+    refused = ""
+    for name in names:
+        try:
+            made = place(name, wanted[:1])
+        except ArchicadError as error:
+            refused = str(error)
+            continue
+        if made:
+            part = name
+            break
+    if part is None:
+        notes.append(
+            f"no trees placed: the project's library has no {names[-1]!r} object"
+            + (f" ({refused[:120]})" if refused else "")
+        )
+        return []
+    for start in range(1, len(wanted), TREE_BATCH):
+        try:
+            made += place(part, wanted[start : start + TREE_BATCH])
+        except ArchicadError as error:
+            notes.append(f"{len(wanted) - len(made)} trees were refused: {str(error)[:120]}")
+            break
+    moved = move_to_layer(connection, made, layer_index)
+    if moved != len(made):
+        notes.append(f"{len(made) - moved} trees stayed on the Object tool's default layer.")
+    stamp_in_order(connection, made, [TREE_ID] * len(made))
+    return made
 
 
 def _grouped(

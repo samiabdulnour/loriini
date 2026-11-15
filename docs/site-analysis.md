@@ -396,7 +396,12 @@ last run by element ID, not by layer, so a model made on the single
   inside its area, the state's 2 m ones outside -- through the add-on's own
   `CreateMesh` (Tapir's `CreateMeshes` answers `APIERR_BADINDEX` for every
   mesh on AC26). Its levels are metres above the storey nearest RL 0, so the
-  ground sits where the contours say, whatever storey is current. The level
+  ground sits where the contours say, whatever storey is current. It stands in
+  a grey surface of its own, `LORIINI ROAD`, and the street blocks in a green
+  one, `LORIINI GROUND`: the terrain is what shows between the blocks, which
+  is the roads, and in the Mesh tool's default both were one green (Campsie,
+  11 November 2026). An add-on built before meshes took a surface draws both
+  in the tool's default and the report says so. The level
   lines stay under 12,000 vertices, because Archicad triangulates between all
   of them, and the budget is spent at the site: every contour within 100 m of
   the site's boundary, true to a tenth of a metre, and fewer and simpler

@@ -1131,19 +1131,29 @@ def test_a_model_is_shown_as_geometry_and_not_counted_as_a_sheet(hidden_window: 
     assert all(sheet.paper for sheet in hidden_window.planned()), "no model ticked"
 
     hidden_window.do_site_model.set(True)
+    hidden_window._sync()
+    (plain,) = [sheet for sheet in hidden_window.planned() if not sheet.paper]
+    assert plain.adds == (), "nothing added until a button is lit"
+
+    # One model and one picture of it, whatever is added to it: the future
+    # context and the trees are drawn into the context model's own picture.
     hidden_window.do_site_future.set(True)
+    hidden_window.do_site_trees.set(True)
     hidden_window._sync()
     made = hidden_window.planned()
     models = [sheet for sheet in made if not sheet.paper]
-    assert [(m.kind, m.day) for m in models] == [
-        (window.CONTEXT_MODEL, "300 m"),
-        (window.FUTURE_MODEL, "300 m reach"),
-    ]
+    assert [(m.kind, m.day) for m in models] == [(window.CONTEXT_MODEL, "300 m")]
+    assert models[0].adds == (window.ADD_TREES, window.ADD_FUTURE)
     assert all(m.number == "" for m in models), "not numbered as sheets"
-    assert all(m.job == window.SITE_MODEL_JOB for m in models), "both the 3D context's"
-    assert hidden_window.dock.tally.cget("text") == "3", "three sheets, and the models are not"
+    assert all(m.job == window.SITE_MODEL_JOB for m in models), "the 3D context's"
+    assert hidden_window.dock.tally.cget("text") == "3", "three sheets, and the model is not"
     _box, says = hidden_window.study_boxes[window.SITE_MODEL_JOB]
-    assert says.cget("text") == "2 models"
+    assert says.cget("text") == "1 model"
+    (model_job,) = [job for job in hidden_window.jobs() if job.label == window.SITE_MODEL_JOB]
+    assert "--trees" in model_job.args and "--future" in model_job.args
+    hidden_window.do_site_trees.set(False)
+    (model_job,) = [job for job in hidden_window.jobs() if job.label == window.SITE_MODEL_JOB]
+    assert "--trees" not in model_job.args
 
     paper = tk.Canvas(hidden_window.root)
     window.draw_model(paper, models[0], 300, 212)
@@ -1163,8 +1173,9 @@ def test_the_3d_context_panel_counts_its_models_and_no_sheets(hidden_window: Any
     assert says.cget("text") == "1 model"
 
     hidden_window.do_site_future.set(True)
+    hidden_window.do_site_trees.set(True)
     hidden_window._sync()
-    assert says.cget("text") == "2 models", "the future context is a model of its own"
+    assert says.cget("text") == "1 model", "what is added is added to the one model"
     assert "sheet" not in says.cget("text")
 
 
@@ -1373,6 +1384,20 @@ def test_the_foot_of_the_window_carries_the_licence_not_a_warning(hidden_window:
     assert not [line for line in said if "PROTOTYPE" in line], "the warning lives on the sheets"
 
 
+def test_the_foot_of_the_window_follows_a_change_of_licence(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another key entered in the info box, or a log-out and a new key, is
+    said at the foot at once rather than at the next start."""
+    from sun_study.app import licence_box
+    from sun_study.app import window as module
+
+    now = "Loriini 0.0.1 · licensed to Another Practice"
+    monkeypatch.setattr(module, "credential", lambda: now)
+    hidden_window.root.event_generate(licence_box.LICENCE_CHANGED)
+    assert hidden_window.credential_line.cget("text") == now
+
+
 def test_the_reference_image_is_a_page_under_tools_for_the_chosen_project(
     hidden_window: Any,
 ) -> None:
@@ -1513,6 +1538,27 @@ def test_what_the_yield_page_does_not_say_about_the_site_is_read_at_the_address(
     assert "--renovation-filter" not in job.args
     assert "--residential-layer" not in job.args, "empty counts what is showing"
     assert flag(job.args, "--option") == ["Option 01"]
+    assert "--lot" not in job.args
+    # An address the register puts on two lots is read on the one named.
+    hidden_window.site_lot.insert(0, "34//DP1206876")
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--lot") == ["34//DP1206876"]
+
+
+def test_the_site_lot_is_sent_only_when_one_is_named(hidden_window: Any) -> None:
+    """For 22A O'Connell Street, Parramatta, which the register holds on two
+    lots at once: blank leaves the address to say where the site is."""
+    hidden_window.do_facade.set(False)
+    hidden_window.do_site_context.set(True)
+    hidden_window.site_address.insert(0, "22A O'Connell Street, Parramatta")
+
+    def site_runs() -> list[Any]:
+        return [job for job in hidden_window.jobs() if job.args[0] == "site"]
+
+    assert site_runs() and all("--lot" not in job.args for job in site_runs())
+    hidden_window.site_lot.insert(0, "34//DP1206876")
+    assert all(flag(job.args, "--lot") == ["34//DP1206876"] for job in site_runs())
+    assert hidden_window.settings()["site_lot"] == "34//DP1206876"
 
 
 def test_a_studio_given_a_share_joins_the_mix_at_its_size(hidden_window: Any) -> None:
@@ -3452,11 +3498,13 @@ def test_the_site_outputs_are_buttons_over_the_same_ticks(hidden_window: Any) ->
     assert list(buttons) == [
         "Summary of Controls layout",
         "Set the project location from the address",
+        "Trees (an object each, as wide as its canopy)",
         "Future Context (what the controls allow next door)",
     ]
     assert [button.cget("text") for button in buttons.values()] == [
         "Controls",
         "Location",
+        "Trees",
         "Future context",
     ]
     assert not any(button.cget("image") for button in buttons.values()), "words, not drawings"
@@ -4605,7 +4653,6 @@ def test_the_shadow_diagram_draws_its_days_and_hours_as_documents(
     for name, lit in hidden_window.shadow_day_ticks.items():
         lit.set(name in ("winter", "summer"))
     hidden_window.shadow_plan_label.insert(0, "Proposed")
-    hidden_window.shadow_plan_pen.insert(0, "3")
     # The project's own list, and none of it picked by a name (D156): the
     # person says which combination shows the ground under the buildings.
     assert hidden_window.shadow_plan_combination.get() == ""
@@ -4623,7 +4670,7 @@ def test_the_shadow_diagram_draws_its_days_and_hours_as_documents(
     assert flag(job.args, "--shadow-hour") == [hidden_window.shadow_hours.get().strip()]
     assert flag(job.args, "--layer-combination") == ["01 | Plans - DA"]
     assert flag(job.args, "--label") == ["Proposed"]
-    assert flag(job.args, "--shadow-pen") == ["3"]
+    assert "--shadow-pen" not in job.args and "--shadow-colour" not in job.args
     assert "--pen-set" not in job.args, "a blank keeps each view's own"
 
     sheets = hidden_window.planned()
@@ -4672,7 +4719,6 @@ def test_the_shadow_diagram_stacks_its_legend_rows(
         tick.set(False)
     hidden_window.do_shadows.set(True)
     hidden_window.shadow_plan_label.insert(0, "Proposed")
-    hidden_window.shadow_plan_pen.insert(0, "3")
     rows = {short: (role, box) for short, role, box in hidden_window.shadow_rows}
     baseline = next(short for short, (role, _) in rows.items() if role == "baseline")
     scenario = next(short for short, (role, _) in rows.items() if role == "scenario")
@@ -5274,7 +5320,7 @@ def test_every_hour_is_read_out_of_the_documents_when_the_legend_names_a_design(
     assert "--every-hour" in job.args and "--every-hour-only" not in job.args
 
 
-def test_a_compared_row_is_named_filtered_and_hatched_from_the_window(hidden_window: Any) -> None:
+def test_a_compared_row_is_named_and_filtered_from_the_window(hidden_window: Any) -> None:
     rows = {short: box for short, _role, box in hidden_window.shadow_rows}
     hidden_window.do_facade.set(False)
     hidden_window.do_shadows.set(True)
@@ -5283,9 +5329,8 @@ def test_a_compared_row_is_named_filtered_and_hatched_from_the_window(hidden_win
     rows["PROPOSED 2"].insert(0, "01 | Floor.Structural")
     hidden_window.shadow_row_names["PROPOSED 2"].insert(0, "LEP + 30%")
     hidden_window.shadow_row_filters["PROPOSED 2"].set("LEP + 30% Bonus")
-    hidden_window.shadow_row_hatches["PROPOSED 2"].set("zz Brick Common")
-    # A row with no layers sends nothing, whatever is typed beside it.
-    hidden_window.shadow_row_hatches["PROPOSED 3"].set("Dashed")
+    # A row with no layers sends nothing, whatever is chosen beside it.
+    hidden_window.shadow_row_filters["PROPOSED 3"].set("LEP + 30% Bonus")
 
     (job,) = hidden_window.jobs()
 
@@ -5294,14 +5339,14 @@ def test_a_compared_row_is_named_filtered_and_hatched_from_the_window(hidden_win
         "PROPOSED=01 | Wall.External",
     ]
     assert flag(job.args, "--scenario-filter") == ["LEP + 30%=LEP + 30% Bonus"]
-    assert flag(job.args, "--scenario-fill") == ["LEP + 30%=zz Brick Common"]
+    assert "--scenario-fill" not in job.args, "the hatch is the tool's, not a question"
 
 
 def test_a_compared_rows_fields_show_only_once_it_has_layers(hidden_window: Any) -> None:
     rows = {short: box for short, _role, box in hidden_window.shadow_rows}
     fields = hidden_window.shadow_row_groups
     assert set(fields) == {"PROPOSED 2", "PROPOSED 3", "PROPOSED 4", "PROPOSED 5"}
-    assert all(len(widgets) == 6 for widgets in fields.values()), "a label and a box, three times"
+    assert all(len(widgets) == 4 for widgets in fields.values()), "a label and a box, twice"
 
     def shown(short: str) -> bool:
         return all(widget.winfo_manager() == "grid" for widget in fields[short])
@@ -5384,47 +5429,17 @@ def test_archicad_27_offers_design_options_where_26_offers_renovation_filters(
     assert "--scenario-filter" not in job.args
 
 
-def test_the_shadow_colour_is_picked_not_typed_as_a_pen(
-    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from tkinter import colorchooser
-
-    field = hidden_window.shadow_plan_pen
-    assert isinstance(field, window.ColourField)
-    assert field.get() == "" and "default" in str(field.words.cget("text"))
-    monkeypatch.setattr(colorchooser, "askcolor", lambda **_kw: ((51, 102, 204), "#3366CC"))
-    field.choose()
-    assert field.get() == "#3366cc"
-    assert str(field.swatch.cget("background")) == "#3366cc"
-    assert "51, 102, 204" in str(field.words.cget("text"))
-
-    for _name, tick, _where in hidden_window._studies():
-        tick.set(False)
-    hidden_window.do_shadows.set(True)
-    hidden_window.shadow_plan_combination.set("01 | Plans - DA")
-    (job,) = hidden_window.jobs()
-    assert flag(job.args, "--shadow-colour") == ["#3366cc"]
-    assert "--shadow-pen" not in job.args
-
-    # Kept by Save as default, and a pen number an older file saved still
-    # goes as a pen.
+def test_the_window_asks_no_hatch_and_no_shadow_colour(hidden_window: Any) -> None:
+    """The proposal is solid and each row compared with it is dashed in a
+    colour of its own, so neither is a question; a settings file from before
+    still opens."""
+    assert not hasattr(hidden_window, "shadow_row_hatches")
+    assert not hasattr(hidden_window, "shadow_plan_pen")
     saved = hidden_window.settings()
-    assert saved["shadow_plan_pen"] == "#3366cc"
-    hidden_window.apply({**saved, "shadow_plan_pen": "45"})
-    (job,) = hidden_window.jobs()
-    assert flag(job.args, "--shadow-pen") == ["45"] and "--shadow-colour" not in job.args
-    assert field.words.cget("text") == "pen 45"
-    field.clear()
-    (job,) = hidden_window.jobs()
-    assert "--shadow-pen" not in job.args and "--shadow-colour" not in job.args
-
-
-def test_a_colour_is_read_in_the_three_ways_it_is_written() -> None:
-    assert window.colour_hex("#3366CC") == "#3366cc"
-    assert window.colour_hex("#36c") == "#3366cc"
-    assert window.colour_hex("51, 102, 204") == "#3366cc"
-    assert window.colour_hex("45") is None, "a pen number is not a colour"
-    assert window.colour_hex("") is None and window.colour_hex("#12345g") is None
+    assert not [key for key in saved if "hatch" in key or key == "shadow_plan_pen"]
+    hidden_window.apply(
+        {**saved, "shadow_plan_pen": "#3366cc", "shadow_row_hatch_proposed_2": "Dashed"}
+    )
 
 
 def test_the_sheets_panel_slides_in_and_opens_once_it_has_arrived(
@@ -5622,15 +5637,17 @@ def test_style_is_the_last_row_of_the_context_and_site_panels(hidden_window: Any
 
 
 def test_the_3d_context_panels_fields_are_one_width(hidden_window: Any) -> None:
-    """A lone button and a number's short box between three lists."""
+    """The Add row's two buttons and a number's short box between three lists."""
     hidden_window.do_site_model.set(True)
     hidden_window._sync()
     wide = hidden_window.site_model_origin.winfo_reqwidth()
     radius = hidden_window.site_radius
     assert abs(radius.winfo_reqwidth() + 2 * int(radius.grid_info()["ipadx"]) - wide) <= 1
     future = hidden_window.site_buttons["Future Context (what the controls allow next door)"]
-    assert future.grid_info()["sticky"] == "ew"
-    assert int(future.master.columnconfigure(0)["minsize"]) >= wide
+    trees = hidden_window.site_buttons["Trees (an object each, as wide as its canopy)"]
+    assert future.grid_info()["sticky"] == trees.grid_info()["sticky"] == "ew"
+    shares = [int(future.master.columnconfigure(column)["minsize"]) for column in (0, 1)]
+    assert shares[0] == shares[1] and sum(shares) >= wide
 
 
 def test_the_title_blocks_width_is_not_asked_and_is_115_mm(hidden_window: Any) -> None:

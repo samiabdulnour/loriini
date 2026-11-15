@@ -359,17 +359,17 @@ BY_LABEL: dict[str, str] = {
     "Layers hidden on sheets": "keep_off",
     # Solar analysis -- facade, apartments, communal
     "Facade layers": "facade_layers",
-    "Skin cell": "skin_cell",
+    "Skin quality": "skin_cell",
     "Apartment zones": "zones",
     "Balcony zones": "balcony",
     "Living-room glazing": "glazing",
-    "Plan times": "plan_times",
+    "Hours on plans": "plan_times",
     "Layout Book subset": "subset",
     "Communal zones": "communal",
-    "Communal window": "communal_window",
-    "Communal threshold": "threshold",
-    "Communal height": "height",
-    "Communal grid": "grid",
+    "Hours assessed": "communal_window",
+    "Minimum hours": "threshold",
+    "Height above ground (m)": "height",
+    "Map quality": "grid",
     # Shadow diagram
     "Existing": "always_there",
     "Future": "always_there",
@@ -398,7 +398,6 @@ BY_LABEL: dict[str, str] = {
     "North": "site",
     # Solar analysis, the plans the apartments are drawn on
     "Plans": "plans_both",
-    "Shadow colour": "pen_set",
     "Set name": "subset",
     # Yield -- the feasibility sheet
     "Option": "yield",
@@ -428,6 +427,7 @@ BY_OUTPUT: dict[str, str] = {
     "Site": "site_analysis",
     "Controls": "subset",
     "Future context": "being_tested",
+    "Trees": "trees",
     "3D context": "model",
     "Location": "address",
 }
