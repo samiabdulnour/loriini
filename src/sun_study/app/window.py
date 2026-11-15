@@ -236,7 +236,10 @@ COMMUNAL_AREAS = "Communal areas"
 #: The two outputs of the site study that are not sheets: geometry on its
 #: own layers, drawn in the panel as geometry.
 CONTEXT_MODEL = "Context model"
-FUTURE_MODEL = "Future model"
+#: What the 3D context's Add row can put in the model beside the terrain and
+#: the neighbours, by the word on its button.
+ADD_TREES = "Trees"
+ADD_FUTURE = "Future context"
 #: And the facade study's output, which is the model coloured in bands of
 #: sun hours -- a skin of 3D elements, not a sheet.
 FACADE_MODEL = "Facade model"
@@ -1286,10 +1289,12 @@ class Toggles(ttk.Frame):
         return button
 
     def widen(self, width: int) -> None:
-        """A row of one button, made as wide as the fields it stands among."""
-        _variable, button = self._items[0]
-        button.grid_configure(sticky="ew")
-        self.columnconfigure(0, minsize=width + 2)
+        """The row made as wide as the fields it stands among, its buttons
+        sharing the width equally."""
+        share = (width + 2) // max(1, len(self._items))
+        for column, (_variable, button) in enumerate(self._items):
+            button.grid_configure(sticky="ew")
+            self.columnconfigure(column, minsize=share, uniform="toggles")
 
     def _flip(self, variable: tk.BooleanVar) -> None:
         variable.set(not variable.get())
@@ -1670,6 +1675,9 @@ class Sheet:
     #: and the future model, which are geometry on their own layers. The
     #: panel draws those as the geometry, with no paper under it.
     paper: bool = True
+    #: What a model carries beyond its own: ``ADD_TREES``, ``ADD_FUTURE``.
+    #: One model and one picture of it, whatever is added (16 November 2026).
+    adds: tuple[str, ...] = ()
 
     @property
     def time(self) -> str:
@@ -2517,7 +2525,7 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     facade model's skin is banded by storey on the heat maps' own ramp, the
     top floors in the most sun and the foot in the neighbours' shade.
     """
-    future = sheet.kind == FUTURE_MODEL
+    future = ADD_FUTURE in sheet.adds
     facade = sheet.kind == FACADE_MODEL
     mid_x, mid_y, k = width * 0.5, height * 0.40, width / 34.0
 
@@ -2650,9 +2658,9 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
                 theme.BLUE,
                 dash=(3, 2),
             )
-    if not facade:
+    if ADD_TREES in sheet.adds:
         # Street trees on the verges, as the model carries them from the
-        # register.
+        # register when Trees is lit.
         for tree_x, tree_y in (
             (-6.5, -5.2),
             (1.5, -5.4),
@@ -2683,8 +2691,11 @@ def draw_model(paper: tk.Canvas, sheet: Sheet, width: int, height: int) -> None:
     # grow up into the name over it.
     if facade:
         what = "skin banded by hours of sun"
-    elif future:
-        what = "envelopes the controls allow"
+    elif sheet.adds:
+        parts = ["terrain", "neighbours"]
+        parts += ["trees"] if ADD_TREES in sheet.adds else []
+        parts += ["future"] if future else []
+        what = ", ".join(parts)
     else:
         what = "terrain and neighbours in 3D"
     line = f"{sheet.day} · {what}" if sheet.day else what
@@ -5711,6 +5722,7 @@ class Window:
         self.do_site_summary = tk.BooleanVar(value=False)
         self.do_site_model = tk.BooleanVar(value=False)
         self.do_site_future = tk.BooleanVar(value=False)
+        self.do_site_trees = tk.BooleanVar(value=False)
         self.do_site_location = tk.BooleanVar(value=True)
         self.site_buttons: dict[str, ttk.Button] = {}
 
@@ -5924,9 +5936,22 @@ class Window:
         row = self._site_toggles(
             frame,
             row,
-            "Future",
-            "What the controls allow next door, stood in the model beside it.",
+            "Add",
+            "What else goes in the model: the trees, and what the controls allow next door.",
             (
+                (
+                    self.do_site_trees,
+                    ADD_TREES,
+                    "Trees (an object each, as wide as its canopy)",
+                    "Every tree the registers record within the radius below -- the "
+                    "council's inventory where it keeps one, OpenStreetMap's elsewhere "
+                    "-- placed as the library's Conceptual Tree Model object, as wide "
+                    "as its canopy and as tall as recorded, standing on the terrain, "
+                    "on 'Site Context.Trees': a layer of its own, so a shadow diagram "
+                    "can leave them out. The site's own trees are not placed. A "
+                    "project whose library has no such object gets the model without "
+                    "them, and the run says so.",
+                ),
                 (
                     self.do_site_future,
                     "Future context",
@@ -7847,6 +7872,7 @@ class Window:
             "site_summary": self.do_site_summary,
             "site_model": self.do_site_model,
             "site_future": self.do_site_future,
+            "site_trees": self.do_site_trees,
             "site_location": self.do_site_location,
             "study_yield": self.do_yield,
             "study_qa": self.do_qa,
@@ -9115,23 +9141,27 @@ class Window:
             # are geometry on their own layers, and the panel draws them as
             # that. One radius, which the future context reaches too.
             radius = self.site_radius.get().strip() or "500"
-            for kind, on, extent in (
-                (CONTEXT_MODEL, True, f"{radius} m"),
-                (FUTURE_MODEL, self.do_site_future.get(), f"{radius} m reach"),
-            ):
-                if on:
-                    made.append(
-                        Sheet(
-                            study="Site analysis",
-                            glyph="site",
-                            number="",
-                            kind=kind,
-                            day=extent,
-                            drawings=(Drawing(kind=kind, day="", time=""),),
-                            job=SITE_MODEL_JOB,
-                            paper=False,
-                        )
-                    )
+            adds = tuple(
+                word
+                for word, lit in (
+                    (ADD_TREES, self.do_site_trees.get()),
+                    (ADD_FUTURE, self.do_site_future.get()),
+                )
+                if lit
+            )
+            made.append(
+                Sheet(
+                    study="Site analysis",
+                    glyph="site",
+                    number="",
+                    kind=CONTEXT_MODEL,
+                    day=f"{radius} m",
+                    drawings=(Drawing(kind=CONTEXT_MODEL, day="", time=""),),
+                    job=SITE_MODEL_JOB,
+                    paper=False,
+                    adds=adds,
+                )
+            )
 
         if YIELD_JOB in queued:
             # A sheet an option, at no hour: the table, and the massing beside
@@ -9447,19 +9477,19 @@ class Window:
                     "the building, one colour per band of sun hours, on its own "
                     "layers -- the massing-stage answer, read in the 3D window."
                 )
-            elif sheet.kind == FUTURE_MODEL:
-                detail = (
-                    f"The envelopes the controls allow on the lots within "
-                    f"{sheet.day} of the site, at the street setback, as 3D geometry on "
-                    "its own layers -- what could stand next door, for the shadow "
-                    "diagrams to cast."
-                )
             else:
                 detail = (
                     f"The terrain and the buildings within {sheet.day} of the "
                     "site, as 3D geometry on its own layers from NSW open data -- the "
                     "context every other study casts against."
                 )
+                if ADD_TREES in sheet.adds:
+                    detail += " With the trees the registers record, an object each."
+                if ADD_FUTURE in sheet.adds:
+                    detail += (
+                        " With the envelopes the controls allow next door, dashed, on "
+                        "a layer of their own for the shadow diagrams to cast."
+                    )
             self.info.show(
                 sheet.glyph,
                 sheet.kind,
@@ -9997,6 +10027,8 @@ class Window:
         runs: list[tuple[str, list[str]]] = []
         if self.do_site_model.get():
             args = [*only(""), "--model", "--model-radius", radius]
+            if self.do_site_trees.get():
+                args += ["--trees"]
             if future:
                 args += ["--future", "--future-reach", radius]
             levels = self.site_levels.get().strip()

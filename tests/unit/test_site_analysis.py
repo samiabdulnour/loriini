@@ -64,7 +64,12 @@ SS = naming.prefix()
 CONTEXT_LAYER = naming.context_layer()
 #: The three layers the context model stands on, buildings last so the
 #: buildings keep index 9, which the tests below read slabs back from.
-CONTEXT_LAYERS = (naming.terrain_layer(), naming.roads_layer(), naming.buildings_layer())
+CONTEXT_LAYERS = (
+    naming.terrain_layer(),
+    naming.roads_layer(),
+    naming.buildings_layer(),
+    naming.trees_layer(),
+)
 
 
 def _layer_attributes() -> list[dict[str, Any]]:
@@ -1123,6 +1128,91 @@ def test_the_roads_and_the_blocks_stand_in_surfaces_of_their_own() -> None:
     road, ground = meshes["SA TERRAIN"]["colour"], meshes["SA BLOCK 1"]["colour"]
     assert abs(road["red"] - road["green"]) < 0.05, "a grey"
     assert ground["green"] > ground["red"] and ground["green"] > ground["blue"], "a green"
+
+
+def _tree_responses(objects: Any) -> dict[str, Any]:
+    return {
+        "GetAttributesByType": {"attributes": _layer_attributes()},
+        "GetCurrentDatabase": {"databaseId": {"guid": "PLAN"}, "windowType": "FloorPlan"},
+        "GetLayers": {"layers": _layer_states()},
+        "CreateLayers": {"success": True},
+        "CreateMesh": {"success": True, "guid": "MESH"},
+        "CreateSlabs": {"elements": [{"elementId": {"guid": "SLAB"}}]},
+        "CreateObjects": objects,
+        "SetDetailsOfElements": {"executionResults": [{"success": True}]},
+        "CreateGroups": {"groupGuids": [{"guid": "GROUP"}]},
+        "API.GetProductInfo": {"version": 26, "buildNumber": 3000, "languageCode": "AUS"},
+        "GetDetailsOfElements": {"detailsOfElements": [{"layerIndex": 9}]},
+        "GetElementsByType": {"elements": []},
+        "GetStories": {"stories": [{"index": 0, "level": 0.0}]},
+        "GetGeoLocation": {
+            "projectLocation": {"latitude": LAT, "longitude": LON, "altitude": 0.0, "north": 0.0}
+        },
+        "SetPropertyValuesOfElements": {"executionResults": [{"success": True}]},
+        "GetAllProperties": {"properties": []},
+        "GetPropertyValuesOfElements": {"propertyValuesForElements": []},
+    }
+
+
+def test_the_trees_are_objects_as_wide_as_their_canopies_on_a_layer_of_their_own() -> None:
+    """Asked 16 November 2026: the trees in the 3D context, as the library's
+    Conceptual Tree Model. Off unless asked for, and the site's own trees are
+    left out as its buildings are."""
+    from sun_study.archicad import naming
+    from sun_study.archicad.context_model import model_context, tree_height_m
+    from sun_study.site.trees import Tree
+
+    bundle = site_bundle()
+    away = 0.002
+    trees = (
+        Tree(LON + away, LAT, canopy_m=8.0, height_m=12.0),
+        Tree(LON - away, LAT, canopy_m=5.0),
+    )
+    planted = replace(bundle, furniture=replace(bundle.furniture, trees=trees))
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+
+    connection, transport_ = connect(_tree_responses({"elements": []}))
+    assert model_context(connection, planted, frame).trees == 0
+    assert not transport_.all_parameters_for("CreateObjects"), "not asked for, not placed"
+
+    connection, transport_ = connect(
+        _tree_responses({"elements": [{"elementId": {"guid": "TREE"}}]})
+    )
+    report = model_context(connection, planted, frame, trees=True)
+
+    sent = [
+        one
+        for call in transport_.all_parameters_for("CreateObjects")
+        for one in call["objectsData"]
+    ]
+    assert report.trees == len(sent) == 2
+    made = [
+        call["layerDataArray"][0]["name"] for call in transport_.all_parameters_for("CreateLayers")
+    ]
+    assert naming.trees_layer() in made or report.trees_layer, "a layer of their own"
+    assert {one["libraryPartName"] for one in sent} == {"Conceptual Tree Model 26"}
+    sizes = sorted((one["dimensions"]["x"], one["dimensions"]["z"]) for one in sent)
+    assert sizes == [(5.0, tree_height_m(5.0, None)), (8.0, 12.0)]
+    assert tree_height_m(1.0, None) == 3.0 and tree_height_m(8.0, 90.0) == 35.0
+    assert "trees: 2 objects on" in report.describe()
+
+
+def test_a_library_with_no_tree_object_still_gets_its_model() -> None:
+    from sun_study.archicad.context_model import model_context
+    from sun_study.site.trees import Tree
+
+    bundle = site_bundle()
+    planted = replace(
+        bundle, furniture=replace(bundle.furniture, trees=(Tree(LON + 0.002, LAT, canopy_m=6.0),))
+    )
+    frame = frame_for(KOGARAH, site_centre=(LON, LAT), anchor="site")
+    missing = {"elements": [{"error": {"code": -1, "message": "Not found library part"}}]}
+    connection, _transport = connect(_tree_responses(missing))
+
+    report = model_context(connection, planted, frame, trees=True)
+
+    assert report.trees == 0
+    assert any("no trees placed" in note for note in report.notes)
 
 
 def test_an_add_on_that_takes_no_mesh_surface_still_gets_its_terrain() -> None:

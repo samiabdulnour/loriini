@@ -136,6 +136,9 @@ class ContextModelReport:
     roads_layer: str = ""
     heritage: int = 0
     """Neighbours on a heritage item, stood in ``HERITAGE_SURFACE``."""
+    trees: int = 0
+    """Trees placed as objects, each as wide as its canopy."""
+    trees_layer: str = ""
 
     def describe(self) -> str:
         made = f"one mesh from {self.contours} contours"
@@ -158,6 +161,8 @@ class ContextModelReport:
                 else ""
             ),
         ]
+        if self.trees:
+            lines.append(f"  trees: {self.trees} objects on {self.trees_layer!r}")
         lines.extend(f"    {note}" for note in self.notes)
         return "\n".join(lines)
 
@@ -315,7 +320,20 @@ class _Heights:
 
 
 #: What the context model's own elements are marked with.
-OWN_IDS: tuple[str, ...] = ("SA NEIGHBOUR", "SA TERRAIN", "SA BLOCK")
+OWN_IDS: tuple[str, ...] = ("SA NEIGHBOUR", "SA TERRAIN", "SA BLOCK", "SA TREE")
+
+#: What a tree in the model is marked with.
+TREE_ID = "SA TREE"
+#: The library part a tree is placed as, by Archicad's version: the library
+#: carried the version in each part's name until 27 dropped it. A light
+#: object -- a trunk and a canopy -- so a thousand of them still turn.
+TREE_PARTS: tuple[str, ...] = ("Conceptual Tree Model {version}", "Conceptual Tree Model")
+#: Trees in one ``CreateObjects``.
+TREE_BATCH = 200
+#: A tree nobody measured is this much taller than its canopy is wide, and
+#: no tree is drawn shorter or taller than these.
+TREE_HEIGHT_PER_CANOPY = 1.3
+TREE_HEIGHTS_M = (3.0, 35.0)
 
 
 def _clear_previous(connection: ArchicadConnection, prefixes: Sequence[str] = OWN_IDS) -> int:
@@ -330,7 +348,9 @@ def _clear_previous(connection: ArchicadConnection, prefixes: Sequence[str] = OW
     """
     wanted = tuple(prefixes)
     doomed: list[dict[str, Any]] = []
-    for kind in ("Slab", "Mesh"):
+    # Objects are looked through only for a run that owns some: the trees.
+    kinds = ("Slab", "Mesh", "Object") if TREE_ID in wanted else ("Slab", "Mesh")
+    for kind in kinds:
         found = connection.run_tapir("GetElementsByType", {"elementType": kind})
         # Blocks carry "SA BLOCK n"; they go with the rest.
         elements = found.get("elements") if isinstance(found, dict) else None
@@ -879,6 +899,7 @@ def model_context(
     terrain: bool = True,
     buildings: bool = True,
     blocks: bool = True,
+    trees: bool = False,
     storey_m: float = STOREY_M,
     datum_m: float | None = None,
     say: Callable[[str], None] | None = None,
@@ -1027,8 +1048,30 @@ def model_context(
     made = [] if outcome is None else [element for element, _ in outcome.made]
     if outcome is not None:
         notes.extend(outcome.describe())
+    planted: list[dict[str, Any]] = []
+    trees_layer = ""
+    if trees:
+        if not bundle.furniture.trees:
+            notes.append("no trees are recorded here; none are placed.")
+        else:
+            tree_layer = ensure_layer(connection, naming.trees_layer())
+            trees_layer = tree_layer.name
+            planted = _trees(
+                connection,
+                bundle,
+                frame,
+                ground,
+                datum,
+                tree_layer.index,
+                floor_index,
+                site_rings,
+                notes,
+            )
     notes.extend(
-        _grouped(connection, [(block_meshes, "street blocks"), (made, "neighbouring buildings")])
+        _grouped(
+            connection,
+            [(block_meshes, "street blocks"), (made, "neighbouring buildings"), (planted, "trees")],
+        )
     )
     if say:
         say(
@@ -1050,7 +1093,97 @@ def model_context(
         terrain_layer=ground_layer.name if ground_layer is not None else "",
         roads_layer=roads_layer.name if roads_layer is not None else "",
         heritage=listed,
+        trees=len(planted),
+        trees_layer=trees_layer,
     )
+
+
+def tree_height_m(canopy_m: float, height_m: float | None) -> float:
+    """How tall a tree is drawn: as recorded, or by its canopy where nobody
+    measured it, and never outside what a tree is."""
+    low, high = TREE_HEIGHTS_M
+    tall = height_m if height_m and height_m > 0 else canopy_m * TREE_HEIGHT_PER_CANOPY
+    return min(high, max(low, tall))
+
+
+def _trees(
+    connection: ArchicadConnection,
+    bundle: SiteBundle,
+    frame: Frame,
+    ground: _Ground,
+    datum: float,
+    layer_index: int,
+    floor_index: int,
+    site_rings: Sequence[Sequence[Point]],
+    notes: list[str],
+) -> list[dict[str, Any]]:
+    """The trees as objects, each as wide as its canopy and standing on the
+    ground under it: the created elements.
+
+    The site's own trees are left out, as its buildings are: what stands
+    there is what the proposal replaces. The library part is found by
+    placing the first tree, under each name the library may know it by; a
+    project whose library has none gets a note and no trees, never a failed
+    model.
+    """
+    wanted: list[dict[str, Any]] = []
+    for tree in bundle.furniture.trees:
+        x, y = frame.project(tree.lon, tree.lat)
+        if any(point_in_ring(x, y, site) for site in site_rings):
+            continue
+        wanted.append(
+            {
+                "coordinates": {"x": x, "y": y, "z": ground.at((x, y)) - datum},
+                "dimensions": {
+                    "x": tree.canopy_m,
+                    "y": tree.canopy_m,
+                    "z": tree_height_m(tree.canopy_m, tree.height_m),
+                },
+                "floorIndex": floor_index,
+            }
+        )
+    if not wanted:
+        notes.append("the only trees recorded are on the site; none are placed.")
+        return []
+
+    def place(part: str, some: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+        response = connection.run_tapir(
+            "CreateObjects",
+            {"objectsData": [{"libraryPartName": part, **one} for one in some]},
+        )
+        return _elements(response, "CreateObjects")
+
+    version = connection.archicad_version
+    names = list(dict.fromkeys(name.format(version=version or "").strip() for name in TREE_PARTS))
+    part = None
+    made: list[dict[str, Any]] = []
+    refused = ""
+    for name in names:
+        try:
+            made = place(name, wanted[:1])
+        except ArchicadError as error:
+            refused = str(error)
+            continue
+        if made:
+            part = name
+            break
+    if part is None:
+        notes.append(
+            f"no trees placed: the project's library has no {names[-1]!r} object"
+            + (f" ({refused[:120]})" if refused else "")
+        )
+        return []
+    for start in range(1, len(wanted), TREE_BATCH):
+        try:
+            made += place(part, wanted[start : start + TREE_BATCH])
+        except ArchicadError as error:
+            notes.append(f"{len(wanted) - len(made)} trees were refused: {str(error)[:120]}")
+            break
+    moved = move_to_layer(connection, made, layer_index)
+    if moved != len(made):
+        notes.append(f"{len(made) - moved} trees stayed on the Object tool's default layer.")
+    stamp_in_order(connection, made, [TREE_ID] * len(made))
+    return made
 
 
 def _grouped(

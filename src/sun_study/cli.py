@@ -9738,6 +9738,17 @@ def site_analysis(
             help="Metres each way around the site the model covers. 0: the site sheet's extent.",
         ),
     ] = 500.0,
+    trees: Annotated[
+        bool,
+        typer.Option(
+            "--trees/--no-trees",
+            help=(
+                "With --model: the trees the registers record, each an object as wide as its "
+                "canopy, on a layer of their own. Needs the Conceptual Tree Model object in "
+                "the project's library."
+            ),
+        ),
+    ] = False,
     future: Annotated[
         bool,
         typer.Option(
@@ -10299,6 +10310,7 @@ def site_analysis(
                     connection,
                     model_bundle,
                     frame_and_offset(model_bundle),
+                    trees=trees,
                     datum_m=datum_m,
                     say=say,
                 )

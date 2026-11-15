@@ -1131,19 +1131,29 @@ def test_a_model_is_shown_as_geometry_and_not_counted_as_a_sheet(hidden_window: 
     assert all(sheet.paper for sheet in hidden_window.planned()), "no model ticked"
 
     hidden_window.do_site_model.set(True)
+    hidden_window._sync()
+    (plain,) = [sheet for sheet in hidden_window.planned() if not sheet.paper]
+    assert plain.adds == (), "nothing added until a button is lit"
+
+    # One model and one picture of it, whatever is added to it: the future
+    # context and the trees are drawn into the context model's own picture.
     hidden_window.do_site_future.set(True)
+    hidden_window.do_site_trees.set(True)
     hidden_window._sync()
     made = hidden_window.planned()
     models = [sheet for sheet in made if not sheet.paper]
-    assert [(m.kind, m.day) for m in models] == [
-        (window.CONTEXT_MODEL, "300 m"),
-        (window.FUTURE_MODEL, "300 m reach"),
-    ]
+    assert [(m.kind, m.day) for m in models] == [(window.CONTEXT_MODEL, "300 m")]
+    assert models[0].adds == (window.ADD_TREES, window.ADD_FUTURE)
     assert all(m.number == "" for m in models), "not numbered as sheets"
-    assert all(m.job == window.SITE_MODEL_JOB for m in models), "both the 3D context's"
-    assert hidden_window.dock.tally.cget("text") == "3", "three sheets, and the models are not"
+    assert all(m.job == window.SITE_MODEL_JOB for m in models), "the 3D context's"
+    assert hidden_window.dock.tally.cget("text") == "3", "three sheets, and the model is not"
     _box, says = hidden_window.study_boxes[window.SITE_MODEL_JOB]
-    assert says.cget("text") == "2 models"
+    assert says.cget("text") == "1 model"
+    (model_job,) = [job for job in hidden_window.jobs() if job.label == window.SITE_MODEL_JOB]
+    assert "--trees" in model_job.args and "--future" in model_job.args
+    hidden_window.do_site_trees.set(False)
+    (model_job,) = [job for job in hidden_window.jobs() if job.label == window.SITE_MODEL_JOB]
+    assert "--trees" not in model_job.args
 
     paper = tk.Canvas(hidden_window.root)
     window.draw_model(paper, models[0], 300, 212)
@@ -1163,8 +1173,9 @@ def test_the_3d_context_panel_counts_its_models_and_no_sheets(hidden_window: Any
     assert says.cget("text") == "1 model"
 
     hidden_window.do_site_future.set(True)
+    hidden_window.do_site_trees.set(True)
     hidden_window._sync()
-    assert says.cget("text") == "2 models", "the future context is a model of its own"
+    assert says.cget("text") == "1 model", "what is added is added to the one model"
     assert "sheet" not in says.cget("text")
 
 
@@ -3487,11 +3498,13 @@ def test_the_site_outputs_are_buttons_over_the_same_ticks(hidden_window: Any) ->
     assert list(buttons) == [
         "Summary of Controls layout",
         "Set the project location from the address",
+        "Trees (an object each, as wide as its canopy)",
         "Future Context (what the controls allow next door)",
     ]
     assert [button.cget("text") for button in buttons.values()] == [
         "Controls",
         "Location",
+        "Trees",
         "Future context",
     ]
     assert not any(button.cget("image") for button in buttons.values()), "words, not drawings"
@@ -5624,15 +5637,17 @@ def test_style_is_the_last_row_of_the_context_and_site_panels(hidden_window: Any
 
 
 def test_the_3d_context_panels_fields_are_one_width(hidden_window: Any) -> None:
-    """A lone button and a number's short box between three lists."""
+    """The Add row's two buttons and a number's short box between three lists."""
     hidden_window.do_site_model.set(True)
     hidden_window._sync()
     wide = hidden_window.site_model_origin.winfo_reqwidth()
     radius = hidden_window.site_radius
     assert abs(radius.winfo_reqwidth() + 2 * int(radius.grid_info()["ipadx"]) - wide) <= 1
     future = hidden_window.site_buttons["Future Context (what the controls allow next door)"]
-    assert future.grid_info()["sticky"] == "ew"
-    assert int(future.master.columnconfigure(0)["minsize"]) >= wide
+    trees = hidden_window.site_buttons["Trees (an object each, as wide as its canopy)"]
+    assert future.grid_info()["sticky"] == trees.grid_info()["sticky"] == "ew"
+    shares = [int(future.master.columnconfigure(column)["minsize"]) for column in (0, 1)]
+    assert shares[0] == shares[1] and sum(shares) >= wide
 
 
 def test_the_title_blocks_width_is_not_asked_and_is_115_mm(hidden_window: Any) -> None:

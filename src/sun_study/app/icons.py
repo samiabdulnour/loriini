@@ -427,6 +427,7 @@ BY_OUTPUT: dict[str, str] = {
     "Site": "site_analysis",
     "Controls": "subset",
     "Future context": "being_tested",
+    "Trees": "trees",
     "3D context": "model",
     "Location": "address",
 }
