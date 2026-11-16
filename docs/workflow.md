@@ -559,13 +559,13 @@ while the apartments are assessed at midwinter alone. The year is asked
 once, in the Solar analysis box, and every sun tool reads it.
 
 The **Plans** row in Solar analysis says what the apartment plans show,
-any of three: *Sun at each time*, a plan per instant showing where the sun
-actually falls; *Floor heat map*, each apartment's floor gridded and banded
-by its hours of sun over the day; and *Apartment total*, each flat filled
+any of three: *Sun at each hour*, a plan per instant showing where the sun
+actually falls; *Hours on the floor*, each apartment's floor gridded and banded
+by its hours of sun over the day; and *Hours per apartment*, each flat filled
 whole in the band of its hours with the figure written in. On the command
 line that is `--plan-instant`, `--plan-bands` and `--draw` for
 `archicad-run`. The communal plan has one banded kind, so either whole-day
-tile sends `--zone-bands` to `massing`, and *Sun at each time* sends
+tile sends `--zone-bands` to `massing`, and *Sun at each hour* sends
 `--zone-hourly`; `--no-zone-bands` with `--zone-hourly` draws the hourly
 plans alone and still writes the areas sheet and the CSV.
 

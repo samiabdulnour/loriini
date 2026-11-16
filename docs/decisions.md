@@ -7428,3 +7428,30 @@ plans all go through it.
 *What this does not change:* the table on the sheet beside the plans, the
 areas sheet and the CSV, which are the whole study's and say so in their
 first line, COMMUNAL OPEN SPACE 100%; the fills; the apartments' plans.
+
+### D193 — The plan tiles are named for hours, the threshold plan is a switch, and the pen set is asked once
+
+Asked 16 November 2026, in three messages. Of the Plans row: *"rename
+these. its about hours so name it like that."* Of the communal study:
+*"add treshhold switcher. so you can select the treshold or no"*. Of the
+Pen set lists in the shadow diagram's and the sun views' panels: *"penset
+is something which should be set only in general"*.
+
+**The Plans row.** *Sun at each time* is *Sun at each hour*, *Floor heat
+map* is *Hours on the floor*, *Apartment total* is *Hours per apartment*.
+A settings file that kept the old names opens as the new ones, through the
+row's aliases.
+
+**Threshold.** The communal panel has a *Threshold plan* button, lit to
+begin with. Lit, the plan of what clears the minimum is drawn and *Minimum
+hours* is asked under it; unlit, the hours are neither asked nor sent and
+the sheets panel plans no such sheet. Before, the plan was switched off by
+emptying the hours.
+
+**One pen set.** General's *Layouts and title block* asks *Pen set* under
+the Layout Book subset, and the shadow diagram and the sun views both send
+it; the two panels' own lists are gone. A settings file with either of the
+two older keys sets the one, the shadow diagram's first.
+
+*What this does not change:* what each plan draws; the command line, where
+`--zone-hours` and `--pen-set` are as they were; the settings' other keys.
