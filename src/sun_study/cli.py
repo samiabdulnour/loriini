@@ -1349,6 +1349,7 @@ def report_zone_bands(
         "outline": outline,
         "positions": samples.positions,
         "parent_ids": samples.parent_ids,
+        "areas": samples.areas,
         "spacing_m": spacing_m,
         "zone_by_apartment": paired,
         "zones": zones,

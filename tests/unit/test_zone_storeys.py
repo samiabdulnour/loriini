@@ -43,6 +43,7 @@ class DrawingTransport:
 
     def __init__(self) -> None:
         self.hatches: list[dict[str, Any]] = []
+        self.texts: list[dict[str, Any]] = []
 
     def send(self, payload: dict[str, Any]) -> dict[str, Any]:
         if payload["command"] != "API.ExecuteAddOnCommand":
@@ -68,6 +69,7 @@ class DrawingTransport:
         if command == "GetElementsByType":
             return {"elements": []}
         if command == "CreateTexts":
+            self.texts.extend(given.get("texts") or given["textsData"])
             return {"elements": [{"guid": "t"} for _ in (given.get("texts") or given["textsData"])]}
         if command == "GetAllProperties":
             return {"properties": []}
@@ -241,6 +243,75 @@ def test_a_storey_with_no_name_falls_back_to_its_index() -> None:
     blank = NavigatorItem(identifier="x", name="   ", kind="StoryItem", prefix="8")
     assert _storey_label(blank, 8) == "Level 8"
     assert _storey_label(None, 14) == "Level 14"
+
+
+def _legends(areas: Any) -> dict[int, list[str]]:
+    """Two terraces of unequal size, half the lower in sun and all the upper:
+    the legend's lines as drawn, by storey."""
+    transport = DrawingTransport()
+    positions = np.array(
+        [[0.5, 0.5, 0.0], [1.5, 0.5, 0.0], [10.5, 0.5, 0.0], [11.5, 0.5, 0.0]],
+        dtype=np.float64,
+    )
+    lit = np.array([True, False, True, True])
+    draw_cell_groups(
+        ArchicadConnection(transport),
+        groups=[
+            CellGroup("2-3hrs", lit, BandStyle("sun", float("inf"), fill_pen=1), 7.0, 0.7),
+            CellGroup("0hr", ~lit, BandStyle("shade", 0.0, fill_pen=2), 3.0, 0.3),
+        ],
+        positions=positions,
+        parent_ids=["ifc-lower", "ifc-lower", "ifc-upper", "ifc-upper"],
+        spacing_m=1.0,
+        zone_by_apartment={"ifc-lower": "guid-lower", "ifc-upper": "guid-upper"},
+        zones=[LOWER, UPPER],
+        export_extents={
+            "ifc-lower": np.array([[0.0, 0.0, 0.0], [2.0, 2.0, 0.0]]),
+            "ifc-upper": np.array([[10.0, 0.0, 0.0], [12.0, 2.0, 0.0]]),
+        },
+        layer_name="14 | X",
+        title="Solar access to communal open space",
+        areas=areas,
+    )
+    lines: dict[int, list[str]] = {}
+    for text in transport.texts:
+        lines.setdefault(int(text["floorIndex"]), []).append(str(text["text"]))
+    return lines
+
+
+def test_the_legend_beside_a_communal_space_is_that_spaces_own() -> None:
+    """Two communal spaces on two storeys each carried the whole study's
+    areas and shares beside them (Penrith, 16 November 2026): 1023 m2 beside
+    a terrace of half that. Each plan's key is its own Zone's, and each share
+    is of that Zone."""
+    lines = _legends(np.array([3.0, 3.0, 2.0, 2.0]))
+
+    assert lines[8] == [
+        "Solar access to communal open space",
+        "COMMUNAL OPEN SPACE   6.0 m²",
+        "2-3hrs   3.0 m²   50.0%",
+        "0hr   3.0 m²   50.0%",
+    ]
+    assert lines[14] == [
+        "Solar access to communal open space",
+        "COMMUNAL OPEN SPACE   4.0 m²",
+        "2-3hrs   4.0 m²   100.0%",
+        "0hr   0.0 m²   0.0%",
+    ]
+
+
+def test_without_cell_areas_every_legend_carries_the_groups_own_figures() -> None:
+    lines = _legends(None)
+
+    assert (
+        lines[8]
+        == lines[14]
+        == [
+            "Solar access to communal open space",
+            "2-3hrs   7.0 m²   70.0%",
+            "0hr   3.0 m²   30.0%",
+        ]
+    )
 
 
 def test_each_fill_drawn_is_reported_with_the_group_it_was_drawn_for() -> None:

@@ -358,7 +358,7 @@ def test_the_plans_row_says_which_kind_of_plan_each_study_draws(
     assert "--zone-hourly" not in communal.args and "--no-zone-bands" not in communal.args
     assert window.APARTMENT_HEAT_MAP in {sheet.kind for sheet in hidden_window.planned()}
 
-    hidden_window.plan_kinds.set("Sun at each time")
+    hidden_window.plan_kinds.set("Sun at each hour")
     plans, communal = hidden_window.jobs()
     assert "--no-draw" in plans.args and "--sheet" in plans.args
     assert "--plan-bands" not in plans.args
@@ -377,20 +377,20 @@ def test_the_plans_row_lights_any_of_three(hidden_window: Any) -> None:
     last one lit stays lit, and a file saved when "Bands by hour" was the
     heat map and the total together restores as both."""
     row = hidden_window.plan_kinds
-    assert row.get() == "Sun at each time, Floor heat map, Apartment total"
+    assert row.get() == "Sun at each hour, Hours on the floor, Hours per apartment"
     assert hidden_window._plan_kinds() == (True, True, True)
-    row._pick("Floor heat map")
-    assert row.get() == "Sun at each time, Apartment total"
+    row._pick("Hours on the floor")
+    assert row.get() == "Sun at each hour, Hours per apartment"
     assert hidden_window._plan_kinds() == (True, False, True)
-    row._pick("Apartment total")
-    row._pick("Sun at each time")
-    assert row.get() == "Sun at each time", "the last one lit stays lit"
+    row._pick("Hours per apartment")
+    row._pick("Sun at each hour")
+    assert row.get() == "Sun at each hour", "the last one lit stays lit"
     assert hidden_window._plan_kinds() == (True, False, False)
     hidden_window.apply({"plan_kinds": "Bands by hour"})
-    assert row.get() == "Floor heat map, Apartment total"
+    assert row.get() == "Hours on the floor, Hours per apartment"
     assert hidden_window._plan_kinds() == (False, True, True)
     hidden_window.apply({"plan_kinds": "Bands and times"})
-    assert row.get() == "Sun at each time, Floor heat map, Apartment total"
+    assert row.get() == "Sun at each hour, Hours on the floor, Hours per apartment"
 
 
 def test_each_plan_tile_is_its_own_flag_to_the_run(hidden_window: Any) -> None:
@@ -403,14 +403,14 @@ def test_each_plan_tile_is_its_own_flag_to_the_run(hidden_window: Any) -> None:
     hidden_window.do_plans.set(True)
     hidden_window.apartments.set("06 | Zone.Units")
 
-    hidden_window.plan_kinds.set("Apartment total")
+    hidden_window.plan_kinds.set("Hours per apartment")
     (plans,) = hidden_window.jobs()
     assert "--draw" in plans.args and "--plan-bands" not in plans.args
     assert not flag(plans.args, "--plan-instant")
     kinds = {sheet.kind for sheet in hidden_window.planned()}
     assert kinds == {"Apartments, ADG total"}
 
-    hidden_window.plan_kinds.set("Floor heat map")
+    hidden_window.plan_kinds.set("Hours on the floor")
     (plans,) = hidden_window.jobs()
     assert "--no-draw" in plans.args and "--plan-bands" in plans.args
     assert {sheet.kind for sheet in hidden_window.planned()} == {window.APARTMENT_HEAT_MAP}
@@ -476,7 +476,7 @@ def test_every_solar_grid_offers_the_same_four_steps(hidden_window: Any) -> None
     hidden_window.floor_grid.set("1.0")
     (plans,) = hidden_window.jobs()
     assert flag(plans.args, "--patch-grid") == ["1.0"]
-    hidden_window.plan_kinds.set("Apartment total")
+    hidden_window.plan_kinds.set("Hours per apartment")
     (plans,) = hidden_window.jobs()
     assert not flag(plans.args, "--patch-grid"), "no floor plan, no second ray cast"
 
@@ -878,6 +878,22 @@ def test_the_hourly_communal_plans_are_as_many_as_the_window_has_hours(
         window.COMMUNAL_AREAS,
     ]
     assert all(not sheet.time for sheet in sheets if sheet is not hourly[0]), "whole-day sheets"
+
+    # The threshold plan is a switch of its own: unlit, the plan is not drawn,
+    # its hours are not sent, and the hours are not asked.
+    (job,) = hidden_window.jobs()
+    assert flag(job.args, "--zone-hours") == ["2"]
+    hidden_window.communal_threshold_button.invoke()
+    assert hidden_window.do_communal_threshold.get() is False
+    (job,) = hidden_window.jobs()
+    assert "--zone-hours" not in job.args
+    kinds = [sheet.kind for sheet in hidden_window.planned()]
+    assert "Communal open space, 2 h or more" not in kinds
+    assert not hidden_window.communal_hours.winfo_manager(), "no hours asked for no plan"
+    assert hidden_window.settings()["communal_threshold"] is False
+    hidden_window.communal_threshold_button.invoke()
+    assert hidden_window.communal_hours.winfo_manager() == "grid"
+    assert "Communal open space, 2 h or more" in [s.kind for s in hidden_window.planned()]
 
     hidden_window.plan_kinds.set("Bands by hour")
     assert not [s for s in hidden_window.planned() if s.kind == window.COMMUNAL_HOURLY]
@@ -1361,6 +1377,15 @@ def test_the_pen_set_is_chosen_from_the_projects_own_and_blank_is_kept(
     hidden_window.eye_pen_set.set("00 FA Pens")
     hidden_window.do_sun_eyes.set(True)
     assert flag(hidden_window.jobs()[-1].args, "--pen-set") == ["00 FA Pens"]
+
+    # Asked once, in General, and every study that takes a pen set takes it.
+    assert hidden_window.eye_pen_set is hidden_window.shadow_plan_pen_set is hidden_window.pen_set
+    saved = hidden_window.settings()
+    assert saved["pen_set"] == "00 FA Pens"
+    assert "eye_pen_set" not in saved and "shadow_plan_pen_set" not in saved
+    hidden_window.pen_set.set("")
+    hidden_window.apply({"shadow_plan_pen_set": "Archicad"})
+    assert hidden_window.pen_set.get() == "Archicad", "a file saved before still sets it"
 
 
 def test_the_foot_of_the_window_carries_the_licence_not_a_warning(hidden_window: Any) -> None:

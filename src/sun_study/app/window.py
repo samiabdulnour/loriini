@@ -4607,6 +4607,21 @@ class Window:
         #: The three subsets of before -- ADG, time of day, shadow -- are one
         #: now (D186), under the names the run's code reads them by.
         self.adg_subset = self.shadow_subset = self.shadow_study_subset = self.subset
+        self.pen_set, row = self._combo(
+            frame,
+            row,
+            "Pen set",
+            "The project's pen set every study's documents and views use. Blank keeps "
+            "each view's own.",
+            "The practice's drawing pens, so the sheets print the way the other DA "
+            "drawings do: the shadow diagram's documents and the sun views both take "
+            "it. With legend rows the shadow diagram copies it, each row's pen set to "
+            "the legend's colour. Asked once, here, because a project has one set of "
+            "drawing pens (16 November 2026); it was asked in each of the two panels.",
+        )
+        #: The two pen sets of before -- the shadow diagram's and the sun
+        #: views' -- are this one, under the names the run's code reads.
+        self.shadow_plan_pen_set = self.eye_pen_set = self.pen_set
         self.sheets, row = self._tiles(
             frame,
             row,
@@ -4995,7 +5010,7 @@ class Window:
             "Plans",
             "What the apartment plans show: the sun at each time, the floor as a "
             "heat map, each apartment's total -- any of the three.",
-            "Three plans for three questions. Sun at each time is a plan per "
+            "Three plans for three questions. Sun at each hour is a plan per "
             "instant showing where the sun actually falls, which is what "
             "somebody standing there at nine in the morning asks about. The "
             "floor heat map grids each apartment and bands every cell by its "
@@ -5176,17 +5191,47 @@ class Window:
             span=True,
             initial="08:00-15:00",
         )
+        # The threshold plan is a choice of its own: lit, a second plan is
+        # drawn and the hours it is drawn for are asked; unlit, neither.
+        self.do_communal_threshold = tk.BooleanVar(value=True)
+        name = ttk.Label(frame, text="Threshold", anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
+        switch = Toggles(frame, on_change=self._sync)
+        switch.grid(row=row, column=1, sticky="w", pady=(6, 0))
+        self.toggle_rows.append(switch)
+        self.communal_threshold_button = switch.add(
+            self.do_communal_threshold, "Threshold plan", "threshold"
+        )
+        for target in (name, self.communal_threshold_button):
+            Tooltip(
+                target,
+                "Seven bands say how the hours spread across the space. What a DCP "
+                "asks is how much of it clears a minimum, and a banded plan makes a "
+                "reader do that sum by eye. Lit, a second plan is drawn on a sheet of "
+                "its own: what clears the minimum hours below, and what does not. "
+                "Unlit, the bands alone.",
+                title="Threshold plan",
+            )
+        row += 1
+        before = {str(child) for child in frame.winfo_children()}
         self.communal_hours, row = self._entry(
             frame,
             row,
             "Minimum hours",
             "2",
-            "Hours. Draws a second plan: what clears this, and what does not.",
-            "Seven bands say how the hours spread across the space. What a "
-            "DCP asks is how much of it clears the minimum, and a banded plan "
-            "makes a reader do that sum by eye. This draws that split as two "
-            "areas on a sheet of its own. Leave it empty for the bands alone.",
+            "The hours the threshold plan is drawn for: what clears them, and what does not.",
+            "The minimum a DCP asks of communal open space, in hours of direct "
+            "sun: 2 is common. The threshold plan splits the space into the "
+            "area that clears it and the area that does not.",
         )
+        self.communal_panel = frame
+        self.communal_threshold_rows = [
+            child
+            for child in frame.winfo_children()
+            if isinstance(child, tk.Widget)
+            and str(child) not in before
+            and child.winfo_manager() == "grid"
+        ]
         self.communal_height, row = self._entry(
             frame,
             row,
@@ -5428,15 +5473,6 @@ class Window:
             "each row's combination is made from this one. Nothing is picked "
             "for you: Run asks when it is blank.",
         )
-        self.shadow_plan_pen_set, row = self._combo(
-            frame,
-            row,
-            "Pen set",
-            "The project's pen set the documents use. Blank keeps each view's own.",
-            "The practice's drawing pens, so the sheet prints the way the other "
-            "DA drawings do. With legend rows the run copies it, each row's pen "
-            "set to the legend's colour.",
-        )
         self.shadow_plan_label, row = self._entry(
             frame,
             row,
@@ -5634,15 +5670,6 @@ class Window:
         )
         row += 1
 
-        self.eye_pen_set, row = self._combo(
-            frame,
-            row,
-            "Pen set",
-            "The project's pen set the views use. Blank keeps each view's own.",
-            "The practice's drawing pens, so the sheet prints the way the "
-            "other DA drawings do. Read off the office's own sun views on the "
-            "reference project as '00 FA Pens'.",
-        )
         self.eye_override, row = self._combo(
             frame,
             row,
@@ -7597,6 +7624,7 @@ class Window:
                 )
         self._yield_rows()
         self._shadow_row_fields()
+        self._communal_threshold_fields()
         self._paint_design()
         self._refill_dock(sheets)
         self._paint_run(sheets)
@@ -7786,10 +7814,9 @@ class Window:
                 for short, box in self.shadow_row_filters.items()
             },
             "shadow_plan_label": self.shadow_plan_label,
-            "shadow_plan_pen_set": self.shadow_plan_pen_set,
+            "pen_set": self.pen_set,
             "shadow_hours_colour": self.shadow_hours_colour,
             "shadow_grid": self.shadow_grid,
-            "eye_pen_set": self.eye_pen_set,
             "eye_override": self.eye_override,
             "eye_base_combination": self.eye_base_combination,
             "eye_scale": self.eye_scale,
@@ -7872,6 +7899,7 @@ class Window:
             "site_summary": self.do_site_summary,
             "site_model": self.do_site_model,
             "site_future": self.do_site_future,
+            "communal_threshold": self.do_communal_threshold,
             "site_trees": self.do_site_trees,
             "site_location": self.do_site_location,
             "study_yield": self.do_yield,
@@ -7939,6 +7967,13 @@ class Window:
                 value = saved.get(older)
                 if isinstance(value, str) and value.strip():
                     self.subset.set(value.strip())
+                    break
+        # The two pen sets of a settings file saved before there was one.
+        if "pen_set" not in saved:
+            for older in ("shadow_plan_pen_set", "eye_pen_set"):
+                value = saved.get(older)
+                if isinstance(value, str) and value.strip():
+                    self.pen_set.set(value.strip())
                     break
         self._shadows_from_older(saved)
         self._proposals_from_older(saved)
@@ -8095,6 +8130,19 @@ class Window:
                 widget.grid()
             else:
                 widget.grid_remove()
+
+    def _communal_threshold(self) -> str:
+        """The hours the threshold plan is drawn for, or nothing when the
+        plan is switched off or no hours are typed."""
+        if not self.do_communal_threshold.get():
+            return ""
+        return self.communal_hours.get().strip()
+
+    def _communal_threshold_fields(self) -> None:
+        """Ask the minimum hours only while the threshold plan is lit."""
+        rows = getattr(self, "communal_threshold_rows", None)
+        if rows:
+            self._show_rows(self.communal_panel, rows, self.do_communal_threshold.get())
 
     def _shadow_row_fields(self) -> None:
         """Show a compared row's name and option only once the row has
@@ -8369,7 +8417,7 @@ class Window:
         # Blank first, and no preference: a blank keeps each view's own pen
         # set, which is what the command does, and the office's set is a
         # choice rather than a guess.
-        self._fill(self.eye_pen_set, ("", *found.pen_sets), ())
+        self._fill(self.pen_set, ("", *found.pen_sets), ())
         # Blank first for the override too: a blank sends nothing and the
         # command's own default holds, where the first name in the list would
         # be a guess -- and a view given the wrong override shows plain glass.
@@ -8377,7 +8425,6 @@ class Window:
             self._fill(self.eye_override, ("", *found.overrides), ())
         self._fill(self.eye_base_combination, ("", *found.combinations), ())
         self._fill(self.shadow_plan_combination, found.combinations, ())
-        self._fill(self.shadow_plan_pen_set, ("", *found.pen_sets), ())
         # The options as this Archicad keeps them: renovation filters in 26,
         # Design Option Combinations from 27, and the fields called so.
         self.archicad_version = found.archicad_version
@@ -8637,8 +8684,13 @@ class Window:
             "A layer per option": ("By level",),
         },
         "Plans": {
-            "Bands and times": ("Sun at each time", "Floor heat map", "Apartment total"),
-            "Bands by hour": ("Floor heat map", "Apartment total"),
+            "Bands and times": ("Sun at each hour", "Hours on the floor", "Hours per apartment"),
+            "Bands by hour": ("Hours on the floor", "Hours per apartment"),
+            # The tiles' names until 16 November 2026, when each was named
+            # for the hours it shows.
+            "Sun at each time": ("Sun at each hour",),
+            "Floor heat map": ("Hours on the floor",),
+            "Apartment total": ("Hours per apartment",),
         },
     }
 
@@ -8664,9 +8716,9 @@ class Window:
             "Live 3D Documents": "Live documents",
         },
         "Plans": {
-            "Sun at each time": "Sun at each time",
-            "Floor heat map": "Floor heat map",
-            "Apartment total": "Apartment total",
+            "Sun at each hour": "Sun at each hour",
+            "Hours on the floor": "Hours on the floor",
+            "Hours per apartment": "Hours per apartment",
         },
         "Sheets": {
             "One layout, all drawings": "One layout",
@@ -8687,21 +8739,21 @@ class Window:
     TILE_CHOICES: ClassVar[dict[str, tuple[tuple[str, str, str], ...]]] = {
         "Plans": (
             (
-                "Sun at each time",
+                "Sun at each hour",
                 "plans_times",
-                "Sun at each time: a plan per time of day, showing where the "
+                "Sun at each hour: a plan per time of day, showing where the "
                 "sun actually falls at that moment.",
             ),
             (
-                "Floor heat map",
+                "Hours on the floor",
                 "plans_bands",
-                "Floor heat map: the floor of every apartment gridded and banded "
+                "Hours on the floor: the floor of every apartment gridded and banded "
                 "by its own hours of sun over the day -- how far in the sun gets.",
             ),
             (
-                "Apartment total",
+                "Hours per apartment",
                 "plans_total",
-                "Apartment total: each apartment filled whole, in the band of its "
+                "Hours per apartment: each apartment filled whole, in the band of its "
                 "hours of sun over the day, with the figure written in.",
             ),
         ),
@@ -8878,9 +8930,9 @@ class Window:
     }
 
     #: The two Plans tiles, each a switch of its own. Both lit is the default.
-    PLAN_TIMES = "Sun at each time"
-    PLAN_HEAT = "Floor heat map"
-    PLAN_TOTAL = "Apartment total"
+    PLAN_TIMES = "Sun at each hour"
+    PLAN_HEAT = "Hours on the floor"
+    PLAN_TOTAL = "Hours per apartment"
 
     def _plan_kinds(self) -> tuple[bool, bool, bool]:
         """``(times, heat, total)``: which of the three kinds of plan the
@@ -9229,7 +9281,7 @@ class Window:
                     )
         if COMMUNAL_JOB in queued:
             for day in days:
-                threshold = self.communal_hours.get().strip()
+                threshold = self._communal_threshold()
                 if heat or total:
                     deal(
                         COMMUNAL_JOB,
@@ -9786,8 +9838,8 @@ class Window:
                 args += ["--window-start", start]
             if end:
                 args += ["--window-end", end]
-            if self.communal_hours.get().strip():
-                args += ["--zone-hours", self.communal_hours.get().strip()]
+            if self._communal_threshold():
+                args += ["--zone-hours", self._communal_threshold()]
             # The areas always. The plans are what a reader looks at and the
             # areas are what they quote, and a study that draws the one
             # without writing the other invites a figure read off a colour.

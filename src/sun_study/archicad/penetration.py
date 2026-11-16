@@ -510,8 +510,14 @@ def draw_cell_groups(
     fill_index: int | None = None,
     outline: bool = True,
     paper: PaperSink | None = None,
+    areas: FloatArray | None = None,
 ) -> PenetrationReport:
     """Draw floor cells grouped by band, one colour each, plus a legend.
+
+    ``areas`` is each cell's own area, parallel to ``positions``. With it,
+    and cells in more than one Zone, the legend beside a plan is that Zone's
+    own: its areas, and each as a share of that Zone. Without it every legend
+    carries the groups' figures, which are the whole study's.
 
     ``paper`` takes the fills instead of the floor plan, as it does for
     ``draw_penetration`` -- and then there is no legend, because the sheet
@@ -624,7 +630,13 @@ def draw_cell_groups(
 
     texts: list[dict[str, Any]] = []
     legend_fills, legend_texts = _band_legend(
-        groups, _legend_origin(matched.values()), layer, storeys, title, caption_height_mm
+        groups,
+        _legend_origin(matched.values()),
+        layer,
+        storeys,
+        title,
+        caption_height_mm,
+        by_zone=_zone_figures(groups, matched, parent_ids, areas, on_storey),
     )
     # The legend swatches go in the same request and are left untagged: a
     # schedule totalling every fill whose ID contains SOLAR must not add seven
@@ -688,6 +700,54 @@ def _legend_origin(zones: Any) -> tuple[float, float]:
     return (max(x for x, _ in outlines) + 4.0, max(y for _, y in outlines))
 
 
+@dataclass(frozen=True)
+class ZoneFigures:
+    """One Zone's own share of each group, for the legend beside its plan."""
+
+    storey: int | None
+    name: str
+    total_m2: float
+    area_m2: tuple[float, ...]
+    """Per group, in the groups' order."""
+
+
+def _zone_figures(
+    groups: Sequence[CellGroup],
+    matched: Mapping[str, ArchicadZone],
+    parent_ids: Sequence[str],
+    areas: FloatArray | None,
+    on_storey: int | None,
+) -> list[ZoneFigures]:
+    """Each Zone's own areas, when the cells lie in more than one.
+
+    Empty for one Zone, or with no cell areas given: the groups' own figures
+    are then that Zone's, or all there is. Two communal spaces on two storeys
+    each had the whole study's figures beside them -- 1023 m2 beside a
+    terrace of half that -- which no plan of one of them shows (Penrith, 16
+    November 2026).
+    """
+    if areas is None:
+        return []
+    parents = np.asarray(parent_ids)
+    found: list[ZoneFigures] = []
+    for apartment, zone in matched.items():
+        mine = parents == apartment
+        if not mine.any():
+            continue
+        found.append(
+            ZoneFigures(
+                storey=on_storey if on_storey is not None else zone.storey_index,
+                name=" ".join(part for part in (zone.number, zone.name) if part).strip(),
+                total_m2=float(areas[mine].sum()),
+                area_m2=tuple(
+                    float(areas[mine & np.asarray(group.mask, dtype=bool)].sum())
+                    for group in groups
+                ),
+            )
+        )
+    return found if len(found) > 1 else []
+
+
 def _band_legend(
     groups: Sequence[CellGroup],
     origin: tuple[float, float],
@@ -697,6 +757,7 @@ def _band_legend(
     height_mm: float,
     swatch_m: float = 1.2,
     step_m: float = 1.8,
+    by_zone: Sequence[ZoneFigures] = (),
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Swatches and their figures, in the reference deliverable's own form.
 
@@ -705,15 +766,35 @@ def _band_legend(
     legend says how much. Drawn on **every** storey the fills landed on, so a
     plan of any one of them carries its own key rather than referring to a
     sheet somebody has to find.
+
+    ``by_zone`` makes it a key per Zone, on the Zone's storey, with the
+    Zone's own areas and each as a share of that Zone; several on one storey
+    stand one under the other, each headed by its Zone.
     """
     x, y = origin
     fills: list[dict[str, Any]] = []
     texts: list[dict[str, Any]] = []
     # A legend on every storey the fills reached, so each plan carries its own
     # key. Where nothing landed anywhere, one copy with no storey at all.
-    on: list[int | None] = [int(storey) for storey in sorted(storeys)] or [None]
-    for storey in on:
-        top = y
+    whole = [(group.area_m2, group.share) for group in groups]
+    blocks: list[tuple[int | None, str, list[tuple[float, float]]]]
+    if by_zone:
+        blocks = [
+            (
+                one.storey,
+                f"{one.name}   {one.total_m2:.1f} m²".strip(),
+                [(area, area / one.total_m2 if one.total_m2 else 0.0) for area in one.area_m2],
+            )
+            for one in by_zone
+        ]
+    else:
+        on: list[int | None] = [int(storey) for storey in sorted(storeys)] or [None]
+        blocks = [(storey, "", whole) for storey in on]
+    #: How far down a storey's keys have got: a second Zone's stands under the first.
+    used: dict[int | None, float] = {}
+    for storey, heading, figures in blocks:
+        top = y - used.get(storey, 0.0)
+        used[storey] = used.get(storey, 0.0) + (len(groups) + (4 if heading else 3)) * step_m
         if title:
             entry: dict[str, Any] = {
                 "coordinate": {"x": x, "y": top + step_m, "z": 0.0},
@@ -724,8 +805,19 @@ def _band_legend(
             if storey is not None:
                 entry["floorIndex"] = storey
             texts.append(entry)
+        if heading:
+            named: dict[str, Any] = {
+                "coordinate": {"x": x, "y": top, "z": 0.0},
+                "text": heading,
+                "height": height_mm,
+                "justification": "Left",
+            }
+            if storey is not None:
+                named["floorIndex"] = storey
+            texts.append(named)
+            top -= step_m
 
-        for row, group in enumerate(groups):
+        for row, (group, (area_m2, share)) in enumerate(zip(groups, figures, strict=True)):
             bottom = top - row * step_m
             fill: dict[str, Any] = {
                 "coordinates": [
@@ -743,7 +835,7 @@ def _band_legend(
             }
             label: dict[str, Any] = {
                 "coordinate": {"x": x + swatch_m * 1.4, "y": bottom, "z": 0.0},
-                "text": f"{group.label}   {group.area_m2:.1f} m²   {group.share:.1%}",
+                "text": f"{group.label}   {area_m2:.1f} m²   {share:.1%}",
                 "height": height_mm,
                 "justification": "Left",
             }
