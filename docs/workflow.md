@@ -555,17 +555,19 @@ on a day: Solar analysis, Shadow diagram and Sun views each have one, with
 the same three buttons -- midwinter, the equinox, midsummer -- and a
 custom-day field for any other date, several with commas between. Each box
 is read only by its own page, so the sun views can be lit for the equinox
-while the apartments are assessed at midwinter alone. The year is asked
-once, in the Solar analysis box, and every sun tool reads it.
+while the apartments are assessed at midwinter alone. No year is asked:
+every sun tool is run for 2024, and the year moves the sun by a fraction
+of a degree.
 
-The **Plans** row in Solar analysis says what the apartment plans show,
-any of three: *Sun at each hour*, a plan per instant showing where the sun
-actually falls; *Hours on the floor*, each apartment's floor gridded and banded
-by its hours of sun over the day; and *Hours per apartment*, each flat filled
-whole in the band of its hours with the figure written in. On the command
-line that is `--plan-instant`, `--plan-bands` and `--draw` for
-`archicad-run`. The communal plan has one banded kind, so either whole-day
-tile sends `--zone-bands` to `massing`, and *Sun at each hour* sends
+The **Plans** row in Solar analysis says what the plans show, for the
+apartments and the communal open space alike, either or both: *Sun at each
+hour*, a plan per instant showing where the sun actually falls; and *Hours
+on the floor*, the floor gridded and banded by its hours of sun over the
+day. The **Apartments** box has a switch of its own, *Hours per apartment*:
+each flat filled whole in the band of its hours with the figure written in.
+On the command line the three are `--plan-instant`, `--plan-bands` and
+`--draw` for `archicad-run`. For the communal plan *Hours on the floor*
+sends `--zone-bands` to `massing` and *Sun at each hour* sends
 `--zone-hourly`; `--no-zone-bands` with `--zone-hourly` draws the hourly
 plans alone and still writes the areas sheet and the CSV.
 

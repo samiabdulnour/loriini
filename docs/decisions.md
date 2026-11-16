@@ -7455,3 +7455,70 @@ two older keys sets the one, the shadow diagram's first.
 
 *What this does not change:* what each plan draws; the command line, where
 `--zone-hours` and `--pen-set` are as they were; the settings' other keys.
+
+### D194 — Hours per apartment is asked in Apartments
+
+Asked 16 November 2026, of the Plans row's third tile: *"hours per
+appartment should be in appartments"*. The row sits in Solar analysis and
+is read by the apartments and the communal open space both; the apartment
+total is the apartments' alone.
+
+The Plans row has two tiles, *Sun at each hour* and *Hours on the floor*.
+The Apartments box has a *Hours per apartment* button, lit to begin with,
+above *Drawing quality*; it is saved as `plan_total`.
+
+The communal space's banded plan was drawn for either whole-day tile. It is
+drawn for *Hours on the floor* now, and the apartment total asks nothing of
+it.
+
+A settings file saved while the total was a tile lights the button when its
+row named the total and leaves it unlit when the row left it out. A row
+that named the total alone opens with *Hours on the floor* lit, so the
+communal plan it drew is still drawn; the apartments then get the floor
+plan as well.
+
+*What this does not change:* what each plan draws; the command line. *What
+it gives up:* the row keeps its last tile lit, so the apartment total can
+no longer be run with neither of the other two plans.
+
+### D195 — The year is not asked, and the glazing field is as wide as the layer lists
+
+Asked 16 November 2026. Of the Year field under the solar analysis's days:
+*"is there any precedent for this ? i would like to get rid of year - its
+confusing and not very important"*. There is none: the ADG and the DCPs
+name a day, 21 June, and Archicad's own sun asks a day and a time. The
+year moves the sun by a fraction of a degree.
+
+The field is gone. Every sun study is sent `--year 2024`, which is what
+the field began at; a settings file that kept another year is run for
+2024.
+
+Of *Living-room glazing* in Apartments, shown as a short empty box: it is
+as wide as the two layer lists it stands under.
+
+*What this does not change:* the command line, where `--year` is as it
+was.
+
+### D196 — Fewer things asked on the shadow page, and the mix in fewer words
+
+Asked 16 November 2026, in four messages.
+
+**Proposed 4 and 5.** *"show proposed 4 after proposed and proposed 2 is
+filled. after proposed 3 is filled show proposed 5"*. The legend shows
+Proposed, Proposed 2 and Proposed 3. Proposed 4 appears once Proposed and
+Proposed 2 have layers, Proposed 5 once Proposed 3 has. A row that has
+layers of its own, out of a saved file, is shown whatever the others hold.
+
+**Set name.** *"i dont understand this, its not important i think"*. The
+field is gone and the window no longer sends `--label`. It named a set
+drawn without legend rows; a settings file that kept one loses it.
+
+**The every-hour drawing's colour.** *"remove this option. make it just
+red"*. The list is gone and the drawing is sent red, which is what it began
+at; a settings file that kept blue is drawn red.
+
+**The unit mix.** *"simplify the text there something like x% at x m2
+NLA"*. Each row reads *20 % at 50 m² NLA*.
+
+*What this does not change:* the command line, where `--label` and the two
+colour flags are as they were.

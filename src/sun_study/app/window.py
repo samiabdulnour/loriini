@@ -257,7 +257,7 @@ SHADOW_JOB = "shadow diagram"
 SHADOW_HOURS_JOB = "shadow diagram: every hour"
 #: The every-hour drawing's two colours, the office's (D147); the first is
 #: the command's own default.
-SHADOW_HOURS_COLOURS = ("red", "blue")
+SHADOW_HOURS_COLOUR = "red"
 SUN_EYE_JOB = "sun views"
 #: The site analysis's four outputs, each a study of its own with its own
 #: panel and its own run (D157): the two sheets, the controls table, and
@@ -2748,6 +2748,11 @@ SHADOW_EXTRA = "#B9CDEF"
 GLAZING = "#F4D35E"
 BEAM = "#FBEFD6"
 COURT_GROUND = "#EEEEEE"
+#: The line between two cells of a gridded courtyard, and the shade a wing
+#: throws across it on an hourly plan: the ramp's palest blue, not its
+#: darkest, which at a thumbnail's size read as a hole in the drawing.
+CELL_LINE = "#FFFFFF"
+COURT_SHADE = "#8590EE"
 YIELD_HEAD = "#CFE3C4"
 HERITAGE = ("#F3E3C4", "#D9B97E", "#E8D0A0")
 SITE_BLOCK = ("#F6DAD5", "#C9776C", "#E2A69D")
@@ -3111,26 +3116,28 @@ def _draw_drawing(
         """The courtyard gridded the way the study samples it, each cell in
         the band of its hours: most sun towards the open south side, least
         under the north wing."""
-        cols, rows, gap = 8, 6, 0.7
+        cols, rows = 8, 6
         cell_w = (COURT_MM[2] - COURT_MM[0]) / cols
         cell_h = (COURT_MM[3] - COURT_MM[1]) / rows
-        box(COURT_MM, fill=COURT_GROUND, radius=0)
+        # On whole pixels, with the lines between the cells drawn as lines.
+        # A gap of 0.7 mm between cells is under a pixel at the panel's size,
+        # and showed only where the rounding happened to leave one: two white
+        # lines of the seven (16 November 2026).
+        across = [round(px(COURT_MM[0] + gx * cell_w)) for gx in range(cols + 1)]
+        down = [round(py(COURT_MM[1] + gy * cell_h)) for gy in range(rows + 1)]
         for gx in range(cols):
             for gy in range(rows):
                 off = abs(gx - (cols - 1) / 2)
                 value = round(0.8 + gy * 1.05 - off * 0.7 + ((gx * 3 + gy * 5) % 3) * 0.45)
                 value = max(0, min(6, value))
                 tint = (MEETS if value >= 3 else FALLS_SHORT) if threshold else HOURS_RAMP[value]
-                box(
-                    (
-                        COURT_MM[0] + gx * cell_w + gap / 2,
-                        COURT_MM[1] + gy * cell_h + gap / 2,
-                        COURT_MM[0] + (gx + 1) * cell_w - gap / 2,
-                        COURT_MM[1] + (gy + 1) * cell_h - gap / 2,
-                    ),
-                    fill=tint,
-                    radius=0.4,
+                paper.create_rectangle(
+                    across[gx], down[gy], across[gx + 1], down[gy + 1], fill=tint, outline=""
                 )
+        for x in across[1:-1]:
+            paper.create_line(x, down[0], x, down[-1], fill=CELL_LINE, width=1)
+        for y in down[1:-1]:
+            paper.create_line(across[0], y, across[-1], y, fill=CELL_LINE, width=1)
 
     def words_bar(x0: float, y: float, x1: float, fill: str, thick: float = 3.0) -> None:
         """A word too small to read, as the rounded bar it is at this size:
@@ -3277,7 +3284,7 @@ def _draw_drawing(
             for wing in wings:
                 held = _clip_to(shifted(wing, min(reach, 3.0) * 7.0, bearing), COURT_MM)
                 if len(held) >= 3:
-                    poly(held, fill=HOURS_RAMP[0])
+                    poly(held, fill=COURT_SHADE)
         court_edge()
         court_trees()
         if azimuth is not None:
@@ -4155,7 +4162,7 @@ class Window:
         self._controls(base)
         # What is typed changes what a run will make as surely as what is
         # ticked, so the panel of sheets hears about keystrokes too.
-        for typed in (self.communal_hours, self.year, self.custom_day, self.eye_custom_day):
+        for typed in (self.communal_hours, self.custom_day, self.eye_custom_day):
             typed.bind("<KeyRelease>", lambda _event: self._sync(), add="+")
         for chosen in (self.subset,):
             chosen.bind("<<ComboboxSelected>>", lambda _event: self._sync(), add="+")
@@ -4809,8 +4816,7 @@ class Window:
         days: dict[str, tk.BooleanVar],
         *,
         study: str,
-        year: bool,
-    ) -> tuple[ttk.Entry, ttk.Entry | None]:
+    ) -> ttk.Entry:
         """The days a study runs on, in a box of its own on that study's page.
 
         Asked on the Solar analysis tab and again on the Sun views tab, with
@@ -4830,10 +4836,10 @@ class Window:
         carries its day, so the sets stand beside each other in the project
         rather than over each other.
 
-        The year is asked once, with the solar analysis, and read by every
-        sun tool: it only shifts the sun positions slightly, and two studies
-        of one project are never wanted against different years. Returned
-        along with the custom-day entry, so the caller keeps both.
+        The year is not asked (16 November 2026). It was, with the solar
+        analysis, and it only shifts the sun positions slightly: no council
+        names one, and Archicad's own sun asks a day and a time. Every run
+        is sent ``YEAR``. Returns the custom-day entry.
         """
         frame = self._panel(outer, row, title="Days studied")
         row = 0
@@ -4876,19 +4882,7 @@ class Window:
             f"than a choice between them. Only the {study} reads this box; "
             "the other sun studies have a box of their own.",
         )
-        if not year:
-            return custom, None
-        typed, row = self._entry(
-            frame,
-            row,
-            "Year",
-            "2024",
-            "Which year's sun positions to use, for every sun study.",
-            "The year only shifts the sun positions slightly; it is here so a "
-            "study can be repeated against the same day as an earlier report. "
-            "Asked once: the sun views and the shadow diagram read it too.",
-        )
-        return custom, typed
+        return custom
 
     def _facade(self, frame: ttk.Frame, row: int) -> int:
         """The facade study's rows: the 3D skin, what gets painted, how finely."""
@@ -4982,11 +4976,7 @@ class Window:
         # then the two settings all three studies share, in a card of their
         # own: nothing floats on the page by itself.
         outer = frame
-        self.custom_day, year = self._days_panel(
-            outer, 0, self.days, study="solar analysis", year=True
-        )
-        assert year is not None
-        self.year = year
+        self.custom_day = self._days_panel(outer, 0, self.days, study="solar analysis")
         frame, row = self._panel(outer, 1, title="What the plans show"), 0
 
         self.plan_combination, row = self._combo(
@@ -5008,19 +4998,17 @@ class Window:
             frame,
             row,
             "Plans",
-            "What the apartment plans show: the sun at each time, the floor as a "
-            "heat map, each apartment's total -- any of the three.",
-            "Three plans for three questions. Sun at each hour is a plan per "
-            "instant showing where the sun actually falls, which is what "
-            "somebody standing there at nine in the morning asks about. The "
-            "floor heat map grids each apartment and bands every cell by its "
-            "hours of sun over the day, which says how far in the sun gets. "
-            "The apartment total fills each flat whole in the band of its "
-            "hours over the day and writes the figure in, which is what the "
-            "ADG and a DCP ask about. The communal space draws the first and "
-            "one banded plan for either of the other two. Each tile switches "
+            "What the plans show: the sun at each hour, the hours of sun over "
+            "the day -- either or both.",
+            "Two plans for two questions, drawn for the apartments and for the "
+            "communal open space alike. Sun at each hour is a plan per instant "
+            "showing where the sun actually falls, which is what somebody "
+            "standing there at nine in the morning asks about. Hours on the "
+            "floor grids the floor and bands every cell by its hours of sun "
+            "over the day, which says how far the sun gets. Each tile switches "
             "on and off by itself; the last one lit stays lit, because no "
-            "plans at all is not a plan study.",
+            "plans at all is not a plan study. Each apartment's own total is "
+            "asked in Apartments, where it belongs.",
         )
 
         self.see_glass, row = self._tiles(
@@ -5104,6 +5092,14 @@ class Window:
             "for — and a project that names none is assessed on every opening, "
             "which reads as a pass it has not earned.",
         )
+        # As wide as the two layer lists it stands under: at a number's
+        # width it read as a stray box, not as the third answer of the three
+        # (16 November 2026). Measured, because the two widgets do not make
+        # the same width of the same count of characters.
+        self.livable.configure(width=self.LAYER_WIDTH)
+        short = self.apartments.winfo_reqwidth() - self.livable.winfo_reqwidth()
+        if short > 0:
+            self.livable.grid_configure(ipadx=short // 2)
         self.instants, row = self._ticks_row(
             frame,
             row,
@@ -5116,6 +5112,25 @@ class Window:
             key=_clock_text,
             initial="09:00, 12:00, 15:00",
         )
+        # The apartment total is the apartments' own plan, so it is asked
+        # here and not in the row the communal space shares (16 November 2026).
+        self.do_plan_total = tk.BooleanVar(value=True)
+        name = ttk.Label(frame, text="Total", anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
+        switch = Toggles(frame, on_change=self._sync)
+        switch.grid(row=row, column=1, sticky="w", pady=(6, 0))
+        self.toggle_rows.append(switch)
+        self.plan_total_button = switch.add(self.do_plan_total, self.PLAN_TOTAL, "plans_total")
+        for target in (name, self.plan_total_button):
+            Tooltip(
+                target,
+                "Each apartment filled whole, in the band of its hours of sun over "
+                "the day, with the figure written in: what the ADG and a DCP ask "
+                "about. Lit, that plan is drawn on a sheet of its own. Unlit, the "
+                "plans chosen above alone.",
+                title=self.PLAN_TOTAL,
+            )
+        row += 1
         self.floor_grid, row = self._tiles(
             frame,
             row,
@@ -5323,9 +5338,21 @@ class Window:
         #: for the documents and for the every-hour drawing, which takes its
         #: design from the rows being compared.
         self.shadow_rows: list[tuple[str, str, Chips]] = []
+        #: Each legend row's own widgets, for the rows that are shown only
+        #: once the rows before them are filled (``_shadow_later_rows``).
+        self.shadow_legend_panel = frame
+        self.shadow_legend_widgets: dict[str, list[tk.Widget]] = {}
         for short, role, label, hint, detail in SHADOW_LEGEND_ROWS:
+            before = {str(child) for child in frame.winfo_children()}
             picker, row = self._picker(frame, row, label, hint, detail)
             self.shadow_rows.append((short, role, picker))
+            self.shadow_legend_widgets[short] = [
+                child
+                for child in frame.winfo_children()
+                if isinstance(child, tk.Widget)
+                and str(child) not in before
+                and child.winfo_manager() == "grid"
+            ]
         self.shadow_hours, row = self._ticks_row(
             frame,
             row,
@@ -5353,8 +5380,8 @@ class Window:
         # in a box of their own above everything: the day is the first thing
         # a council names, and the same card in the same place on every page
         # is found without looking.
-        self.shadow_custom_day, _ = self._days_panel(
-            outer, 0, self.shadow_day_ticks, study="shadow diagram", year=False
+        self.shadow_custom_day = self._days_panel(
+            outer, 0, self.shadow_day_ticks, study="shadow diagram"
         )
         self._shadow_documents(outer, 2)
         self._shadow_every_hour(outer, 3)
@@ -5473,17 +5500,6 @@ class Window:
             "each row's combination is made from this one. Nothing is picked "
             "for you: Run asks when it is blank.",
         )
-        self.shadow_plan_label, row = self._entry(
-            frame,
-            row,
-            "Set name",
-            "",
-            "A word in every document and sheet name, for a set without the legend.",
-            "Without legend rows the documents are one set under the layer "
-            "combination, and a name tells two such sets apart: Existing, "
-            "Proposed. With legend rows each set is named for its row, and "
-            "this is not used. Blank names neither.",
-        )
 
     def _shadow_every_hour(self, outer: ttk.Frame, at: int) -> None:
         """The design's shadow at every hour on one drawing: Loriini's fills.
@@ -5588,18 +5604,6 @@ class Window:
             "read as nothing drawn at all. A number typed here is still taken "
             "as the storey's index, which is what older settings files hold.",
         )
-        self.shadow_hours_colour, row = self._combo(
-            frame,
-            row,
-            "Colour",
-            "Each hour a 25 % drafting fill in the pen nearest it, no outline.",
-            "The office's red, its pen 45, or the nearest blue (D147): dots "
-            "rather than a solid, so the hours over one another all show.",
-        )
-        self.shadow_hours_colour.configure(
-            values=SHADOW_HOURS_COLOURS, state="readonly", width=self.NUMBER_WIDTH
-        )
-        self.shadow_hours_colour.set(SHADOW_HOURS_COLOURS[0])
 
     def _paint_design(self) -> None:
         """Say in the every-hour panel which massing it will draw.
@@ -5725,9 +5729,7 @@ class Window:
         # The views' own days, on this page and not on another tab. They
         # used to run on whatever the solar analysis was ticked for. Above
         # the study, where the other two sun pages have theirs.
-        self.eye_custom_day, _ = self._days_panel(
-            outer, 0, self.eye_days, study="sun views", year=False
-        )
+        self.eye_custom_day = self._days_panel(outer, 0, self.eye_days, study="sun views")
 
     def _site(self, frame: ttk.Frame) -> None:
         """Site and context analysis from an address, in four panels (D157).
@@ -6459,13 +6461,11 @@ class Window:
         share_box = ttk.Entry(cells, width=self.NUMBER_WIDTH)
         share_box.insert(0, share)
         share_box.grid(row=0, column=0)
-        ttk.Label(cells, text="% of the units, at", foreground=HINT).grid(
-            row=0, column=1, padx=(6, 8)
-        )
+        ttk.Label(cells, text="% at", foreground=HINT).grid(row=0, column=1, padx=(6, 8))
         size_box = ttk.Entry(cells, width=self.NUMBER_WIDTH)
         size_box.insert(0, size)
         size_box.grid(row=0, column=2)
-        ttk.Label(cells, text="m² NLA each", foreground=HINT).grid(row=0, column=3, padx=(6, 0))
+        ttk.Label(cells, text="m² NLA", foreground=HINT).grid(row=0, column=3, padx=(6, 0))
         for target in (label, share_box, size_box):
             Tooltip(
                 target,
@@ -7069,7 +7069,6 @@ class Window:
             "Address",
             "Site lot",
             "Custom day",
-            "Set name",
         }
     )
     #: Typed fields that hold a name, as wide as a list of the project's
@@ -7081,6 +7080,12 @@ class Window:
     #: And a list of the project's own names: a layout, a combination, a
     #: storey, a pen set.
     NAME_WIDTH = 36
+    #: A list of the layers that carry Zones, and the field under two of them.
+    LAYER_WIDTH = 22
+    #: The year every sun study is run for. It was a field, and is not asked
+    #: now: it moves the sun by a fraction of a degree, and a settings file
+    #: that kept another is run for this one.
+    YEAR = "2024"
 
     def _entry(
         self, parent: ttk.Frame, row: int, label: str, initial: str, hint: str, detail: str
@@ -7126,7 +7131,7 @@ class Window:
         holder.grid(row=row, column=1, sticky="ew", pady=(6, 0))
         holder.columnconfigure(1, weight=1)
 
-        layer = ttk.Combobox(holder, values=[], width=22)
+        layer = ttk.Combobox(holder, values=[], width=self.LAYER_WIDTH)
         layer.grid(row=0, column=0, sticky="nw")
         names = Chips(
             holder,
@@ -7624,6 +7629,7 @@ class Window:
                 )
         self._yield_rows()
         self._shadow_row_fields()
+        self._shadow_later_rows()
         self._communal_threshold_fields()
         self._paint_design()
         self._refill_dock(sheets)
@@ -7781,7 +7787,6 @@ class Window:
             "master_layout": self.master,
             "storey_from": self.storey_from,
             "storey_to": self.storey_to,
-            "year": self.year,
             "layer_combination": self.combination,
             "plan_combination": self.plan_combination,
             "subject_layers": self.subject,
@@ -7813,9 +7818,7 @@ class Window:
                 f"shadow_row_filter_{short.lower().replace(' ', '_')}": box
                 for short, box in self.shadow_row_filters.items()
             },
-            "shadow_plan_label": self.shadow_plan_label,
             "pen_set": self.pen_set,
-            "shadow_hours_colour": self.shadow_hours_colour,
             "shadow_grid": self.shadow_grid,
             "eye_override": self.eye_override,
             "eye_base_combination": self.eye_base_combination,
@@ -7900,6 +7903,7 @@ class Window:
             "site_model": self.do_site_model,
             "site_future": self.do_site_future,
             "communal_threshold": self.do_communal_threshold,
+            "plan_total": self.do_plan_total,
             "site_trees": self.do_site_trees,
             "site_location": self.do_site_location,
             "study_yield": self.do_yield,
@@ -7975,6 +7979,7 @@ class Window:
                 if isinstance(value, str) and value.strip():
                     self.pen_set.set(value.strip())
                     break
+        self._plan_total_from_older(saved)
         self._shadows_from_older(saved)
         self._proposals_from_older(saved)
         opened = saved.get(self.OPEN_SECTION)
@@ -8131,6 +8136,23 @@ class Window:
             else:
                 widget.grid_remove()
 
+    def _plan_total_from_older(self, saved: Mapping[str, object]) -> None:
+        """The apartment total of a file saved while it was a Plans tile.
+
+        Lit when the file's Plans row named it, or named nothing this window
+        knows. A row that named the total alone lights the hours on the
+        floor, because the communal space drew its banded plan for either and
+        would otherwise lose it."""
+        older = saved.get("plan_kinds")
+        if "plan_total" in saved or not isinstance(older, str):
+            return
+        parts = {piece.strip() for piece in older.split(",")}
+        rows = {self.PLAN_TIMES, self.PLAN_HEAT} | set(self.TILE_ALIASES["Plans"])
+        total = bool(parts & self.PLAN_TOTAL_OLDER)
+        self.do_plan_total.set(total or not parts & rows)
+        if total and not parts & rows:
+            self.plan_kinds.set(self.PLAN_HEAT)
+
     def _communal_threshold(self) -> str:
         """The hours the threshold plan is drawn for, or nothing when the
         plan is switched off or no hours are typed."""
@@ -8143,6 +8165,25 @@ class Window:
         rows = getattr(self, "communal_threshold_rows", None)
         if rows:
             self._show_rows(self.communal_panel, rows, self.do_communal_threshold.get())
+
+    #: The legend rows asked only once the rows named are filled: five
+    #: proposals in a column read as five to fill, and most studies have one.
+    SHADOW_LATER_ROWS: ClassVar[dict[str, tuple[str, ...]]] = {
+        "PROPOSED 4": ("PROPOSED", "PROPOSED 2"),
+        "PROPOSED 5": ("PROPOSED 3",),
+    }
+
+    def _shadow_later_rows(self) -> None:
+        """Show Proposed 4 once Proposed and Proposed 2 have layers, and
+        Proposed 5 once Proposed 3 has. A row that has layers of its own --
+        out of a saved file -- is shown whatever the others hold."""
+        widgets = getattr(self, "shadow_legend_widgets", None)
+        if not widgets:
+            return
+        filled = {short for short, _role, picker in self.shadow_rows if self._listed(picker)}
+        for short, needs in self.SHADOW_LATER_ROWS.items():
+            shown = short in filled or all(need in filled for need in needs)
+            self._show_rows(self.shadow_legend_panel, widgets[short], shown)
 
     def _shadow_row_fields(self) -> None:
         """Show a compared row's name and option only once the row has
@@ -8671,6 +8712,8 @@ class Window:
     #: The choice rows whose tiles are switches of their own rather than one
     #: of a set, and the older spellings each reads as the tiles they mean.
     #: "Bands and times" was the Plans row's third tile until both could be lit.
+    #: The apartment total was a tile of the row too, until 16 November 2026;
+    #: it is the Apartments box's own switch now (``_plan_total_from_older``).
     TILE_MULTI: ClassVar[frozenset[str]] = frozenset({"Plans"})
     #: Older spellings of the Plans row, read as the tiles they now mean:
     #: "Bands and times" was a tile of its own, and "Bands by hour" was the
@@ -8684,13 +8727,12 @@ class Window:
             "A layer per option": ("By level",),
         },
         "Plans": {
-            "Bands and times": ("Sun at each hour", "Hours on the floor", "Hours per apartment"),
-            "Bands by hour": ("Hours on the floor", "Hours per apartment"),
+            "Bands and times": ("Sun at each hour", "Hours on the floor"),
+            "Bands by hour": ("Hours on the floor",),
             # The tiles' names until 16 November 2026, when each was named
             # for the hours it shows.
             "Sun at each time": ("Sun at each hour",),
             "Floor heat map": ("Hours on the floor",),
-            "Apartment total": ("Hours per apartment",),
         },
     }
 
@@ -8718,7 +8760,6 @@ class Window:
         "Plans": {
             "Sun at each hour": "Sun at each hour",
             "Hours on the floor": "Hours on the floor",
-            "Hours per apartment": "Hours per apartment",
         },
         "Sheets": {
             "One layout, all drawings": "One layout",
@@ -8747,14 +8788,8 @@ class Window:
             (
                 "Hours on the floor",
                 "plans_bands",
-                "Hours on the floor: the floor of every apartment gridded and banded "
-                "by its own hours of sun over the day -- how far in the sun gets.",
-            ),
-            (
-                "Hours per apartment",
-                "plans_total",
-                "Hours per apartment: each apartment filled whole, in the band of its "
-                "hours of sun over the day, with the figure written in.",
+                "Hours on the floor: the floor gridded and banded by its own hours "
+                "of sun over the day -- how far the sun gets.",
             ),
         ),
         "Sheets": (
@@ -8932,21 +8967,28 @@ class Window:
     #: The two Plans tiles, each a switch of its own. Both lit is the default.
     PLAN_TIMES = "Sun at each hour"
     PLAN_HEAT = "Hours on the floor"
+    #: The Apartments box's own switch, and the names a Plans row saved
+    #: before 16 November 2026 asked for it by.
     PLAN_TOTAL = "Hours per apartment"
+    PLAN_TOTAL_OLDER: ClassVar[frozenset[str]] = frozenset(
+        {"Hours per apartment", "Apartment total", "Bands by hour", "Bands and times"}
+    )
 
     def _plan_kinds(self) -> tuple[bool, bool, bool]:
-        """``(times, heat, total)``: which of the three kinds of plan the
-        Plans row asks for. Three because they answer three questions: where
-        the sun is at nine, how far into each room it reaches over the day,
-        and whether each flat passes. A value naming none of them -- a
-        hand-edited file -- is all three, and an older spelling is read
-        through the row's aliases."""
+        """``(times, heat, total)``: which of the three kinds of plan are
+        asked for. Three because they answer three questions: where the sun
+        is at nine, how far it reaches over the day, and whether each flat
+        passes. The first two are the Plans row's, shared with the communal
+        space; a row naming neither -- a hand-edited file -- is both, and an
+        older spelling is read through the row's aliases. The third is the
+        Apartments box's own switch."""
         chosen: set[str] = set()
         for part in (piece.strip() for piece in self.plan_kinds.get().split(",")):
             chosen.update(self.TILE_ALIASES["Plans"].get(part, (part,)))
-        if not chosen & {self.PLAN_TIMES, self.PLAN_HEAT, self.PLAN_TOTAL}:
-            return True, True, True
-        return self.PLAN_TIMES in chosen, self.PLAN_HEAT in chosen, self.PLAN_TOTAL in chosen
+        total = self.do_plan_total.get()
+        if not chosen & {self.PLAN_TIMES, self.PLAN_HEAT}:
+            return True, True, total
+        return self.PLAN_TIMES in chosen, self.PLAN_HEAT in chosen, total
 
     #: What the Sheets row offers, and the word each sends.
     SHEET_CHOICES = (
@@ -9282,7 +9324,7 @@ class Window:
         if COMMUNAL_JOB in queued:
             for day in days:
                 threshold = self._communal_threshold()
-                if heat or total:
+                if heat:
                     deal(
                         COMMUNAL_JOB,
                         "Solar analysis",
@@ -9293,7 +9335,7 @@ class Window:
                         [""],
                         scale=communal_scale,
                     )
-                if (heat or total) and threshold:
+                if heat and threshold:
                     deal(
                         COMMUNAL_JOB,
                         "Solar analysis",
@@ -9496,7 +9538,7 @@ class Window:
             month, number = (int(piece) for piece in parse_day(day).split("-"))
             hour, _, minute = clock.partition(":")
             when = dt.datetime(
-                int(self.year.get().strip() or "2024"),
+                int(self.YEAR),
                 month,
                 number,
                 int(hour),
@@ -9689,7 +9731,7 @@ class Window:
             ]
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
-            args += ["--year", self.year.get().strip() or "2024"]
+            args += ["--year", self.YEAR]
             # One run per day ticked. Each carries its own date, and a
             # command names everything it makes after the day it studied,
             # so the sets stand beside each other in the project instead of
@@ -9777,7 +9819,7 @@ class Window:
             tables = self._tables_folder()
             if tables is not None:
                 args += ["--csv", str(tables / APARTMENTS_TABLE)]
-            args += ["--year", self.year.get().strip() or "2024"]
+            args += ["--year", self.YEAR]
             # One run per day ticked. Each carries its own date, and a
             # command names everything it makes after the day it studied,
             # so the sets stand beside each other in the project instead of
@@ -9844,17 +9886,17 @@ class Window:
             # areas are what they quote, and a study that draws the one
             # without writing the other invites a figure read off a colour.
             args += ["--zone-sheet", "--zone-stats"]
-            # The communal plan has two kinds, not three: the open space is
-            # banded as one heat map, so either whole-day tile asks for it.
-            times, heat, total = self._plan_kinds()
+            # The communal plan has the Plans row's two kinds; the apartment
+            # total is the apartments' own and asks nothing of it.
+            times, heat, _total = self._plan_kinds()
             if times:
                 args += ["--zone-hourly"]
                 schedule = self.cos_schedule.get().strip()
                 if schedule and schedule != NO_SCHEDULE:
                     args += ["--zone-schedule", schedule]
-            if not (heat or total):
+            if not heat:
                 args += ["--no-zone-bands"]
-            args += ["--year", self.year.get().strip() or "2024"]
+            args += ["--year", self.YEAR]
             # One run per day ticked. Each carries its own date, and a
             # command names everything it makes after the day it studied,
             # so the sets stand beside each other in the project instead of
@@ -9902,23 +9944,20 @@ class Window:
             args += self._row_extras(legend)
             if hours_from_documents:
                 args += ["--every-hour" if self.do_shadows.get() else "--every-hour-only"]
-                if self.shadow_hours_colour.get():
-                    args += ["--every-hour-colour", self.shadow_hours_colour.get()]
+                args += ["--every-hour-colour", SHADOW_HOURS_COLOUR]
                 if self._shadow_storey_index():
                     args += ["--every-hour-storey", self._shadow_storey_index()]
-            plain_only = ("--label",)
-            for flag, field in (
+            for flag, named in (
                 ("--layer-combination", self.shadow_plan_combination),
-                ("--label", self.shadow_plan_label),
                 ("--pen-set", self.shadow_plan_pen_set),
                 ("--subset", self.shadow_study_subset),
                 ("--master-layout", self.master),
             ):
-                if field.get().strip() and not (legend and flag in plain_only):
-                    args += [flag, field.get().strip()]
+                if named.get().strip():
+                    args += [flag, named.get().strip()]
             if self._shadow_times():
                 args += ["--shadow-hour", self._shadow_times()]
-            args += ["--year", self.year.get().strip() or "2024"]
+            args += ["--year", self.YEAR]
             args += self._sheet_args()
             made.append(Job(SHADOW_JOB if self.do_shadows.get() else SHADOW_HOURS_JOB, args))
 
@@ -9944,8 +9983,7 @@ class Window:
             args += ["--export", "native", "--shadow-all-hours-only", "--draw", "--sheet"]
             if self.shadow_grid.get().strip():
                 args += ["--shadow-grid", self.shadow_grid.get().strip()]
-            if self.shadow_hours_colour.get():
-                args += ["--shadow-all-hours-colour", self.shadow_hours_colour.get()]
+            args += ["--shadow-all-hours-colour", SHADOW_HOURS_COLOUR]
             if self.terrain_floor.get().strip():
                 args += ["--shadow-terrain-floor", self.terrain_floor.get().strip()]
             args += ["--shadow-date", ",".join(self._shadow_days())]
@@ -9958,7 +9996,7 @@ class Window:
                 args += ["--master-layout", self.master.get()]
             if self.shadow_study_subset.get():
                 args += ["--shadow-subset", self.shadow_study_subset.get()]
-            args += ["--year", self.year.get().strip() or "2024"]
+            args += ["--year", self.YEAR]
             args += self._sheet_args()
             made.append(Job(SHADOW_HOURS_JOB, args))
 
@@ -9993,7 +10031,7 @@ class Window:
                 args += ["--hour", hours]
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
-            args += ["--year", self.year.get().strip() or "2024"]
+            args += ["--year", self.YEAR]
             # One run per day lit on the views' own row. Each carries its own
             # date, and a command names everything it makes after the day it
             # studied, so the sets stand beside each other in the project

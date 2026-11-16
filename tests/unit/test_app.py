@@ -359,6 +359,7 @@ def test_the_plans_row_says_which_kind_of_plan_each_study_draws(
     assert window.APARTMENT_HEAT_MAP in {sheet.kind for sheet in hidden_window.planned()}
 
     hidden_window.plan_kinds.set("Sun at each hour")
+    hidden_window.plan_total_button.invoke()
     plans, communal = hidden_window.jobs()
     assert "--no-draw" in plans.args and "--sheet" in plans.args
     assert "--plan-bands" not in plans.args
@@ -371,26 +372,41 @@ def test_the_plans_row_says_which_kind_of_plan_each_study_draws(
     assert window.APARTMENT_HEAT_MAP not in kinds
 
 
-def test_the_plans_row_lights_any_of_three(hidden_window: Any) -> None:
-    """The times, the floor heat map and the apartment total are three
-    switches, not one pick. All start lit, each turns off by itself, the
-    last one lit stays lit, and a file saved when "Bands by hour" was the
-    heat map and the total together restores as both."""
+def test_the_plans_row_lights_either_and_the_total_is_the_apartments_own(
+    hidden_window: Any,
+) -> None:
+    """The times and the hours on the floor are the Plans row's two switches,
+    shared with the communal space; the apartment total is a switch in the
+    Apartments box (16 November 2026). All start lit, each turns off by
+    itself, the row's last one lit stays lit, and a file saved while the
+    total was a tile of the row restores it as the switch."""
     row = hidden_window.plan_kinds
-    assert row.get() == "Sun at each hour, Hours on the floor, Hours per apartment"
+    assert list(row._buttons) == ["Sun at each hour", "Hours on the floor"]
+    assert hidden_window.plan_total_button.master.master is hidden_window.floor_grid.master
+    assert row.get() == "Sun at each hour, Hours on the floor"
     assert hidden_window._plan_kinds() == (True, True, True)
     row._pick("Hours on the floor")
-    assert row.get() == "Sun at each hour, Hours per apartment"
-    assert hidden_window._plan_kinds() == (True, False, True)
-    row._pick("Hours per apartment")
+    assert row.get() == "Sun at each hour"
     row._pick("Sun at each hour")
     assert row.get() == "Sun at each hour", "the last one lit stays lit"
+    hidden_window.plan_total_button.invoke()
     assert hidden_window._plan_kinds() == (True, False, False)
+    assert hidden_window.settings()["plan_total"] is False
+
     hidden_window.apply({"plan_kinds": "Bands by hour"})
-    assert row.get() == "Hours on the floor, Hours per apartment"
+    assert row.get() == "Hours on the floor"
     assert hidden_window._plan_kinds() == (False, True, True)
+    hidden_window.apply({"plan_kinds": "Sun at each time, Floor heat map"})
+    assert hidden_window._plan_kinds() == (True, True, False), "a row that left the total out"
     hidden_window.apply({"plan_kinds": "Bands and times"})
-    assert row.get() == "Sun at each hour, Hours on the floor, Hours per apartment"
+    assert row.get() == "Sun at each hour, Hours on the floor"
+    assert hidden_window._plan_kinds() == (True, True, True)
+    # The total alone: the communal space drew its bands for it, and still does.
+    hidden_window.apply({"plan_kinds": "Apartment total"})
+    assert hidden_window._plan_kinds() == (False, True, True)
+    # A file of today is read as it says.
+    hidden_window.apply({"plan_kinds": "Sun at each hour", "plan_total": False})
+    assert hidden_window._plan_kinds() == (True, False, False)
 
 
 def test_each_plan_tile_is_its_own_flag_to_the_run(hidden_window: Any) -> None:
@@ -403,14 +419,15 @@ def test_each_plan_tile_is_its_own_flag_to_the_run(hidden_window: Any) -> None:
     hidden_window.do_plans.set(True)
     hidden_window.apartments.set("06 | Zone.Units")
 
-    hidden_window.plan_kinds.set("Hours per apartment")
+    hidden_window.plan_kinds.set("Sun at each hour")
     (plans,) = hidden_window.jobs()
     assert "--draw" in plans.args and "--plan-bands" not in plans.args
-    assert not flag(plans.args, "--plan-instant")
+    assert flag(plans.args, "--plan-instant")
     kinds = {sheet.kind for sheet in hidden_window.planned()}
-    assert kinds == {"Apartments, ADG total"}
+    assert kinds == {"Apartments", "Apartments, ADG total"}
 
     hidden_window.plan_kinds.set("Hours on the floor")
+    hidden_window.plan_total_button.invoke()
     (plans,) = hidden_window.jobs()
     assert "--no-draw" in plans.args and "--plan-bands" in plans.args
     assert {sheet.kind for sheet in hidden_window.planned()} == {window.APARTMENT_HEAT_MAP}
@@ -476,9 +493,6 @@ def test_every_solar_grid_offers_the_same_four_steps(hidden_window: Any) -> None
     hidden_window.floor_grid.set("1.0")
     (plans,) = hidden_window.jobs()
     assert flag(plans.args, "--patch-grid") == ["1.0"]
-    hidden_window.plan_kinds.set("Hours per apartment")
-    (plans,) = hidden_window.jobs()
-    assert not flag(plans.args, "--patch-grid"), "no floor plan, no second ray cast"
 
     hidden_window.apply({"floor_grid": "0.25"})
     assert hidden_window.floor_grid.get() == "0.25"
@@ -1240,6 +1254,44 @@ FOUR_HOUR_SHEET = window.Sheet(
     scale="1:1000",
 )
 A_MODEL = window.Sheet("Site analysis", "site", "", window.CONTEXT_MODEL, "300 m", paper=False)
+
+
+def test_the_courtyards_cells_are_parted_by_every_line_at_any_size(hidden_window: Any) -> None:
+    """The gap between two cells was under a pixel at the panel's size and
+    showed only where the rounding left one: two white lines of the seven
+    (16 November 2026). The lines are drawn as lines, on whole pixels."""
+    for width, height in ((300, 212), (window.Dock.SHEET_W, window.Dock.SHEET_H), (173, 122)):
+        paper: Any = tk.Canvas(hidden_window.root)
+        window.draw_sheet(paper, WHOLE_DAY_SHEET, width, height)
+        lines = [
+            [float(value) for value in paper.coords(item)]
+            for item in paper.find_all()
+            if str(paper.type(item)) == "line"
+            and str(paper.itemcget(item, "fill")).upper() == window.CELL_LINE
+        ]
+        upright = [one for one in lines if one[0] == one[2]]
+        level = [one for one in lines if one[1] == one[3]]
+        assert (len(upright), len(level)) == (7, 5), (width, len(upright), len(level))
+        assert all(value == int(value) for one in lines for value in one), "on whole pixels"
+        steps = sorted(one[0] for one in upright)
+        assert all(later - earlier >= 2 for earlier, later in pairwise(steps))
+
+
+def test_an_hours_shade_on_the_courtyard_is_the_pale_blue(hidden_window: Any) -> None:
+    hourly = window.Sheet(
+        "Communal open space",
+        "communal",
+        "SA.03",
+        window.COMMUNAL_HOURLY,
+        "21 Jun",
+        (window.Drawing(window.COMMUNAL_HOURLY, "21 Jun", "09:00", 45.0, 20.0),),
+        scale="1:300",
+    )
+    paper: Any = tk.Canvas(hidden_window.root)
+    window.draw_sheet(paper, hourly, 300, 212)
+    fills = {str(paper.itemcget(item, "fill")).upper() for item in paper.find_all()}
+    assert window.COURT_SHADE in fills, "the wing's shade is drawn"
+    assert window.HOURS_RAMP[0] not in fills, "and not in the ramp's darkest blue"
 
 
 def test_a_sheet_says_only_what_the_panel_does_not_say_beside_it(hidden_window: Any) -> None:
@@ -2738,14 +2790,43 @@ def test_a_settings_file_nobody_can_read_leaves_the_window_alone(
     assert preferences.load() == {}
 
 
+def test_the_year_is_not_asked_and_every_sun_study_is_sent_the_same(
+    hidden_window: Any,
+) -> None:
+    """The Year field is gone (16 November 2026): it moved the sun by a
+    fraction of a degree and nobody names one. A file that kept another year
+    is run for the window's own."""
+    assert not hasattr(hidden_window, "year")
+    assert "year" not in hidden_window.settings()
+    hidden_window.apply({"year": "2019"})
+    for _name, tick, _where in hidden_window._studies():
+        tick.set(False)
+    hidden_window.do_facade.set(True)
+    hidden_window.do_sun_eyes.set(True)
+    jobs = hidden_window.jobs()
+    assert jobs and all(flag(job.args, "--year") == [window.Window.YEAR] for job in jobs)
+
+
+def test_the_living_room_glazing_is_as_wide_as_the_layer_lists_above_it(
+    hidden_window: Any,
+) -> None:
+    hidden_window.do_plans.set(True)
+    hidden_window._sync()
+    hidden_window.root.update_idletasks()
+    layer, typed = hidden_window.apartments, hidden_window.livable
+    # The entry's own width and what the grid pads it by on either side.
+    wide = typed.winfo_reqwidth() + 2 * int(str(typed.grid_info()["ipadx"]))
+    assert abs(layer.winfo_reqwidth() - wide) <= 2
+
+
 def test_a_setting_of_the_wrong_shape_costs_only_itself(
     hidden_window: Any, settings_file: Path
 ) -> None:
     """One bad line should not condemn the other twenty-five."""
-    hidden_window.apply({"layer_prefix": "14 |", "year": 2024, "study_plans": "yes"})
+    hidden_window.apply({"layer_prefix": "14 |", "communal_hours": 3, "study_plans": "yes"})
 
     assert hidden_window.prefix_solar.get() == "14 |"
-    assert hidden_window.year.get() == "2024", "the number is not a field's text"
+    assert hidden_window.communal_hours.get() == "2", "the number is not a field's text"
     assert hidden_window.do_plans.get() is False, "and the string is not a tick"
 
 
@@ -3167,9 +3248,36 @@ def test_every_hour_on_one_drawing_is_asked_for_only_when_ticked(hidden_window: 
     assert flag(hidden_window.jobs()[1].args, "--shadow-grid") == ["0.1"]
     assert hidden_window.settings()["shadow_grid"] == "0.1"
     assert hidden_window.settings()["study_shadow_hours"] is True
+    # Red, and not asked (16 November 2026).
+    assert not hasattr(hidden_window, "shadow_hours_colour")
+    assert "shadow_hours_colour" not in hidden_window.settings()
 
-    hidden_window.shadow_hours_colour.set("blue")
-    assert flag(hidden_window.jobs()[1].args, "--shadow-all-hours-colour") == ["blue"]
+
+def test_proposed_4_and_5_are_asked_once_the_rows_before_them_are_filled(
+    hidden_window: Any,
+) -> None:
+    """Five proposals in a column read as five to fill. Proposed 4 shows
+    once Proposed and Proposed 2 have layers, Proposed 5 once Proposed 3 has,
+    and a row with layers of its own shows whatever the others hold."""
+    boxes = {short: box for short, _role, box in hidden_window.shadow_rows}
+
+    def shown() -> list[str]:
+        hidden_window._sync()
+        return [short for short, box in boxes.items() if box.winfo_manager() == "grid"]
+
+    always = ["EXISTING", "FUTURE", "EXISTING ON SITE", "PROPOSED", "PROPOSED 2", "PROPOSED 3"]
+    assert [short for short in shown() if short not in ("PROPOSED 4", "PROPOSED 5")] == shown()
+    assert len(shown()) == len(always)
+    boxes["PROPOSED"].insert(0, "20 | Massing.Envelope")
+    assert "PROPOSED 4" not in shown()
+    boxes["PROPOSED 2"].insert(0, "20 | Massing.Podium")
+    assert "PROPOSED 4" in shown() and "PROPOSED 5" not in shown()
+    boxes["PROPOSED 3"].insert(0, "20 | Massing.Tower")
+    assert "PROPOSED 5" in shown()
+    boxes["PROPOSED 2"].delete(0, "end")
+    assert "PROPOSED 4" not in shown() and "PROPOSED 5" in shown()
+    boxes["PROPOSED 4"].insert(0, "20 | Massing.Other")
+    assert "PROPOSED 4" in shown(), "a row with layers of its own is shown"
 
 
 def test_the_legend_rows_are_the_legends_own(hidden_window: Any) -> None:
@@ -4677,7 +4785,6 @@ def test_the_shadow_diagram_draws_its_days_and_hours_as_documents(
     hidden_window.do_shadows.set(True)
     for name, lit in hidden_window.shadow_day_ticks.items():
         lit.set(name in ("winter", "summer"))
-    hidden_window.shadow_plan_label.insert(0, "Proposed")
     # The project's own list, and none of it picked by a name (D156): the
     # person says which combination shows the ground under the buildings.
     assert hidden_window.shadow_plan_combination.get() == ""
@@ -4694,7 +4801,7 @@ def test_the_shadow_diagram_draws_its_days_and_hours_as_documents(
     assert flag(job.args, "--shadow-date") == ["06-21,12-21"]
     assert flag(job.args, "--shadow-hour") == [hidden_window.shadow_hours.get().strip()]
     assert flag(job.args, "--layer-combination") == ["01 | Plans - DA"]
-    assert flag(job.args, "--label") == ["Proposed"]
+    assert "--label" not in job.args, "no set name is asked"
     assert "--shadow-pen" not in job.args and "--shadow-colour" not in job.args
     assert "--pen-set" not in job.args, "a blank keeps each view's own"
 
@@ -4705,7 +4812,7 @@ def test_the_shadow_diagram_draws_its_days_and_hours_as_documents(
 
     saved = hidden_window.settings()
     assert saved["study_shadows"] is True
-    assert saved["shadow_plan_label"] == "Proposed"
+    assert "shadow_plan_label" not in saved, "no set name is asked"
 
 
 def test_run_asks_for_the_shadow_diagrams_combination_rather_than_guessing_one(
@@ -4743,7 +4850,6 @@ def test_the_shadow_diagram_stacks_its_legend_rows(
     for _name, tick, _where in hidden_window._studies():
         tick.set(False)
     hidden_window.do_shadows.set(True)
-    hidden_window.shadow_plan_label.insert(0, "Proposed")
     rows = {short: (role, box) for short, role, box in hidden_window.shadow_rows}
     baseline = next(short for short, (role, _) in rows.items() if role == "baseline")
     scenario = next(short for short, (role, _) in rows.items() if role == "scenario")

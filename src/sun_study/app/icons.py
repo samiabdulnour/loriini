@@ -350,7 +350,6 @@ BY_LABEL: dict[str, str] = {
     "Measure from storey": "storey_datum",
     "...to storey": "storey_datum",
     "Custom day": "custom_day",
-    "Year": "year",
     # Model -- what leaves Archicad
     "Layer combination": "combination",
     "Plan combination": "combination",
@@ -398,7 +397,6 @@ BY_LABEL: dict[str, str] = {
     "North": "site",
     # Solar analysis, the plans the apartments are drawn on
     "Plans": "plans_both",
-    "Set name": "subset",
     # Yield -- the feasibility sheet
     "Option": "yield",
     "Residential layers": "yield",
