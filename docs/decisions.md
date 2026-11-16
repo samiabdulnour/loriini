@@ -7408,3 +7408,23 @@ hatch, which was already dashed (D188); the future context's slabs and
 their layer; the site sheets, which draw trees flat as before; the command
 line's options. Not run against Archicad: the tree objects are covered by
 the suite's scripted replies alone.
+
+### D192 — The legend beside a communal space is that space's own
+
+Asked 16 November 2026, of the Penrith communal sheet, where Level 31 and
+Level 46 each carry a communal space: *"for some reason you merge COS areas
+procentage together. if you fill the the numbers into plan directly you
+need to separate the procentage for every COS zone"*. Both plans had the
+same key beside them, the whole study's: 1023.0 m² in seven bands.
+
+**A key per Zone, on the Zone's storey.** `draw_cell_groups` takes each
+cell's area, and where the cells lie in more than one Zone the key beside a
+plan is that Zone's: headed by the Zone and its area, each band's area the
+part of it in that Zone, each share a share of that Zone. Two Zones on one
+storey stand one key under the other. One Zone, or a caller with no cell
+areas, draws as before. The banded plan, the threshold plan and the hourly
+plans all go through it.
+
+*What this does not change:* the table on the sheet beside the plans, the
+areas sheet and the CSV, which are the whole study's and say so in their
+first line, COMMUNAL OPEN SPACE 100%; the fills; the apartments' plans.
