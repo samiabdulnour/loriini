@@ -5206,6 +5206,23 @@ class Window:
             span=True,
             initial="08:00-15:00",
         )
+        self.communal_height, row = self._entry(
+            frame,
+            row,
+            "Height above ground (m)",
+            "0",
+            "Metres above the ground to assess. 0 is at ground level.",
+            "The height a person's sunlight is measured at. 0 means on the "
+            "ground itself, which is taken as 50 mm clear of it: the site mesh "
+            "shades, and a point exactly on the ground starts every ray inside "
+            "the ground and reads as permanent shade. It matters more than it "
+            "sounds — on the reference project, moving from one metre to "
+            "ground level took the two-hour figure from 45% to 33%, because "
+            "the fall and the built form shade the surface far more than they "
+            "shade a point a metre above it.",
+        )
+        # Under the height, with its hours under it (16 November 2026): it
+        # stood between the hours assessed and the height.
         # The threshold plan is a choice of its own: lit, a second plan is
         # drawn and the hours it is drawn for are asked; unlit, neither.
         self.do_communal_threshold = tk.BooleanVar(value=True)
@@ -5247,21 +5264,6 @@ class Window:
             and str(child) not in before
             and child.winfo_manager() == "grid"
         ]
-        self.communal_height, row = self._entry(
-            frame,
-            row,
-            "Height above ground (m)",
-            "0",
-            "Metres above the ground to assess. 0 is at ground level.",
-            "The height a person's sunlight is measured at. 0 means on the "
-            "ground itself, which is taken as 50 mm clear of it: the site mesh "
-            "shades, and a point exactly on the ground starts every ray inside "
-            "the ground and reads as permanent shade. It matters more than it "
-            "sounds — on the reference project, moving from one metre to "
-            "ground level took the two-hour figure from 45% to 33%, because "
-            "the fall and the built form shade the surface far more than they "
-            "shade a point a metre above it.",
-        )
         self.communal_grid, row = self._tiles(
             frame,
             row,
