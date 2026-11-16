@@ -7455,3 +7455,28 @@ two older keys sets the one, the shadow diagram's first.
 
 *What this does not change:* what each plan draws; the command line, where
 `--zone-hours` and `--pen-set` are as they were; the settings' other keys.
+
+### D194 — Hours per apartment is asked in Apartments
+
+Asked 16 November 2026, of the Plans row's third tile: *"hours per
+appartment should be in appartments"*. The row sits in Solar analysis and
+is read by the apartments and the communal open space both; the apartment
+total is the apartments' alone.
+
+The Plans row has two tiles, *Sun at each hour* and *Hours on the floor*.
+The Apartments box has a *Hours per apartment* button, lit to begin with,
+above *Drawing quality*; it is saved as `plan_total`.
+
+The communal space's banded plan was drawn for either whole-day tile. It is
+drawn for *Hours on the floor* now, and the apartment total asks nothing of
+it.
+
+A settings file saved while the total was a tile lights the button when its
+row named the total and leaves it unlit when the row left it out. A row
+that named the total alone opens with *Hours on the floor* lit, so the
+communal plan it drew is still drawn; the apartments then get the floor
+plan as well.
+
+*What this does not change:* what each plan draws; the command line. *What
+it gives up:* the row keeps its last tile lit, so the apartment total can
+no longer be run with neither of the other two plans.

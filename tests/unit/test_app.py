@@ -359,6 +359,7 @@ def test_the_plans_row_says_which_kind_of_plan_each_study_draws(
     assert window.APARTMENT_HEAT_MAP in {sheet.kind for sheet in hidden_window.planned()}
 
     hidden_window.plan_kinds.set("Sun at each hour")
+    hidden_window.plan_total_button.invoke()
     plans, communal = hidden_window.jobs()
     assert "--no-draw" in plans.args and "--sheet" in plans.args
     assert "--plan-bands" not in plans.args
@@ -371,26 +372,41 @@ def test_the_plans_row_says_which_kind_of_plan_each_study_draws(
     assert window.APARTMENT_HEAT_MAP not in kinds
 
 
-def test_the_plans_row_lights_any_of_three(hidden_window: Any) -> None:
-    """The times, the floor heat map and the apartment total are three
-    switches, not one pick. All start lit, each turns off by itself, the
-    last one lit stays lit, and a file saved when "Bands by hour" was the
-    heat map and the total together restores as both."""
+def test_the_plans_row_lights_either_and_the_total_is_the_apartments_own(
+    hidden_window: Any,
+) -> None:
+    """The times and the hours on the floor are the Plans row's two switches,
+    shared with the communal space; the apartment total is a switch in the
+    Apartments box (16 November 2026). All start lit, each turns off by
+    itself, the row's last one lit stays lit, and a file saved while the
+    total was a tile of the row restores it as the switch."""
     row = hidden_window.plan_kinds
-    assert row.get() == "Sun at each hour, Hours on the floor, Hours per apartment"
+    assert list(row._buttons) == ["Sun at each hour", "Hours on the floor"]
+    assert hidden_window.plan_total_button.master.master is hidden_window.floor_grid.master
+    assert row.get() == "Sun at each hour, Hours on the floor"
     assert hidden_window._plan_kinds() == (True, True, True)
     row._pick("Hours on the floor")
-    assert row.get() == "Sun at each hour, Hours per apartment"
-    assert hidden_window._plan_kinds() == (True, False, True)
-    row._pick("Hours per apartment")
+    assert row.get() == "Sun at each hour"
     row._pick("Sun at each hour")
     assert row.get() == "Sun at each hour", "the last one lit stays lit"
+    hidden_window.plan_total_button.invoke()
     assert hidden_window._plan_kinds() == (True, False, False)
+    assert hidden_window.settings()["plan_total"] is False
+
     hidden_window.apply({"plan_kinds": "Bands by hour"})
-    assert row.get() == "Hours on the floor, Hours per apartment"
+    assert row.get() == "Hours on the floor"
     assert hidden_window._plan_kinds() == (False, True, True)
+    hidden_window.apply({"plan_kinds": "Sun at each time, Floor heat map"})
+    assert hidden_window._plan_kinds() == (True, True, False), "a row that left the total out"
     hidden_window.apply({"plan_kinds": "Bands and times"})
-    assert row.get() == "Sun at each hour, Hours on the floor, Hours per apartment"
+    assert row.get() == "Sun at each hour, Hours on the floor"
+    assert hidden_window._plan_kinds() == (True, True, True)
+    # The total alone: the communal space drew its bands for it, and still does.
+    hidden_window.apply({"plan_kinds": "Apartment total"})
+    assert hidden_window._plan_kinds() == (False, True, True)
+    # A file of today is read as it says.
+    hidden_window.apply({"plan_kinds": "Sun at each hour", "plan_total": False})
+    assert hidden_window._plan_kinds() == (True, False, False)
 
 
 def test_each_plan_tile_is_its_own_flag_to_the_run(hidden_window: Any) -> None:
@@ -403,14 +419,15 @@ def test_each_plan_tile_is_its_own_flag_to_the_run(hidden_window: Any) -> None:
     hidden_window.do_plans.set(True)
     hidden_window.apartments.set("06 | Zone.Units")
 
-    hidden_window.plan_kinds.set("Hours per apartment")
+    hidden_window.plan_kinds.set("Sun at each hour")
     (plans,) = hidden_window.jobs()
     assert "--draw" in plans.args and "--plan-bands" not in plans.args
-    assert not flag(plans.args, "--plan-instant")
+    assert flag(plans.args, "--plan-instant")
     kinds = {sheet.kind for sheet in hidden_window.planned()}
-    assert kinds == {"Apartments, ADG total"}
+    assert kinds == {"Apartments", "Apartments, ADG total"}
 
     hidden_window.plan_kinds.set("Hours on the floor")
+    hidden_window.plan_total_button.invoke()
     (plans,) = hidden_window.jobs()
     assert "--no-draw" in plans.args and "--plan-bands" in plans.args
     assert {sheet.kind for sheet in hidden_window.planned()} == {window.APARTMENT_HEAT_MAP}
@@ -476,9 +493,6 @@ def test_every_solar_grid_offers_the_same_four_steps(hidden_window: Any) -> None
     hidden_window.floor_grid.set("1.0")
     (plans,) = hidden_window.jobs()
     assert flag(plans.args, "--patch-grid") == ["1.0"]
-    hidden_window.plan_kinds.set("Hours per apartment")
-    (plans,) = hidden_window.jobs()
-    assert not flag(plans.args, "--patch-grid"), "no floor plan, no second ray cast"
 
     hidden_window.apply({"floor_grid": "0.25"})
     assert hidden_window.floor_grid.get() == "0.25"

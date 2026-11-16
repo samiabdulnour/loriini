@@ -5015,19 +5015,17 @@ class Window:
             frame,
             row,
             "Plans",
-            "What the apartment plans show: the sun at each time, the floor as a "
-            "heat map, each apartment's total -- any of the three.",
-            "Three plans for three questions. Sun at each hour is a plan per "
-            "instant showing where the sun actually falls, which is what "
-            "somebody standing there at nine in the morning asks about. The "
-            "floor heat map grids each apartment and bands every cell by its "
-            "hours of sun over the day, which says how far in the sun gets. "
-            "The apartment total fills each flat whole in the band of its "
-            "hours over the day and writes the figure in, which is what the "
-            "ADG and a DCP ask about. The communal space draws the first and "
-            "one banded plan for either of the other two. Each tile switches "
+            "What the plans show: the sun at each hour, the hours of sun over "
+            "the day -- either or both.",
+            "Two plans for two questions, drawn for the apartments and for the "
+            "communal open space alike. Sun at each hour is a plan per instant "
+            "showing where the sun actually falls, which is what somebody "
+            "standing there at nine in the morning asks about. Hours on the "
+            "floor grids the floor and bands every cell by its hours of sun "
+            "over the day, which says how far the sun gets. Each tile switches "
             "on and off by itself; the last one lit stays lit, because no "
-            "plans at all is not a plan study.",
+            "plans at all is not a plan study. Each apartment's own total is "
+            "asked in Apartments, where it belongs.",
         )
 
         self.see_glass, row = self._tiles(
@@ -5123,6 +5121,25 @@ class Window:
             key=_clock_text,
             initial="09:00, 12:00, 15:00",
         )
+        # The apartment total is the apartments' own plan, so it is asked
+        # here and not in the row the communal space shares (16 November 2026).
+        self.do_plan_total = tk.BooleanVar(value=True)
+        name = ttk.Label(frame, text="Total", anchor="e")
+        name.grid(row=row, column=0, sticky="e", padx=(0, 12), pady=(6, 0))
+        switch = Toggles(frame, on_change=self._sync)
+        switch.grid(row=row, column=1, sticky="w", pady=(6, 0))
+        self.toggle_rows.append(switch)
+        self.plan_total_button = switch.add(self.do_plan_total, self.PLAN_TOTAL, "plans_total")
+        for target in (name, self.plan_total_button):
+            Tooltip(
+                target,
+                "Each apartment filled whole, in the band of its hours of sun over "
+                "the day, with the figure written in: what the ADG and a DCP ask "
+                "about. Lit, that plan is drawn on a sheet of its own. Unlit, the "
+                "plans chosen above alone.",
+                title=self.PLAN_TOTAL,
+            )
+        row += 1
         self.floor_grid, row = self._tiles(
             frame,
             row,
@@ -7907,6 +7924,7 @@ class Window:
             "site_model": self.do_site_model,
             "site_future": self.do_site_future,
             "communal_threshold": self.do_communal_threshold,
+            "plan_total": self.do_plan_total,
             "site_trees": self.do_site_trees,
             "site_location": self.do_site_location,
             "study_yield": self.do_yield,
@@ -7982,6 +8000,7 @@ class Window:
                 if isinstance(value, str) and value.strip():
                     self.pen_set.set(value.strip())
                     break
+        self._plan_total_from_older(saved)
         self._shadows_from_older(saved)
         self._proposals_from_older(saved)
         opened = saved.get(self.OPEN_SECTION)
@@ -8137,6 +8156,23 @@ class Window:
                 widget.grid()
             else:
                 widget.grid_remove()
+
+    def _plan_total_from_older(self, saved: Mapping[str, object]) -> None:
+        """The apartment total of a file saved while it was a Plans tile.
+
+        Lit when the file's Plans row named it, or named nothing this window
+        knows. A row that named the total alone lights the hours on the
+        floor, because the communal space drew its banded plan for either and
+        would otherwise lose it."""
+        older = saved.get("plan_kinds")
+        if "plan_total" in saved or not isinstance(older, str):
+            return
+        parts = {piece.strip() for piece in older.split(",")}
+        rows = {self.PLAN_TIMES, self.PLAN_HEAT} | set(self.TILE_ALIASES["Plans"])
+        total = bool(parts & self.PLAN_TOTAL_OLDER)
+        self.do_plan_total.set(total or not parts & rows)
+        if total and not parts & rows:
+            self.plan_kinds.set(self.PLAN_HEAT)
 
     def _communal_threshold(self) -> str:
         """The hours the threshold plan is drawn for, or nothing when the
@@ -8678,6 +8714,8 @@ class Window:
     #: The choice rows whose tiles are switches of their own rather than one
     #: of a set, and the older spellings each reads as the tiles they mean.
     #: "Bands and times" was the Plans row's third tile until both could be lit.
+    #: The apartment total was a tile of the row too, until 16 November 2026;
+    #: it is the Apartments box's own switch now (``_plan_total_from_older``).
     TILE_MULTI: ClassVar[frozenset[str]] = frozenset({"Plans"})
     #: Older spellings of the Plans row, read as the tiles they now mean:
     #: "Bands and times" was a tile of its own, and "Bands by hour" was the
@@ -8691,13 +8729,12 @@ class Window:
             "A layer per option": ("By level",),
         },
         "Plans": {
-            "Bands and times": ("Sun at each hour", "Hours on the floor", "Hours per apartment"),
-            "Bands by hour": ("Hours on the floor", "Hours per apartment"),
+            "Bands and times": ("Sun at each hour", "Hours on the floor"),
+            "Bands by hour": ("Hours on the floor",),
             # The tiles' names until 16 November 2026, when each was named
             # for the hours it shows.
             "Sun at each time": ("Sun at each hour",),
             "Floor heat map": ("Hours on the floor",),
-            "Apartment total": ("Hours per apartment",),
         },
     }
 
@@ -8725,7 +8762,6 @@ class Window:
         "Plans": {
             "Sun at each hour": "Sun at each hour",
             "Hours on the floor": "Hours on the floor",
-            "Hours per apartment": "Hours per apartment",
         },
         "Sheets": {
             "One layout, all drawings": "One layout",
@@ -8754,14 +8790,8 @@ class Window:
             (
                 "Hours on the floor",
                 "plans_bands",
-                "Hours on the floor: the floor of every apartment gridded and banded "
-                "by its own hours of sun over the day -- how far in the sun gets.",
-            ),
-            (
-                "Hours per apartment",
-                "plans_total",
-                "Hours per apartment: each apartment filled whole, in the band of its "
-                "hours of sun over the day, with the figure written in.",
+                "Hours on the floor: the floor gridded and banded by its own hours "
+                "of sun over the day -- how far the sun gets.",
             ),
         ),
         "Sheets": (
@@ -8939,21 +8969,28 @@ class Window:
     #: The two Plans tiles, each a switch of its own. Both lit is the default.
     PLAN_TIMES = "Sun at each hour"
     PLAN_HEAT = "Hours on the floor"
+    #: The Apartments box's own switch, and the names a Plans row saved
+    #: before 16 November 2026 asked for it by.
     PLAN_TOTAL = "Hours per apartment"
+    PLAN_TOTAL_OLDER: ClassVar[frozenset[str]] = frozenset(
+        {"Hours per apartment", "Apartment total", "Bands by hour", "Bands and times"}
+    )
 
     def _plan_kinds(self) -> tuple[bool, bool, bool]:
-        """``(times, heat, total)``: which of the three kinds of plan the
-        Plans row asks for. Three because they answer three questions: where
-        the sun is at nine, how far into each room it reaches over the day,
-        and whether each flat passes. A value naming none of them -- a
-        hand-edited file -- is all three, and an older spelling is read
-        through the row's aliases."""
+        """``(times, heat, total)``: which of the three kinds of plan are
+        asked for. Three because they answer three questions: where the sun
+        is at nine, how far it reaches over the day, and whether each flat
+        passes. The first two are the Plans row's, shared with the communal
+        space; a row naming neither -- a hand-edited file -- is both, and an
+        older spelling is read through the row's aliases. The third is the
+        Apartments box's own switch."""
         chosen: set[str] = set()
         for part in (piece.strip() for piece in self.plan_kinds.get().split(",")):
             chosen.update(self.TILE_ALIASES["Plans"].get(part, (part,)))
-        if not chosen & {self.PLAN_TIMES, self.PLAN_HEAT, self.PLAN_TOTAL}:
-            return True, True, True
-        return self.PLAN_TIMES in chosen, self.PLAN_HEAT in chosen, self.PLAN_TOTAL in chosen
+        total = self.do_plan_total.get()
+        if not chosen & {self.PLAN_TIMES, self.PLAN_HEAT}:
+            return True, True, total
+        return self.PLAN_TIMES in chosen, self.PLAN_HEAT in chosen, total
 
     #: What the Sheets row offers, and the word each sends.
     SHEET_CHOICES = (
@@ -9289,7 +9326,7 @@ class Window:
         if COMMUNAL_JOB in queued:
             for day in days:
                 threshold = self._communal_threshold()
-                if heat or total:
+                if heat:
                     deal(
                         COMMUNAL_JOB,
                         "Solar analysis",
@@ -9300,7 +9337,7 @@ class Window:
                         [""],
                         scale=communal_scale,
                     )
-                if (heat or total) and threshold:
+                if heat and threshold:
                     deal(
                         COMMUNAL_JOB,
                         "Solar analysis",
@@ -9851,15 +9888,15 @@ class Window:
             # areas are what they quote, and a study that draws the one
             # without writing the other invites a figure read off a colour.
             args += ["--zone-sheet", "--zone-stats"]
-            # The communal plan has two kinds, not three: the open space is
-            # banded as one heat map, so either whole-day tile asks for it.
-            times, heat, total = self._plan_kinds()
+            # The communal plan has the Plans row's two kinds; the apartment
+            # total is the apartments' own and asks nothing of it.
+            times, heat, _total = self._plan_kinds()
             if times:
                 args += ["--zone-hourly"]
                 schedule = self.cos_schedule.get().strip()
                 if schedule and schedule != NO_SCHEDULE:
                     args += ["--zone-schedule", schedule]
-            if not (heat or total):
+            if not heat:
                 args += ["--no-zone-bands"]
             args += ["--year", self.year.get().strip() or "2024"]
             # One run per day ticked. Each carries its own date, and a
