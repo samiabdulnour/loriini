@@ -7480,3 +7480,45 @@ plan as well.
 *What this does not change:* what each plan draws; the command line. *What
 it gives up:* the row keeps its last tile lit, so the apartment total can
 no longer be run with neither of the other two plans.
+
+### D195 — The year is not asked, and the glazing field is as wide as the layer lists
+
+Asked 16 November 2026. Of the Year field under the solar analysis's days:
+*"is there any precedent for this ? i would like to get rid of year - its
+confusing and not very important"*. There is none: the ADG and the DCPs
+name a day, 21 June, and Archicad's own sun asks a day and a time. The
+year moves the sun by a fraction of a degree.
+
+The field is gone. Every sun study is sent `--year 2024`, which is what
+the field began at; a settings file that kept another year is run for
+2024.
+
+Of *Living-room glazing* in Apartments, shown as a short empty box: it is
+as wide as the two layer lists it stands under.
+
+*What this does not change:* the command line, where `--year` is as it
+was.
+
+### D196 — Fewer things asked on the shadow page, and the mix in fewer words
+
+Asked 16 November 2026, in four messages.
+
+**Proposed 4 and 5.** *"show proposed 4 after proposed and proposed 2 is
+filled. after proposed 3 is filled show proposed 5"*. The legend shows
+Proposed, Proposed 2 and Proposed 3. Proposed 4 appears once Proposed and
+Proposed 2 have layers, Proposed 5 once Proposed 3 has. A row that has
+layers of its own, out of a saved file, is shown whatever the others hold.
+
+**Set name.** *"i dont understand this, its not important i think"*. The
+field is gone and the window no longer sends `--label`. It named a set
+drawn without legend rows; a settings file that kept one loses it.
+
+**The every-hour drawing's colour.** *"remove this option. make it just
+red"*. The list is gone and the drawing is sent red, which is what it began
+at; a settings file that kept blue is drawn red.
+
+**The unit mix.** *"simplify the text there something like x% at x m2
+NLA"*. Each row reads *20 % at 50 m² NLA*.
+
+*What this does not change:* the command line, where `--label` and the two
+colour flags are as they were.

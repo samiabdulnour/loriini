@@ -555,8 +555,9 @@ on a day: Solar analysis, Shadow diagram and Sun views each have one, with
 the same three buttons -- midwinter, the equinox, midsummer -- and a
 custom-day field for any other date, several with commas between. Each box
 is read only by its own page, so the sun views can be lit for the equinox
-while the apartments are assessed at midwinter alone. The year is asked
-once, in the Solar analysis box, and every sun tool reads it.
+while the apartments are assessed at midwinter alone. No year is asked:
+every sun tool is run for 2024, and the year moves the sun by a fraction
+of a degree.
 
 The **Plans** row in Solar analysis says what the plans show, for the
 apartments and the communal open space alike, either or both: *Sun at each
