@@ -2748,6 +2748,11 @@ SHADOW_EXTRA = "#B9CDEF"
 GLAZING = "#F4D35E"
 BEAM = "#FBEFD6"
 COURT_GROUND = "#EEEEEE"
+#: The line between two cells of a gridded courtyard, and the shade a wing
+#: throws across it on an hourly plan: the ramp's palest blue, not its
+#: darkest, which at a thumbnail's size read as a hole in the drawing.
+CELL_LINE = "#FFFFFF"
+COURT_SHADE = "#8590EE"
 YIELD_HEAD = "#CFE3C4"
 HERITAGE = ("#F3E3C4", "#D9B97E", "#E8D0A0")
 SITE_BLOCK = ("#F6DAD5", "#C9776C", "#E2A69D")
@@ -3111,26 +3116,28 @@ def _draw_drawing(
         """The courtyard gridded the way the study samples it, each cell in
         the band of its hours: most sun towards the open south side, least
         under the north wing."""
-        cols, rows, gap = 8, 6, 0.7
+        cols, rows = 8, 6
         cell_w = (COURT_MM[2] - COURT_MM[0]) / cols
         cell_h = (COURT_MM[3] - COURT_MM[1]) / rows
-        box(COURT_MM, fill=COURT_GROUND, radius=0)
+        # On whole pixels, with the lines between the cells drawn as lines.
+        # A gap of 0.7 mm between cells is under a pixel at the panel's size,
+        # and showed only where the rounding happened to leave one: two white
+        # lines of the seven (16 November 2026).
+        across = [round(px(COURT_MM[0] + gx * cell_w)) for gx in range(cols + 1)]
+        down = [round(py(COURT_MM[1] + gy * cell_h)) for gy in range(rows + 1)]
         for gx in range(cols):
             for gy in range(rows):
                 off = abs(gx - (cols - 1) / 2)
                 value = round(0.8 + gy * 1.05 - off * 0.7 + ((gx * 3 + gy * 5) % 3) * 0.45)
                 value = max(0, min(6, value))
                 tint = (MEETS if value >= 3 else FALLS_SHORT) if threshold else HOURS_RAMP[value]
-                box(
-                    (
-                        COURT_MM[0] + gx * cell_w + gap / 2,
-                        COURT_MM[1] + gy * cell_h + gap / 2,
-                        COURT_MM[0] + (gx + 1) * cell_w - gap / 2,
-                        COURT_MM[1] + (gy + 1) * cell_h - gap / 2,
-                    ),
-                    fill=tint,
-                    radius=0.4,
+                paper.create_rectangle(
+                    across[gx], down[gy], across[gx + 1], down[gy + 1], fill=tint, outline=""
                 )
+        for x in across[1:-1]:
+            paper.create_line(x, down[0], x, down[-1], fill=CELL_LINE, width=1)
+        for y in down[1:-1]:
+            paper.create_line(across[0], y, across[-1], y, fill=CELL_LINE, width=1)
 
     def words_bar(x0: float, y: float, x1: float, fill: str, thick: float = 3.0) -> None:
         """A word too small to read, as the rounded bar it is at this size:
@@ -3277,7 +3284,7 @@ def _draw_drawing(
             for wing in wings:
                 held = _clip_to(shifted(wing, min(reach, 3.0) * 7.0, bearing), COURT_MM)
                 if len(held) >= 3:
-                    poly(held, fill=HOURS_RAMP[0])
+                    poly(held, fill=COURT_SHADE)
         court_edge()
         court_trees()
         if azimuth is not None:

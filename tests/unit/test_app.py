@@ -1242,6 +1242,44 @@ FOUR_HOUR_SHEET = window.Sheet(
 A_MODEL = window.Sheet("Site analysis", "site", "", window.CONTEXT_MODEL, "300 m", paper=False)
 
 
+def test_the_courtyards_cells_are_parted_by_every_line_at_any_size(hidden_window: Any) -> None:
+    """The gap between two cells was under a pixel at the panel's size and
+    showed only where the rounding left one: two white lines of the seven
+    (16 November 2026). The lines are drawn as lines, on whole pixels."""
+    for width, height in ((300, 212), (window.Dock.SHEET_W, window.Dock.SHEET_H), (173, 122)):
+        paper = tk.Canvas(hidden_window.root)
+        window.draw_sheet(paper, WHOLE_DAY_SHEET, width, height)
+        lines = [
+            [float(value) for value in paper.coords(item)]
+            for item in paper.find_all()
+            if str(paper.type(item)) == "line"
+            and str(paper.itemcget(item, "fill")).upper() == window.CELL_LINE
+        ]
+        upright = [one for one in lines if one[0] == one[2]]
+        level = [one for one in lines if one[1] == one[3]]
+        assert (len(upright), len(level)) == (7, 5), (width, len(upright), len(level))
+        assert all(value == int(value) for one in lines for value in one), "on whole pixels"
+        steps = sorted(one[0] for one in upright)
+        assert all(later - earlier >= 2 for earlier, later in pairwise(steps))
+
+
+def test_an_hours_shade_on_the_courtyard_is_the_pale_blue(hidden_window: Any) -> None:
+    hourly = window.Sheet(
+        "Communal open space",
+        "communal",
+        "SA.03",
+        window.COMMUNAL_HOURLY,
+        "21 Jun",
+        (window.Drawing(window.COMMUNAL_HOURLY, "21 Jun", "09:00", 45.0, 20.0),),
+        scale="1:300",
+    )
+    paper = tk.Canvas(hidden_window.root)
+    window.draw_sheet(paper, hourly, 300, 212)
+    fills = {str(paper.itemcget(item, "fill")).upper() for item in paper.find_all()}
+    assert window.COURT_SHADE in fills, "the wing's shade is drawn"
+    assert window.HOURS_RAMP[0] not in fills, "and not in the ramp's darkest blue"
+
+
 def test_a_sheet_says_only_what_the_panel_does_not_say_beside_it(hidden_window: Any) -> None:
     """The panel prints the day once, as a heading over the sheets of that
     day, and the band under it says what the sun is doing while the pointer
