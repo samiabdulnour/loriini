@@ -1261,7 +1261,7 @@ def test_the_courtyards_cells_are_parted_by_every_line_at_any_size(hidden_window
     showed only where the rounding left one: two white lines of the seven
     (16 November 2026). The lines are drawn as lines, on whole pixels."""
     for width, height in ((300, 212), (window.Dock.SHEET_W, window.Dock.SHEET_H), (173, 122)):
-        paper = tk.Canvas(hidden_window.root)
+        paper: Any = tk.Canvas(hidden_window.root)
         window.draw_sheet(paper, WHOLE_DAY_SHEET, width, height)
         lines = [
             [float(value) for value in paper.coords(item)]
@@ -1287,7 +1287,7 @@ def test_an_hours_shade_on_the_courtyard_is_the_pale_blue(hidden_window: Any) ->
         (window.Drawing(window.COMMUNAL_HOURLY, "21 Jun", "09:00", 45.0, 20.0),),
         scale="1:300",
     )
-    paper = tk.Canvas(hidden_window.root)
+    paper: Any = tk.Canvas(hidden_window.root)
     window.draw_sheet(paper, hourly, 300, 212)
     fills = {str(paper.itemcget(item, "fill")).upper() for item in paper.find_all()}
     assert window.COURT_SHADE in fills, "the wing's shade is drawn"
