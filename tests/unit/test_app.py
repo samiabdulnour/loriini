@@ -905,6 +905,15 @@ def test_the_hourly_communal_plans_are_as_many_as_the_window_has_hours(
     assert "Communal open space, 2 h or more" not in kinds
     assert not hidden_window.communal_hours.winfo_manager(), "no hours asked for no plan"
     assert hidden_window.settings()["communal_threshold"] is False
+    # The switch stands under the height above ground, its hours under it.
+    rows = [
+        int(widget.grid_info()["row"])
+        for widget in (
+            hidden_window.communal_height,
+            hidden_window.communal_threshold_button.master,
+        )
+    ]
+    assert rows[0] < rows[1]
     hidden_window.communal_threshold_button.invoke()
     assert hidden_window.communal_hours.winfo_manager() == "grid"
     assert "Communal open space, 2 h or more" in [s.kind for s in hidden_window.planned()]
