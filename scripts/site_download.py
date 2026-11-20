@@ -16,6 +16,10 @@ own line; the size; and the SHA-256 of the file as it will be served.
 Nothing is typed by hand, so the page cannot say one thing about the file
 and the file another. The other platform's box is left as it is.
 
+It also writes that build's version into ``site/latest.json``, the file the
+program reads to learn that a newer version is out (``sun_study.updates``,
+D198), and leaves the other platform's entry there as it is.
+
 The *Website* workflow runs this before every deploy, once for each build
 (docs/website.md); by hand it is the step between downloading the artifact
 and ``fly deploy``. Standard library only, so it runs on a bare runner.
@@ -25,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import sys
 import zipfile
@@ -33,6 +38,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PAGE = ROOT / "site" / "download.html"
+LATEST = ROOT / "site" / "latest.json"
+#: Where the program sends somebody for a new build.
+DOWNLOAD_PAGE = "https://loriini.app/download"
 NOTE = "How to install.txt"
 
 
@@ -205,6 +213,26 @@ def rewrite(page: str, build: Build) -> str:
     return page
 
 
+def latest(text: str, build: Build) -> str:
+    """``latest.json`` with the build's version in its platform's entry.
+
+    The other platform's entry is kept, as the other box on the page is: the
+    two builds are put on the site one after the other. Anything that is not
+    that file is started afresh rather than refused, because what it held is
+    rewritten from the builds at every deploy.
+    """
+    try:
+        data = json.loads(text) if text.strip() else {}
+    except ValueError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data["page"] = DOWNLOAD_PAGE
+    data[build.platform.box] = {"version": build.version, "built": build.built}
+    ordered = {key: data[key] for key in ("page", "windows", "macos") if key in data}
+    return json.dumps(ordered, indent=2) + "\n"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[1])
     parser.add_argument(
@@ -213,11 +241,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--page", type=Path, default=PAGE, help="the page to write; the site's download page"
     )
+    parser.add_argument(
+        "--latest",
+        type=Path,
+        default=LATEST,
+        help="the file the program reads for a newer version; the site's latest.json",
+    )
     arguments = parser.parse_args(argv)
     build = describe(arguments.zip)
     arguments.page.write_text(
         rewrite(arguments.page.read_text(encoding="utf-8"), build), encoding="utf-8"
     )
+    kept = arguments.latest.read_text(encoding="utf-8") if arguments.latest.exists() else ""
+    arguments.latest.write_text(latest(kept, build), encoding="utf-8")
     facts = (
         f"Loriini {build.version} for {build.platform.name}, built {build.built}, "
         f"Archicad {build.versions}"

@@ -26,7 +26,7 @@ __all__ = [
     "__version__",
     "user_folder",
 ]
-__version__ = "0.0.1"
+__version__ = "1.0.0"
 
 #: Who wrote it. Carried into the window, the packaged executable's file
 #: properties and every sheet the tool draws, from here, so the three cannot

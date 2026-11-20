@@ -43,8 +43,8 @@ datas += [(str(ROOT / 'LICENSE'), '.')]
 # the agreement the customer accepted at the checkout.
 datas += [(str(ROOT / 'site' / 'terms.html'), '.')]
 # Which commit this build is, asked of git here at build time because the
-# program handed over has no repository to ask. Every prototype build calls
-# itself 0.0.1, so without this a run log cannot show that the app on a
+# program handed over has no repository to ask. Every build of a release
+# calls itself the same version, so without this a run log cannot show that the app on a
 # machine is older than a fix in the source -- which is how a certificate
 # failure fixed on the 17th was still being diagnosed from a log on the
 # 23rd. The hash rides at the root of the bundle, beside the LICENSE, where

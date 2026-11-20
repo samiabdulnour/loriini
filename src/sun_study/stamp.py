@@ -1,7 +1,7 @@
 """Which commit this program was built from.
 
-The version number does not tell builds apart: every prototype build says
-0.0.1, so a run log from a machine with last week's Loriini.app reads
+The version number does not tell builds apart: every build of a release says
+the same one, so a run log from a machine with last week's Loriini.app reads
 exactly like one from today's. That is how an October run failed on a
 certificate problem the source had fixed six days earlier, and nothing in
 the log said the build predated the fix -- the diagnosis came down to

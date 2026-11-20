@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -173,3 +174,52 @@ def test_the_sizes_are_whole_megabytes(site_download: Any) -> None:
     )
     assert build.megabytes == "83 MB"
     assert build.versions == "26"
+
+
+def test_latest_json_takes_each_builds_version(site_download: Any, folder: Path) -> None:
+    """The committed latest.json is the starting point, as the page is; the
+    build's version goes into its platform's entry and the other stays."""
+    build = site_download.describe(folder)
+    committed = (ROOT / "site" / "latest.json").read_text(encoding="utf-8")
+    written = json.loads(site_download.latest(committed, build))
+    assert written["page"] == "https://loriini.app/download"
+    assert written["windows"] == {"version": "0.0.1", "built": "27 October 2026"}
+    assert written["macos"] == json.loads(committed)["macos"], "the other build, untouched"
+    # Written twice, it says the same thing.
+    again = site_download.latest(site_download.latest(committed, build), build)
+    assert again == site_download.latest(committed, build)
+
+
+def test_the_program_reads_what_the_script_writes(
+    site_download: Any, folder: Path, mac_folder: Path
+) -> None:
+    """The two ends of D198 agree on the file: what the deploy writes, the
+    program reads, for its own platform."""
+    from sun_study import updates
+
+    text = site_download.latest("", site_download.describe(folder))
+    text = site_download.latest(text, site_download.describe(mac_folder))
+    assert updates.read_latest(text.encode(), "windows") == "0.0.1"
+    assert updates.read_latest(text.encode(), "macos") == "0.0.1"
+    committed = (ROOT / "site" / "latest.json").read_bytes()
+    assert updates.read_latest(committed, "windows")
+    assert updates.read_latest(committed, "macos")
+
+
+def test_an_unreadable_latest_json_is_started_afresh(site_download: Any, folder: Path) -> None:
+    build = site_download.describe(folder)
+    written = json.loads(site_download.latest("not json", build))
+    assert set(written) == {"page", "windows"}
+
+
+def test_the_command_writes_the_page_and_latest_json(
+    site_download: Any, mac_folder: Path, tmp_path: Path
+) -> None:
+    # UTF-8 said every time: the page has a Č in it, and Windows' own default
+    # cannot write one.
+    page = tmp_path / "download.html"
+    page.write_text((ROOT / "site" / "download.html").read_text(encoding="utf-8"), encoding="utf-8")
+    latest = tmp_path / "latest.json"
+    assert site_download.main([str(mac_folder), "--page", str(page), "--latest", str(latest)]) == 0
+    assert json.loads(latest.read_text(encoding="utf-8"))["macos"]["built"] == "31 October 2026"
+    assert "built 31 October 2026" in _box(page.read_text(encoding="utf-8"), "macos")

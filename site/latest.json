@@ -1,0 +1,11 @@
+{
+  "page": "https://loriini.app/download",
+  "windows": {
+    "version": "0.0.1",
+    "built": "31 October 2026"
+  },
+  "macos": {
+    "version": "0.0.1",
+    "built": "31 October 2026"
+  }
+}

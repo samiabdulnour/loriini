@@ -5048,9 +5048,117 @@ def test_the_programs_actions_share_one_menu(hidden_window: Any) -> None:
         "Load preset…",
         "Forget saved settings",
         f"About {PRODUCT}",
+        "Check for updates ↗",
         "loriini.app ↗",
     ]
     assert labels == expected
+
+
+def _newer_known(version: str = "99.0.0") -> None:
+    """The day's check, as if the site had said ``version`` is out (D198)."""
+    import datetime as dt
+
+    from sun_study import updates
+
+    updates._keep(updates.Known(checked=dt.date.today(), latest=version))
+
+
+def _update_label(hidden_window: Any) -> str:
+    menu, index = hidden_window.update_entries[0]
+    return str(menu.entrycget(index, "label"))
+
+
+def test_the_menu_names_a_new_version_once_one_is_known(hidden_window: Any) -> None:
+    """The check answers after the window is drawn, so the entry is named
+    again each time the menu opens."""
+    assert _update_label(hidden_window) == "Check for updates ↗"
+    _newer_known()
+    hidden_window._name_update_entries()
+    assert _update_label(hidden_window) == f"Update to {PRODUCT} 99.0.0 ↗"
+
+
+def test_the_update_entry_opens_the_download_page(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import webbrowser
+
+    opened: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", opened.append)
+    menu, index = hidden_window.update_entries[0]
+    menu.invoke(index)
+    assert opened == ["https://loriini.app/download"]
+
+
+def _leaving(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch, answer: bool
+) -> dict[str, list[Any]]:
+    """Close the window with the question and the browser stood in for, and
+    the window itself left for the fixture to put away."""
+    import webbrowser
+    from tkinter import messagebox
+
+    seen: dict[str, list[Any]] = {"asked": [], "opened": [], "closed": []}
+
+    def ask(title: str, message: str, **_: Any) -> bool:
+        seen["asked"].append((title, message))
+        return answer
+
+    monkeypatch.setattr(messagebox, "askyesno", ask)
+    monkeypatch.setattr(webbrowser, "open", seen["opened"].append)
+    # Stood in for on the instance only while leaving, so the fixture still
+    # puts the real window away afterwards.
+    hidden_window.root.destroy = lambda: seen["closed"].append(True)
+    try:
+        hidden_window._leave()
+    finally:
+        del hidden_window.root.destroy
+    return seen
+
+
+def test_closing_says_a_new_version_is_out_once(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _newer_known()
+    seen = _leaving(hidden_window, monkeypatch, answer=True)
+    assert len(seen["asked"]) == 1
+    title, message = seen["asked"][0]
+    assert title == f"{PRODUCT} 99.0.0 is out"
+    assert "ready to download" in message
+    assert seen["opened"] == ["https://loriini.app/download"], "Yes opens the page"
+    assert seen["closed"] == [True]
+    # Closed again the same day: no question, just closed.
+    again = _leaving(hidden_window, monkeypatch, answer=True)
+    assert again["asked"] == []
+    assert again["closed"] == [True]
+
+
+def test_closing_with_no_to_the_question_still_closes(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _newer_known()
+    seen = _leaving(hidden_window, monkeypatch, answer=False)
+    assert len(seen["asked"]) == 1
+    assert seen["opened"] == []
+    assert seen["closed"] == [True]
+
+
+def test_closing_the_newest_version_asks_nothing(
+    hidden_window: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = _leaving(hidden_window, monkeypatch, answer=True)
+    assert seen["asked"] == []
+    assert seen["closed"] == [True]
+
+
+def test_the_close_button_goes_by_way_of_the_reminder(hidden_window: Any) -> None:
+    assert hidden_window.root.protocol("WM_DELETE_WINDOW"), "the window's own close, not Tk's"
+
+
+@pytest.mark.skipif(not theme.MACOS, reason="the program menu is a Mac's")
+def test_on_a_mac_the_update_entry_is_under_about(hidden_window: Any) -> None:
+    bar = hidden_window.menu_bar
+    own = hidden_window.root.nametowidget(bar.entrycget(0, "menu"))
+    assert own.entrycget(1, "label") == "Check for updates ↗"
 
 
 def test_run_is_the_one_filled_button(hidden_window: Any) -> None:

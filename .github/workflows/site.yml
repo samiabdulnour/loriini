@@ -151,6 +151,11 @@ jobs:
             echo "$name: served $size bytes, deployed $want"
             [ "$size" = "$want" ] || { echo "::error::The site serves a $name of $size bytes, not the $want deployed."; exit 1; }
           done
+          # What the program reads to learn a newer version is out (D198):
+          # it has to say what the two zips above are.
+          curl -sS "https://loriini.app/latest.json" > "$RUNNER_TEMP/latest.json"
+          cat "$RUNNER_TEMP/latest.json"
+          cmp -s "$RUNNER_TEMP/latest.json" site/latest.json || { echo "::error::The site serves a latest.json other than the one deployed."; exit 1; }
 
       # The page rather than one platform's zip, now that there are two: a
       # recall's notice reaches Macs and PCs alike. The Windows zip's old
