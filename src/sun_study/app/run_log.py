@@ -115,8 +115,8 @@ def _head(started: dt.datetime, studies: Sequence[str]) -> list[str]:
     """What the transcript opens with: which build, on what, when, and what
     was asked for. The questions every diagnosis starts by asking.
 
-    Which build means the commit, not just the version: every prototype
-    build says 0.0.1, and the first question a failure in a packaged run
+    Which build means the commit, not just the version: every build of a
+    release says the same number, and the first question a failure in a packaged run
     raises is whether the fix for it is already in the source. Without the
     hash that was once answered by matching traceback line numbers against
     old commits."""

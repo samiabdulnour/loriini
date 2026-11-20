@@ -7522,3 +7522,26 @@ NLA"*. Each row reads *20 % at 50 m² NLA*.
 
 *What this does not change:* the command line, where `--label` and the two
 colour flags are as they were.
+
+### D197 — The first release is 1.0.0
+
+Asked 20 November 2026: *"is it possible to list these version as 1.0.0 and
+put them on web?"*
+
+**One number, in one place.** The version is `__version__` in
+`sun_study/__init__.py` and `version` in `pyproject.toml`, and both now say
+1.0.0. Everything else reads it from there: the window's foot and About box,
+the run log, the Windows `.exe`'s file properties, the Mac app's
+`CFBundleShortVersionString`, the install note in each download, and so the
+download page, which takes its "Version" line from that note when the site
+is put up.
+
+**Higher, so nothing is recalled by it.** A build tells the licence service
+its version, and `recalled` turns away a build below `minimum_build`. 1.0.0
+is above every build in circulation, so a minimum set for them still lets it
+through.
+
+*What this does not change:* the add-ons, whose bundle version is the
+Archicad version they are built for; the commit stamp, which still tells two
+builds of 1.0.0 apart; and the PROTOTYPE notice the sheets and the command
+line carry.

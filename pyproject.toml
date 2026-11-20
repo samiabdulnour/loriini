@@ -1,6 +1,6 @@
 [project]
 name = "sun-study"
-version = "0.0.1"
+version = "1.0.0"
 description = "Direct sunlight hours from an Archicad model, written back into Archicad as Zone properties"
 readme = "README.md"
 requires-python = ">=3.11"

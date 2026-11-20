@@ -248,7 +248,7 @@ def test_the_transcript_opens_with_the_build_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The first line says which commit, not just which version: every
-    prototype build calls itself 0.0.1, and a failure already fixed in the
+    build of a release calls itself the same version, and a failure already fixed in the
     source should be readable as a stale build from the log alone."""
     monkeypatch.setattr(stamp, "commit", lambda: "abc1234")
     log = run_log.RunLog.start(["site tools"], folder=tmp_path)
