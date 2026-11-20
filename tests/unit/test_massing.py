@@ -42,6 +42,7 @@ from sun_study.ingest import scene as scene_module
 from sun_study.ingest.ifc import IfcElement, read_ifc
 from sun_study.ingest.scene import (
     MassingConfig,
+    NoZoneMatchError,
     SceneConfigError,
     build_massing_scene,
     zone_floor_grid,
@@ -569,6 +570,69 @@ def test_a_zone_filter_that_matches_nothing_stops_the_run() -> None:
     model = read_ifc(SAMPLE)
     with pytest.raises(SceneConfigError, match="No Zone matches"):
         build_massing_scene(model, MassingConfig(timezone=SYDNEY, zone_names=("Playground",)))
+
+
+def _zones_on_layers(model: Any, layers: dict[str, str]) -> Any:
+    """The sample model with its Zones put on layers, by Zone name."""
+    return replace(
+        model,
+        elements=tuple(
+            replace(element, layer=layers.get(element.name, element.layer))
+            if element.ifc_class == "IfcSpace"
+            else element
+            for element in model.elements
+        ),
+    )
+
+
+def test_a_zone_filter_that_matches_nothing_says_what_the_layer_carries() -> None:
+    """Penrith, 16 November 2026: the bare "no Zone matches" left a colleague
+    guessing between a wrong name, a wrong layer and a Zone that never reached
+    the export. The export can tell the first two apart by itself."""
+    model = _zones_on_layers(
+        read_ifc(SAMPLE),
+        {
+            "Apartment L00-A": "10 | Calc.COS",
+            "Apartment L00-B": "10 | Calc.COS",
+            "Apartment L01-A": "06 | Zone.Units",
+        },
+    )
+    with pytest.raises(NoZoneMatchError) as caught:
+        build_massing_scene(
+            model,
+            MassingConfig(
+                timezone=SYDNEY, zone_layers=("10 | Calc.COS",), zone_names=("Apartment L01-A",)
+            ),
+        )
+    message = str(caught.value)
+    assert "No Zone matches" in message
+    assert "carries 2 Zone(s) on that layer, named 'Living Room'" in message
+    assert "Zones with that name are on '06 | Zone.Units'" in message
+    assert caught.value.in_export == 0
+
+
+def test_a_zone_filter_on_an_empty_layer_says_the_layer_is_empty() -> None:
+    model = _zones_on_layers(read_ifc(SAMPLE), {"Apartment L00-A": "10 | Calc.COS"})
+    with pytest.raises(NoZoneMatchError, match="no Zone on that layer at all"):
+        build_massing_scene(
+            model,
+            MassingConfig(timezone=SYDNEY, zone_layers=("01 | Floor.Finish",), zone_names=("COS",)),
+        )
+
+
+def test_a_zone_the_height_band_cut_off_is_named_as_cut_off() -> None:
+    """In the export, and dropped by the band: a different fix from a Zone
+    the export never carried, so the command must be able to tell them apart."""
+    model = read_ifc(SAMPLE)
+    with pytest.raises(NoZoneMatchError) as caught:
+        build_massing_scene(
+            model,
+            MassingConfig(timezone=SYDNEY, zone_names=("Apartment L01-A",), exclude_above_m=2.0),
+        )
+    message = str(caught.value)
+    assert "1 in the export does, on 'Level 01'" in message
+    assert "outside the height band the run keeps (up to 2 m)" in message
+    assert caught.value.in_export == 1
 
 
 def test_naming_no_zone_leaves_the_result_without_one() -> None:

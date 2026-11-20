@@ -767,6 +767,17 @@ def storey_level(connection: ArchicadConnection, name: str) -> float:
     raise ArchicadError(f"No storey called {name!r}. The project has: " + ", ".join(named[:20]))
 
 
+def storey_names(connection: ArchicadConnection) -> dict[int, str]:
+    """Storey index -> name, for saying which storey a Zone is on in words."""
+    answer = connection.run_tapir("GetStories", {})
+    storeys = answer.get("stories") if isinstance(answer, dict) else None
+    return {
+        int(storey["index"]): " ".join(str(storey.get("name", "")).split())
+        for storey in storeys or []
+        if isinstance(storey, dict) and isinstance(storey.get("index"), int)
+    }
+
+
 def layer_names(connection: ArchicadConnection) -> dict[int, str]:
     """Layer index -> name, for turning a zone's ``layer_index`` into words.
 

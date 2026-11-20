@@ -133,6 +133,7 @@ from sun_study.archicad.read import (
     oversized_export_note,
     read_geo_location,
     storey_level,
+    storey_names,
 )
 from sun_study.archicad.read import zones as read_zones
 from sun_study.archicad.rooms import (
@@ -303,6 +304,7 @@ from sun_study.ingest.scene import (
     DEFAULT_MASSING_SPACING_M,
     MINIMUM_GROUND_CLEARANCE_M,
     MassingConfig,
+    NoZoneMatchError,
     SceneConfig,
     SceneConfigError,
     ShadowSourceRule,
@@ -3528,6 +3530,99 @@ def _export_for_massing(
     return written
 
 
+def _zones_the_export_lacks(
+    connection: ArchicadConnection, config: MassingConfig, *, native: bool
+) -> str:
+    """What Archicad holds that the export did not carry, for a Zone filter
+    that found nothing in a model this run had just exported.
+
+    The export cannot say this about itself, and it is the case that cost a
+    colleague the most guessing. On Penrith, 16 November 2026, the window's
+    chooser offered COS on ``01 | Floor.Finish`` -- read straight off the
+    plan -- and the run then said no Zone matched. The Zone was 20 mm tall
+    on LEVEL 02, inside the floor, and Archicad had given it no 3D body, so
+    it never reached the export. The plan shows such a Zone like any other;
+    only the 3D model leaves it out.
+
+    Raising the Zone did not bring it back. The colleague had a 3D view of
+    the tower open, LEVEL 03 to the roof, and the export -- read off the 3D
+    window -- carried that part of the building and nothing below it. It took
+    three reruns to find, because this message had said to look at the height.
+    The add-on now converts the whole model for the length of an export
+    (``ZonesInTheModel``), but an older one is still out there, so the window
+    is named first and the height second.
+
+    The second case is a name taken from the Zone's *number*. The chooser
+    offers both, and the add-on's own export carries the name and the element
+    ID but not the number (an IFC carries the number as ``Name``), so on that
+    route a number chosen in the window can never match.
+
+    Empty when Archicad holds no such Zone either: the message from the scene
+    has already said what the export holds, and that is the whole story.
+    """
+
+    def tidy(text: str) -> str:
+        return " ".join(str(text).split()).casefold()
+
+    layers = layer_names(connection)
+    storeys = storey_names(connection)
+    wanted_layers = {tidy(name) for name in config.zone_layers}
+    wanted_names = {tidy(name) for name in config.zone_names}
+    wanted_storeys = {tidy(name) for name in config.zone_storeys}
+
+    named: list[tuple[str, str, str]] = []
+    numbered: list[tuple[str, str, str]] = []
+    for zone in read_zones(connection):
+        layer = layers.get(zone.layer_index, "") if zone.layer_index is not None else ""
+        storey = storeys.get(zone.storey_index, "") if zone.storey_index is not None else ""
+        if wanted_layers and tidy(layer) not in wanted_layers:
+            continue
+        if wanted_storeys and tidy(storey) not in wanted_storeys:
+            continue
+        if not wanted_names or tidy(zone.name) in wanted_names:
+            named.append((zone.name.strip(), layer, storey))
+        elif tidy(zone.number) in wanted_names:
+            # The IFC route carries the number, so there it is as missing as
+            # a named Zone would be.
+            (numbered if native else named).append((zone.number.strip(), layer, storey))
+
+    def where(found: list[tuple[str, str, str]]) -> str:
+        labels = sorted({label for label, _, _ in found if label})
+        on_layers = sorted({layer for _, layer, _ in found if layer})
+        on_storeys = sorted({storey for _, _, storey in found if storey})
+        return (
+            (f" {', '.join(repr(label) for label in labels)}" if labels else "")
+            + (f" on {', '.join(repr(layer) for layer in on_layers)}" if on_layers else "")
+            + (f" ({', '.join(on_storeys[:6])})" if on_storeys else "")
+        )
+
+    if named:
+        one = len(named) == 1
+        return (
+            f"Archicad has {len(named)} Zone{'' if one else 's'} named{where(named)}, but "
+            f"the exported 3D model carries no body for {'it' if one else 'them'}, so there "
+            f"is nothing to measure. Check the 3D window first: the export is read off it, "
+            f"and a Loriini add-on from before 20 November 2026 exports only what it shows. "
+            f"A 3D view of part of the building -- a storey range, a marquee, or Show "
+            f"Selection in 3D -- leaves every Zone outside that part out of the export. Open "
+            f"a 3D view of the whole model (View > Elements in 3D View > Show All in 3D, with "
+            f"All Stories in Filter and Cut Elements in 3D) and run again. If the whole model "
+            f"was showing, check the Zone's height in the Info Box: Archicad builds a Zone's "
+            f"body from its height, less any slab set to subtract from Zones, and a Zone only "
+            f"a few millimetres tall sits inside the floor and is cut away entirely. The "
+            f"storey height is safe, since the study measures from the Zone's floor and not "
+            f"its top."
+        )
+    if numbered:
+        one = len(numbered) == 1
+        return (
+            f"Archicad has {len(numbered)} Zone{'' if one else 's'} numbered{where(numbered)}. "
+            f"This run matches a Zone by its name, not its number: choose the Zone's name "
+            f"in the window instead, or give the Zone that name in Archicad, and run again."
+        )
+    return ""
+
+
 def _storey_band(
     port: int,
     timeout: float,
@@ -4196,6 +4291,9 @@ def massing(
         )
         raise typer.Exit(code=2)
 
+    # A model this run exports can be checked against the project it came
+    # from; one passed in with --ifc-in may be from anywhere.
+    exported_here = ifc is None
     if ifc is None:
         ifc = _export_for_massing(
             route=export_route,
@@ -4258,6 +4356,19 @@ def massing(
         raise typer.Exit(code=2) from error
     except SceneConfigError as error:
         typer.secho(f"Scene setting error: {error}", fg=typer.colors.RED, err=True)
+        if isinstance(error, NoZoneMatchError) and error.in_export == 0 and exported_here:
+            # Best effort: the run has already failed, and a second failure
+            # reading the project must not replace the first one's message.
+            # Zones are read off the floor plan's database, which `_connect`
+            # brings to the front if a layout was left there.
+            with contextlib.suppress(ArchicadError, KeyError, ValueError, TypeError, typer.Exit):
+                lacking = _zones_the_export_lacks(
+                    _connect(port, timeout),
+                    config,
+                    native=ifc.suffix.lower() == ".loriini",
+                )
+                if lacking:
+                    typer.secho(lacking, fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from error
     except RulesetError as error:
         typer.secho(f"Ruleset error: {error}", fg=typer.colors.RED, err=True)

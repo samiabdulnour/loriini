@@ -196,6 +196,24 @@ GS::UniString IfcClassOf (const API_ElemType& elemType)
 // somebody's settings without mentioning it. `convert` is the kit's "must
 // convert" flag -- without it the setting changes and the model goes on
 // showing what it already converted, which reads exactly like doing nothing.
+//
+// And the whole model, not the part the window was left on.
+//
+// The same struct says *which* of the model is converted: a storey range, a
+// marquee, or the selection alone. Carried through untouched, each of them
+// went into the export as if it were the project. Penrith, November 2026: a
+// colleague had a 3D view of the tower open, LEVEL 03 to the roof, and the
+// communal open space on LEVEL 02 never reached the file. The run said no
+// Zone matched, the Zone was plainly on the plan, and it took three reruns
+// and a wrong lead about the Zone's height to find the view was the cause.
+//
+// So for the length of the export every storey is converted and the mode is
+// "Show All", and what the person had is put back after. The marquee's own
+// fields and the storey numbers are left as they are -- under "Show All" with
+// every storey they decide nothing, and they are the person's to find again.
+// What the study measures is narrowed by its layers and its height band,
+// which the run sets and reports; a window somebody happened to leave open
+// is neither.
 class ZonesInTheModel {
 public:
 	explicit ZonesInTheModel (GSErrCode& err)
@@ -206,6 +224,7 @@ public:
 		}
 		const auto found = settings.elemTypeFilter.find (API_ZoneID);
 		wasShown = found != settings.elemTypeFilter.end () ? found->second : false;
+		wasWhole = settings.allStories && settings.filterMode == API_FilterByRules;
 
 		// Written back **whether or not anything needed changing**, and that is
 		// the point rather than a detail.
@@ -225,11 +244,13 @@ public:
 		// conversion it was meant to affect.
 		API_3DFilterAndCutSettings wanted = settings;
 		wanted.elemTypeFilter[API_ZoneID] = true;
+		wanted.allStories = true;
+		wanted.filterMode = API_FilterByRules;
 		bool convert = true;
 		err = Api::Change3DImageSets (&wanted, &convert);
 		// Only a filter this *changed* has to be put back. The rebuild itself
 		// leaves nothing to restore.
-		changed = err == NoError && !wasShown;
+		changed = err == NoError && (!wasShown || !wasWhole);
 	}
 
 	~ZonesInTheModel ()
@@ -242,10 +263,12 @@ public:
 	}
 
 	bool WasAlreadyShown () const		{ return wasShown; }
+	bool WasAlreadyWhole () const		{ return wasWhole; }
 
 private:
 	API_3DFilterAndCutSettings settings = {};
 	bool wasShown = false;
+	bool wasWhole = false;
 	bool changed = false;
 };
 
@@ -595,6 +618,10 @@ GS::Optional<GS::UniString> ExportModelCommand::GetResponseSchema () const
 				"type": "boolean",
 				"description": "Whether Zones were already on in the 3D filter, or switched on for this export."
 			},
+			"modelWasWhole": {
+				"type": "boolean",
+				"description": "Whether the 3D window already converted every storey under 'Show All'. False when it was on a storey range, a marquee or the selection, which this export lifted for its own length and put back."
+			},
 			"transparentTriangles": {
 				"type": "integer",
 				"description": "Triangles written with a transparency above 0. Only with transparency asked for."
@@ -629,8 +656,10 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	const ZonesInTheModel zones (zonesErr);
 	if (zonesErr != NoError) {
 		return Failed (
-			"Could not switch Zones on in the 3D filter, so the study would have "
-			"nothing to measure. Show Zones in 'Filter Elements in 3D' and run again.",
+			"Could not set the 3D filter for the export, so the study could be "
+			"measuring part of the model or no Zones at all. In 'Filter and Cut "
+			"Elements in 3D', show Zones and all stories, choose 'Show All in 3D', "
+			"and run again.",
 			zonesErr);
 	}
 
@@ -815,6 +844,10 @@ GS::ObjectState ExportModelCommand::Execute (const GS::ObjectState& parameters,
 	// Said, because a run that found no Zones needs to know whether they were
 	// switched on for it or were there already.
 	answer.Add ("zonesWereShown", zones.WasAlreadyShown ());
+	// And whether the window was on part of the model, for the same reason:
+	// the export is whole either way, and a person whose 3D view flickered to
+	// the full building and back is owed the why.
+	answer.Add ("modelWasWhole", zones.WasAlreadyWhole ());
 	if (withTransparency) {
 		answer.Add ("transparentTriangles", transparentTotal);
 	}

@@ -983,6 +983,21 @@ class SceneConfigError(Exception):
     """
 
 
+class NoZoneMatchError(SceneConfigError):
+    """The Zones named for measurement are not in the model the run measures.
+
+    Its own class so the command, which can still reach Archicad, can add
+    what the export cannot say about itself: that the project *has* the Zone
+    and the export carried no body for it. ``in_export`` counts the Zones
+    the filter matches in the export before the height band was applied, so
+    the command knows whether the Zone reached the file at all.
+    """
+
+    def __init__(self, message: str, *, in_export: int) -> None:
+        super().__init__(message)
+        self.in_export = in_export
+
+
 def _require_matches(
     label: str, matched: Sequence[object], wanted: Sequence[str], model: IfcModel
 ) -> None:
@@ -1826,7 +1841,100 @@ def massing_subject(model: IfcModel, config: MassingConfig) -> MassingSubject:
     )
 
 
-def _zone_surface(model: IfcModel, config: MassingConfig) -> tuple[SamplePoints, tuple[str, ...]]:
+def _wanted_zone(space: IfcElement, config: MassingConfig) -> bool:
+    """Whether a Zone is one the run was told to measure."""
+    return (
+        (not config.zone_layers or _on_layer(space, config.zone_layers))
+        and _named_one_of(space, config.zone_names)
+        and _on_storey(space, config.zone_storeys)
+    )
+
+
+def _listed(values: Sequence[str], most: int = 6) -> str:
+    """A short list for a sentence: quoted, and cut off with a count."""
+    shown = ", ".join(repr(value) for value in values[:most])
+    return shown + (f" and {len(values) - most} more" if len(values) > most else "")
+
+
+def _band_words(config: MassingConfig) -> str:
+    below, above = config.exclude_below_m, config.exclude_above_m
+    if below is not None and above is not None:
+        return f"{below:g} m to {above:g} m"
+    if above is not None:
+        return f"up to {above:g} m"
+    return f"from {below:g} m up"
+
+
+def _no_zone_message(model: IfcModel, config: MassingConfig, whole: IfcModel) -> str:
+    """Why the Zone filter found nothing, in terms of what the export holds.
+
+    The bare sentence -- no Zone matches these layers and names -- was all a
+    run said on Penrith, 16 November 2026, a minute after the window's
+    chooser had offered that very Zone. It told nobody whether the name was
+    wrong, the layer was wrong, the height band had cut the Zone off, or the
+    Zone had never reached the export. Each of those has a different fix, and
+    the model can tell the first three apart by itself.
+    """
+    said = [
+        f"No Zone matches layers {list(config.zone_layers)} named "
+        f"{list(config.zone_names)}"
+        + (f" on storeys {list(config.zone_storeys)}" if config.zone_storeys else "")
+        + "."
+    ]
+    kept = {space.global_id for space in model.of_class("IfcSpace")}
+    dropped = [
+        space
+        for space in whole.of_class("IfcSpace")
+        if space.global_id not in kept and _wanted_zone(space, config)
+    ]
+    if dropped:
+        storeys = sorted({space.storey or "no storey" for space in dropped})
+        one = len(dropped) == 1
+        said.append(
+            f"{len(dropped)} in the export {'does' if one else 'do'}, on {_listed(storeys)}, "
+            f"but {'lies' if one else 'lie'} outside the height band the run keeps "
+            f"({_band_words(config)}) and {'was' if one else 'were'} left out with "
+            f"everything else there. Widen the band to take {'it' if one else 'them'} in."
+        )
+        return " ".join(said)
+
+    spaces = model.of_class("IfcSpace")
+    if config.zone_layers:
+        on_layer = [space for space in spaces if _on_layer(space, config.zone_layers)]
+        if not on_layer:
+            said.append("The export carries no Zone on that layer at all.")
+        else:
+            names = sorted(
+                {label for space in on_layer if (label := space.long_name or space.name)}
+            )
+            said.append(
+                f"The export carries {len(on_layer)} Zone(s) on that layer"
+                + (f", named {_listed(names)}." if names else ", none of them named.")
+            )
+        if config.zone_names:
+            elsewhere = sorted(
+                {
+                    space.layer
+                    for space in spaces
+                    if _named_one_of(space, config.zone_names)
+                    and not _on_layer(space, config.zone_layers)
+                }
+            )
+            if elsewhere:
+                said.append(f"Zones with that name are on {_listed(elsewhere)}.")
+    else:
+        # Named without a layer, and nothing anywhere answers to the name, so
+        # the export has nothing nearer to point at.
+        said.append(
+            "No Zone in the export carries that name. Run 'sun-study archicad-info' "
+            "to see the zone names on each layer."
+        )
+    return " ".join(said)
+
+
+def _zone_surface(
+    model: IfcModel, config: MassingConfig, whole: IfcModel | None = None
+) -> tuple[SamplePoints, tuple[str, ...]]:
     """Grid the Zones named for measurement, as a surface of their own.
 
     No owner, no dwelling, no verdict. A communal outdoor area belongs to
@@ -1836,23 +1944,19 @@ def _zone_surface(model: IfcModel, config: MassingConfig) -> tuple[SamplePoints,
     An empty filter is the ordinary massing run, so it returns nothing rather
     than sweeping in every Zone in the model: a developed project has one per
     room, and gridding all of them would answer a question nobody asked.
+
+    ``whole`` is the model before the height band, so a Zone the band cut off
+    can be told apart from one the export never carried.
     """
     if not config.zone_layers and not config.zone_names:
         return SamplePoints.empty(), ()
 
-    chosen = [
-        space
-        for space in model.of_class("IfcSpace")
-        if (not config.zone_layers or _on_layer(space, config.zone_layers))
-        and _named_one_of(space, config.zone_names)
-        and _on_storey(space, config.zone_storeys)
-    ]
+    whole = whole if whole is not None else model
+    chosen = [space for space in model.of_class("IfcSpace") if _wanted_zone(space, config)]
     if not chosen:
-        raise SceneConfigError(
-            f"No Zone matches layers {list(config.zone_layers)} named "
-            f"{list(config.zone_names)}"
-            + (f" on storeys {list(config.zone_storeys)}" if config.zone_storeys else "")
-            + ". Run 'sun-study archicad-info' to see the zone names on each layer."
+        raise NoZoneMatchError(
+            _no_zone_message(model, config, whole),
+            in_export=sum(1 for space in whole.of_class("IfcSpace") if _wanted_zone(space, config)),
         )
 
     grids = [
@@ -1887,6 +1991,7 @@ def build_massing_scene(model: IfcModel, config: MassingConfig) -> MassingScene:
     measuring.
     """
     orientation = model.orientation(config.timezone)
+    whole = model
     reduced = massing_subject(model, config)
     model, cut_above = reduced.model, reduced.elements_above_cut
     solids, subject, context = reduced.solids, reduced.subject, reduced.context
@@ -1915,7 +2020,7 @@ def build_massing_scene(model: IfcModel, config: MassingConfig) -> MassingScene:
         if config.measures_ground
         else SamplePoints.empty()
     )
-    zone_surface, measured_zones = _zone_surface(model, config)
+    zone_surface, measured_zones = _zone_surface(model, config, whole)
 
     provenance: dict[str, object] = {
         "mode": "massing",

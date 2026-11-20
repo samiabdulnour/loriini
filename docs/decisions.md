@@ -7522,3 +7522,63 @@ NLA"*. Each row reads *20 % at 50 m² NLA*.
 
 *What this does not change:* the command line, where `--label` and the two
 colour flags are as they were.
+
+### D197 — A Zone the run cannot find is explained, not just reported
+
+Penrith, 16 November 2026. The window's chooser offered *COS* on
+`01 | Floor.Finish`, and the run then stopped with *No Zone matches layers
+['01 | Floor.Finish'] named ['COS']* and nothing more. The Zone was in the
+project: named COS, no number, on LEVEL 02, **20 mm tall**. A Zone that low
+sits inside the floor, Archicad gives it no 3D body, and the export, which
+is read off the 3D model, never carries it. The chooser reads the plan, where
+the Zone looks like any other. Asked: *"yeah. add error message there"*.
+
+**What the export can say about itself** (the scene, any route). When the
+filter matches nothing, the message now says which of these it is:
+- a Zone that matches is in the export but outside the height band, named
+  with its storey and the band, and the fix is to widen the band;
+- the layer carries Zones, named, and the name asked for is not among them;
+- Zones with that name are on other layers, named;
+- the layer carries no Zone at all.
+
+**What only Archicad can say** (the `massing` command, on a model it has
+just exported). When no matching Zone reached the export at all, the run
+reads the project's Zones and, if it has the one asked for, names it with
+its layer and storey and says the exported model carries no body for it,
+with the likely cause (too low, cut away by the floor) and the fix (raise
+it, safely to the storey height: the study measures from the Zone's floor,
+not its top). A name the chooser took from a Zone's *number* is said as
+such on the add-on's own export, which carries the name and element ID and
+not the number.
+
+*What this does not change:* which Zones are measured. The height cannot be
+quoted, because neither Tapir nor the add-on reports a Zone's height; the
+message says where to look instead.
+
+**Corrected 20 November 2026: the height was not the cause.** The colleague
+raised the Zone and LEVEL 02 was still left out, three reruns running. What
+they found: *"I had a 3D view tab opened which only shows the tower model
+(Level 3 to roof)... When I changed the 3D view to the overall model, it
+already worked."* The export is read off the 3D window, and `ExportModel`
+switched Zones on in `API_3DFilterAndCutSettings` while carrying the rest of
+the struct through as it found it -- the storey range, and the mode that
+makes a marquee or the selection the whole of what is converted. The sun
+views and shadow plans have taken the storey filter off since D98; the
+massing export never did. Whether that view was a storey range or a marquee
+was not recorded, and the 20 mm height may have been real and harmless.
+
+Two changes follow.
+- **The add-on converts the whole model for the length of an export.**
+  `ZonesInTheModel` now also sets `allStories` and `filterMode =
+  API_FilterByRules` ("Show All"), and puts the person's own settings back
+  when it leaves, as it already did for the Zone tick. The marquee's fields
+  and the storey numbers are untouched. The answer carries `modelWasWhole`.
+  Unlike D98's `Set3DFilter`, which leaves the window on every storey because
+  a saved view keeps it, an export saves nothing, so nothing is left changed.
+- **The message names the 3D window first and the height second.** An add-on
+  from before this change is still installed in places, and on it a partial
+  3D view remains the likelier cause by far.
+
+*Not yet measured:* the add-on change is read out of the kits (26 to 30 carry
+the same three `API_3DFilterModeID` values) and has not run in Archicad.
+Whether the IFC route follows the 3D window's filter is not known either.

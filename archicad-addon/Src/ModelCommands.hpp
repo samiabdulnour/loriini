@@ -32,6 +32,12 @@
 // export and put back after, which is the same read-modify-write `Set3DFilter`
 // already does for the storey range (D98).
 //
+// The same goes for how much of the model the window converts. A storey
+// range, a marquee or "Show Selection" left on the 3D window would otherwise
+// be exported as if it were the project, so every storey under "Show All" is
+// set for the length of the export and the person's own setting put back
+// (D197).
+//
 // Taken from the model rather than built from the 2D outline on purpose:
 // Archicad's own zone solid is cut against the terrain, and a prism raised
 // from the outline is not. `ingest.scene.zone_surface_grid` exists because
