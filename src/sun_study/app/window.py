@@ -82,7 +82,7 @@ from tkinter import filedialog, ttk
 from tkinter import font as tkfont
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from sun_study import ADDON_FILE, PRODUCT, WEBSITE, licence
+from sun_study import ADDON_FILE, PRODUCT, WEBSITE, __version__, licence, updates
 from sun_study.app import (
     claude_mcp,
     icons,
@@ -4112,9 +4112,16 @@ class Window:
         base.columnconfigure(0, weight=1)
         ttk.Frame(self.root, style="Rule.TFrame", height=1).pack(side="bottom", fill="x")
 
+        #: Every menu entry that leads to the download page, as (menu, index).
+        self.update_entries: list[tuple[tk.Menu, int]] = []
         self._project_picker()
         if theme.MACOS:
             self._mac_menus()
+        # The window's close button, and on a Mac Quit as well, go by way of
+        # the reminder that a newer version is out (D198).
+        self.root.protocol("WM_DELETE_WINDOW", self._leave)
+        if theme.MACOS:
+            self.root.createcommand("tk::mac::Quit", self._leave)
 
         # Three columns: the pages down the left, the open page, and every
         # sheet the run will make down the right -- which belongs to the run
@@ -4257,6 +4264,11 @@ class Window:
         # are, and the web site beside it.
         self.settings_menu.add_separator()
         self.settings_menu.add_command(label=f"About {PRODUCT}", command=self._about)
+        # The way to a new build, named for it once one is out (D198). The
+        # name is read again each time the menu opens, because the day's
+        # check may answer after the window has been drawn.
+        self.settings_menu.add_command(label=self._update_label(), command=self._update)
+        self._keep_update_entry(self.settings_menu)
         self.settings_menu.add_command(
             label=f"{WEBSITE.removeprefix('https://')} ↗", command=self._website
         )
@@ -4266,7 +4278,7 @@ class Window:
             style="Chrome.TButton",
             padding=(6, 0),
             width=0,
-            command=lambda: self._post(self.settings_menu, menu),
+            command=lambda: self._open_menu(self.settings_menu, menu),
             **({"image": glyph} if glyph is not None else {"text": "Menu"}),
         )
         menu.pack(side="right")
@@ -4279,7 +4291,9 @@ class Window:
             "the fields and which page was open -- and fills the window in "
             "with it next time. A preset is the same written to a file you "
             "name. Forget throws the saved settings away. About says which "
-            "version this is and whose licence it runs on.",
+            "version this is and whose licence it runs on, and the entry "
+            "under it opens the download page, named for the new version "
+            "when one is out.",
             title="Menu",
         )
         # The contour under the tool bar.
@@ -4298,8 +4312,11 @@ class Window:
         bar = tk.Menu(self.root)
         # Named ``apple``: Tk makes that menu the program's own, the bold one
         # after the Apple logo.
-        own = tk.Menu(bar, name="apple", tearoff=False)
+        own = tk.Menu(bar, name="apple", tearoff=False, postcommand=self._name_update_entries)
         own.add_command(label=f"About {PRODUCT}", command=self._about)
+        # Where a Mac program keeps it, under About.
+        own.add_command(label=self._update_label(), command=self._update)
+        self._keep_update_entry(own)
         own.add_separator()
         bar.add_cascade(menu=own)
         # Named ``window`` and ``help``: Tk fills the first with the Mac's own
@@ -4321,6 +4338,66 @@ class Window:
         what happened where."""
         added = claude_mcp.add_to_claude()
         self._tell("Connect Claude", added.describe())
+
+    # -- a newer version (D198) -------------------------------------------------
+
+    @staticmethod
+    def _update_label() -> str:
+        """The menu's way to the download page: named for the new version when
+        one is known of, and a plain check otherwise -- the page says which
+        version is current either way."""
+        version = updates.newer()
+        return f"Update to {PRODUCT} {version} ↗" if version else "Check for updates ↗"
+
+    def _keep_update_entry(self, menu: tk.Menu) -> None:
+        """Note the entry just added to ``menu`` as one to name again."""
+        index = menu.index("end")
+        if index is not None:
+            self.update_entries.append((menu, index))
+
+    def _name_update_entries(self) -> None:
+        """Read the name of every update entry again, as a menu opens."""
+        label = self._update_label()
+        for menu, index in self.update_entries:
+            try:
+                menu.entryconfigure(index, label=label)
+            except tk.TclError:
+                pass
+
+    def _open_menu(self, menu: tk.Menu, under: tk.Misc) -> None:
+        self._name_update_entries()
+        self._post(menu, under)
+
+    @staticmethod
+    def _update() -> None:
+        """The download page, in the browser."""
+        import webbrowser
+
+        webbrowser.open(updates.DOWNLOAD_PAGE)
+
+    def _leave(self) -> None:
+        """Close the window -- after saying a newer version is out, the first
+        time the window closes once it is known of, and then at most once a
+        week (``updates.reminder_due``). Yes opens the download page; either
+        way the window closes, and nothing here can stop it closing."""
+        try:
+            version = updates.reminder_due()
+            if version:
+                from tkinter import messagebox
+
+                updates.reminded(version)
+                if messagebox.askyesno(
+                    f"{PRODUCT} {version} is out",
+                    f"A new version of {PRODUCT}, {version}, is ready to download. "
+                    f"This one is {__version__}.\n\n"
+                    "Open the download page?",
+                    parent=self.root,
+                ):
+                    self._update()
+        except (tk.TclError, OSError):
+            pass
+        finally:
+            self.root.destroy()
 
     def _reference(self) -> None:
         """Open the reference image's page, under Tools."""
@@ -10759,4 +10836,8 @@ def launch(study: str = "") -> None:
     window = Window(root)
     if study:
         window.ask_for(study)
+    # Whether a newer version is out: asked of the site once a day, on a
+    # thread of its own, and only ever said as the window closes or in the
+    # menu (D198).
+    updates.check_in_background()
     root.mainloop()

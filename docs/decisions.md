@@ -7545,3 +7545,47 @@ through.
 Archicad version they are built for; the commit stamp, which still tells two
 builds of 1.0.0 apart; and the PROTOTYPE notice the sheets and the command
 line carry.
+
+### D198 — A newer version is said as the window closes, and in the menu
+
+Asked 20 November 2026: *"i really need some update server inside the app.
+just something like - when you leave the app - there is new version ready
+for download. and put somewhere in menu option to update - redirecting to
+the website with update. it shouldent bother you all the time. just put
+there reminder"*
+
+**The website is the update server.** When the site is put up,
+`scripts/site_download.py` writes each build's version into
+`site/latest.json` beside the download page, from the same install note the
+page's "Version" line comes from. Nothing else had to be stood up: the file
+is served with the pages, rewritten at every deploy, and checked by the
+deploy as the zips are.
+
+**Asked once a day, never waited on.** `sun_study.updates` asks for the file
+as the window opens, on a thread of its own, at most once a day, and keeps
+the answer in the user's folder (`updates.json`). An address that does not
+answer is passed over for the site's fly.dev address, as the licence
+service's is, for an office that refuses young domains. No network costs
+nothing: the window never knows, and the next start asks again.
+
+**Said as the window closes, once and then weekly.** Closing the window --
+its close button, and on a Mac Quit -- asks "Loriini 1.1.0 is out ... Open
+the download page?" the first time after a newer version is known of, and
+after that at most once a week. Yes opens the download page; either way the
+window closes. The question is a reminder, not a toll on every close.
+
+**And in the menu.** The menu has an entry under About -- on a Mac, in the
+program's own menu as well -- that opens the download page. It reads
+"Check for updates" until a newer version is known of, and then "Update to
+Loriini 1.1.0", named again each time the menu opens because the day's
+check may answer after the window was drawn.
+
+**Only a higher number is new.** Every build of a release carries the same
+`__version__` (D197), so the builds made between two releases are never
+announced. A release reaches people when the version goes up and both
+builds are put on the site.
+
+*What this does not change:* nothing is downloaded or installed by the
+program; the download page is still where a build comes from, and the
+licence service's recall (a build below `minimum_build` is refused) is still
+the way to stop a build that must not be used.

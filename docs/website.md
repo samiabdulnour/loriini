@@ -68,10 +68,11 @@ as GitHub serves it. The Mac one GitHub serves as a zip holding
 `Loriini_Mac.zip`, ditto's zip of the folder, which keeps the program's
 links and execute bits (macos.md); that inner zip it puts at
 `site/download/Loriini_Mac.zip`. It writes each file's own facts in its
-box under *Download* on the page with `scripts/site_download.py`, deploys
-with flyctl on Fly's builder, checks the site serves both zips at the
-deployed sizes, and, with the admin token at hand, tells the licence
-service where the download page is. It needs one repository secret,
+box under *Download* on the page with `scripts/site_download.py`, and
+each build's version in `site/latest.json`, deploys with flyctl on Fly's
+builder, checks the site serves both zips at the deployed sizes and the
+`latest.json` it wrote, and, with the admin token at hand, tells the
+licence service where the download page is. It needs one repository secret,
 `FLY_API_TOKEN`, a deploy token for the app:
 
 ```
@@ -92,7 +93,15 @@ The script reads the version, the day it was built and the Archicad
 versions out of the zip's own install note and add-ons -- on a Mac, which
 Macs as well, from the note's own line -- and the size and SHA-256 of the
 file, and writes them in that build's box on the page, the other box
-untouched; nothing about a build is typed by hand. The page in the
+untouched; nothing about a build is typed by hand. It writes the build's
+version into `site/latest.json` the same way, the other platform's entry
+untouched. That file is how the program learns a newer version is out
+(`sun_study.updates`, D198): it asks for `https://loriini.app/latest.json`
+once a day, and when the version for its platform is higher than its own,
+the window says so as it closes and names the new version in its menu.
+Only a higher number counts, so a new version reaches people when
+`__version__` goes up and the two builds are put on the site; builds of
+the same number come and go without a word. The page in the
 repository carries the figures of the build last put on it that way,
 which is what a deploy from a checkout serves; the workflow writes the figures of the build it fetches and does
 not commit them, so after a deploy from the Actions tab the page's figures
