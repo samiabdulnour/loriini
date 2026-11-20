@@ -215,9 +215,11 @@ def test_an_unreadable_latest_json_is_started_afresh(site_download: Any, folder:
 def test_the_command_writes_the_page_and_latest_json(
     site_download: Any, mac_folder: Path, tmp_path: Path
 ) -> None:
+    # UTF-8 said every time: the page has a Č in it, and Windows' own default
+    # cannot write one.
     page = tmp_path / "download.html"
-    page.write_text((ROOT / "site" / "download.html").read_text(encoding="utf-8"))
+    page.write_text((ROOT / "site" / "download.html").read_text(encoding="utf-8"), encoding="utf-8")
     latest = tmp_path / "latest.json"
     assert site_download.main([str(mac_folder), "--page", str(page), "--latest", str(latest)]) == 0
-    assert json.loads(latest.read_text())["macos"]["built"] == "31 October 2026"
-    assert "built 31 October 2026" in _box(page.read_text(), "macos")
+    assert json.loads(latest.read_text(encoding="utf-8"))["macos"]["built"] == "31 October 2026"
+    assert "built 31 October 2026" in _box(page.read_text(encoding="utf-8"), "macos")

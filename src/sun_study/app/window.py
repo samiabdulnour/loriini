@@ -4118,9 +4118,11 @@ class Window:
         if theme.MACOS:
             self._mac_menus()
         # The window's close button, and on a Mac Quit as well, go by way of
-        # the reminder that a newer version is out (D198).
+        # the reminder that a newer version is out (D198). Quit is the
+        # program's, so only the program's own window takes it: a window
+        # opened on a Toplevel has no Tcl command of its own to give.
         self.root.protocol("WM_DELETE_WINDOW", self._leave)
-        if theme.MACOS:
+        if theme.MACOS and isinstance(self.root, tk.Tk):
             self.root.createcommand("tk::mac::Quit", self._leave)
 
         # Three columns: the pages down the left, the open page, and every
