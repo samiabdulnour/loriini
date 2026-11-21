@@ -1,0 +1,57 @@
+name: Licence notice
+
+# The sentence every copy of Loriini shows when it renews its licence -- at
+# the foot of the window and in the ⓘ box -- set from the Actions tab rather
+# than from a computer that has to hold the admin token: Run workflow, type
+# the sentence, run. Left empty, it clears the notice. It is
+# `scripts/licence.py notice` (docs/licence-service.md), with the repository
+# secret LORIINI_ADMIN_TOKEN the Website workflow already uses.
+#
+# Only someone who can write to the repository can run it. The text reaches
+# the script through the environment, never pasted into the script itself.
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: "The notice, e.g. 'Loriini 1.1.0 is out: download it from loriini.app/download'. Leave empty to clear it."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: licence-notice
+  cancel-in-progress: false
+
+jobs:
+  notice:
+    name: Set the notice
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install runtime dependencies only
+        run: uv sync --no-dev
+
+      - name: Tell the licence service
+        env:
+          LORIINI_ADMIN_TOKEN: ${{ secrets.LORIINI_ADMIN_TOKEN }}
+          TEXT: ${{ inputs.text }}
+        run: |
+          set -euo pipefail
+          if [ -z "$LORIINI_ADMIN_TOKEN" ]; then
+            echo "::error::The LORIINI_ADMIN_TOKEN repository secret is not set."
+            exit 1
+          fi
+          if [ -n "$TEXT" ]; then
+            uv run --no-dev python scripts/licence.py notice "$TEXT"
+            echo "Notice set: $TEXT" >> "$GITHUB_STEP_SUMMARY"
+          else
+            uv run --no-dev python scripts/licence.py notice --clear
+            echo "Notice cleared." >> "$GITHUB_STEP_SUMMARY"
+          fi

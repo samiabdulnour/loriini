@@ -157,6 +157,12 @@ card, the key arriving by email, installed on a computer, and the licence under
   - **Opening one:** download the artifact, unzip it, and
     `age --decrypt -i D:\Private\loriini-backup.key -o licences.sqlite3
     licences-<day>.sqlite3.age`.
+- **A notice, from the Actions tab.** The *Licence notice* workflow
+  (`.github/workflows/licence-notice.yml`) is `scripts/licence.py notice`
+  run with the repository secret `LORIINI_ADMIN_TOKEN`, so no computer has
+  to hold the token: *Run workflow*, type the sentence every lease should
+  carry ("Loriini 1.1.0 is out: download it from loriini.app/download"),
+  run. Left empty, it clears the notice.
 - **Restoring.** Decrypt the copy as above, then stop the machine, copy the
   file onto the volume as
   `/data/licences.sqlite3` (`fly ssh sftp shell`), and start it again. What
