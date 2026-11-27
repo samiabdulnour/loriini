@@ -524,7 +524,9 @@ def _shaded(
     so and says how far it got.
     """
     if say is None:
-        return ~sunlit_matrix(grid, occluder, sun_vectors)
+        # A shadow is geometry, not the solar-access convention: no angle cut-off
+        # (D199), so the plan is the shadow every surface actually casts.
+        return ~sunlit_matrix(grid, occluder, sun_vectors, min_sun_angle_deg=0.0)
     say(
         f"  casting {what or 'the shadow'}: {len(grid):,} samples x {len(sun_vectors)} "
         f"instants against {occluder.triangle_count:,} triangles"
@@ -538,7 +540,7 @@ def _shaded(
             last = now
             say(f"    {done / total:.0%} of {what or 'the cast'}, {duration_text(now - started)}")
 
-    return ~sunlit_matrix(grid, occluder, sun_vectors, progress=tick)
+    return ~sunlit_matrix(grid, occluder, sun_vectors, progress=tick, min_sun_angle_deg=0.0)
 
 
 def _lattice_shape(grid: SamplePoints) -> tuple[int, int] | None:

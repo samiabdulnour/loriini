@@ -72,6 +72,7 @@ def build_massing_header(
             "window": f"{ruleset.assessment.window_start}-{ruleset.assessment.window_end}",
             "timestep_minutes": ruleset.assessment.timestep_minutes,
             "weighting": str(ruleset.assessment.weighting),
+            "min_sun_angle_deg": ruleset.assessment.min_sun_angle_deg,
             "note": (
                 "This is an area share, not the ADG per-apartment criterion. It is "
                 "the metric available before apartments exist and is not a "

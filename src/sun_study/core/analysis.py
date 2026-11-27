@@ -20,6 +20,21 @@ sum to exactly the window length. ``UNIFORM`` gives every instant full weight
 and is offered only because some reference tools do it that way; it will report
 370 minutes for a fully sunlit ADG window.
 
+Sun along a wall -- the angle cut-off
+-------------------------------------
+A wall the sun is barely in front of -- the sun a degree or two off its plane --
+is "facing" it by the sign of a dot product, and its samples are lit in the
+model. Behind a real window that sun does nothing: a 150 mm reveal shades
+1.7 m of glass at 5 degrees and 4.3 m at 2. Practice in NSW counts a wall in sun
+only where the sun stands at least a few degrees off it, 5 by convention, and
+the court's first sunlight principle asked 22.5 (Parsonage v Ku-ring-gai [2004]
+NSWLEC 347, set aside in 2010). ``min_sun_angle_deg`` is that angle, measured
+in plan -- the horizontal angle between the sun and the wall, as practice and
+Parsonage measure it -- and applied to walls and windows alone (a surface within
+15 degrees of vertical). Floors, roofs and the ground are lit whenever the sun
+is on their side of them, as before. 0 is the old reading, the dot product's
+sign everywhere. The ruleset sets it (D199); 5 when nothing does.
+
 Continuity
 ----------
 Some DCPs require an unbroken duration rather than a cumulative total, and the
@@ -46,6 +61,7 @@ BoolArray = npt.NDArray[np.bool_]
 
 __all__ = [
     "DEFAULT_BAND_EDGES_MINUTES",
+    "DEFAULT_MIN_SUN_ANGLE_DEG",
     "Band",
     "BandedResult",
     "SunlightResult",
@@ -53,6 +69,7 @@ __all__ = [
     "band_by_area",
     "candidate_rays",
     "cumulative_minutes",
+    "faces_sun",
     "instant_weights",
     "lit_share_per_instant",
     "longest_continuous_minutes",
@@ -94,6 +111,48 @@ def instant_weights(
     return weights
 
 
+#: Degrees the sun must stand off a wall's plane, in plan, for the wall to be lit:
+#: the convention practice uses, and the ruleset's own when it names none (D199).
+DEFAULT_MIN_SUN_ANGLE_DEG = 5.0
+
+#: A surface whose normal is this close to horizontal is a wall, and the angle
+#: cut-off applies to it: within 15 degrees of vertical.
+_WALL_NORMAL_Z = float(np.sin(np.radians(15.0)))
+
+
+def faces_sun(
+    normals: FloatArray,
+    directions: FloatArray,
+    min_sun_angle_deg: float = DEFAULT_MIN_SUN_ANGLE_DEG,
+) -> BoolArray:
+    """(n_points, n_instants): does each surface face each sun position.
+
+    Every surface faces a sun on its side of it (the dot product's sign). A
+    wall -- a surface within 15 degrees of vertical -- faces it only where the
+    sun also stands more than ``min_sun_angle_deg`` off its plane, measured in
+    plan: the horizontal angle between the sun's bearing and the wall. 0 is
+    the sign alone, the reading before the cut-off existed.
+    """
+    if not 0.0 <= min_sun_angle_deg < 90.0:
+        raise ValueError(f"min_sun_angle_deg must be in [0, 90), got {min_sun_angle_deg}")
+    normals = np.asarray(normals, dtype=np.float64)
+    facing = (normals @ directions.T) > 0.0
+    if min_sun_angle_deg == 0.0 or not len(normals) or not len(directions):
+        return facing
+    wall = np.abs(normals[:, 2]) < _WALL_NORMAL_Z
+    if not wall.any():
+        return facing
+    plan_n = normals[wall, :2]
+    plan_n = plan_n / np.linalg.norm(plan_n, axis=1, keepdims=True)
+    plan_s = directions[:, :2]
+    reach = np.linalg.norm(plan_s, axis=1)
+    # a sun straight overhead has no bearing: it stands in every wall's plane
+    plan_s = np.divide(plan_s, reach[:, None], out=np.zeros_like(plan_s), where=reach[:, None] > 0)
+    off = (plan_n @ plan_s.T) > np.sin(np.radians(min_sun_angle_deg))
+    facing[wall] &= off
+    return facing
+
+
 #: Samples cast together by ``sunlit_matrix``. Every (sample, instant) pair
 #: that faces a sun above the horizon becomes a ray -- an origin and a
 #: direction, 48 bytes, and 16 more of index -- and they were once all
@@ -111,6 +170,7 @@ def sunlit_matrix(
     sun_vectors: FloatArray,
     *,
     progress: Callable[[int, int], None] | None = None,
+    min_sun_angle_deg: float = DEFAULT_MIN_SUN_ANGLE_DEG,
 ) -> BoolArray:
     """Boolean (n_points, n_instants): did this point see the sun at that instant.
 
@@ -126,7 +186,9 @@ def sunlit_matrix(
       test is on the +Z component, so the model frame must be Z-up.
     * A point whose normal faces away from the sun is self-shaded by the
       surface it sits on, whatever else is in the scene. Casting that ray would
-      ask the wrong question and could return a spurious hit-free result.
+      ask the wrong question and could return a spurious hit-free result. On a
+      wall, so is a point the sun stands within ``min_sun_angle_deg`` of, in
+      plan (``faces_sun``; 0 for the sign alone).
 
     Cast ``SAMPLE_BLOCK`` samples at a time, so memory stays flat however big
     the grid. ``progress`` is told ``(samples done, samples in all)`` after
@@ -146,7 +208,7 @@ def sunlit_matrix(
     above_horizon = directions[:, 2] > 0.0
     for begin in range(0, point_count, SAMPLE_BLOCK):
         end = min(begin + SAMPLE_BLOCK, point_count)
-        facing = (points.normals[begin:end] @ directions.T) > 0.0
+        facing = faces_sun(points.normals[begin:end], directions, min_sun_angle_deg)
         pairs = np.argwhere(facing & above_horizon[None, :])
         if pairs.size:
             rows = pairs[:, 0] + begin
@@ -157,7 +219,11 @@ def sunlit_matrix(
     return sunlit
 
 
-def candidate_rays(points: SamplePoints, sun_vectors: FloatArray) -> int:
+def candidate_rays(
+    points: SamplePoints,
+    sun_vectors: FloatArray,
+    min_sun_angle_deg: float = DEFAULT_MIN_SUN_ANGLE_DEG,
+) -> int:
     """How many rays ``sunlit_matrix`` would cast: the pairs facing a sun that
     is up. Counted a block at a time, for the same reason it casts that way."""
     directions = np.ascontiguousarray(sun_vectors, dtype=np.float64)
@@ -166,12 +232,18 @@ def candidate_rays(points: SamplePoints, sun_vectors: FloatArray) -> int:
     above_horizon = directions[:, 2] > 0.0
     total = 0
     for begin in range(0, len(points), SAMPLE_BLOCK):
-        facing = (points.normals[begin : begin + SAMPLE_BLOCK] @ directions.T) > 0.0
+        facing = faces_sun(
+            points.normals[begin : begin + SAMPLE_BLOCK], directions, min_sun_angle_deg
+        )
         total += int(np.count_nonzero(facing & above_horizon[None, :]))
     return total
 
 
-def reached_by_sun(points: SamplePoints, sun_vectors: FloatArray) -> dict[str, bool]:
+def reached_by_sun(
+    points: SamplePoints,
+    sun_vectors: FloatArray,
+    min_sun_angle_deg: float = DEFAULT_MIN_SUN_ANGLE_DEG,
+) -> dict[str, bool]:
     """Per parent: does the sun ever stand in front of this surface at all?
 
     The ray-free half of ``sunlit_matrix`` -- the same two tests, above the
@@ -197,7 +269,7 @@ def reached_by_sun(points: SamplePoints, sun_vectors: FloatArray) -> dict[str, b
         return dict.fromkeys(points.unique_parents, False)
 
     above_horizon = directions[:, 2] > 0.0
-    facing = (points.normals @ directions.T) > 0.0
+    facing = faces_sun(points.normals, directions, min_sun_angle_deg)
     candidate = facing & above_horizon[None, :]
     for parent in points.unique_parents:
         reached[parent] = bool(candidate[points.mask_for(parent)].any())

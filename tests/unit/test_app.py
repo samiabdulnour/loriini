@@ -539,6 +539,32 @@ def test_see_through_glass_goes_to_every_study_loriini_casts_the_sun_for(
     assert hidden_window.see_glass.get() == "80"
 
 
+def test_the_sun_angle_off_a_wall_goes_to_every_study_loriini_reads_the_sun_for(
+    hidden_window: Any,
+) -> None:
+    """D199. 5, the ruleset's own, sends nothing, so a study set up before the
+    choice existed makes the commands it always made; 0 goes to the facade,
+    the apartments and the communal space, and not to the shadows, which are
+    geometry rather than the solar-access convention."""
+    assert set(hidden_window.sun_angle._buttons) == {"5", "0"}
+    assert hidden_window.sun_angle.get() == "5"
+    hidden_window.apartments.set("06 | Zone.Units")
+    hidden_window.communal.set("06 | Zone.Balcony")
+    for tick in (hidden_window.do_facade, hidden_window.do_plans, hidden_window.do_communal):
+        tick.set(True)
+    hidden_window.do_shadows.set(True)
+
+    assert not any("--min-sun-angle" in job.args for job in hidden_window.jobs())
+
+    hidden_window.sun_angle.set("0")
+    sent = [(job.args[0], flag(job.args, "--min-sun-angle")) for job in hidden_window.jobs()]
+    assert sum(angle == ["0"] for _command, angle in sent) == 3
+    assert all(angle == [] for command, angle in sent if command not in {"massing", "archicad-run"})
+
+    hidden_window.apply({"sun_angle": "5"})
+    assert hidden_window.sun_angle.get() == "5"
+
+
 def test_a_neighbouring_layer_is_exported_and_kept_out_of_the_denominator(
     hidden_window: Any,
 ) -> None:

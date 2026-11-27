@@ -62,6 +62,7 @@ def build_header(
             "timestep_minutes": ruleset.assessment.timestep_minutes,
             "continuity": str(ruleset.assessment.continuity),
             "weighting": str(ruleset.assessment.weighting),
+            "min_sun_angle_deg": ruleset.assessment.min_sun_angle_deg,
             "source": ruleset.source.model_dump(exclude_none=True),
         },
         "interpretation": {

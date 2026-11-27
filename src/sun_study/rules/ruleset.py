@@ -24,6 +24,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from sun_study.core.analysis import DEFAULT_MIN_SUN_ANGLE_DEG
+
 __all__ = [
     "BUILTIN_RULESETS",
     "AreaVariant",
@@ -109,6 +111,10 @@ class Assessment(_Strict):
     citation: str = Field(min_length=20)
     continuity: Continuity = Continuity.CUMULATIVE
     weighting: Weighting = Weighting.TRAPEZOIDAL
+    #: A wall is lit only where the sun stands more than this many degrees off
+    #: its plane, in plan; 0 counts the sun until it is parallel to the wall.
+    #: A convention, not the ADG's (D199), so it is printed in every header.
+    min_sun_angle_deg: float = Field(default=DEFAULT_MIN_SUN_ANGLE_DEG, ge=0.0, lt=90.0)
 
     @property
     def month_day(self) -> tuple[int, int]:
@@ -202,7 +208,8 @@ class Ruleset(_Strict):
             f"{self.assessment.window_start}-{self.assessment.window_end} "
             f"at {self.assessment.timestep_minutes} min steps, "
             f"{self.assessment.continuity} duration, "
-            f"{self.assessment.weighting} weighting\n"
+            f"{self.assessment.weighting} weighting, "
+            f"a wall lit from {self.assessment.min_sun_angle_deg:g} deg off its plane\n"
             f"  target {self.criterion('minimum_compliant_share').value:.0%} of apartments, "
             f"cap {self.criterion('maximum_no_sunlight_share').value:.0%} with no sunlight\n"
             f"  interpretation: compliance requires "
