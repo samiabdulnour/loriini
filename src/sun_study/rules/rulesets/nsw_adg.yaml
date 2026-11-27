@@ -49,6 +49,17 @@ assessment:
   # direction, directly across the 2 hour threshold. Decision D11.
   weighting: trapezoidal
 
+  # A wall is in sun only where the sun stands more than this many degrees off
+  # its plane, measured in plan. The ADG names no angle; 5 is the convention
+  # solar access studies use, because sun along a wall does not get past a
+  # window's reveal (150 mm shades 1.7 m of glass at 5 degrees). The Land and
+  # Environment Court once asked 22.5 ("the sun should strike a vertical
+  # surface at a horizontal angle of 22.5o or more", Parsonage v Ku-ring-gai
+  # [2004] NSWLEC 347) and set it aside in The Benevolent Society v Waverley
+  # Council [2010] NSWLEC 1082. 0 counts the sun until it is parallel to the
+  # wall. --min-sun-angle overrides it for a run. Decision D199.
+  min_sun_angle_deg: 5
+
 # Design criteria 1 and 2 differ only by location, so they are one threshold
 # with two values rather than two rules.
 areas:

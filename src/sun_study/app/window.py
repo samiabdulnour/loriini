@@ -5107,6 +5107,24 @@ class Window:
         )
         self.see_glass.set("off")
 
+        self.sun_angle, row = self._tiles(
+            frame,
+            row,
+            "Sun on a wall",
+            "From how far off a wall the sun counts as reaching it.",
+            "A wall is in sun only where the sun stands more than this many "
+            "degrees off it, measured in plan. 5 is the convention solar access "
+            "studies use: sun along a wall does not get past a window's reveal, "
+            "and 150 mm of reveal shades 1.7 m of glass at 5 degrees. 0 counts "
+            "the sun until it is parallel to the wall. The ADG names no angle, "
+            "so the choice is printed in every result. On an east or west face "
+            "it can decide two hours: an east wall in Sydney at midwinter loses "
+            "the sun at 5 degrees about twenty minutes before it goes behind "
+            "it. Floors, balconies and the ground are not affected. Used by all "
+            "three studies.",
+        )
+        self.sun_angle.set("5")
+
         self.do_plans = tk.BooleanVar(value=False)
         # The study's own box. Everything from here to the end of the block
         # is built inside it, by the simple means of pointing ``frame`` at it:
@@ -7879,6 +7897,7 @@ class Window:
             "plan_kinds": self.plan_kinds,
             "floor_grid": self.floor_grid,
             "see_through_glass": self.see_glass,
+            "sun_angle": self.sun_angle,
             "layout_subset": self.subset,
             **{f"shadow_layers_{short.lower()}": box for short, _role, box in self.shadow_rows},
             "shadow_terrain_layers": self.terrain_layers,
@@ -8852,6 +8871,7 @@ class Window:
         "Shadow quality": GRID_WORDS,
         "Drawing quality": GRID_WORDS,
         "Glass": {"off": "Solid", "30": "All glass", "80": "Clear only"},
+        "Sun on a wall": {"5": "From 5°", "0": "From 0°"},
         "Site lands at": {
             "Project location": "Project location",
             "Project origin": "Project origin",
@@ -8997,6 +9017,20 @@ class Window:
                 "tinted and frosted glass still cast shade.",
             ),
         ),
+        # D199: the angle off a wall, in plan, from which the sun lights it.
+        "Sun on a wall": (
+            (
+                "5",
+                "sun_angle_5",
+                "From 5° — the sun counts on a wall once it stands more than 5° "
+                "off it, the convention solar access studies use.",
+            ),
+            (
+                "0",
+                "sun_angle_0",
+                "From 0° — the sun counts until it is parallel to the wall.",
+            ),
+        ),
         "Floor use": (
             (
                 "By level",
@@ -9109,6 +9143,13 @@ class Window:
         solid -- which is the command's own default."""
         chosen = self.see_glass.get().strip()
         return ["--see-through-glass", chosen] if chosen.isdigit() else []
+
+    def _angle_args(self) -> list[str]:
+        """``--min-sun-angle`` where the tile is not the ruleset's own 5, or
+        nothing -- so the commands a study made before the choice existed are
+        the commands it makes now (D199)."""
+        chosen = self.sun_angle.get().strip()
+        return ["--min-sun-angle", chosen] if chosen and chosen != "5" else []
 
     def _day_args(self, day: str) -> list[str]:
         """``--date`` for one day, or nothing on the ruleset's own.
@@ -9803,7 +9844,7 @@ class Window:
             # the model to them and drop whatever else the scheme casts.
             for name in self._listed(self.context):
                 args += ["--require-layer", name]
-            args += self._band_args() + self._glass_args()
+            args += self._band_args() + self._glass_args() + self._angle_args()
             args += [
                 "--model-bands",
                 "--model-flat" if self.do_floors.get() else "--no-model-flat",
@@ -9890,7 +9931,7 @@ class Window:
             # total alone, it would switch on a second ray cast for nothing.
             if times or heat:
                 args += ["--patch-grid", self.floor_grid.get().strip() or "0.25"]
-            args += self._band_args() + self._glass_args()
+            args += self._band_args() + self._glass_args() + self._angle_args()
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
             if self.shadow_subset.get():
@@ -9937,7 +9978,7 @@ class Window:
                 args += ["--layer-combination", self.combination.get()]
             for name in self._listed(self.hide):
                 args += ["--hide-layer", name]
-            args += self._band_args() + self._glass_args()
+            args += self._band_args() + self._glass_args() + self._angle_args()
             if self.master.get():
                 args += ["--master-layout", self.master.get()]
             if self.adg_subset.get():

@@ -236,6 +236,7 @@ def _durations(
     sun_vectors: np.ndarray,
     timestep_minutes: float,
     weighting: Weighting,
+    min_sun_angle_deg: float,
 ) -> _Durations:
     """Cumulative and longest-continuous minutes, per parent element.
 
@@ -246,7 +247,7 @@ def _durations(
     if len(points) == 0:
         return _Durations({}, {}, (), np.zeros((0, len(sun_vectors)), dtype=np.float64))
 
-    sunlit = sunlit_matrix(points, occluder, sun_vectors)
+    sunlit = sunlit_matrix(points, occluder, sun_vectors, min_sun_angle_deg=min_sun_angle_deg)
     weights = instant_weights(sunlit.shape[1], timestep_minutes, weighting)
     per_sample = cumulative_minutes(sunlit, weights)
     per_sample_continuous = longest_continuous_minutes(sunlit, timestep_minutes)
@@ -306,13 +307,16 @@ def run_assessment(
     occluder = Occluder(scene.occluders)
     timestep = float(rules.assessment.timestep_minutes)
     weighting = WEIGHTING_BY_RULESET[rules.assessment.weighting]
+    angle = float(rules.assessment.min_sun_angle_deg)
 
-    living = _durations(scene.window_samples, occluder, sun_vectors, timestep, weighting)
+    living = _durations(scene.window_samples, occluder, sun_vectors, timestep, weighting, angle)
     # Costs no rays: the same facing test the duration already ran, kept
     # rather than recomputed from a report where zero minutes has stopped
     # saying which kind of zero it was.
-    reaches = reached_by_sun(scene.window_samples, sun_vectors)
-    open_space = _durations(scene.open_space_samples, occluder, sun_vectors, timestep, weighting)
+    reaches = reached_by_sun(scene.window_samples, sun_vectors, angle)
+    open_space = _durations(
+        scene.open_space_samples, occluder, sun_vectors, timestep, weighting, angle
+    )
 
     # A second pass, over a second surface, against a different occluder set:
     # the glazing is taken out so the sun can reach the floor through it. Only
@@ -322,7 +326,10 @@ def run_assessment(
     floor_minutes = None
     if scene.floor_samples is not None and scene.glazed_occluders is not None:
         floor_sunlit = sunlit_matrix(
-            scene.floor_samples, Occluder(scene.glazed_occluders), sun_vectors
+            scene.floor_samples,
+            Occluder(scene.glazed_occluders),
+            sun_vectors,
+            min_sun_angle_deg=angle,
         )
         floor_minutes = cumulative_minutes(
             floor_sunlit, instant_weights(floor_sunlit.shape[1], timestep, weighting)
@@ -485,13 +492,16 @@ def run_massing(
     occluder = Occluder(scene.occluders)
     timestep = float(rules.assessment.timestep_minutes)
     weighting = WEIGHTING_BY_RULESET[rules.assessment.weighting]
+    angle = float(rules.assessment.min_sun_angle_deg)
     weights = instant_weights(len(times), timestep, weighting)
     threshold = rules.area(area).minimum_sunlight_minutes
 
     def minutes_on(points: SamplePoints) -> FloatArray:
         if len(points) == 0:
             return np.zeros(0)
-        return cumulative_minutes(sunlit_matrix(points, occluder, sun_vectors), weights)
+        return cumulative_minutes(
+            sunlit_matrix(points, occluder, sun_vectors, min_sun_angle_deg=angle), weights
+        )
 
     def banded(points: SamplePoints, wanted: bool) -> BandedResult | None:
         if not wanted:
@@ -499,7 +509,7 @@ def run_massing(
         return band_by_area(points, minutes_on(points), threshold_minutes=threshold)
 
     zone_sunlit = (
-        sunlit_matrix(scene.zone_samples, occluder, sun_vectors)
+        sunlit_matrix(scene.zone_samples, occluder, sun_vectors, min_sun_angle_deg=angle)
         if len(scene.zone_samples)
         else None
     )

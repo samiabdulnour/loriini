@@ -356,6 +356,13 @@ from sun_study.site.geocode import geocode
 from sun_study.site.http import FetchError
 from sun_study.site.nsw import lot_id
 
+#: --min-sun-angle's help, shared by the commands that assess (D199).
+MIN_SUN_ANGLE_HELP = (
+    "Degrees the sun must stand off a wall, in plan, for the wall to count as in "
+    "sun: the ruleset's own unless given (5 for nsw_adg). 0 counts the sun until "
+    "it is parallel to the wall. The ADG names no angle; 5 is the convention."
+)
+
 #: A sheet label that is a time of day. Those are shadow diagrams; the
 #: banded and two-hour plans are not, and the two go to different subsets.
 _CLOCK = re.compile(r"\d{1,2}:\d{2}")
@@ -444,6 +451,10 @@ def run(
     date: Annotated[
         str | None,
         typer.Option("--date", "--day", help=DAY_HELP),
+    ] = None,
+    min_sun_angle: Annotated[
+        float | None,
+        typer.Option("--min-sun-angle", help=MIN_SUN_ANGLE_HELP),
     ] = None,
     living_room: Annotated[
         list[str] | None,
@@ -563,7 +574,7 @@ def run(
         see_through_glass=see_through_glass,
     )
 
-    rules = _ruleset_for(ruleset, date=date)
+    rules = _ruleset_for(ruleset, date=date, min_sun_angle=min_sun_angle)
     try:
         result = run_assessment(
             ifc, timezone=timezone, ruleset=rules, area=area, year=year, scene_config=config
@@ -867,7 +878,12 @@ def report_model_bands(
     vectors = result.scene.orientation.sun_vectors(
         solar_position(times, result.model.latitude_deg, result.model.longitude_deg)
     )
-    lit = sunlit_matrix(samples, Occluder(result.scene.occluders), vectors)
+    lit = sunlit_matrix(
+        samples,
+        Occluder(result.scene.occluders),
+        vectors,
+        min_sun_angle_deg=result.ruleset.assessment.min_sun_angle_deg,
+    )
     minutes = cumulative_minutes(
         lit,
         instant_weights(
@@ -1110,7 +1126,12 @@ def report_ground(
     vectors = result.scene.orientation.sun_vectors(
         solar_position(times, result.model.latitude_deg, result.model.longitude_deg)
     )
-    lit = sunlit_matrix(ground, Occluder(result.scene.occluders), vectors)
+    lit = sunlit_matrix(
+        ground,
+        Occluder(result.scene.occluders),
+        vectors,
+        min_sun_angle_deg=result.ruleset.assessment.min_sun_angle_deg,
+    )
     minutes = cumulative_minutes(
         lit,
         instant_weights(
@@ -1999,7 +2020,12 @@ def _zone_statistics_sheet(
 
 
 def _ruleset_for(
-    ruleset: str, *, date: str | None, window_start: str = "", window_end: str = ""
+    ruleset: str,
+    *,
+    date: str | None,
+    window_start: str = "",
+    window_end: str = "",
+    min_sun_angle: float | None = None,
 ) -> Ruleset:
     """The rules a run assesses against, with the day and window it asked for.
 
@@ -2057,6 +2083,27 @@ def _ruleset_for(
             f"{loaded.name} itself says "
             f"{window.window_start}-{window.window_end}. These figures are not "
             f"that ruleset's criterion.",
+            fg=typer.colors.YELLOW,
+            bold=True,
+        )
+
+    if min_sun_angle is not None and min_sun_angle != loaded.assessment.min_sun_angle_deg:
+        if not 0.0 <= min_sun_angle < 90.0:
+            raise typer.BadParameter(
+                f"{min_sun_angle:g} is not an angle off a wall: 0 up to 90.",
+                param_hint="--min-sun-angle",
+            )
+        rules = rules.model_copy(
+            update={
+                "assessment": rules.assessment.model_copy(
+                    update={"min_sun_angle_deg": float(min_sun_angle)}
+                )
+            }
+        )
+        typer.secho(
+            f"  a wall counted in sun from {min_sun_angle:g} deg off its plane; "
+            f"{loaded.name} itself says {loaded.assessment.min_sun_angle_deg:g}. "
+            "The ADG names no angle (D199), so this is a reading, not a breach.",
             fg=typer.colors.YELLOW,
             bold=True,
         )
@@ -3656,6 +3703,10 @@ def massing(
         str | None,
         typer.Option("--date", "--day", help=DAY_HELP),
     ] = None,
+    min_sun_angle: Annotated[
+        float | None,
+        typer.Option("--min-sun-angle", help=MIN_SUN_ANGLE_HELP),
+    ] = None,
     facade_grid: Annotated[
         float, typer.Option("--facade-grid", help="Facade sample spacing in metres.")
     ] = DEFAULT_MASSING_SPACING_M,
@@ -4184,7 +4235,13 @@ def massing(
         raise typer.BadParameter(str(error), param_hint="--layer-prefix") from error
 
     # Likewise the day: on any but the ruleset's own it goes into every name.
-    rules = _ruleset_for(ruleset, date=date, window_start=window_start, window_end=window_end)
+    rules = _ruleset_for(
+        ruleset,
+        date=date,
+        min_sun_angle=min_sun_angle,
+        window_start=window_start,
+        window_end=window_end,
+    )
 
     model_layer = model_layer or naming.layer("Facade")
 
@@ -5793,6 +5850,10 @@ def archicad_run(
         str | None,
         typer.Option("--date", "--day", help=DAY_HELP),
     ] = None,
+    min_sun_angle: Annotated[
+        float | None,
+        typer.Option("--min-sun-angle", help=MIN_SUN_ANGLE_HELP),
+    ] = None,
     living_room: Annotated[
         list[str] | None,
         typer.Option("--living-room", help="Zone name identifying a living room. Repeatable."),
@@ -6233,7 +6294,7 @@ def archicad_run(
     # Likewise the day: on any but the ruleset's own it goes into every name,
     # the property group included, so a summer run stands beside the
     # midwinter one instead of over it.
-    rules = _ruleset_for(ruleset, date=date)
+    rules = _ruleset_for(ruleset, date=date, min_sun_angle=min_sun_angle)
 
     layer = layer or default_layer_name()
     sheet_name = sheet_name or naming.named(naming.GROUP_WORD)
@@ -7458,7 +7519,7 @@ def _shadow_report(
         )
     outlined = designed if shadow_all_hours else None
     typer.echo(
-        f"  {candidate_rays(grid, sun):,} rays a cast, {len(scene.sources)} casts"
+        f"  {candidate_rays(grid, sun, 0.0):,} rays a cast, {len(scene.sources)} casts"
         + (" and one more for the every-hour drawing" if outlined else "")
     )
     try:

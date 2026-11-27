@@ -498,6 +498,21 @@ Analysis 21 Dec`), so it stands beside the midwinter set rather than over
 it. The shadow diagram keeps its own list of days (`--shadow-date`, all
 three by default) and takes the same words.
 
+## The angle off a wall
+
+A wall counts as in sun only where the sun stands more than 5 degrees off
+it, measured in plan -- the ruleset's `min_sun_angle_deg`, D199. The ADG
+names no angle; 5 is the convention solar access studies use, because sun
+along a wall does not get past a window's reveal. `--min-sun-angle 0` on
+`run`, `massing` and `archicad-run` -- **Sun on a wall** in the solar
+analysis card -- counts the sun until it is parallel to the wall, and the
+run says so in yellow. Every result's header names the angle. Floors,
+balconies, roofs and the ground are not walls and are lit whenever the sun
+is on their side; the shadow plans are geometry and take no angle. It can
+decide two hours on an east or west face: an east wall in Sydney at
+midwinter loses the sun at 5 degrees about twenty minutes before the sun
+goes behind it.
+
 ## What this still needs
 
 Honest status, so nobody plans around something that does not exist.

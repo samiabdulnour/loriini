@@ -7589,3 +7589,51 @@ builds are put on the site.
 program; the download page is still where a build comes from, and the
 licence service's recall (a build below `minimum_build` is refused) is still
 the way to stop a build that must not be used.
+
+### D199 — A wall is in sun from 5 degrees off it, in plan
+
+Asked 27 November 2026, on a future-context study where the top floors of an
+east face had 1 h 59 min at 5 degrees and 2 h 18 min at 0: *"I need you to
+add this option to the loriini - its quite important - with defaultly set
+on 5 degrees"*.
+
+**What was there.** A sample faced the sun when the dot product of its
+normal and the sun was positive, and was lit if nothing stood between. A
+wall the sun stood half a degree off was lit, which no window is: sun that
+close to a wall's plane does not get past the reveal (150 mm of reveal shades
+1.7 m of glass at 5 degrees and 4.3 m at 2).
+
+**The convention, and where it does and does not come from.** The ADG
+names no angle; 4A-1 asks for two hours of direct sun and its design
+guidance for a square metre of it on the floor for fifteen minutes. The
+Land and Environment Court's first sunlight principle asked "the sun should
+strike a vertical surface at a horizontal angle of 22.5o or more", because
+"sunlight at extremely oblique angles has little effect" (Parsonage v
+Ku-ring-gai [2004] NSWLEC 347); The Benevolent Society v Waverley Council
+[2010] NSWLEC 1082 set it aside (at 138, the numerical element "pays no
+regard to the orientation of the glazed surface to the sun and ...
+provides no functional assistance in decision making"). 5 degrees is what
+solar access studies use in practice, and no published source fixes it.
+So it is a ruleset value, not an engine constant: `min_sun_angle_deg`,
+5 in `nsw_adg`, printed in every header.
+
+**Measured in plan, on walls alone.** The angle is the horizontal one
+between the sun's bearing and the wall, as Parsonage and practice measure
+it; against the tilted ray it would be a degree less at midwinter's
+altitudes, and an east face's two hours turn on a degree. It applies to a
+surface within 15 degrees of vertical. Floors, balconies, roofs and the
+ground are lit whenever the sun is on their side of them, as before: the
+cut-off is about a wall's plane and would otherwise become an altitude
+limit nobody asked for. The shadow plans are geometry and are cast at 0.
+
+**Asked for, and said.** `--min-sun-angle` on `run`, `massing` and
+`archicad-run` overrides the ruleset for a run and says so in yellow; the
+window's solar analysis card has **Sun on a wall**, From 5° or From 0°,
+sent only when it is not the ruleset's own, so a study set up before the
+choice existed makes the commands it always made.
+
+*What this changes:* a wall's figures, where the sun passes within 5
+degrees of it inside the window -- on an east or west face at midwinter,
+the twenty minutes or so before the sun goes behind the wall. Read at 0 the
+figures are the ones before this decision.
+
